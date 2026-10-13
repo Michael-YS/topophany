@@ -93,8 +93,24 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		if w >= 100 {
 			lw := min(max(w*40/100, 34), 84)
 			mw := w - lw
-			ix, iy, iw, ih := m.panel(cv, x, y, mw, h, title+" · "+mode, "m switch · z zoom", false)
+			// A world-spanning network letterboxes in a tall panel; the map
+			// then takes only the rows it can fill and the evidence moves
+			// under it, leaving the list the full height.
+			mh := h
+			if m.mapMode() == "geo" {
+				if need := m.geoRows(mw-2) + 2 + m.mapChrome(); h-need >= 10 {
+					mh = need
+				}
+			}
+			ix, iy, iw, ih := m.panel(cv, x, y, mw, mh, title+" · "+mode, "m switch · z zoom", false)
 			m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+			if mh < h {
+				ix, iy, iw, ih = m.panel(cv, x, y+mh, mw, h-mh, "EVIDENCE", "Enter expand", false)
+				m.drawDetail(cv, ix, iy, iw, ih, sel, false)
+				ix, iy, iw, ih = m.panel(cv, x+mw, y, lw, h, "NODES · LINKS", tag, true)
+				m.drawList(cv, ix, iy, iw, ih, rows)
+				return
+			}
 			lh := h
 			if h >= 16 {
 				lh = h * 55 / 100

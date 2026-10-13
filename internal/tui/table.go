@@ -90,10 +90,10 @@ func layoutTable(rows []Row, heads []string, w int) tableLayout {
 			total += tableGap + l.stateW
 		}
 		for total > w {
-			widest, at := l.titleW-12, -1
+			widest, at := l.titleW-14, -1
 			for i, c := range l.cols {
-				if c-6 > widest {
-					widest, at = c-6, i
+				if c-min(9, pref[i]) > widest {
+					widest, at = c-min(9, pref[i]), i
 				}
 			}
 			if widest <= 0 {

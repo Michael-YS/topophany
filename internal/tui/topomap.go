@@ -10,12 +10,14 @@ import (
 type mapNode struct {
 	ID, Name, Kind, Group, Health, Place string
 	Lat, Lon                             float64
-	Located, Inherited                   bool
+	Located, Inherited, Affected         bool
 	order                                int
 }
 type mapEdge struct {
 	ID, From, To, Health, Label string
-	Kind                        int // edgeLink, edgePath, edgeContain
+	Kind                        int    // edgeLink, edgePath, edgeContain
+	Signal                      string // what the map may claim; see linkSignal
+	Observer                    string // for path-implied edges: whose path
 }
 
 const (
@@ -24,23 +26,91 @@ const (
 	edgeContain
 )
 
+// Signals are what a map element may honestly claim:
+//
+//	up        the element's own checks pass
+//	carried   not measured itself, but a declared path over it succeeds end to end
+//	affected  on a failing path or dependency; the faulty segment is not established
+//	degraded  mixed or unconfirmed evidence
+//	down      the element's own checks confirm failure
+//	unknown   no current evidence
+//
+// Cached views and drafts carry no evidence, so everything there is unknown.
+func signalRank(s string) int {
+	switch s {
+	case "down":
+		return 5
+	case "degraded":
+		return 4
+	case "affected":
+		return 3
+	case "up", "carried":
+		return 2
+	case "unknown":
+		return 1
+	}
+	return 0
+}
+
+// worseSignal keeps the signal that needs more attention; between equally
+// ranked signals a measured "up" beats an inferred "carried".
+func worseSignal(a, b string) string {
+	if signalRank(b) > signalRank(a) || signalRank(b) == signalRank(a) && b == "up" {
+		return b
+	}
+	return a
+}
+
+func signalColor(s string) Color {
+	switch s {
+	case "up", "carried":
+		return cUp
+	case "down":
+		return cDown
+	case "degraded", "affected":
+		return cWarn
+	}
+	return cUnknown
+}
+
+func signalGlyph(s string) rune {
+	switch s {
+	case "affected":
+		return '▲'
+	case "carried":
+		return '●'
+	}
+	return healthGlyph(s)
+}
+
+func nodeSignal(n mapNode) string {
+	if n.Affected && (n.Health == "up" || n.Health == "unknown") {
+		return "affected"
+	}
+	return n.Health
+}
+
 // graph derives drawable nodes/edges from the snapshot. Path-implied edges are
 // declared expectations (dashed), never presented as measured links.
 func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 	s := m.Snapshot
 	cached := m.Cached()
-	states := func(list []model.EntityState) map[string]string {
-		out := map[string]string{}
+	type state struct {
+		health   string
+		affected bool
+	}
+	states := func(list []model.EntityState) map[string]state {
+		out := map[string]state{}
 		for _, e := range list {
-			out[e.ID] = e.Health
+			out[e.ID] = state{e.Health, e.Affected}
 		}
 		return out
 	}
-	health := func(list map[string]string, id string) string {
+	health := func(list map[string]state, id string) (string, bool) {
 		if h, ok := list[id]; ok && !cached {
-			return h
+			return h.health, h.affected
 		}
-		return "unknown"
+		return "unknown", false
 	}
 	nodeStates := states(s.Nodes)
 	nodes := []mapNode{}
@@ -54,7 +124,8 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 		if _, ok := groups[n.Group]; !ok {
 			groups[n.Group] = groupHues[len(groups)%len(groupHues)]
 		}
-		mn := mapNode{ID: n.ID, Name: name, Kind: n.Kind, Group: n.Group, Health: health(nodeStates, n.ID), order: i}
+		h, affected := health(nodeStates, n.ID)
+		mn := mapNode{ID: n.ID, Name: name, Kind: n.Kind, Group: n.Group, Health: h, Affected: affected, order: i}
 		if n.Location != nil {
 			mn.Lat, mn.Lon, mn.Located, mn.Place = n.Location.Lat, n.Location.Lon, true, n.Location.Label
 		}
@@ -73,6 +144,19 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 			}
 		}
 	}
+	// A link no check measures is "carried" when a declared path over it
+	// succeeds end to end in this view.
+	pathStates := states(s.Paths)
+	carried := map[string]bool{}
+	if !cached {
+		for _, p := range s.Topology.Paths {
+			if st, ok := pathStates[p.ID]; ok && st.health == "up" {
+				for _, l := range p.Links {
+					carried[l] = true
+				}
+			}
+		}
+	}
 	edges := []mapEdge{}
 	seen := map[[2]string]bool{}
 	linkStates := states(s.Links)
@@ -83,12 +167,25 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 		if _, b := index[l.To]; !b {
 			continue
 		}
-		edges = append(edges, mapEdge{ID: l.ID, From: l.From, To: l.To, Health: health(linkStates, l.ID), Label: l.Transport, Kind: edgeLink})
+		h, affected := health(linkStates, l.ID)
+		sig := h
+		switch {
+		case h != "unknown":
+		case affected:
+			sig = "affected"
+		case carried[l.ID]:
+			sig = "carried"
+		}
+		edges = append(edges, mapEdge{ID: l.ID, From: l.From, To: l.To, Health: h, Label: l.Transport, Kind: edgeLink, Signal: sig})
 		seen[[2]string{l.From, l.To}] = true
 		seen[[2]string{l.To, l.From}] = true
 	}
-	pathStates := states(s.Paths)
 	for _, p := range s.Topology.Paths {
+		h, _ := health(pathStates, p.ID)
+		sig := map[string]string{"up": "carried", "down": "down", "degraded": "affected"}[h]
+		if sig == "" {
+			sig = "unknown"
+		}
 		for i := 1; i < len(p.Nodes); i++ {
 			a, b := p.Nodes[i-1], p.Nodes[i]
 			_, okA := index[a]
@@ -96,14 +193,26 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 			if a == b || !okA || !okB || seen[[2]string{a, b}] {
 				continue
 			}
-			seen[[2]string{a, b}] = true
-			seen[[2]string{b, a}] = true
-			edges = append(edges, mapEdge{ID: "path:" + p.ID, From: a, To: b, Health: health(pathStates, p.ID), Label: "declared in path " + p.ID, Kind: edgePath})
+			// Several paths may imply the same hop; keep the one that needs
+			// the most attention.
+			dup := false
+			for k := range edges {
+				e := &edges[k]
+				if e.Kind == edgePath && (e.From == a && e.To == b || e.From == b && e.To == a) {
+					if worseSignal(e.Signal, sig) != e.Signal {
+						e.Signal, e.Health, e.ID, e.Observer = sig, h, "path:"+p.ID, p.Observer
+					}
+					dup = true
+				}
+			}
+			if !dup {
+				edges = append(edges, mapEdge{ID: "path:" + p.ID, From: a, To: b, Health: h, Label: "declared in path " + p.ID, Kind: edgePath, Signal: sig, Observer: p.Observer})
+			}
 		}
 	}
 	for _, n := range s.Topology.Nodes {
 		if _, ok := index[n.Parent]; ok && n.Parent != "" {
-			edges = append(edges, mapEdge{ID: "parent:" + n.ID, From: n.Parent, To: n.ID, Health: "unknown", Kind: edgeContain})
+			edges = append(edges, mapEdge{ID: "parent:" + n.ID, From: n.Parent, To: n.ID, Health: "unknown", Kind: edgeContain, Signal: "unknown"})
 		}
 	}
 	return nodes, edges, groups
@@ -138,6 +247,16 @@ func (m *Model) mapMode() string {
 	return "network"
 }
 
+// mapChrome is the rows a map gives to its legend and "no location" tray.
+func (m *Model) mapChrome() int {
+	for _, n := range m.Snapshot.Topology.Nodes {
+		if n.Location == nil && n.Parent == "" {
+			return 2
+		}
+	}
+	return 1
+}
+
 func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 	if w < 8 || h < 3 {
 		return
@@ -150,368 +269,94 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 		mh--
 	}
 	if m.mapMode() == "geo" {
-		m.drawGeo(cv, x, y, w, mh, nodes, edges, groups, focusNode, focusEdge)
+		m.drawGeo(cv, x, y, w, mh, nodes, edges, focusNode, focusEdge)
 	} else {
 		m.drawNetwork(cv, x, y, w, mh, nodes, edges, groups, focusNode, focusEdge)
 	}
 	if legend {
 		ly := y + h - 1
-		cx := x
+		cx := x + 1
 		item := func(r rune, c Color, label string) {
 			if cx+2+width(label) >= x+w {
 				return
 			}
 			cv.Set(cx, ly, r, fg(c))
-			cx += 1 + cv.Text(cx+1, ly, label, m.st(fg(cMuted)), -1) + 2
+			cx += 1 + cv.Text(cx+1, ly, label, fg(cMuted), -1) + 2
 		}
 		item('●', cUp, "up")
-		item('✖', cDown, "down")
 		item('▲', cWarn, "warn")
+		item('✖', cDown, "down")
 		item('○', cUnknown, "unknown")
-		item('─', cAccent2, "link")
-		item('┄', cMuted, "declared path")
+		cx += 2
+		item('━', Mix(cUp, cInk, .3), "path ok")
+		item('━', cWarn, "affected")
+		item('━', cDown, "failed")
+		item('┄', Mix(cUnknown, cInk, .2), "no evidence")
 		if m.mapMode() == "network" {
 			item('┊', cFaint, "hosted in")
-		}
-		cx++
-		names := []string{}
-		for _, n := range nodes {
-			if n.Group != "" && !contains(names, n.Group) {
-				names = append(names, n.Group)
-			}
-		}
-		for _, g := range names {
-			item('■', groups[g], g)
-		}
-	}
-}
-
-// --- geographic view -------------------------------------------------------
-
-type geoView struct{ lon0, lat0, scale float64 }
-
-func (g geoView) project(lat, lon float64) (float64, float64) {
-	d := math.Mod(lon-g.lon0, 360)
-	if d < 0 {
-		d += 360
-	}
-	return d / g.scale, (g.lat0 - lat) / g.scale
-}
-func (g geoView) unproject(px, py float64) (float64, float64) {
-	return g.lat0 - py*g.scale, g.lon0 + px*g.scale
-}
-
-// fitGeo chooses the window around the antimeridian-aware bounding box of the
-// placed nodes, e.g. Shanghai + Los Angeles spans the Pacific, not Europe.
-func fitGeo(points [][2]float64, wd, hd float64, zoom int, focus *[2]float64) geoView {
-	world := geoView{lon0: -180, scale: math.Max(360/wd, 160/hd)}
-	world.lat0 = 8 + hd*world.scale/2
-	if zoom == 2 || len(points) == 0 && focus == nil {
-		return clampLat(world, hd)
-	}
-	var cLat, cLon, spanLat, spanLon float64
-	if zoom == 1 && focus != nil {
-		cLat, cLon, spanLat, spanLon = focus[0], focus[1], 22, 36
-	} else {
-		lons := make([]float64, 0, len(points))
-		minLat, maxLat := 90.0, -90.0
-		for _, p := range points {
-			lons = append(lons, p[1])
-			minLat, maxLat = math.Min(minLat, p[0]), math.Max(maxLat, p[0])
-		}
-		sort.Float64s(lons)
-		gap, start := 360-(lons[len(lons)-1]-lons[0]), lons[0]
-		for i := 1; i < len(lons); i++ {
-			if g := lons[i] - lons[i-1]; g > gap {
-				gap, start = g, lons[i]
-			}
-		}
-		spanLon = 360 - gap
-		cLon = start + spanLon/2
-		cLat = (minLat + maxLat) / 2
-		spanLat = maxLat - minLat
-		spanLon = math.Max(spanLon+math.Max(28, spanLon*.18), 50)
-		spanLat = math.Max(spanLat+math.Max(18, spanLat*.3), 28)
-	}
-	scale := math.Max(spanLon/wd, spanLat/hd)
-	scale = math.Min(scale, world.scale)
-	g := geoView{lon0: cLon - wd*scale/2, lat0: cLat + hd*scale/2, scale: scale}
-	return clampLat(g, hd)
-}
-func clampLat(g geoView, hd float64) geoView {
-	if span := hd * g.scale; span < 180 {
-		g.lat0 = math.Min(g.lat0, 84)
-		g.lat0 = math.Max(g.lat0, -84+span)
-	}
-	return g
-}
-
-func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, groups map[string]Color, focusNode, focusEdge string) {
-	unplaced := []int{}
-	pts := [][2]float64{}
-	var focus *[2]float64
-	for i, n := range nodes {
-		if n.Located {
-			pts = append(pts, [2]float64{n.Lat, n.Lon})
-			if n.ID == focusNode {
-				focus = &[2]float64{n.Lat, n.Lon}
-			}
-		} else {
-			unplaced = append(unplaced, i)
-		}
-	}
-	mh := h
-	if len(unplaced) > 0 && h > 4 {
-		mh--
-	}
-	if focus == nil && len(pts) > 0 && m.Zoom == 1 {
-		focus = &pts[0]
-	}
-	d := NewDots(w, mh)
-	wd, hd := float64(w*2), float64(mh*4)
-	g := fitGeo(pts, wd, hd, m.Zoom, focus)
-	isLand := func(px, py int) bool {
-		lat, lon := g.unproject(float64(px)+.5, float64(py)+.5)
-		return lat > -90 && lat < 90 && land(lat, lon)
-	}
-	grid := math.Max(15, math.Round(g.scale*24/15)*15)
-	for py := 0; py < mh*4; py++ {
-		for px := 0; px < w*2; px++ {
-			lat, lon := g.unproject(float64(px)+.5, float64(py)+.5)
-			if lat <= -90 || lat >= 90 {
-				continue
-			}
-			if land(lat, lon) {
-				coast := !isLand(px-1, py) || !isLand(px+1, py) || !isLand(px, py-1) || !isLand(px, py+1)
-				if coast {
-					d.Set(px, py, cCoast, 1)
-				} else if px%2 == 0 && py%2 == 0 {
-					d.Set(px, py, cLand, 1)
-				}
-				continue
-			}
-			// Faint graticule: dotted meridians/parallels on the ocean only.
-			onLat := math.Abs(math.Mod(lat+900, grid)) < g.scale
-			onLon := math.Abs(math.Mod(lon+1800, grid)) < g.scale
-			if (onLat && px%4 == 0) || (onLon && py%4 == 0) {
-				d.Set(px, py, cOcean, 0)
-			}
-		}
-	}
-	pos := map[string][2]float64{}
-	for _, n := range nodes {
-		if n.Located {
-			px, py := g.project(n.Lat, n.Lon)
-			pos[n.ID] = [2]float64{px, py}
-		}
-	}
-	tray := map[string][2]float64{}
-	if len(unplaced) > 0 && h > 4 {
-		tx := 12
-		for _, i := range unplaced {
-			tray[nodes[i].ID] = [2]float64{float64(tx*2 + 1), float64(mh*4 + 1)}
-			tx += width(nodes[i].Name) + 4
-		}
-	}
-	anchor := func(id string) ([2]float64, bool) {
-		if p, ok := pos[id]; ok {
-			return p, true
-		}
-		p, ok := tray[id]
-		return p, ok
-	}
-	phase := m.phase()
-	for _, e := range edges {
-		if e.Kind == edgeContain {
-			continue
-		}
-		a, okA := anchor(e.From)
-		b, okB := anchor(e.To)
-		if !okA || !okB {
-			continue
-		}
-		if math.Hypot(a[0]-b[0], a[1]-b[1]) < 3 {
-			continue
-		}
-		// Lines to the "no location" tray are a UI convention, not geography:
-		// draw them only for the focused node to keep the map readable.
-		_, placedA := pos[e.From]
-		_, placedB := pos[e.To]
-		if (!placedA || !placedB) && e.From != focusNode && e.To != focusNode {
-			continue
-		}
-		c, pri, dash := edgeStyle(e, focusNode, focusEdge)
-		// Flight-path arc: bow perpendicular to the chord, always "upward".
-		mx, my := (a[0]+b[0])/2, (a[1]+b[1])/2
-		dx, dy := b[0]-a[0], b[1]-a[1]
-		l := math.Hypot(dx, dy)
-		nx, ny := -dy/l, dx/l
-		if ny > 0 {
-			nx, ny = -nx, -ny
-		}
-		bow := math.Min(l*.28, hd*.3)
-		cp := [2]float64{mx + nx*bow, my + ny*bow}
-		p1 := [2]float64{a[0] + (cp[0]-a[0])*2/3, a[1] + (cp[1]-a[1])*2/3}
-		p2 := [2]float64{b[0] + (cp[0]-b[0])*2/3, b[1] + (cp[1]-b[1])*2/3}
-		path := curve(a, p1, p2, b)
-		d.Polyline(path, c, pri, dash)
-		m.pulse(d, path, e, phase)
-	}
-	d.Blit(cv, x, y, 0)
-	// Markers: nodes sharing a cell at this zoom are clustered.
-	type cluster struct {
-		cx, cy  int
-		members []int
-	}
-	clusters := []*cluster{}
-	byCell := map[[2]int]*cluster{}
-	for i, n := range nodes {
-		p, ok := pos[n.ID]
-		if !ok {
-			continue
-		}
-		k := [2]int{int(p[0]) / 2, int(p[1]) / 4}
-		if k[0] < 0 || k[1] < 0 || k[0] >= w || k[1] >= mh {
-			continue
-		}
-		c := byCell[k]
-		if c == nil {
-			c = &cluster{cx: k[0], cy: k[1]}
-			byCell[k] = c
-			clusters = append(clusters, c)
-		}
-		c.members = append(c.members, i)
-	}
-	occupied := make([]bool, w*h)
-	occupy := func(cx, cy, n int) {
-		for i := cx; i < cx+n; i++ {
-			if i >= 0 && i < w && cy >= 0 && cy < h {
-				occupied[cy*w+i] = true
-			}
-		}
-	}
-	free := func(cx, cy, n int) bool {
-		if cy < 0 || cy >= mh || cx < 0 || cx+n > w {
-			return false
-		}
-		for i := cx; i < cx+n; i++ {
-			if occupied[cy*w+i] {
-				return false
-			}
-		}
-		return true
-	}
-	for _, c := range clusters {
-		occupy(c.cx, c.cy, 1)
-	}
-	// Focused cluster first so it always gets a label.
-	sort.SliceStable(clusters, func(i, j int) bool {
-		has := func(c *cluster) bool {
-			for _, k := range c.members {
-				if nodes[k].ID == focusNode {
-					return true
+			cx += 2
+			names := []string{}
+			for _, n := range nodes {
+				if n.Group != "" && !contains(names, n.Group) {
+					names = append(names, n.Group)
 				}
 			}
-			return false
-		}
-		return has(clusters[i]) && !has(clusters[j])
-	})
-	for _, c := range clusters {
-		worst, lead, focused := "up", c.members[0], false
-		for _, k := range c.members {
-			worst = worse(worst, nodes[k].Health)
-			if nodes[k].ID == focusNode {
-				lead, focused = k, true
-			}
-		}
-		n := nodes[lead]
-		marker := healthGlyph(worst)
-		if len(c.members) > 1 {
-			marker = '◉'
-		}
-		st := fg(healthColor(worst)).bold()
-		if focused {
-			st = st.Bg(cSelBG)
-		}
-		cv.Set(x+c.cx, y+c.cy, marker, m.st(st))
-		m.hit(x+c.cx, y+c.cy, 1, "select:node:"+n.ID)
-		label := n.Name
-		if len(c.members) > 1 {
-			if n.Place != "" && !focused {
-				label = n.Place
-			}
-			label += " +" + itoa(len(c.members)-1)
-		}
-		lw := width(label)
-		for _, cand := range [][2]int{{c.cx + 2, c.cy}, {c.cx - 1 - lw, c.cy}, {c.cx + 1, c.cy - 1}, {c.cx + 1, c.cy + 1}, {c.cx - lw, c.cy - 1}, {c.cx - lw, c.cy + 1}} {
-			if free(cand[0], cand[1], lw) {
-				ls := fg(groups[n.Group])
-				if focused {
-					ls = fg(cGlow).Bg(cSelBG).bold()
-				}
-				cv.Text(x+cand[0], y+cand[1], label, m.st(ls), lw)
-				m.hit(x+cand[0], y+cand[1], lw, "select:node:"+n.ID)
-				occupy(cand[0]-1, cand[1], lw+2)
-				break
+			for _, g := range names {
+				item('■', groups[g], g)
 			}
 		}
 	}
-	if len(unplaced) > 0 && h > 4 {
-		ty := y + mh
-		cv.Text(x, ty, "no location", m.st(fg(cFaint).italic()), 11)
-		for _, i := range unplaced {
-			n := nodes[i]
-			p := tray[n.ID]
-			cx := x + int(p[0])/2
-			st := fg(groups[n.Group])
-			if n.ID == focusNode {
-				st = fg(cGlow).Bg(cSelBG).bold()
-			}
-			cv.Set(cx-1, ty, healthGlyph(n.Health), m.st(fg(healthColor(n.Health))))
-			k := cv.Text(cx, ty, n.Name, m.st(st), x+w-cx)
-			m.hit(cx-1, ty, k+1, "select:node:"+n.ID)
-		}
-	}
-	if len(pts) == 0 {
-		msg := "No node locations declared — add one with e (edit) or press m for the network view"
-		cv.Text(x+max(0, (w-width(msg))/2), y+mh/2, msg, m.st(fg(cMuted).italic()), w)
-	}
-	zoom := []string{"fit", "focus", "world"}[m.Zoom%3]
-	tag := " geo · " + zoom + " "
-	cv.Text(x+w-width(tag), y, tag, m.st(fg(cFaint)), -1)
 }
 
 func edgeStyle(e mapEdge, focusNode, focusEdge string) (Color, int8, int) {
-	c := healthColor(e.Health)
-	if e.Health == "unknown" {
-		c = Mix(cAccent2, cDeep, .25)
-	}
+	var c Color
 	pri, dash := int8(3), 0
+	switch e.Signal {
+	case "up", "carried":
+		c, pri = Mix(cUp, cInk, .48), 4
+	case "affected", "degraded":
+		c, pri = Mix(cWarn, cInk, .12), 5
+	case "down":
+		c, pri = cDown, 6
+	default:
+		c = Mix(cUnknown, cInk, .3)
+	}
 	switch e.Kind {
 	case edgePath:
-		c = Mix(c, cDeep, .3)
-		pri, dash = 2, 2
+		dash = 2
+		if e.Signal == "unknown" || e.Signal == "carried" {
+			c, pri = Mix(c, cInk, .3), pri-1
+		}
 	case edgeContain:
-		c, pri, dash = cFaint, 2, 1
+		c, pri, dash = Mix(cFaint, cInk, .2), 2, 1
 	}
 	if e.ID == focusEdge || focusNode != "" && (e.From == focusNode || e.To == focusNode) {
-		c = Mix(c, cGlow, .45)
-		pri = 6
+		c = Mix(c, cGlow, .4)
+		pri = 8
 	}
 	return c, pri, dash
 }
 
-// pulse draws a travelling packet only on edges with fresh "up" evidence;
-// unknown or failed segments are deliberately left static.
-func (m *Model) pulse(d *Dots, path [][2]float64, e mapEdge, phase float64) {
-	if e.Health != "up" || len(path) < 4 || e.Kind == edgeContain {
+// pulse sends comets along edges whose signal is up or carried; edges with no
+// evidence or with failing evidence stay still, so motion itself means
+// "traffic is getting through".
+func (m *Model) pulse(d *Dots, path [][2]float64, e mapEdge, phase float64, reverse bool) {
+	if e.Signal != "up" && e.Signal != "carried" || len(path) < 6 || e.Kind == edgeContain {
 		return
 	}
-	t := math.Mod(phase*.45+float64(hash32(e.ID)%1000)/1000, 1)
-	i := int(t * float64(len(path)-1))
-	for k := 0; k < 3 && i-k >= 0; k++ {
-		p := path[i-k]
-		d.Set(int(math.Round(p[0])), int(math.Round(p[1])), Mix(cGlow, cUp, float64(k)/3), 9)
+	n := float64(len(path))
+	count := max(1, int(n/48))
+	off := float64(hash32(e.ID)%1000) / 1000 * n
+	for c := 0; c < count; c++ {
+		head := int(math.Mod(phase*16+off+float64(c)*n/float64(count), n))
+		for k := 0; k < 5 && head-k >= 0; k++ {
+			i := head - k
+			if reverse {
+				i = len(path) - 1 - i
+			}
+			p := path[i]
+			d.Set(int(math.Round(p[0])), int(math.Round(p[1])), Mix(cGlow, cUp, float64(k)/5), 9)
+		}
 	}
 }
 
@@ -522,14 +367,6 @@ func contains(xs []string, s string) bool {
 		}
 	}
 	return false
-}
-
-func worse(a, b string) string {
-	rank := map[string]int{"up": 0, "unknown": 1, "degraded": 2, "down": 3}
-	if rank[b] > rank[a] {
-		return b
-	}
-	return a
 }
 
 // --- network view ----------------------------------------------------------
@@ -700,7 +537,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 			}
 		}
 		d.Polyline(path, c, pri, dash)
-		m.pulse(d, path, e, phase)
+		m.pulse(d, path, e, phase, false)
 	}
 	d.Blit(cv, x, y, 0)
 	for _, a := range arrows {

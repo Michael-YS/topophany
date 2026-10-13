@@ -72,13 +72,19 @@ func (d *Dots) Polyline(pts [][2]float64, c Color, pri int8, dash int) {
 }
 
 // Blit renders lit cells onto the canvas; unlit cells keep their content.
+// With bg 0 a lit cell keeps the background already painted beneath it.
 func (d *Dots) Blit(cv *Canvas, ox, oy int, bg Color) {
 	for y := 0; y < d.H; y++ {
 		for x := 0; x < d.W; x++ {
 			i := y*d.W + x
-			if d.bits[i] != 0 {
-				cv.Set(ox+x, oy+y, rune(0x2800+int(d.bits[i])), Style{FG: d.col[i], BG: bg})
+			if d.bits[i] == 0 || !cv.in(ox+x, oy+y) {
+				continue
 			}
+			b := bg
+			if b == 0 {
+				b = cv.at(ox+x, oy+y).st.BG
+			}
+			cv.Set(ox+x, oy+y, rune(0x2800+int(d.bits[i])), Style{FG: d.col[i], BG: b})
 		}
 	}
 }

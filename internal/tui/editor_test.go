@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -219,15 +220,17 @@ func TestGeoFitCrossesPacificAndClustersNodes(t *testing.T) {
 			t.Fatal("point outside view", p, x, y, g)
 		}
 	}
-	if span := 160 * g.scale; span > 240 {
+	if span := 160 * g.scale / g.kx; span > 240 {
 		t.Fatal("view goes the long way around", span)
 	}
 	m := homelabModel(t)
 	m.setTab(tabTopology)
 	m.MapMode = "geo"
 	out := visible(&m)
-	if !strings.Contains(out, "Home Windows +") || !strings.Contains(out, "no location") {
-		t.Fatal("cluster/unplaced tray missing")
+	// Home Windows, its hosted WSL and the MacBook share Shanghai: one site,
+	// one glyph per node.
+	if !regexp.MustCompile(`Shanghai [●○▲✖]{3}`).MatchString(out) || !strings.Contains(out, "no location") {
+		t.Fatal("cluster/unplaced tray missing", out)
 	}
 }
 

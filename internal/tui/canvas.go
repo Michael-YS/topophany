@@ -107,12 +107,18 @@ func (c *Canvas) detach(x, y int) {
 		n.ch = " "
 	}
 }
+
+// put writes one cell. A style without a background keeps the background
+// already painted there, so text and dots composite over panels and maps.
 func (c *Canvas) put(x, y int, ch string, w int, st Style) {
 	if !c.in(x, y) {
 		return
 	}
 	if w == 2 && x+1 >= c.W {
 		ch, w = " ", 1
+	}
+	if st.BG == 0 {
+		st.BG = c.at(x, y).st.BG
 	}
 	c.detach(x, y)
 	*c.at(x, y) = cell{ch: ch, st: st}
