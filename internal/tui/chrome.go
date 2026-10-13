@@ -86,7 +86,11 @@ func (m *Model) tabBar(cv *Canvas, y int) {
 	for i, t := range tabs {
 		total += width(itoa(i+1)+" "+t) + 3
 	}
-	short := total > cv.W-1
+	// Tabs close up before the inactive ones lose their names.
+	gap, short := 1, total > cv.W-1
+	if short && total-len(tabs) <= cv.W-1 {
+		gap, short = 0, false
+	}
 	x := 1
 	for i, t := range tabs {
 		num, name := itoa(i+1), t
@@ -116,7 +120,7 @@ func (m *Model) tabBar(cv *Canvas, y int) {
 			x += cv.Text(x, y, " ", pad, -1)
 		}
 		m.hit(start, y, x-start, "tab:"+itoa(i))
-		x++
+		x += gap
 		if x >= cv.W {
 			break
 		}
@@ -193,6 +197,11 @@ func (m *Model) healthBar(cv *Canvas, x, y, w int, up, warn, down, unk int, glyp
 			pos++
 		}
 	}
+}
+
+// hasNews is a notice still on show, or an error.
+func (m *Model) hasNews() bool {
+	return m.notice != "" && m.Now.Sub(m.noticeAt) < 8e9 || m.Error != ""
 }
 
 func (m *Model) statusBar(cv *Canvas, y int) {

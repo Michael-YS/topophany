@@ -128,6 +128,12 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 	}
 	if row < y+h {
 		cx := x
+		// The counts close up rather than lose a word when the card is
+		// narrow.
+		gap := "   "
+		if need := 29 + width(itoa(up)+itoa(warn)+itoa(down)+itoa(unk)); need+9 > w {
+			gap = map[bool]string{true: "  ", false: " "}[need+6 <= w]
+		}
 		count := func(g rune, gc Color, n int, word string) {
 			st := fg(cFaint)
 			if n > 0 {
@@ -140,7 +146,7 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 				ns = fg(cText).bold()
 			}
 			cx += cv.Text(cx, row, itoa(n), ns, -1)
-			cx += cv.Text(cx, row, " "+word+"   ", fg(cMuted), max(0, x+w-cx))
+			cx += cv.Text(cx, row, " "+word+gap, fg(cMuted), max(0, x+w-cx))
 		}
 		count('●', cUp, up, "up")
 		count('▲', cWarn, warn, "warn")
@@ -341,23 +347,35 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 			ix, iy, iw, ih = m.panel(cv, x+mw, y+sh+ah+vh, sw, oh, "OBSERVERS", "", false)
 			m.observersCard(cv, ix, iy, iw, ih)
 		}
-	case w >= 90 && h >= 26:
+	case w >= 90 && h >= 22:
 		mh := h * 52 / 100
 		if m.mapMode() == "geo" {
 			mh = min(mh, m.geoRows(w-2)+2+m.mapChrome())
 		}
 		ix, iy, iw, ih := m.panel(cv, x, y, w, mh, mapTitle, mapTag, false)
 		m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+		// Under the map: the status card, with services or observers
+		// beneath it when there is room, beside what needs attention.
 		sw := min(max(w*42/100, 44), 64)
-		ix, iy, iw, ih = m.panel(cv, x, y+mh, sw, h-mh, "STATUS", "", false)
+		sh := min(h-mh, 11)
+		ix, iy, iw, ih = m.panel(cv, x, y+mh, sw, sh, "STATUS", "", false)
 		m.statusCard(cv, ix, iy, iw, ih)
+		under := h - mh - sh
 		if ah := 5; len(rows) == 0 && m.Search == "" && h-mh-ah >= 5 {
 			attention(x+sw, y+mh, w-sw, ah, true)
 			ix, iy, iw, ih = m.panel(cv, x+sw, y+mh+ah, w-sw, h-mh-ah, "SERVICES", "· "+itoa(nServices), false)
 			m.servicesCard(cv, ix, iy, iw, ih)
+			if under >= 3 {
+				ix, iy, iw, ih = m.panel(cv, x, y+mh+sh, sw, under, "OBSERVERS", "", false)
+				m.observersCard(cv, ix, iy, iw, ih)
+			}
 			return
 		}
 		attention(x+sw, y+mh, w-sw, h-mh, true)
+		if under >= 4 {
+			ix, iy, iw, ih = m.panel(cv, x, y+mh+sh, sw, under, "SERVICES", "· "+itoa(nServices), false)
+			m.servicesCard(cv, ix, iy, iw, ih)
+		}
 	default:
 		sh := min(6, h/2)
 		ix, iy, iw, ih := m.panel(cv, x, y, w, sh, "STATUS", "", false)

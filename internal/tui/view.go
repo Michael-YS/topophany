@@ -32,8 +32,15 @@ func (m *Model) Render() []string {
 	}
 	m.header(cv)
 	m.tabBar(cv, 1)
-	m.statusBar(cv, 2)
-	m.body(cv, 0, 3, w, h-4)
+	top := 3
+	if m.Tab == tabOverview && !m.hasNews() {
+		// The Overview's status card says everything the status row would;
+		// there the row is kept only for notices and errors.
+		top = 2
+	} else {
+		m.statusBar(cv, 2)
+	}
+	m.body(cv, 0, top, w, h-1-top)
 	m.footer(cv, h-1)
 	if m.Debug {
 		m.drawDebug(cv)
