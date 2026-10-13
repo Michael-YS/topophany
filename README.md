@@ -17,6 +17,11 @@ Topophany is an open-source, self-hosted network topology and service availabili
 - **A terminal UI you can read at a glance.** The Overview answers *is anything wrong, and where?* — a verdict, a map of every place and path, and the short list of what needs attention.
 - **One binary, no dependencies.** No CGO, no database daemon, no Node.js, and zero external Go modules.
 
+<p align="center">
+  <img src="docs/assets/overview.png" alt="The Overview during a simulated outage: a world map with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
+  <br><sub>The Overview during a simulated outage, from <code>topo preview --scenario 1</code>.</sub>
+</p>
+
 The official project name is **Topophany**, and the CLI command is **`topo`**. This codebase is a clean-room, verified 0.1.0 release. It contains no production addresses, external network memos, or live credentials.
 
 ## Installation
@@ -87,10 +92,21 @@ The TUI is built to answer one question before anything is read: *is anything wr
 - **Services, Paths, Checks, Incidents, Observers** — aligned tables. The state column stays empty for healthy rows, so problems are the only lit words; `Enter` expands the evidence behind a row.
 - **About** — a one-bit dithered globe on which the places you declared are the only lights. The mouse wheel spins it.
 
-The maps are drawn in braille dots (2×4 per cell). Press `m` to switch between:
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/network.png" alt="The Topology tab with the network graph: chips in columns joined by box-drawing wires, the affected route in amber"></td>
+    <td width="50%"><img src="docs/assets/incident.png" alt="The Incidents tab: open incidents beside the evidence for the selected one, with failed checks, other observers' evidence and a hypothesis marked as not a finding"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Topology as a network graph</sub></td>
+    <td align="center"><sub>An incident and its evidence</sub></td>
+  </tr>
+</table>
 
-- **geo** — a dot-matrix world map (Natural Earth 1:110m land) that places nodes by their declared `location`, never by IP address. Nodes at one place are clustered into a single site with one marker per node; each pair of sites gets one arc. An arc is green when its link is measured up or a declared path over it succeeds, amber when it is degraded or on a failing path, red when it fails, and grey when nothing has measured it; hops implied only by a declared path are dashed. Flow pulses run only along links with positive evidence, and sites with a problem ripple. Nodes without coordinates wait in a "no location" tray. The view crosses the antimeridian on the shorter side, and `z` cycles between fitting every site, focusing the selection, and the whole world.
-- **network** — a left-to-right layered graph: sources on the left, each link one layer further, long links routed around the nodes in between. Nodes are chips colored by group, "hosted in" relations are drawn as dotted ties, and selecting a path or incident highlights its hops.
+Press `m` to switch the map between two modes:
+
+- **geo** — a braille dot-matrix world map (2×4 dots per cell, Natural Earth 1:110m land) that places nodes by their declared `location`, never by IP address. Nodes at one place are clustered into a single site with one marker per node; each pair of sites gets one arc. An arc is green when its link is measured up or a declared path over it succeeds, amber when it is degraded or on a failing path, red when it fails, and grey when nothing has measured it; healthy arcs stay faint so that problems stand out, and hops implied only by a declared path are dashed. Flow pulses run only along links with positive evidence, and sites with a problem ripple. Nodes without coordinates wait in a "no location" tray. The view crosses the antimeridian on the shorter side, and `z` cycles between fitting every site, focusing the selection, and the whole world.
+- **network** — a left-to-right layered graph drawn as a schematic: sources on the left, each link one column further, long links routed around the nodes in between. Nodes are chips colored by group; wires leave a chip to the right and turn once before the next column, wires from one source share a track, crossings are bridged, and "hosted in" relations are dotted. Selecting a path or incident highlights its hops.
 
 | Keys | |
 |---|---|

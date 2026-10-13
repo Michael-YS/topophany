@@ -12,11 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The terminal UI is redesigned to be read at a glance: an Overview dashboard
   (verdict, failure count, map, what needs attention, services, observers);
   aligned tables whose state column lights up only problems; a geo map that
-  clusters sites by place and colors each arc by its evidence; a left-to-right
-  network graph; and a responsive About with a one-bit dithered globe. The UI
-  paints its own background (`TOPO_BACKGROUND=terminal` keeps the terminal's)
-  and writes only the colors that change.
-- The README opens with a banner drawn from the About art (`make banner`).
+  clusters sites by place, colors each arc by its evidence and keeps healthy
+  links quiet; a network graph drawn as a left-to-right schematic; and a
+  responsive About with a one-bit dithered globe. The UI paints its own
+  background (`TOPO_BACKGROUND=terminal` keeps the terminal's) and writes only
+  the colors that change.
+- Loading has its own calm state instead of the offline warning, the editor's
+  status row lists what the draft declares, and the footer keeps the essential
+  keys when the terminal is narrow.
+- The README opens with a banner drawn from the About art (`make banner`) and
+  shows the interface in screenshots.
 - Go module path is now `github.com/WhitenWhiten/topophany`.
 - Contribution guidelines moved to the repository root; added security policy,
   code of conduct, issue/PR templates, Dependabot and release automation.
