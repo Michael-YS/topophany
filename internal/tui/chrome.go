@@ -218,6 +218,26 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 		cv.Text(x, y, "⚠ OFFLINE / CACHED: "+m.Error, fg(cWarn).bold(), cv.W-2)
 		return
 	}
+	if m.Edit != nil {
+		// A draft has no evidence to count; say what it declares instead.
+		c := m.Edit.Config
+		x += cv.Text(x, y, "DRAFT", fg(cFaint).bold(), -1) + 3
+		for i, part := range []string{
+			plural(len(c.Nodes), "node"), plural(len(c.Links), "link"), plural(len(c.Endpoints), "endpoint"),
+			plural(len(c.Services), "service"), plural(len(c.Observers), "observer"), plural(len(c.Paths), "path"), plural(len(c.Checks), "check"),
+		} {
+			if x+5+width(part) > cv.W-1 {
+				break
+			}
+			if i > 0 {
+				x += cv.Text(x, y, "  ·  ", fg(cFaint), -1)
+			}
+			n, word, _ := strings.Cut(part, " ")
+			x += cv.Text(x, y, n, fg(cText).bold(), -1)
+			x += cv.Text(x, y, " "+word, fg(cMuted), max(0, cv.W-1-x))
+		}
+		return
+	}
 	up, down, warn, unk := m.counts()
 	x += cv.Text(x, y, "CHECKS", fg(cFaint).bold(), -1) + 2
 	if bw := min(24, cv.W/9); bw >= 6 && !m.NoColor {

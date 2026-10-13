@@ -112,7 +112,7 @@ func (m *Model) detailBody(r Row, w int) []vline {
 			kw = max(kw, width(k))
 		}
 	}
-	kw = min(kw, 20, max(8, w/3))
+	kw = min(kw, 22, max(8, w*2/5))
 	vw := max(8, w-kw-2)
 	for _, raw := range r.Details {
 		l := strings.TrimSpace(raw)
