@@ -282,28 +282,28 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 	// In the gap after each column, the steps that leave one vertex share a
 	// vertical track; tracks are ordered so that wires cross as little as
 	// possible and never run together.
-	type net struct {
+	type bus struct {
 		src, ys, lo, hi int
 		targets         map[int]int // row -> vertex
 	}
-	gaps := make([]map[int]*net, nl)
+	gaps := make([]map[int]*bus, nl)
 	for _, c := range chainOf {
 		for k := 1; k < len(c); k++ {
 			u, v := c[k-1], c[k]
 			l := vlayer[u]
 			if gaps[l] == nil {
-				gaps[l] = map[int]*net{}
+				gaps[l] = map[int]*bus{}
 			}
 			n := gaps[l][u]
 			if n == nil {
-				n = &net{src: u, ys: row[u], lo: row[u], hi: row[u], targets: map[int]int{}}
+				n = &bus{src: u, ys: row[u], lo: row[u], hi: row[u], targets: map[int]int{}}
 				gaps[l][u] = n
 			}
 			n.targets[row[v]] = v
 			n.lo, n.hi = min(n.lo, row[v]), max(n.hi, row[v])
 		}
 	}
-	cost := func(order []*net) int {
+	cost := func(order []*bus) int {
 		n := 0
 		for i, a := range order {
 			for j, b := range order {
@@ -330,9 +330,9 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		}
 		return n
 	}
-	tracks := make([][]*net, nl)
+	tracks := make([][]*bus, nl)
 	for l, nets := range gaps {
-		list := []*net{}
+		list := []*bus{}
 		for _, n := range nets {
 			if n.lo < n.hi {
 				list = append(list, n)
@@ -342,7 +342,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 			continue
 		}
 		sort.Slice(list, func(i, j int) bool { return list[i].ys < list[j].ys })
-		best, bestCost := append([]*net(nil), list...), cost(list)
+		best, bestCost := append([]*bus(nil), list...), cost(list)
 		if len(list) <= 6 {
 			var permute func(k int)
 			permute = func(k int) {
