@@ -226,11 +226,17 @@ func (m *Model) tabRows(tab int) []Row {
 		}
 		return r
 	}
-	find := func(list []model.EntityState, id string) model.EntityState {
+	index := func(list []model.EntityState) map[string]model.EntityState {
+		out := make(map[string]model.EntityState, len(list))
 		for _, e := range list {
-			if e.ID == id {
-				return e
-			}
+			out[e.ID] = e
+		}
+		return out
+	}
+	nodeStates, linkStates := index(s.Nodes), index(s.Links)
+	find := func(list map[string]model.EntityState, id string) model.EntityState {
+		if e, ok := list[id]; ok {
+			return e
 		}
 		return model.EntityState{ID: id, Health: "unknown", Evidence: "unknown", Reason: "no state in this view"}
 	}
@@ -289,7 +295,7 @@ func (m *Model) tabRows(tab int) []Row {
 				return
 			}
 			seen[n.ID] = true
-			e := find(s.Nodes, n.ID)
+			e := find(nodeStates, n.ID)
 			place := "Location: not declared"
 			if l := n.Location; l != nil {
 				place = fmt.Sprintf("Location: %s (%.2f, %.2f) — declared, not inferred from IP", l.Label, l.Lat, l.Lon)
@@ -337,7 +343,7 @@ func (m *Model) tabRows(tab int) []Row {
 			walk(n, "", "") // nodes caught in a parent cycle still get a row
 		}
 		for _, def := range s.Topology.Links {
-			l := find(s.Links, def.ID)
+			l := find(linkStates, def.ID)
 			r := entity("link", l, nodeNames[def.From]+" → "+nodeNames[def.To], def.Transport, []string{def.Notes, "Directed initiation, not proven packet-loss direction."})
 			r.Tree = "⇢ "
 			r.Cols = []string{def.Transport, ""}
@@ -405,6 +411,9 @@ func (m *Model) tabRows(tab int) []Row {
 			meta := d.Observer + " · " + d.Kind + " · " + e.Freshness
 			took := ""
 			details := []string{"Check: " + e.ID, "Source: " + e.Observer, "Health: " + e.Health, "Freshness: " + e.Freshness, "Evidence: " + e.Evidence, "", e.Reason, "", "Path: " + d.Path, "Target: " + d.Target, "Endpoint: " + d.Endpoint, "Service: " + d.Service, "Failure / recovery threshold: " + fmt.Sprint(d.FailureThreshold) + " / " + fmt.Sprint(d.RecoveryThreshold)}
+			if s.DetailsOmitted {
+				details = append(details, "", "Summary diagnostics; full evidence is available in check history.")
+			}
 			if e.Last != nil {
 				v := e.Last
 				took = fmt.Sprintf("%d ms", v.DurationMS)

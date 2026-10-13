@@ -159,6 +159,7 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 	}
 	edges := []mapEdge{}
 	seen := map[[2]string]bool{}
+	pathEdges := map[[2]string]int{}
 	linkStates := states(s.Links)
 	for _, l := range s.Topology.Links {
 		if _, a := index[l.From]; !a {
@@ -195,17 +196,17 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 			}
 			// Several paths may imply the same hop; keep the one that needs
 			// the most attention.
-			dup := false
-			for k := range edges {
-				e := &edges[k]
-				if e.Kind == edgePath && (e.From == a && e.To == b || e.From == b && e.To == a) {
-					if worseSignal(e.Signal, sig) != e.Signal {
-						e.Signal, e.Health, e.ID, e.Observer = sig, h, "path:"+p.ID, p.Observer
-					}
-					dup = true
-				}
+			key := [2]string{a, b}
+			if key[0] > key[1] {
+				key[0], key[1] = key[1], key[0]
 			}
-			if !dup {
+			if k, ok := pathEdges[key]; ok {
+				e := &edges[k]
+				if worseSignal(e.Signal, sig) != e.Signal {
+					e.Signal, e.Health, e.ID, e.Observer = sig, h, "path:"+p.ID, p.Observer
+				}
+			} else {
+				pathEdges[key] = len(edges)
 				edges = append(edges, mapEdge{ID: "path:" + p.ID, From: a, To: b, Health: h, Label: "declared in path " + p.ID, Kind: edgePath, Signal: sig, Observer: p.Observer})
 			}
 		}

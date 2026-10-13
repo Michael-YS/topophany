@@ -44,6 +44,9 @@ func Decode(r io.Reader, v any, limit int64) error {
 	if int64(len(b)) > limit {
 		return errors.New("input limit exceeded")
 	}
+	if e := JSONBudget(b); e != nil {
+		return e
+	}
 	d := json.NewDecoder(strings.NewReader(string(b)))
 	d.DisallowUnknownFields()
 	if e = d.Decode(v); e != nil {
@@ -134,7 +137,7 @@ func URL(raw string, insecure bool) error {
 func Text(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		if unicode.IsControl(r) || r == 0x202e || r == 0x202d || r == 0x202a || r == 0x202b || r == 0x202c || r >= 0x2066 && r <= 0x2069 {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
 			continue
 		}
 		b.WriteRune(r)

@@ -161,10 +161,10 @@ func TestRealThreeHopConnectSOCKSConnect(t *testing.T) {
 	}))
 	defer target.Close()
 	last := connectFixture(t, "", "", visited)
-	middle := socksFixture(t, "socks-user", "chain-secret", visited)
+	middle := socksFixture(t, "", "", visited)
 	first := connectFixture(t, "connect-user", "chain-secret", visited)
 	c := testkit.Config()
-	c.Paths[0].Proxies = []model.Proxy{{Kind: "http-connect", Address: first, Username: "connect-user", PasswordEnv: "TOPH_PROXY_PASSWORD"}, {Kind: "socks5", Address: middle, Username: "socks-user", PasswordEnv: "TOPH_PROXY_PASSWORD"}, {Kind: "http-connect", Address: last}}
+	c.Paths[0].Proxies = []model.Proxy{{Kind: "http-connect", Address: first, Username: "connect-user", PasswordEnv: "TOPH_PROXY_PASSWORD"}, {Kind: "socks5", Address: middle}, {Kind: "http-connect", Address: last}}
 	x := httpCheck(target.URL)
 	x.Path = "direct"
 	x.HTTP.ExpectedExit = []string{"203.0.113.8"}

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -75,6 +76,11 @@ type Dialer struct {
 func (d Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	if network != "tcp" && network != "tcp4" && network != "tcp6" {
 		return nil, local("setup", "stream_transport_required")
+	}
+	for i, p := range d.Proxies {
+		if config.ProxyCredentials(p, i) != nil {
+			return nil, local("setup", "insecure_proxy_credentials")
+		}
 	}
 	nd := net.Dialer{}
 	if d.BindIP != "" {

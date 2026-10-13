@@ -1,5 +1,5 @@
 // Package outbox stores immutable observations until every configured collector
-// has acknowledged them. Permanent rejections are quarantined, never erased.
+// has acknowledged them. Permanent rejections enter a separate, rotating forensic budget.
 package outbox
 
 import (
@@ -26,14 +26,15 @@ type Item struct {
 	SHA256  string      `json:"sha256"`
 }
 type Queue struct {
-	mu      sync.Mutex
-	dir     string
-	project string
-	max     int64
-	used    int64
-	items   map[string]Item
-	unlock  func() error
-	closed  bool
+	mu             sync.Mutex
+	dir            string
+	project        string
+	max            int64
+	used           int64
+	quarantineUsed int64
+	items          map[string]Item
+	unlock         func() error
+	closed         bool
 }
 
 func itemHash(v Item) string { v.SHA256 = ""; b, _ := json.Marshal(v); return secure.Hash(string(b)) }
@@ -75,13 +76,14 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 				return nil, e
 			}
 			q.used += info.Size()
-			if q.used > maxBytes {
+			if q.used-q.quarantineUsed > maxBytes && sub == "pending" {
 				return nil, ErrFull
 			}
 			if info.Size() > 2<<20 {
 				return nil, errors.New("oversized outbox record")
 			}
 			if sub == "quarantine" {
+				q.quarantineUsed += info.Size()
 				continue
 			}
 			b, e := secure.ReadBounded(filepath.Join(dir, sub, entry.Name()), 2<<20)
@@ -95,8 +97,11 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 			q.items[v.ID] = v
 		}
 	}
-	if q.used > maxBytes {
+	if q.used-q.quarantineUsed > maxBytes {
 		return nil, ErrFull
+	}
+	if e := q.trimQuarantine("", "", 0); e != nil {
+		return nil, e
 	}
 	ok = true
 	return q, nil
@@ -132,7 +137,7 @@ func (q *Queue) write(v Item) error {
 	if st, e := os.Stat(q.file(v.ID)); e == nil {
 		old = st.Size()
 	}
-	if q.used-old+int64(len(b)) > q.max {
+	if q.used-q.quarantineUsed-old+int64(len(b)) > q.max {
 		return ErrFull
 	}
 	if e = secure.AtomicWrite(q.file(v.ID), b, 0600); e != nil {
@@ -282,13 +287,14 @@ func (q *Queue) Quarantine(ids []string, recipient, reason string) error {
 		if st, e := os.Stat(file); e == nil {
 			old = st.Size()
 		}
-		if q.used-old+int64(len(b)) > q.max {
-			return ErrFull
+		if e := q.trimQuarantine(recipient, filepath.Base(file), int64(len(b))-old); e != nil {
+			return e
 		}
 		if e = secure.AtomicWrite(file, b, 0600); e != nil {
 			return e
 		}
 		q.used = q.used - old + int64(len(b))
+		q.quarantineUsed += int64(len(b)) - old
 		if e = q.ack(id, recipient); e != nil {
 			return e
 		}

@@ -23,23 +23,33 @@ func layers(nodes []mapNode, edges []mapEdge) map[string]int {
 	state := map[string]int{}
 	order := []string{}
 	back := map[[2]string]bool{}
-	var visit func(string)
-	visit = func(v string) {
-		state[v] = 1
-		for _, u := range adj[v] {
-			switch state[u] {
-			case 0:
-				visit(u)
-			case 1:
-				back[[2]string{v, u}] = true
-			}
-		}
-		state[v] = 2
-		order = append(order, v)
+	type frame struct {
+		id   string
+		next int
 	}
 	for _, n := range nodes {
-		if state[n.ID] == 0 && deg[n.ID] > 0 {
-			visit(n.ID)
+		if state[n.ID] != 0 || deg[n.ID] == 0 {
+			continue
+		}
+		stack := []frame{{id: n.ID}}
+		state[n.ID] = 1
+		for len(stack) > 0 {
+			f := &stack[len(stack)-1]
+			if f.next == len(adj[f.id]) {
+				state[f.id] = 2
+				order = append(order, f.id)
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			u := adj[f.id][f.next]
+			f.next++
+			switch state[u] {
+			case 0:
+				state[u] = 1
+				stack = append(stack, frame{id: u})
+			case 1:
+				back[[2]string{f.id, u}] = true
+			}
 		}
 	}
 	layer := map[string]int{}
@@ -48,7 +58,7 @@ func layers(nodes []mapNode, edges []mapEdge) map[string]int {
 		v := order[i]
 		for _, u := range adj[v] {
 			if !back[[2]string{v, u}] && layer[v]+1 > layer[u] {
-				layer[u] = layer[v] + 1
+				layer[u] = min(32, layer[v]+1)
 			}
 		}
 	}
@@ -143,7 +153,8 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 			continue
 		}
 		c := []int{a}
-		for l := vlayer[a] + 1; l < vlayer[b]; l++ {
+		// Cap optional routing waypoints independently of graph size.
+		for l := vlayer[a] + 1; l < vlayer[b] && len(vlayer) < 8192; l++ {
 			vlayer = append(vlayer, l)
 			c = append(c, len(vlayer)-1)
 		}

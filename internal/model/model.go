@@ -4,6 +4,8 @@ package model
 
 import "time"
 
+const MaxSnapshotBytes = 8 << 20
+
 const SchemaVersion = 1
 const Version = "0.1.0"
 
@@ -212,19 +214,20 @@ type ObserverState struct {
 	Reason   string    `json:"reason"`
 }
 type Snapshot struct {
-	Schema       int             `json:"schema"`
-	Version      string          `json:"version"`
-	Project      string          `json:"project"`
-	Instance     string          `json:"instance"`
-	Revision     string          `json:"revision"`
-	GeneratedAt  time.Time       `json:"generated_at"`
-	ViewObserver string          `json:"view_observer,omitempty"`
-	Topology     Config          `json:"topology"`
-	Checks       []CheckState    `json:"checks"`
-	Nodes        []EntityState   `json:"nodes"`
-	Services     []EntityState   `json:"services"`
-	Paths        []EntityState   `json:"paths"`
-	Links        []EntityState   `json:"links"`
-	Observers    []ObserverState `json:"observers"`
-	Incidents    []Incident      `json:"incidents"`
+	DetailsOmitted bool            `json:"details_omitted,omitempty"`
+	Schema         int             `json:"schema"`
+	Version        string          `json:"version"`
+	Project        string          `json:"project"`
+	Instance       string          `json:"instance"`
+	Revision       string          `json:"revision"`
+	GeneratedAt    time.Time       `json:"generated_at"`
+	ViewObserver   string          `json:"view_observer,omitempty"`
+	Topology       Config          `json:"topology"`
+	Checks         []CheckState    `json:"checks"`
+	Nodes          []EntityState   `json:"nodes"`
+	Services       []EntityState   `json:"services"`
+	Paths          []EntityState   `json:"paths"`
+	Links          []EntityState   `json:"links"`
+	Observers      []ObserverState `json:"observers"`
+	Incidents      []Incident      `json:"incidents"`
 }
