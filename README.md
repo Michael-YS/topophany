@@ -1,12 +1,21 @@
-# Topophany
+<h1 align="center">
+  <img src="docs/assets/banner.png" alt="Topophany — the appearance of a place" width="100%">
+</h1>
 
-[![CI](https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml/badge.svg)](https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/WhitenWhiten/topophany.svg)](https://pkg.go.dev/github.com/WhitenWhiten/topophany)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center"><b>From where, via which path, reaching what — and on what evidence.</b></p>
 
-**From where, via which path, accessing what, and what is the evidence.**
+<p align="center">
+  <a href="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml"><img src="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pkg.go.dev/github.com/WhitenWhiten/topophany"><img src="https://pkg.go.dev/badge/github.com/WhitenWhiten/topophany.svg" alt="Go Reference"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
 Topophany is an open-source, self-hosted network topology and service availability monitoring system written in Go. The `topo` binary functions as a remote TUI client, an ingestion collector server, or a scoped observation worker. Closing the client does not interrupt background monitoring.
+
+- **Evidence, not colors.** Health, evidence source and freshness are separate fields. Nothing turns green without a passing check, an unmonitored service stays `unknown`, and a cached view says so.
+- **Vantage points are explicit.** Each observer measures from where it actually is; a failure seen from home is not reported as a server outage.
+- **A terminal UI you can read at a glance.** The Overview answers *is anything wrong, and where?* — a verdict, a map of every place and path, and the short list of what needs attention.
+- **One binary, no dependencies.** No CGO, no database daemon, no Node.js, and zero external Go modules.
 
 The official project name is **Topophany**, and the CLI command is **`topo`**. This codebase is a clean-room, verified 0.1.0 release. It contains no production addresses, external network memos, or live credentials.
 
@@ -37,6 +46,8 @@ In another terminal:
 ```sh
 ./topo --credentials ./demo/credentials.json
 ```
+
+To see the interface without deploying anything, run `./topo preview`: the full TUI on a built-in topology driven by synthetic evidence (press `x` to switch failure scenarios).
 
 The default listener is `127.0.0.1:7447`. The demo configuration probes only this loopback API without reaching external targets; the registered workstation and notes-only service deliberately remain unmonitored (`unknown`), never feigning completion. The `init` command generates high-entropy random credentials on each invocation and refuses to overwrite existing directories.
 
@@ -69,16 +80,33 @@ Custom or self-signed certificates require `--ca-file /path/to/ca.pem` rather th
 
 ## Terminal Interface
 
-The TUI provides eight tabs: Overview, Topology, Services, Paths, Checks, Incidents, Observers, and About. Press `1` through `8` to switch tabs (`?` toggles About); `v` cycles observation vantage points; arrow keys or `j/k` navigate lists; `Enter` expands evidence details; `/` filters; `r` refreshes immediately; `q` quits. Tab headers, list rows, bottom bar buttons, map nodes, menus, and modal buttons support mouse clicks and wheel scrolling. The status bar displays `a Add / e Edit / d Delete`.
+The TUI is built to answer one question before anything is read: *is anything wrong, and where?*
 
-The left pane of the Topology view renders a braille dot-matrix (2x4 dots per cell) canvas. Press `m` to toggle between two rendering modes:
+- **Overview** — a verdict headline with a big failure count, a map of every node and link, the list of what needs attention (incidents, failing paths and services, silent observers), a service matrix, and how fresh each observer is. Selecting an item lights its whole route on the map. On wide terminals the map sits beside the cards; smaller terminals stack them.
+- **Topology** — the node → endpoint → link hierarchy beside the map, with the evidence for the selected entity underneath.
+- **Services, Paths, Checks, Incidents, Observers** — aligned tables. The state column stays empty for healthy rows, so problems are the only lit words; `Enter` expands the evidence behind a row.
+- **About** — a one-bit dithered globe on which the places you declared are the only lights. The mouse wheel spins it.
 
-- **geo**: An equirectangular dot-matrix world map (Natural Earth 1:110m land polygons, dither-rendered), placing nodes by their declared `location` and drawing links as directed pulsed arcs. Multiple nodes in the same cell aggregate into `+N`. Nodes without coordinates appear in a "no location" tray at the bottom. The viewport automatically spans the antimeridian along the more compact side. Press `z` to cycle between fit (all nodes), focus (currently selected node), and world view.
-- **network**: A layered hierarchical network graph arranged by hop distance from source nodes. Links render as curved arrows, inferred path transitions display as dashed lines, host-environment parentage displays as "hosted in" connections, and back-edges loop along the right margin.
+The maps are drawn in braille dots (2×4 per cell). Press `m` to switch between:
 
-Flow pulses animate along links only when positive health evidence exists; cached views and drafts display `unknown` and never draw speculative green lines. Locations are derived strictly from user declarations and are **never guessed from IP addresses**. The right pane displays entity details and evidence for the selected node; selecting a node on the map highlights it and displays its associated links. Terminals with 100 or more columns use side-by-side split view; narrower terminals stack panes vertically. Recommended geometry is at least 100x28 (minimum 30x10). Supports wide characters and full UTF-8. Truecolor terminals render 24-bit RGB; others fall back to xterm-256; under `NO_COLOR`, ANSI color escapes are stripped and selection indicators switch to plain text glyphs like `›` and `[a]`. The UI paints its own dark ink background so contrast is the same on dark, light and tinted terminal themes; set `TOPO_BACKGROUND=terminal` to keep your terminal's background instead.
+- **geo** — a dot-matrix world map (Natural Earth 1:110m land) that places nodes by their declared `location`, never by IP address. Nodes at one place are clustered into a single site with one marker per node; each pair of sites gets one arc. An arc is green when its link is measured up or a declared path over it succeeds, amber when it is degraded or on a failing path, red when it fails, and grey when nothing has measured it; hops implied only by a declared path are dashed. Flow pulses run only along links with positive evidence, and sites with a problem ripple. Nodes without coordinates wait in a "no location" tray. The view crosses the antimeridian on the shorter side, and `z` cycles between fitting every site, focusing the selection, and the whole world.
+- **network** — a left-to-right layered graph: sources on the left, each link one layer further, long links routed around the nodes in between. Nodes are chips colored by group, "hosted in" relations are drawn as dotted ties, and selecting a path or incident highlights its hops.
 
-The About view renders an animated dot-matrix globe with coastlines, solar day/night terminator lines, night-side city lights, great-circle flow pulses, and declared node locations (falling back to reference landmarks if fewer than two nodes declare coordinates). The right pane displays a dithered TOPOPHANY logotype with its etymology: τόπος (*topos*, place) + φαίνω (*phainō*, to reveal) — *"an appearance or manifestation of a place"*.
+| Keys | |
+|---|---|
+| `1`–`8`, `Tab` / `Shift-Tab`, `h` / `l` | switch tabs (`?` toggles About) |
+| `j` / `k`, arrows, `PgUp` / `PgDn`, `g` / `G` | move through the list |
+| `Enter` | expand evidence for the selected row |
+| `/` | filter rows |
+| `v` | cycle observer vantage points |
+| `m` / `z` | map mode / map zoom |
+| `r` | refresh now |
+| `D` | debug overlay: frame time, bytes written, map geometry |
+| `q` | quit |
+
+Tabs, rows, footer buttons, map sites, menus and modal buttons all respond to the mouse, and the wheel scrolls lists.
+
+The UI paints its own dark ink background, so contrast is the same on dark, light and tinted terminal themes; set `TOPO_BACKGROUND=terminal` to keep your terminal's background instead. Truecolor terminals get 24-bit color and others fall back to xterm-256; under `NO_COLOR` every escape for color is dropped and selection switches to plain glyphs such as `›` and `[a]`. Only the cells and colors that change are written to the terminal. Wide characters and full UTF-8 are supported; the recommended geometry is at least 100×28 (minimum 30×10), and the layouts adapt to whatever space there is.
 
 ### Editing Topology
 

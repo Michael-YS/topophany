@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt fmt-check lint cover verify clean
+.PHONY: build test race vet fmt fmt-check lint cover verify banner clean
 build:
 	mkdir -p bin
 	go build -trimpath -o bin/topo ./cmd/topo
@@ -18,5 +18,7 @@ cover:
 	go tool cover -func=coverage.out | tail -n 1
 verify:
 	python3 scripts/verify.py
+banner:
+	TOPO_BANNER=$(CURDIR)/docs/assets/banner.png go test -count=1 -run '^TestBanner$$' ./internal/tui
 clean:
 	rm -rf bin dist .verify-build coverage.out
