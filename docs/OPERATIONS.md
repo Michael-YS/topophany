@@ -1,0 +1,47 @@
+# Deployment, High Availability, and Operations
+
+## Principle of Least Privilege
+
+Run the loopback demonstration in `README.md` first. For production installations, place configurations in dedicated directories, create an isolated unprivileged system user, and install the compiled `topo` binary. The systemd unit templates in `deploy/topophany-collector.service` and `deploy/topophany-worker.service` are provided for administrator adaptation and are never installed automatically during tests. Administrators must supply TLS certificates, keys, hashed `auth.json` files, and worker credentials with strict directory ownership matching the service user.
+
+Always run `topo validate --config config/topology.json` before deployment to verify sources, endpoints, paths, and response assertions. Example templates start fully paused to prevent inadvertent immediate probing upon file placement. Observers must never be reused across different execution contexts: native host, virtual containers, desktop TUN interfaces, cloud relays, and transit gateways represent distinct observation vantage points. Never run identical checks under the same observer ID across two concurrent processes.
+
+Install auxiliary utilities (such as Tailscale, WireGuard, or OpenSSH) on the host only when those specific check adapters are required. Standard HTTP, TCP, TLS, DNS, and UDP checks do not require external binaries. Grant raw ICMP socket capabilities to workers only when ICMP is required and acceptable under local policy; never elevate privileges for collector or TUI viewer processes for this purpose.
+
+Collectors listen on HTTPS with TLS directly by default. If fronted by an existing reverse proxy, bind the collector backend strictly to loopback, terminate TLS at the reverse proxy, forward the `Authorization` header, disable request body buffering and verbose access logging, and enforce a 1 MiB upload limit. Note that a shared reverse proxy remains a single point of failure; configuring multiple server endpoints in the client credential profile provides cleaner independent access.
+
+## Dual Collector Deployment
+
+Deploy each collector instance with its own data directory and unique instance identifier, sharing the same project ID and normalized configuration revision. Worker credential profiles list both collector endpoints; each collector recognizes that observer's token. Tokens may differ per instance and are configured on a per-server basis. Client viewer credentials can also list both collector endpoints for read-only failover.
+
+The worker persists observations locally before attempting dual dispatch. An outage or connection timeout on one collector does not delay or block delivery to the other. Delivery acknowledgments (ACKs) are recorded independently, allowing pending items for a single collector to resume across worker restarts. This mechanism provides at-least-once delivery with idempotent deduplication; network exactly-once delivery is not claimed. Synchronous dual-write confirmation is not required, so network partitions may cause temporary dashboard divergence; inspect instance IDs, observation origins, and timestamps.
+
+When all configured collectors are unreachable, observations remain queued in the bounded outbox with their original timestamps preserved. When queue capacity is exhausted, probing stops with an explicit capacity error. Upon reconnection, backlogged records within the retention window are retransmitted: `ReceivedAt` reflects ingestion time while `SampledAt` retains the original sample time, preventing delayed evidence from being masked as recent passes. The ingestion window defaults to 24 hours (configurable between 1 minute and 30 days). Records older than the ingestion window, mismatched authorization tokens, or conflicting configuration revisions are rejected to quarantine to prevent infinite retries and silent data loss. Historical raw records exceeding `max-history` are evicted according to configured memory/disk budgets rather than growing without bound.
+
+Observer heartbeats demonstrate worker liveness but do not extend or refresh stale check results. If a branch/residential worker disconnects, even if both collectors remain online, they cannot synthesize or take over that specific vantage point.
+
+## Storage and Disaster Recovery
+
+The collector maintains state using `journal.jsonl`, `checkpoint.json`, and `writer.lock`. Incoming batches are acknowledged only after SHA-256 record checksums are written and fsynced. Checkpoints are written via atomic file replacement, followed by journal rotation. Crash recovery replays only incomplete records at the journal tail; corrupt lines halt recovery immediately and are not silently skipped. Operators should back up the data directory and inspect disk health rather than deleting damaged records to force a green status.
+
+Storage enforces limits on both record count and a conservative estimate of serialized state bytes (default 128 MiB). When state budgets are reached, new transactions return capacity errors before journal write; existing checkpoints remain readable. Process resident memory (RSS) will exceed state size due to runtime object overhead, so 128 MiB is not an RSS ceiling. Checkpoints enforce a 256 MiB maximum read limit, and single journal lines are capped at 2 MiB during read.
+
+When an aggregated worker dispatch is permanently rejected by a collector, the worker isolates entries and retries each original outbox item individually. This prevents a single expired or malformed record from forcing adjacent valid records into quarantine. Throughput decreases temporarily during isolated retries and recovers once the backlog is cleared.
+
+To back up an instance: stop the process, copy the local data directory alongside the associated topology and auth configuration, then restart the original process. In dual-collector deployments, backups can be performed via rolling restarts. Never copy partial write-ahead logs or checkpoints from a running instance without stopping, and never open a single data directory with multiple concurrent writer processes. Restorations must use matching software schemas; verify history and freshness in an isolated test environment before returning to service.
+
+Worker state consists of `pending/`, `quarantine/`, and `writer.lock`. Quarantined items are never purged automatically and consume storage budget. If quarantined items accumulate, stop the worker, archive the directory, examine whether errors stem from mismatched configuration revisions, clock drift, or authorization failures, and resolve manually. **Never modify `SampledAt` timestamps to make historical records appear fresh.** Changing collector endpoints modifies target recipient IDs while retaining existing queued deliveries; flush or archive queues prior to endpoint migrations, as unacknowledged records are not remapped automatically.
+
+Configuration revisions are bound to the measurement contract. Renaming an entity generates a new revision, representing a deliberate conservative isolation boundary. To perform upgrades: pause relevant workers, drain or archive existing outboxes, distribute the new reviewed configuration across all collectors and workers, and execute a coordinated restart while verifying matching revision hashes. Read-only TUI clients require no adjustments. Automated live-reloading, distributed configuration synchronization, and schema migrations are not provided.
+
+## Resource Limits and Monitoring
+
+Start with a default check interval of 60 seconds; critical paths can be configured to 30 seconds. Do not probe entire external proxy provider lists by default, and do not use heavy bulk file downloads as health checks. Timeouts, concurrency, response bodies, history retention, deduplication receipts, and outbox sizes are strictly budgeted; resource exhaustion errors are reported independently from network reachability failures.
+
+Active incidents displayed in the dashboard represent current aggregations derived from the latest snapshot; historical raw samples can be queried via `/v1/history`. Topophany does not provide a long-term time-series metrics database, multi-month availability percentages, or automated email/SMS/webhook alerts. Worker and storage errors are logged to standard error for collection by systemd journal or host operations tooling; background collection continues uninterrupted when the TUI is closed.
+
+## Proxy and Transport Verification
+
+Establish dedicated loopback listeners for candidate routes prior to defining paths. Never alter production proxy routing groups or toggle active TUN interfaces for monitoring purposes. Verifying Mihomo or external proxy adapters requires two distinct checks: one inspecting the reported selection state via adapter APIs, and an end-to-end network request traversing the candidate path. Errors are isolated to the layer evaluated; passing a front CDN HTTP probe must not be interpreted as end-to-end transport authentication success, nor can identical egress IPs prove that identical ingress hops were taken.
+
+Configuring expected mode rules catches unauthorized global fallbacks; validating provider member counts and ordering detects stale unloaded subscription pools, though it cannot verify internal cryptographic parameters for nodes sharing identical names. If cryptographic configuration verification is needed, rely on external host configuration management tools; Topophany does not request or export private subscription credentials.

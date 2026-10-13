@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "project": "topophany-demo",
+  "nodes": [
+    {
+      "id": "collector",
+      "name": "Local collector",
+      "kind": "host",
+      "group": "Demo"
+    },
+    {
+      "id": "home",
+      "name": "Home workstation",
+      "kind": "host",
+      "group": "Demo",
+      "notes": "Registered identity, deliberately not monitored by this local-only demo."
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "api-loopback",
+      "node": "collector",
+      "address": "http://127.0.0.1:7447/healthz",
+      "network": "loopback",
+      "observer": "demo"
+    }
+  ],
+  "services": [
+    {
+      "id": "panel",
+      "name": "Topophany collector",
+      "node": "collector",
+      "endpoints": [
+        "api-loopback"
+      ]
+    },
+    {
+      "id": "notes-only",
+      "name": "Notes-only service",
+      "node": "home",
+      "notes": "No probe configured. Unknown is intentional; never counted as uptime."
+    }
+  ],
+  "observers": [
+    {
+      "id": "demo",
+      "name": "Local process",
+      "node": "collector",
+      "context": "native local process; explicit loopback probe",
+      "stale_seconds": 30
+    }
+  ],
+  "paths": [
+    {
+      "id": "loopback",
+      "name": "Local API access",
+      "observer": "demo",
+      "nodes": [
+        "collector"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "api-health",
+      "name": "Collector health response",
+      "observer": "demo",
+      "endpoint": "api-loopback",
+      "service": "panel",
+      "path": "loopback",
+      "kind": "http",
+      "interval_seconds": 5,
+      "timeout_seconds": 2,
+      "stale_seconds": 15,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "http": {
+        "method": "GET",
+        "status": [
+          200
+        ],
+        "contains": "\"status\":\"ok\"",
+        "max_body_bytes": 65536
+      },
+      "dns": {
+        "type": "A"
+      },
+      "adapter": {}
+    }
+  ]
+}

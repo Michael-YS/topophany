@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a new probe, view, or capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to observe or decide that Topophany cannot support today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Security and capability impact
+      description: |
+        Does this add new outbound protocols, API endpoints, privileges, or remote actions?
+        See docs/SECURITY.md for the boundaries the project keeps.

@@ -1,0 +1,29 @@
+[Unit]
+Description=Topophany approved local observer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=topophany
+Group=topophany
+StateDirectory=topophany-worker
+WorkingDirectory=/var/lib/topophany-worker
+EnvironmentFile=-/etc/topophany/worker.env
+# Change observer-node-01 to this machine's separately reviewed observer ID.
+ExecStart=/usr/local/bin/topo worker --config /etc/topophany/topology.json --credentials /etc/topophany/worker-credentials.json --data /var/lib/topophany-worker/outbox --observer observer-node-01
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+# Raw ICMP intentionally unavailable in this unprivileged template.
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/topophany-worker
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,51 @@
+name: Bug report
+description: Something in topo behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issues must be reported privately — see SECURITY.md.
+        Never paste tokens, credential files, or production addresses here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `topo version`, or the commit you built from.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS, architecture, terminal emulator (for TUI issues).
+      placeholder: Ubuntu 24.04 amd64, kitty
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Role
+      options: [TUI client, collector (serve), worker, preview, CLI subcommand, other]
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal sanitized topology and commands. Prefer loopback or `examples/` configs.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Redact addresses, hostnames and secrets.
+      render: text

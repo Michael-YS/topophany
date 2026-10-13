@@ -1,0 +1,40 @@
+# Build output
+/bin/
+/dist/
+/.verify-build/
+/topo
+/topo.exe
+*.exe
+*.test
+*.out
+
+# Local runtime state created by `topo init`, `serve` and `worker`
+/demo/
+/topophany-demo/
+/collector-data/
+/worker-data/
+
+# Credentials and key material — never commit
+/auth.json
+/credentials.json
+/worker-credentials.json
+*.pem
+*.key
+*.env
+
+# Go workspace
+go.work
+go.work.sum
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db

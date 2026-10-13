@@ -1,0 +1,31 @@
+# Security Boundaries
+
+The threat model of Topophany assumes that the network, probe targets, and proxy API responses may be untrusted, while the operating system, installed binaries, audited local configurations, and restricted credential directories are controlled by the administrator. It does not defend against local attackers who have already gained privileges of the same user or root/administrator privileges.
+
+## Credentials and Transport
+
+The collector's `auth.json` stores only SHA-256 digests of 256-bit random bearer tokens. The viewer role is strictly read-only; the worker role can only write results within its scoped observer boundary that match the current project and configuration contract. A worker report remains evidence supplied by a trusted executor rather than hardware remote attestation; stealing a worker token allows spoofing that specific observer perspective, so tokens should be rotated immediately and the collector restarted to reload `auth.json`.
+
+Client and executor tokens use private files or `token_env`. HTTP probe bearer tokens and proxy passwords also reference environment variables; placing plaintext Authorization or Cookie headers directly in request header configurations is prohibited. Note that environment variables can still be read by other processes running under the same user privileges and do not constitute a full secrets management service. Do not place URLs containing tokens in notes, runbooks, screenshots, or commit histories; generic note fields cannot automatically sanitize all secrets.
+
+POSIX credential files require `0600` or stricter file permissions and reject static symlinks and non-regular files. The parent directory must be owned and controlled by a trusted user; no defense is claimed against race-condition replacement attacks within a world-writable parent directory. Windows relies on inherited user profile directory ACLs; the software does not construct, audit, or verify complete DACLs. Deployers must confirm that only the current user account and necessary Administrators/SYSTEM have read access.
+
+Remote server URLs must use HTTPS with valid hostnames and CA verification. There is no `InsecureSkipVerify` bypass. Ambient environment `HTTP_PROXY` is ignored and HTTP redirects are not followed, preventing token forwarding to arbitrary servers. Literal loopback addresses may use HTTP, though API bearer tokens are still required. A malicious local user or a rogue proxy listening on loopback is not a secure substitute for TLS. The `--allow-insecure` flag is an explicit acceptance of plaintext risk, not a recommended production deployment method.
+
+## Capability Boundaries
+
+The API provides no endpoints for modifying topology, altering proxy routing policies, reading arbitrary files, running remote commands, or restarting services. Workers load reviewed checks from local files and do not poll or receive arbitrary tasks to execute from the collector. Because probing arbitrary targets inherently grants access to networks reachable by the executor, the audited configuration file itself forms the authorization boundary; never load untrusted third-party topology files automatically.
+
+The proxy adapter reads only explicitly allowlisted endpoints (such as safe configuration and status queries), forbidding arbitrary GET endpoints from being treated as side-effect-free authorizations. Tunnel tools (such as Tailscale or WireGuard) are invoked only with fixed binary paths and immutable argument structures. OpenSSH is used solely for `-W` stream forwarding with strict host-key checking and never opens an interactive shell; unknown host keys are rejected and agent forwarding is disabled. Binary installation directories and system PATH must be trusted. Because tunnel interfaces like WireGuard often require elevated privileges, probe in-tunnel services where possible rather than running the entire monitoring process persistently as root.
+
+Raw ICMP sockets require appropriate system permissions. Missing permissions are reported as monitor errors; do not grant broad administrative privileges to the entire process merely to achieve a clean dashboard. Bandwidth and probe budgets are not port-scanning authorizations. Default checks are lightweight and do not offer throughput stress testing or automated network-wide discovery.
+
+All network responses, API requests, historical records, terminal inputs, and outbox queues are bounded. Disabling HTTP redirects and connection reuse carries explicit diagnostic semantics. Probing through a proxy cannot guarantee that every request establishes a brand-new underlying tunnel connection. Standard HTTP GET and HEAD requests may still trigger unintended side effects on poorly implemented endpoints, so health check targets must be reviewed and approved by administrators.
+
+## Storage and Failures
+
+Log checksums detect accidental corruption; they are not keyed cryptographic signatures and do not prevent a local attacker from recalculating checksums. Power-loss guarantees for fsync and atomic renames depend on the operating system and the underlying local filesystem; single-process crash recovery tests do not equate to power-loss simulations across all disks, RAID controllers, or virtualization platforms. Directory fsync and ACL semantics on Windows differ from POSIX platforms, and identical Linux power-loss guarantees are not claimed on Windows.
+
+Do not share database or log directories across NFS or SMB network filesystems. The system does not implement automated multi-master cluster management. Stale results, clock skew, and missing sources must be preserved as-is rather than having timestamps rewritten to make dashboards look clean. Log files, quarantine stores, and history buffers may contain internal addresses and service names, and must be protected with the same care as topology files.
+
+When reporting security issues, provide only sanitized reproduction configurations and observation logs. Do not paste production tokens or sensitive infrastructure details into public issues. Use private vulnerability reporting channels on the hosted repository.

@@ -1,0 +1,23 @@
+# Live Hardware Acceptance Checklist
+
+> [!NOTE]
+> This checklist is an operational procedure guide, not a declaration of completion. Automated test suites (`scripts/verify.py`) verify local software mechanics. The following operations must be performed on designated hardware during authorized maintenance windows. Do not generate large cross-border test traffic or alter active routing rules merely to complete acceptance.
+
+| Scenario | Inspection Method | Acceptance Criteria |
+|---|---|---|
+| Native Host vs Virtual Container (e.g. WSL) | Run two separate observers; inspect network namespaces and interface routing | Observer identities match their actual processes; if direct routing cannot be verified, route state remains flagged as unverified |
+| Intermittent Transit Route Outage | Probe primary transit gateway from local observer via SSH banner/TLS/HTTP while simultaneously sampling from cloud relay and backup transit | Failure evidence reflects only the affected source, port, and timestamp; avoids premature blame attribution and does not assume unprobed UDP protocols are healthy |
+| New Connection vs Connection Reuse | Compare native fresh TLS/SSH dials with HTTP requests passing through an external proxy core | Native checks establish verified client connections; proxy checks explicitly reflect that underlying inner connections may be pooled/reused |
+| Split Transport Authentication | Target an authorized test listener configured with deliberate authentication mismatches | HTTP transport fallbacks and proxy authentication failures are reported separately; production profiles remain untouched |
+| Residential Egress Verification | Execute requests across distinct paths (primary transit, backup transit, edge CDN) targeting authorized egress verification endpoints | Responses satisfy content assertions and exit IPs match designated residential/regional CIDR bounds; matching egress does not prove identical ingress |
+| Production Fallback Observation | Observe natural upstream routing failovers or perform planned switches in an authorized maintenance window | Runtime telemetry reflects selection changes; service restoration is declared only when end-to-end verification through production listeners succeeds |
+| Black-Box External Proxy Upstreams | Individually inspect reviewed candidate endpoints rather than bulk-probing entire subscription lists | Unprobed internal segments remain opaque; successful reachability on a desktop observer is not assumed for mobile/cellular endpoints |
+| Overlay Networks (Tailscale / WireGuard) | Read local client telemetry and probe target services over the tunnel interface | Idle tunnels or older handshakes are not flagged as service outages; direct versus relay status applies strictly to the observed peer pair |
+| Strict SSH Jump Transport | Install trusted OpenSSH binary with pre-verified `known_hosts` and dedicated minimal-privilege keys | Target returns valid protocol responses over `-W` forward; invalid host keys abort immediately; no interactive shell or password prompt |
+| Reverse Port Forwarding / Tunnels | Check forwarded loopback endpoints on cloud relay alongside direct local service responses | Differentiates service reachability from internal server availability; prevents mixing endpoints across network namespaces |
+| Observer Disconnection / Sleep | Stop a test observer without modifying monitored infrastructure | Samples transition from fresh to stale to unknown; does not produce false whole-fleet downtime incidents |
+| Collector Dashboard High Availability | Stop one test collector or isolate its network connection | Read-only TUI continues fetching from secondary collector with matching project identity; historical evidence is not replaced with forged recent timestamps |
+| Cross-Platform TUI Rendering | Run built binaries on target platforms (Linux, macOS, Windows) under varied terminal geometries | Clean terminal restoration on exit, suppressed credential echoing, and cached data indicators on disconnect; compilation alone does not substitute for runtime verification |
+| Permission and Service Hardening | Verify directory ACLs, service user accounts, PATH hygiene, and daemon process management | Sensitive files remain readable only by authorized user accounts; missing auxiliary tools or insufficient privileges report monitor-side errors |
+
+Authenticated web sessions, heavy downloads, and unbounded streaming connections are not equivalent to health check endpoints. This release does not provide browser automation and does not inspect external third-party application state. Fault isolation requires independent evidence from both sides of a path; `unknown` is a truthful result rather than a UI defect.

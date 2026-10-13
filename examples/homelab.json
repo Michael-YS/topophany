@@ -1,0 +1,1057 @@
+{
+  "schema": 1,
+  "project": "homelab",
+  "nodes": [
+    {
+      "id": "home",
+      "name": "Home Windows",
+      "group": "Home",
+      "kind": "host",
+      "location": {
+        "label": "Shanghai",
+        "lat": 31.23,
+        "lon": 121.47
+      }
+    },
+    {
+      "id": "wsl",
+      "name": "WSL mirrored",
+      "group": "Home",
+      "kind": "vm",
+      "parent": "home"
+    },
+    {
+      "id": "mac",
+      "name": "MacBook",
+      "group": "Home",
+      "kind": "host",
+      "location": {
+        "label": "Shanghai",
+        "lat": 31.23,
+        "lon": 121.47
+      }
+    },
+    {
+      "id": "aliyun",
+      "name": "Aliyun comparison / tunnel entry",
+      "group": "Domestic",
+      "kind": "host",
+      "location": {
+        "label": "Hangzhou",
+        "lat": 30.27,
+        "lon": 120.15
+      }
+    },
+    {
+      "id": "dmit",
+      "name": "DMIT entry",
+      "group": "Overseas",
+      "kind": "host",
+      "location": {
+        "label": "Los Angeles",
+        "lat": 34.05,
+        "lon": -118.24
+      }
+    },
+    {
+      "id": "s1",
+      "name": "S1 applications",
+      "group": "Overseas",
+      "kind": "host",
+      "location": {
+        "label": "Tokyo",
+        "lat": 35.68,
+        "lon": 139.69
+      }
+    },
+    {
+      "id": "s2",
+      "name": "S2 backup entry",
+      "group": "Overseas",
+      "kind": "host",
+      "location": {
+        "label": "Hong Kong",
+        "lat": 22.32,
+        "lon": 114.17
+      }
+    },
+    {
+      "id": "azure",
+      "name": "Azure data services",
+      "group": "Overseas",
+      "kind": "host",
+      "location": {
+        "label": "Virginia",
+        "lat": 38.95,
+        "lon": -77.45
+      }
+    },
+    {
+      "id": "aaitr",
+      "name": "Residential egress",
+      "group": "Overseas",
+      "kind": "host",
+      "location": {
+        "label": "Seattle",
+        "lat": 47.61,
+        "lon": -122.33
+      }
+    },
+    {
+      "id": "cdn",
+      "name": "CDN opaque transport",
+      "group": "External",
+      "kind": "external"
+    },
+    {
+      "id": "airport",
+      "name": "Subscription provider (black box)",
+      "group": "External",
+      "kind": "external"
+    },
+    {
+      "id": "internet",
+      "name": "Approved external health target",
+      "group": "External",
+      "kind": "external"
+    }
+  ],
+  "observers": [
+    {
+      "id": "home-windows",
+      "name": "Windows native production context",
+      "node": "home",
+      "context": "Native Windows; binding and DIRECT rules are expectations, not proof of bypassing TUN",
+      "stale_seconds": 180
+    },
+    {
+      "id": "home-wsl",
+      "name": "WSL process / local service context",
+      "node": "wsl",
+      "context": "Separate WSL execution identity, even when sharing a tailnet IP",
+      "stale_seconds": 180
+    },
+    {
+      "id": "cloud-aliyun",
+      "name": "Aliyun contrast observer",
+      "node": "aliyun",
+      "context": "Cloud native namespace and reverse-tunnel loopback",
+      "stale_seconds": 180
+    },
+    {
+      "id": "cloud-s2",
+      "name": "S2 contrast observer",
+      "node": "s2",
+      "context": "Independent cloud native namespace",
+      "stale_seconds": 180
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "dmit-https",
+      "node": "dmit",
+      "address": "https://dmit.example.invalid/healthz",
+      "network": "public"
+    },
+    {
+      "id": "dmit-ssh",
+      "node": "dmit",
+      "address": "192.0.2.10:22",
+      "network": "public"
+    },
+    {
+      "id": "s2-ssh",
+      "node": "s2",
+      "address": "192.0.2.20:22",
+      "network": "public"
+    },
+    {
+      "id": "s1-ssh",
+      "node": "s1",
+      "address": "192.0.2.30:22",
+      "network": "public"
+    },
+    {
+      "id": "aliyun-ssh",
+      "node": "aliyun",
+      "address": "198.51.100.10:22",
+      "network": "public"
+    },
+    {
+      "id": "aaitr-ssh",
+      "node": "aaitr",
+      "address": "203.0.113.40:22",
+      "network": "public"
+    },
+    {
+      "id": "azure-db",
+      "node": "azure",
+      "address": "192.0.2.60:5432",
+      "network": "public",
+      "notes": "TCP is only an access-port check, not a PostgreSQL query"
+    },
+    {
+      "id": "win-tailnet",
+      "node": "home",
+      "address": "100.64.0.20:22",
+      "network": "tailnet"
+    },
+    {
+      "id": "wsl-tailnet",
+      "node": "wsl",
+      "address": "http://100.64.0.20:3080/",
+      "network": "tailnet"
+    },
+    {
+      "id": "dmit-tailnet",
+      "node": "dmit",
+      "address": "100.64.0.30:22",
+      "network": "tailnet"
+    },
+    {
+      "id": "aaitr-tailnet",
+      "node": "aaitr",
+      "address": "100.64.0.40:22",
+      "network": "tailnet"
+    },
+    {
+      "id": "mac-lan",
+      "node": "mac",
+      "address": "192.168.50.20:22",
+      "network": "lan"
+    },
+    {
+      "id": "dsh-local",
+      "node": "wsl",
+      "address": "http://127.0.0.1:3080/",
+      "network": "loopback",
+      "observer": "home-wsl"
+    },
+    {
+      "id": "dsh-forward",
+      "node": "aliyun",
+      "address": "http://127.0.0.1:18080/",
+      "network": "loopback",
+      "observer": "cloud-aliyun"
+    },
+    {
+      "id": "mihomo-api",
+      "node": "home",
+      "address": "http://127.0.0.1:9090",
+      "network": "loopback",
+      "observer": "home-windows"
+    },
+    {
+      "id": "exit-check",
+      "node": "internet",
+      "address": "https://check.example.invalid/ip",
+      "network": "external"
+    },
+    {
+      "id": "cdn-health",
+      "node": "cdn",
+      "address": "https://edge.example.invalid/healthz",
+      "network": "external"
+    },
+    {
+      "id": "dns-bootstrap",
+      "node": "home",
+      "address": "192.168.50.1:53",
+      "network": "lan"
+    }
+  ],
+  "services": [
+    {
+      "id": "dsh",
+      "name": "dsh with local and reverse-tunnel access",
+      "node": "wsl",
+      "endpoints": [
+        "dsh-local",
+        "dsh-forward",
+        "wsl-tailnet"
+      ],
+      "runbook": "Review the approved external agent runbook; monitoring never restarts the service."
+    },
+    {
+      "id": "known-web",
+      "name": "Known web application",
+      "node": "s1",
+      "notes": "Registered only until an application health endpoint is supplied."
+    },
+    {
+      "id": "postgres",
+      "name": "Azure PostgreSQL access",
+      "node": "azure",
+      "endpoints": [
+        "azure-db"
+      ]
+    },
+    {
+      "id": "residential-egress",
+      "name": "Required residential egress policy",
+      "node": "aaitr",
+      "endpoints": [
+        "exit-check"
+      ]
+    },
+    {
+      "id": "subscription-publication",
+      "name": "Subscription publication / maintenance job",
+      "node": "dmit",
+      "notes": "No fabricated heartbeat. Register a real publication receipt check or keep notes-only."
+    },
+    {
+      "id": "cdn-origin",
+      "name": "CDN origin HTTPS (not proxy authentication)",
+      "node": "dmit",
+      "endpoints": [
+        "cdn-health"
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": "home-dmit",
+      "from": "home",
+      "to": "dmit",
+      "transport": "public TCP initiation"
+    },
+    {
+      "id": "home-s2",
+      "from": "home",
+      "to": "s2",
+      "transport": "public TCP initiation"
+    },
+    {
+      "id": "dmit-aaitr",
+      "from": "dmit",
+      "to": "aaitr",
+      "transport": "public proxy transport; not tailnet RTT"
+    },
+    {
+      "id": "s2-aaitr",
+      "from": "s2",
+      "to": "aaitr",
+      "transport": "public proxy transport"
+    },
+    {
+      "id": "home-cdn",
+      "from": "home",
+      "to": "cdn",
+      "transport": "CDN client TLS"
+    },
+    {
+      "id": "cdn-dmit",
+      "from": "cdn",
+      "to": "dmit",
+      "transport": "opaque CDN origin transport"
+    },
+    {
+      "id": "aliyun-wsl",
+      "from": "aliyun",
+      "to": "wsl",
+      "transport": "reverse SSH forward access"
+    },
+    {
+      "id": "home-mac",
+      "from": "home",
+      "to": "mac",
+      "transport": "LAN"
+    }
+  ],
+  "paths": [
+    {
+      "id": "home-dmit-direct",
+      "name": "home dmit direct",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "dmit"
+      ],
+      "links": [
+        "home-dmit"
+      ]
+    },
+    {
+      "id": "home-s2-direct",
+      "name": "home s2 direct",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "s2"
+      ],
+      "links": [
+        "home-s2"
+      ]
+    },
+    {
+      "id": "aliyun-dmit",
+      "name": "aliyun dmit",
+      "observer": "cloud-aliyun",
+      "nodes": [
+        "aliyun",
+        "dmit"
+      ]
+    },
+    {
+      "id": "s2-dmit",
+      "name": "s2 dmit",
+      "observer": "cloud-s2",
+      "nodes": [
+        "s2",
+        "dmit"
+      ]
+    },
+    {
+      "id": "via-dmit-residential",
+      "name": "via dmit residential",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "dmit",
+        "aaitr"
+      ],
+      "links": [
+        "home-dmit",
+        "dmit-aaitr"
+      ],
+      "proxies": [
+        {
+          "kind": "socks5",
+          "address": "127.0.0.1:9101",
+          "node": "home"
+        }
+      ],
+      "notes": "Dedicated, already configured loopback Mihomo listener. Inner Reality/XHTTP chain belongs to that core; Topophany does not create or switch it."
+    },
+    {
+      "id": "via-s2-residential",
+      "name": "via s2 residential",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "s2",
+        "aaitr"
+      ],
+      "links": [
+        "home-s2",
+        "s2-aaitr"
+      ],
+      "proxies": [
+        {
+          "kind": "socks5",
+          "address": "127.0.0.1:9102",
+          "node": "home"
+        }
+      ],
+      "notes": "Dedicated, already configured loopback Mihomo listener. Inner Reality/XHTTP chain belongs to that core; Topophany does not create or switch it."
+    },
+    {
+      "id": "via-cdn-residential",
+      "name": "via cdn residential",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "cdn",
+        "dmit",
+        "aaitr"
+      ],
+      "links": [
+        "home-cdn",
+        "cdn-dmit",
+        "dmit-aaitr"
+      ],
+      "proxies": [
+        {
+          "kind": "socks5",
+          "address": "127.0.0.1:9103",
+          "node": "home"
+        }
+      ],
+      "notes": "CDN still shares DMIT and residential exit dependencies. A healthy HTTPS origin is not evidence of proxy authentication.",
+      "opaque": true
+    },
+    {
+      "id": "residential-candidates",
+      "name": "residential candidates",
+      "observer": "home-windows",
+      "nodes": [],
+      "candidates": [
+        "via-dmit-residential",
+        "via-s2-residential",
+        "via-cdn-residential"
+      ]
+    },
+    {
+      "id": "production-residential-listener",
+      "name": "production residential listener",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "aaitr"
+      ],
+      "proxies": [
+        {
+          "kind": "socks5",
+          "address": "127.0.0.1:9104",
+          "node": "home"
+        }
+      ],
+      "notes": "User-supplied production explicit proxy listener. Not equivalent to an ordinary program through production TUN.",
+      "opaque": true
+    },
+    {
+      "id": "airport-direct",
+      "name": "airport direct",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "airport"
+      ],
+      "proxies": [
+        {
+          "kind": "socks5",
+          "address": "127.0.0.1:9105",
+          "node": "home"
+        }
+      ],
+      "notes": "Dedicated, already configured loopback Mihomo listener. Inner Reality/XHTTP chain belongs to that core; Topophany does not create or switch it.",
+      "opaque": true
+    },
+    {
+      "id": "airport-to-residential",
+      "name": "airport to residential",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "airport",
+        "aaitr"
+      ],
+      "proxies": [
+        {
+          "kind": "socks5",
+          "address": "127.0.0.1:9106",
+          "node": "home"
+        }
+      ],
+      "notes": "Dedicated, already configured loopback Mihomo listener. Inner Reality/XHTTP chain belongs to that core; Topophany does not create or switch it.",
+      "opaque": true
+    },
+    {
+      "id": "home-tailnet",
+      "name": "home tailnet",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "dmit"
+      ]
+    },
+    {
+      "id": "s2-aaitr-tailnet",
+      "name": "s2 aaitr tailnet",
+      "observer": "cloud-s2",
+      "nodes": [
+        "s2",
+        "aaitr"
+      ]
+    },
+    {
+      "id": "lan-mac",
+      "name": "lan mac",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "mac"
+      ],
+      "links": [
+        "home-mac"
+      ]
+    },
+    {
+      "id": "reverse-dsh",
+      "name": "reverse dsh",
+      "observer": "cloud-aliyun",
+      "nodes": [
+        "aliyun",
+        "wsl"
+      ],
+      "links": [
+        "aliyun-wsl"
+      ]
+    },
+    {
+      "id": "local-dsh",
+      "name": "local dsh",
+      "observer": "home-wsl",
+      "nodes": [
+        "wsl"
+      ]
+    },
+    {
+      "id": "bootstrap-dns",
+      "name": "bootstrap dns",
+      "observer": "home-windows",
+      "nodes": [
+        "home"
+      ]
+    },
+    {
+      "id": "azure-via-aliyun",
+      "name": "azure via aliyun",
+      "observer": "home-windows",
+      "nodes": [
+        "home",
+        "aliyun",
+        "azure"
+      ],
+      "proxies": [
+        {
+          "kind": "ssh",
+          "address": "198.51.100.10:22",
+          "node": "aliyun",
+          "ssh_user": "topophany",
+          "ssh_identity_file": "/etc/topophany/ssh/read-only_ed25519",
+          "ssh_known_hosts": "/etc/topophany/ssh/known_hosts"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "home-dmit-https",
+      "name": "home dmit https",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dmit-https",
+      "path": "home-dmit-direct",
+      "resolve_ip": "192.0.2.10",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "home-dmit-ssh",
+      "name": "home dmit ssh",
+      "observer": "home-windows",
+      "kind": "ssh-banner",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dmit-ssh",
+      "path": "home-dmit-direct"
+    },
+    {
+      "id": "home-dmit-icmp",
+      "name": "home dmit icmp",
+      "observer": "home-windows",
+      "kind": "icmp",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "path": "home-dmit-direct",
+      "target": "192.0.2.10"
+    },
+    {
+      "id": "home-s2-ssh",
+      "name": "home s2 ssh",
+      "observer": "home-windows",
+      "kind": "ssh-banner",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "s2-ssh",
+      "path": "home-s2-direct"
+    },
+    {
+      "id": "aliyun-dmit-https",
+      "name": "aliyun dmit https",
+      "observer": "cloud-aliyun",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dmit-https",
+      "path": "aliyun-dmit",
+      "resolve_ip": "192.0.2.10",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "s2-dmit-ssh",
+      "name": "s2 dmit ssh",
+      "observer": "cloud-s2",
+      "kind": "ssh-banner",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dmit-ssh",
+      "path": "s2-dmit"
+    },
+    {
+      "id": "via-dmit-residential-exit",
+      "name": "via dmit residential exit",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "exit-check",
+      "path": "via-dmit-residential",
+      "service": "residential-egress",
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "json",
+        "exit_json_key": "ip",
+        "expected_exit": [
+          "203.0.113.40"
+        ],
+        "max_body_bytes": 4096
+      }
+    },
+    {
+      "id": "via-s2-residential-exit",
+      "name": "via s2 residential exit",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "exit-check",
+      "path": "via-s2-residential",
+      "service": "residential-egress",
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "json",
+        "exit_json_key": "ip",
+        "expected_exit": [
+          "203.0.113.40"
+        ],
+        "max_body_bytes": 4096
+      }
+    },
+    {
+      "id": "via-cdn-residential-exit",
+      "name": "via cdn residential exit",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "exit-check",
+      "path": "via-cdn-residential",
+      "service": "residential-egress",
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "json",
+        "exit_json_key": "ip",
+        "expected_exit": [
+          "203.0.113.40"
+        ],
+        "max_body_bytes": 4096
+      }
+    },
+    {
+      "id": "production-residential-listener-exit",
+      "name": "production residential listener exit",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "exit-check",
+      "path": "production-residential-listener",
+      "service": "residential-egress",
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "json",
+        "exit_json_key": "ip",
+        "expected_exit": [
+          "203.0.113.40"
+        ],
+        "max_body_bytes": 4096
+      }
+    },
+    {
+      "id": "airport-to-residential-exit",
+      "name": "airport to residential exit",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "exit-check",
+      "path": "airport-to-residential",
+      "service": "residential-egress",
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "json",
+        "exit_json_key": "ip",
+        "expected_exit": [
+          "203.0.113.40"
+        ],
+        "max_body_bytes": 4096
+      }
+    },
+    {
+      "id": "airport-end-to-end",
+      "name": "airport end to end",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "exit-check",
+      "path": "airport-direct",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "cdn-origin-http",
+      "name": "cdn origin http",
+      "observer": "home-windows",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "cdn-health",
+      "service": "cdn-origin",
+      "http": {
+        "status": [
+          200
+        ],
+        "contains": "healthy"
+      }
+    },
+    {
+      "id": "production-core-reported",
+      "name": "production core reported",
+      "observer": "home-windows",
+      "kind": "mihomo",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "mihomo-api",
+      "adapter": {
+        "token_env": "TOPH_MIHOMO_TOKEN",
+        "root_proxy": "Residential",
+        "expected_mode": "rule",
+        "expected_providers": {
+          "edge-local": [
+            "edge-1",
+            "edge-2",
+            "edge-3"
+          ]
+        }
+      }
+    },
+    {
+      "id": "bootstrap-dns",
+      "name": "bootstrap dns",
+      "observer": "home-windows",
+      "kind": "dns",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dns-bootstrap",
+      "path": "bootstrap-dns",
+      "dns": {
+        "name": "edge.example.invalid",
+        "type": "A"
+      }
+    },
+    {
+      "id": "home-dmit-tailnet-service",
+      "name": "home dmit tailnet service",
+      "observer": "home-windows",
+      "kind": "ssh-banner",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dmit-tailnet",
+      "path": "home-tailnet"
+    },
+    {
+      "id": "home-tailscale-reported",
+      "name": "home tailscale reported",
+      "observer": "home-windows",
+      "kind": "tailscale",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "adapter": {
+        "peer": "dmit"
+      }
+    },
+    {
+      "id": "s2-aaitr-tailnet-service",
+      "name": "s2 aaitr tailnet service",
+      "observer": "cloud-s2",
+      "kind": "ssh-banner",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "aaitr-tailnet",
+      "path": "s2-aaitr-tailnet"
+    },
+    {
+      "id": "s2-wireguard-reported",
+      "name": "s2 wireguard reported",
+      "observer": "cloud-s2",
+      "kind": "wireguard",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "adapter": {
+        "interface": "wg0",
+        "peer": "REPLACE_WITH_ACTUAL_PEER_PUBLIC_KEY"
+      }
+    },
+    {
+      "id": "home-mac-lan-ssh",
+      "name": "home mac lan ssh",
+      "observer": "home-windows",
+      "kind": "ssh-banner",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "mac-lan",
+      "path": "lan-mac"
+    },
+    {
+      "id": "dsh-wsl-local",
+      "name": "dsh wsl local",
+      "observer": "home-wsl",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dsh-local",
+      "path": "local-dsh",
+      "service": "dsh",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "dsh-reverse-forward",
+      "name": "dsh reverse forward",
+      "observer": "cloud-aliyun",
+      "kind": "http",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "dsh-forward",
+      "path": "reverse-dsh",
+      "service": "dsh",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "azure-port-via-jump",
+      "name": "azure port via jump",
+      "observer": "home-windows",
+      "kind": "tcp",
+      "disabled": true,
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "endpoint": "azure-db",
+      "path": "azure-via-aliyun",
+      "service": "postgres"
+    }
+  ]
+}
