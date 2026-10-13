@@ -236,7 +236,7 @@ func (m *Model) tabRows(tab int) []Row {
 		return model.EntityState{ID: id, Health: "unknown", Evidence: "unknown", Reason: "no state in this view"}
 	}
 	incident := func(i model.Incident) Row {
-		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: m.incidentTitle(i), Meta: i.Summary, Cols: []string{age(m.Now, i.Since), itoa(len(i.Checks)) + " checks"}, Details: incidentDetails(i)}
+		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: m.incidentTitle(i), Meta: i.Summary, Cols: []string{age(m.Now, i.Since), plural(len(i.Checks), "check")}, Details: incidentDetails(i)}
 	}
 	switch tab {
 	case tabOverview:
@@ -831,6 +831,14 @@ func fit(s string, w int) string {
 }
 
 // ellipsis shortens s to at most w columns, marking the cut with "…".
+// plural counts things: "1 check", "2 checks".
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return itoa(n) + " " + word + "s"
+}
+
 func ellipsis(s string, w int) string {
 	if width(s) <= w {
 		return s

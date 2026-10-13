@@ -238,7 +238,7 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 	count('○', cUnknown, unk, "unknown")
 	if x < cv.W-16 {
 		x += cv.Text(x, y, "│   ", fg(cLine), -1)
-		count('⚑', cDown, len(m.Snapshot.Incidents), "incidents")
+		count('⚑', cDown, len(m.Snapshot.Incidents), map[bool]string{true: "incident", false: "incidents"}[len(m.Snapshot.Incidents) == 1])
 	}
 	if x < cv.W-20 {
 		x += cv.Text(x, y, "│   ", fg(cLine), -1)

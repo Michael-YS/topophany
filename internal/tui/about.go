@@ -338,7 +338,7 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 		{[]span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("`topo`", fg(cMuted))}},
 	}
 	if c.Project != "" {
-		lines = append(lines, aboutLine{[]span{sp(c.Project, fg(cText)), sp("  ·  "+itoa(len(c.Nodes))+" nodes  ·  "+itoa(len(c.Links))+" links  ·  "+itoa(len(c.Checks))+" checks", fg(cMuted))}})
+		lines = append(lines, aboutLine{[]span{sp(c.Project, fg(cText)), sp("  ·  "+plural(len(c.Nodes), "node")+"  ·  "+plural(len(c.Links), "link")+"  ·  "+plural(len(c.Checks), "check"), fg(cMuted))}})
 	}
 	if globe {
 		lines = append(lines, aboutLine{}, aboutLine{[]span{sp("Each lit point on the globe is a place you declared.", fg(cFaint).italic())}})

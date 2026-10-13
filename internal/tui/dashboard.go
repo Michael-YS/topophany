@@ -157,7 +157,7 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 		}
 		cv.Set(cx, row, '⚑', fg(ic))
 		cx += 2
-		cx += cv.Text(cx, row, itoa(inc)+" incidents", fg(cMuted), -1) + 4
+		cx += cv.Text(cx, row, plural(inc, "incident"), fg(cMuted), -1) + 4
 		live, all := m.liveObservers(), len(m.Snapshot.Observers)
 		oc := cAccent2
 		if live < all {
@@ -268,7 +268,7 @@ func (m *Model) observersCard(cv *Canvas, x, y, w, h int) {
 func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag string) {
 	t := m.Snapshot.Topology
 	mapTitle := "NETWORK"
-	mapTag := "· " + itoa(len(t.Nodes)) + " nodes · " + itoa(len(t.Links)) + " links · m z"
+	mapTag := "· " + plural(len(t.Nodes), "node") + " · " + plural(len(t.Links), "link") + " · m z"
 	attention := func(x, y, w, h int, active bool) {
 		ix, iy, iw, ih := m.panel(cv, x, y, w, h, "NEEDS ATTENTION", tag, active)
 		if len(rows) > 0 || m.Search != "" {

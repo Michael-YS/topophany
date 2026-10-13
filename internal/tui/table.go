@@ -138,6 +138,10 @@ func layoutTable(rows []Row, heads []string, w int) tableLayout {
 	return l
 }
 
+// cellTone quiets the words that only say "as expected" and lights the
+// ones that do not, in whichever column they appear.
+var cellTone = map[string]Color{"fresh": cFaint, "stale": cWarn}
+
 // fitHead shortens a heading such as "NODE · ENDPOINT · LINK" by whole parts
 // rather than cutting it mid-word.
 func fitHead(s string, w int) string {
@@ -229,7 +233,7 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 		case r.Kind == "node" && r.Tree == "":
 			ts = ts.bold()
 		}
-		cv.Text(cx, y+i, r.Title, ts, tw)
+		cv.Text(cx, y+i, ellipsis(r.Title, tw), ts, tw)
 		cx += tw
 		for k, cw := range lay.cols {
 			cx += tableGap
@@ -243,7 +247,10 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 				if r.Kind == "endpoint" || r.Kind == "link" {
 					cs = base.Fg(Mix(cMuted, cFaint, .35))
 				}
-				v := r.Cols[k]
+				v := ellipsis(r.Cols[k], cw)
+				if c, ok := cellTone[v]; ok {
+					cs = base.Fg(c)
+				}
 				if lay.right[k] {
 					v = strings.Repeat(" ", max(0, cw-width(v))) + v
 				}
