@@ -350,21 +350,21 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 		ly := y + h - 1
 		cx := x + 1
 		item := func(r rune, c Color, label string) {
-			if cx+2+width(label) >= x+w {
+			if cx+3+width(label) >= x+w {
 				return
 			}
 			cv.Set(cx, ly, r, fg(c))
-			cx += 1 + cv.Text(cx+1, ly, label, fg(cMuted), -1) + 2
+			cx += 2 + cv.Text(cx+2, ly, label, fg(cMuted), -1) + 2
 		}
 		item('●', cUp, "up")
 		item('▲', cWarn, "warn")
 		item('✖', cDown, "down")
 		item('○', cUnknown, "unknown")
 		cx += 2
-		item('━', Mix(cUp, cInk, .3), "path ok")
+		item('━', Mix(cUp, cInk, .45), "path ok")
 		item('━', cWarn, "affected")
 		item('━', cDown, "failed")
-		item('┄', Mix(cUnknown, cInk, .2), "no evidence")
+		item('┄', Mix(cUnknown, cInk, .35), "no evidence")
 		if m.mapMode() == "network" {
 			item('┊', cFaint, "hosted in")
 			cx += 2
@@ -384,15 +384,17 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 func edgeStyle(e mapEdge, f mapFocus) (Color, int8, int) {
 	var c Color
 	pri, dash := int8(3), 0
+	// Healthy links are quiet threads and links nobody measured fainter
+	// still, so the eye goes to the problems, drawn at full strength.
 	switch e.Signal {
 	case "up", "carried":
-		c, pri = Mix(cUp, cInk, .48), 4
+		c, pri = Mix(cUp, cInk, .64), 4
 	case "affected", "degraded":
-		c, pri = Mix(cWarn, cInk, .12), 5
+		c, pri = cWarn, 5
 	case "down":
 		c, pri = cDown, 6
 	default:
-		c = Mix(cUnknown, cInk, .3)
+		c = Mix(cUnknown, cInk, .5)
 	}
 	switch e.Kind {
 	case edgePath:
@@ -428,7 +430,7 @@ func (m *Model) pulse(d *Dots, path [][2]float64, e mapEdge, phase float64, reve
 				i = len(path) - 1 - i
 			}
 			p := path[i]
-			d.Set(int(math.Round(p[0])), int(math.Round(p[1])), Mix(cGlow, cUp, float64(k)/5), 9)
+			d.Set(int(math.Round(p[0])), int(math.Round(p[1])), Mix(Mix(cUp, cGlow, .3), Mix(cUp, cInk, .5), float64(k)/5), 9)
 		}
 	}
 }
