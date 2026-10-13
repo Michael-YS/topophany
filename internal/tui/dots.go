@@ -14,6 +14,12 @@ type Dots struct {
 	pri  []int8
 }
 
+// plotter takes dots: the braille raster, or the per-dot image the README
+// banner is drawn from.
+type plotter interface {
+	Set(px, py int, c Color, pri int8)
+}
+
 var brailleBit = [4][2]uint8{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
 
 func NewDots(w, h int) *Dots {

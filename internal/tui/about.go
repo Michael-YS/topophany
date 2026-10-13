@@ -35,11 +35,11 @@ var defaultPlaces = []place{
 
 // aboutPlaces uses the operator's declared node locations when present, so
 // the art literally shows *their* places appearing. Nodes at one declared
-// place become one light.
-func (m *Model) aboutPlaces() ([]place, [][2]int) {
-	nodes, edges, _ := m.graph()
+// place become one light. Links are left to the maps: on the globe they
+// would only tangle.
+func (m *Model) aboutPlaces() []place {
+	nodes, _, _ := m.graph()
 	ps := []place{}
-	at := map[string]int{}
 	byPlace := map[string]int{}
 	for _, n := range nodes {
 		if !n.Located || n.Inherited {
@@ -50,7 +50,6 @@ func (m *Model) aboutPlaces() ([]place, [][2]int) {
 			key = n.ID
 		}
 		if k, ok := byPlace[key]; ok {
-			at[n.ID] = k
 			ps[k].health = worseSignal(ps[k].health, nodeSignal(n))
 			continue
 		}
@@ -59,29 +58,12 @@ func (m *Model) aboutPlaces() ([]place, [][2]int) {
 			name = n.Name
 		}
 		byPlace[key] = len(ps)
-		at[n.ID] = len(ps)
 		ps = append(ps, place{name, n.Lat, n.Lon, nodeSignal(n)})
 	}
-	arcs := [][2]int{}
 	if len(ps) >= 2 {
-		seen := map[[2]int]bool{}
-		for _, e := range edges {
-			if e.Kind == edgeContain {
-				continue
-			}
-			a, okA := at[e.From]
-			b, okB := at[e.To]
-			if okA && okB && a != b && !seen[[2]int{a, b}] && !seen[[2]int{b, a}] {
-				seen[[2]int{a, b}] = true
-				arcs = append(arcs, [2]int{a, b})
-			}
-		}
-		return ps, arcs
+		return ps
 	}
-	for i := range defaultPlaces {
-		arcs = append(arcs, [2]int{i, (i + 3) % len(defaultPlaces)})
-	}
-	return defaultPlaces, arcs
+	return defaultPlaces
 }
 
 type vec [3]float64
@@ -125,20 +107,50 @@ func (g globe) toWorld(v vec) vec {
 	return vec{v[0]*c + z*s, y, -v[0]*s + z*c}
 }
 
-// drawGlobe renders the globe centred in w×h cells as one-bit dot art:
-// land is an ordered dither lit by the sun with a crisp dotted coast, the
-// ocean a faint halftone that follows the light, the limb a thin line with a
-// haze beyond it. t is seconds since the About view opened; spin is extra
+// drawGlobe renders the globe centred in w×h cells and names the places
+// facing the viewer. t is seconds since the About view opened; spin is extra
 // rotation from the mouse wheel.
 func (m *Model) drawGlobe(cv *Canvas, x, y, w, h int, t, spin float64) {
 	d := NewDots(w, h)
-	W, H := w*2, h*4
+	marks := m.paintGlobe(d, w*2, h*4, t, spin)
+	d.Blit(cv, x, y, 0)
+	// Names of the places facing the viewer, where they do not collide.
+	used := map[[2]int]bool{}
+	for _, mk := range marks {
+		lx, ly := mk.x/2+2, mk.y/4
+		n := width(mk.name)
+		free := lx+n < w && ly >= 0 && ly < h
+		for i := -1; i <= n && free; i++ {
+			free = !used[[2]int{lx + i, ly}]
+		}
+		if !free {
+			continue
+		}
+		for i := -1; i <= n; i++ {
+			used[[2]int{lx + i, ly}] = true
+		}
+		cv.Text(x+lx, y+ly, mk.name, fg(Mix(mk.c, cText, .55)).bold(), -1)
+	}
+}
+
+// globeMark is a place worth naming, in dots.
+type globeMark struct {
+	x, y int
+	name string
+	c    Color
+}
+
+// paintGlobe draws the globe centred on a W×H dot grid as one-bit dot art:
+// land is an ordered dither lit by the sun with a crisp dotted coast, the
+// ocean a faint halftone that follows the light, the limb a thin line with a
+// haze beyond it. It returns the places facing the viewer.
+func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 	R := math.Min(float64(W), float64(H))/2 - math.Max(3, math.Min(float64(W), float64(H))*.05)
 	if R < 6 {
-		return
+		return nil
 	}
 	cx, cy := float64(W)/2, float64(H)/2
-	places, arcs := m.aboutPlaces()
+	places := m.aboutPlaces()
 	// Start with the first declared place facing the viewer, then drift east.
 	g := globe{spin: places[0].lon*math.Pi/180 - .35 + t*.11 + spin, tilt: .36}
 	light := vec{-.62, .42, .66}.norm()
@@ -220,44 +232,9 @@ func (m *Model) drawGlobe(cv *Canvas, x, y, w, h int, t, spin float64) {
 		p := g.toView(v)
 		return cx + p[0]*R, cy - p[1]*R, p
 	}
-	// Great-circle arcs a little above the surface, each with a pulse; a
-	// small globe keeps only its places.
-	if R >= 36 {
-		for k, a := range arcs {
-			va, vb := sphere(places[a[0]].lat, places[a[0]].lon), sphere(places[a[1]].lat, places[a[1]].lon)
-			omega := math.Acos(clamp(va.dot(vb), -1, 1))
-			if omega < 1e-3 {
-				continue
-			}
-			steps := int(omega*R*1.4) + 8
-			head := math.Mod(t*.3+float64(k)*.37, 1.5)
-			for i := 0; i <= steps; i++ {
-				s := float64(i) / float64(steps)
-				sa, sb := math.Sin((1-s)*omega)/math.Sin(omega), math.Sin(s*omega)/math.Sin(omega)
-				lift := 1 + .07*math.Sin(math.Pi*s)*math.Min(1, omega)
-				p := vec{(va[0]*sa + vb[0]*sb) * lift, (va[1]*sa + vb[1]*sb) * lift, (va[2]*sa + vb[2]*sb) * lift}
-				sx, sy, v := project(p)
-				if v[2] < 0 {
-					continue // behind the globe
-				}
-				dist := head - s
-				switch {
-				case dist >= 0 && dist < .05:
-					d.Set(int(sx), int(sy), Mix(cGlow, cAccent, dist/.05), 8)
-				case i%2 == 0:
-					d.Set(int(sx), int(sy), Mix(cAccent, cInk, .5), 5)
-				}
-			}
-		}
-	}
 	// Places: a bright core and a slow ring; their health colors them when
 	// the topology has evidence, otherwise they are warm lights.
-	type mark struct {
-		x, y int
-		name string
-		c    Color
-	}
-	marks := []mark{}
+	marks := []globeMark{}
 	for i, p := range places {
 		sx, sy, v := project(sphere(p.lat, p.lon))
 		if v[2] < .08 {
@@ -280,27 +257,10 @@ func (m *Model) drawGlobe(cv *Canvas, x, y, w, h int, t, spin float64) {
 		ring := 2 + 3*grow*math.Mod(t*.6+float64(i)*.23, 1)
 		halo(d, sx, sy, ring, Mix(c, cInk, .3+ring/8), 7)
 		if v[2] > .3 && R >= 30 {
-			marks = append(marks, mark{int(sx) / 2, int(sy) / 4, p.name, c})
+			marks = append(marks, globeMark{int(sx), int(sy), p.name, c})
 		}
 	}
-	d.Blit(cv, x, y, 0)
-	// Names of the places facing the viewer, where they do not collide.
-	used := map[[2]int]bool{}
-	for _, mk := range marks {
-		lx, ly := mk.x+2, mk.y
-		n := width(mk.name)
-		free := lx+n < w && ly >= 0 && ly < h
-		for i := -1; i <= n && free; i++ {
-			free = !used[[2]int{lx + i, ly}]
-		}
-		if !free {
-			continue
-		}
-		for i := -1; i <= n; i++ {
-			used[[2]int{lx + i, ly}] = true
-		}
-		cv.Text(x+lx, y+ly, mk.name, fg(Mix(mk.c, cText, .55)).bold(), -1)
-	}
+	return marks
 }
 
 // drawWordmark sets TOPOPHANY in a 5x7 pixel face, two pixels per cell with

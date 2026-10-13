@@ -396,7 +396,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 
 // halo rings a point with dots; the vertical radius matches the horizontal
 // one because braille dots are close to square.
-func halo(d *Dots, cx, cy, r float64, c Color, pri int8) {
+func halo(d plotter, cx, cy, r float64, c Color, pri int8) {
 	steps := max(12, int(r*7))
 	for i := 0; i < steps; i++ {
 		a := 2 * math.Pi * float64(i) / float64(steps)
