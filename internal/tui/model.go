@@ -29,8 +29,13 @@ const (
 	tabAbout
 )
 
+// Row is one selectable entry of a list. Cols are aligned secondary columns
+// (headed by tabColumns); Note overrides the state column, e.g. "affected";
+// Tree is the guide drawn before the title in the Topology hierarchy.
 type Row struct {
 	Kind, ID, Health, Title, Meta string
+	Cols                          []string
+	Note, Tree                    string
 	Details                       []string
 }
 type Model struct {
@@ -88,13 +93,27 @@ func (m *Model) Rows() []Row {
 	nodeNames := map[string]string{}
 	for _, n := range s.Topology.Nodes {
 		nodeNames[n.ID] = n.Name
+		if n.Name == "" {
+			nodeNames[n.ID] = n.ID
+		}
 	}
 	checkDefs := map[string]model.Check{}
 	for _, c := range s.Topology.Checks {
 		checkDefs[c.ID] = c
 	}
+	observerNames := map[string]string{}
+	for _, o := range s.Topology.Observers {
+		observerNames[o.ID] = o.Name
+		if o.Name == "" {
+			observerNames[o.ID] = o.ID
+		}
+	}
 	entity := func(kind string, e model.EntityState, title, meta string, details []string) Row {
-		return Row{Kind: kind, ID: e.ID, Health: e.Health, Title: title, Meta: meta, Details: append([]string{"ID: " + e.ID, "State: " + e.Health, "Evidence: " + e.Evidence, "Affected dependency: " + fmt.Sprint(e.Affected), "", e.Reason, "Checks: " + strings.Join(e.Checks, ", ")}, details...)}
+		r := Row{Kind: kind, ID: e.ID, Health: e.Health, Title: title, Meta: meta, Details: append([]string{"ID: " + e.ID, "State: " + e.Health, "Evidence: " + e.Evidence, "Affected dependency: " + fmt.Sprint(e.Affected), "", e.Reason, "Checks: " + strings.Join(e.Checks, ", ")}, details...)}
+		if e.Affected && e.Health != "down" {
+			r.Note = "affected"
+		}
+		return r
 	}
 	find := func(list []model.EntityState, id string) model.EntityState {
 		for _, e := range list {
@@ -104,13 +123,22 @@ func (m *Model) Rows() []Row {
 		}
 		return model.EntityState{ID: id, Health: "unknown", Evidence: "unknown", Reason: "no state in this view"}
 	}
+	incident := func(i model.Incident) Row {
+		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: i.Scope, Meta: i.Summary, Cols: []string{age(m.Now, i.Since), itoa(len(i.Checks)) + " checks"}, Details: incidentDetails(i)}
+	}
 	switch m.Tab {
 	case tabOverview:
 		for _, i := range s.Incidents {
-			rows = append(rows, Row{Kind: "incident", ID: i.ID, Health: "down", Title: i.Scope, Meta: i.Summary, Details: incidentDetails(i)})
+			rows = append(rows, incident(i))
 		}
 		for _, p := range s.Paths {
-			rows = append(rows, entity("path", p, "Path / "+p.ID, "", nil))
+			r := entity("path", p, "Path / "+p.ID, "", nil)
+			for _, d := range s.Topology.Paths {
+				if d.ID == p.ID {
+					r.Title, r.Cols = d.Name, []string{observerNames[d.Observer]}
+				}
+			}
+			rows = append(rows, r)
 		}
 		if len(rows) == 0 {
 			for _, v := range s.Services {
@@ -124,15 +152,28 @@ func (m *Model) Rows() []Row {
 				checkHealth[d.Endpoint] = append(checkHealth[d.Endpoint], cs.Health)
 			}
 		}
+		known := map[string]bool{}
+		children := map[string][]model.Node{}
 		for _, n := range s.Topology.Nodes {
+			known[n.ID] = true
+		}
+		roots := []model.Node{}
+		for _, n := range s.Topology.Nodes {
+			if n.Parent != "" && known[n.Parent] && n.Parent != n.ID {
+				children[n.Parent] = append(children[n.Parent], n)
+			} else {
+				roots = append(roots, n)
+			}
+		}
+		seen := map[string]bool{}
+		// walk lists a node, then its endpoints, then the nodes it hosts.
+		var walk func(n model.Node, guide, branch string)
+		walk = func(n model.Node, guide, branch string) {
+			if seen[n.ID] {
+				return
+			}
+			seen[n.ID] = true
 			e := find(s.Nodes, n.ID)
-			title := n.Name
-			if title == "" {
-				title = n.ID
-			}
-			if n.Parent != "" {
-				title = "└─ " + title
-			}
 			place := "Location: not declared"
 			if l := n.Location; l != nil {
 				place = fmt.Sprintf("Location: %s (%.2f, %.2f) — declared, not inferred from IP", l.Label, l.Lat, l.Lon)
@@ -145,44 +186,84 @@ func (m *Model) Rows() []Row {
 					eps = append(eps, ep)
 				}
 			}
-			rows = append(rows, entity("node", e, title, n.Group, details))
-			for _, ep := range eps {
-				h := aggregateHealth(checkHealth[ep.ID])
-				indent := "   "
-				if n.Parent != "" {
-					indent = "      "
-				}
-				rows = append(rows, Row{Kind: "endpoint", ID: ep.ID, Health: h, Title: indent + "⌁ " + ep.ID, Meta: ep.Network, Details: []string{"Endpoint: " + ep.ID, "Node: " + ep.Node, "Address: " + ep.Address, "Network: " + ep.Network, "Execution scope: " + ep.Observer, "", "Health aggregates checks that target this endpoint.", "", ep.Notes}})
+			r := entity("node", e, nodeNames[n.ID], n.Group, details)
+			r.Tree = guide + branch
+			r.Cols = []string{n.Group, n.Kind}
+			rows = append(rows, r)
+			next := guide
+			switch branch {
+			case "├ ":
+				next += "│ "
+			case "└ ":
+				next += "  "
 			}
+			kids := children[n.ID]
+			for i, ep := range eps {
+				b := "├ "
+				if i == len(eps)-1 && len(kids) == 0 {
+					b = "└ "
+				}
+				h := aggregateHealth(checkHealth[ep.ID])
+				rows = append(rows, Row{Kind: "endpoint", ID: ep.ID, Health: h, Title: ep.ID, Meta: ep.Network, Tree: next + b, Cols: []string{ep.Network, ep.Address}, Details: []string{"Endpoint: " + ep.ID, "Node: " + ep.Node, "Address: " + ep.Address, "Network: " + ep.Network, "Execution scope: " + ep.Observer, "", "Health aggregates checks that target this endpoint.", "", ep.Notes}})
+			}
+			for i, k := range kids {
+				b := "├ "
+				if i == len(kids)-1 {
+					b = "└ "
+				}
+				walk(k, next, b)
+			}
+		}
+		for _, n := range roots {
+			walk(n, "", "")
+		}
+		for _, n := range s.Topology.Nodes {
+			walk(n, "", "") // nodes caught in a parent cycle still get a row
 		}
 		for _, def := range s.Topology.Links {
 			l := find(s.Links, def.ID)
-			rows = append(rows, entity("link", l, "↳ "+nodeNames[def.From]+" → "+nodeNames[def.To], def.Transport, []string{def.Notes, "Directed initiation, not proven packet-loss direction."}))
+			r := entity("link", l, nodeNames[def.From]+" → "+nodeNames[def.To], def.Transport, []string{def.Notes, "Directed initiation, not proven packet-loss direction."})
+			r.Tree = "⇢ "
+			r.Cols = []string{def.Transport, ""}
+			rows = append(rows, r)
 		}
 	case tabServices:
 		for _, e := range s.Services {
 			title := e.ID
 			meta := ""
 			details := []string{}
+			cols := []string{"", ""}
 			for _, d := range s.Topology.Services {
 				if d.ID == e.ID {
 					title = d.Name
 					meta = nodeNames[d.Node]
+					cols = []string{nodeNames[d.Node], strings.Join(d.Endpoints, ", ")}
 					details = []string{"", "Hosted on: " + d.Node, "Endpoints: " + strings.Join(d.Endpoints, ", "), "Depends on: " + strings.Join(d.DependsOn, ", "), "Runbook (not auto-executed): " + d.Runbook, "", d.Notes}
 					break
 				}
 			}
-			rows = append(rows, entity("service", e, title, meta, details))
+			r := entity("service", e, title, meta, details)
+			r.Cols = cols
+			rows = append(rows, r)
 		}
 	case tabPaths:
 		for _, e := range s.Paths {
 			title := e.ID
 			meta := ""
 			details := []string{}
+			cols := []string{"", ""}
 			for _, d := range s.Topology.Paths {
 				if d.ID == e.ID {
 					title = d.Name
 					meta = d.Observer
+					route := []string{}
+					for _, n := range d.Nodes {
+						route = append(route, nodeNames[n])
+					}
+					if len(route) == 0 && len(d.Candidates) > 0 {
+						route = []string{"candidates: " + strings.Join(d.Candidates, " | ")}
+					}
+					cols = []string{observerNames[d.Observer], strings.Join(route, " → ")}
 					details = []string{"", "Observer: " + d.Observer, "Declared topology:", strings.Join(d.Nodes, " → "), "Segments: " + strings.Join(d.Links, ", "), "", "Proxy transport (wire order):"}
 					for j, p := range d.Proxies {
 						details = append(details, fmt.Sprintf("%d. %s %s (%s)", j+1, p.Kind, p.Address, p.Node))
@@ -194,7 +275,9 @@ func (m *Model) Rows() []Row {
 					break
 				}
 			}
-			rows = append(rows, entity("path", e, title, meta, details))
+			r := entity("path", e, title, meta, details)
+			r.Cols = cols
+			rows = append(rows, r)
 		}
 	case tabChecks:
 		for _, e := range s.Checks {
@@ -204,9 +287,11 @@ func (m *Model) Rows() []Row {
 				title = e.ID
 			}
 			meta := d.Observer + " · " + d.Kind + " · " + e.Freshness
+			took := ""
 			details := []string{"Check: " + e.ID, "Source: " + e.Observer, "Health: " + e.Health, "Freshness: " + e.Freshness, "Evidence: " + e.Evidence, "", e.Reason, "", "Path: " + d.Path, "Target: " + d.Target, "Endpoint: " + d.Endpoint, "Service: " + d.Service, "Failure / recovery threshold: " + fmt.Sprint(d.FailureThreshold) + " / " + fmt.Sprint(d.RecoveryThreshold)}
 			if e.Last != nil {
 				v := e.Last
+				took = fmt.Sprintf("%d ms", v.DurationMS)
 				details = append(details, "", "Last sample: "+v.SampledAt.Local().Format("2006-01-02 15:04:05 MST"), "Sample age: "+age(m.Now, v.SampledAt), "Collector received: "+v.ReceivedAt.Local().Format(time.RFC3339), "Outcome: "+v.Outcome, "Stage: "+v.Stage, "Code: "+v.Code, fmt.Sprintf("Elapsed: %d ms", v.DurationMS), "Path evidence: "+v.PathEvidence, "", v.Detail)
 				keys := []string{}
 				for k := range v.Facts {
@@ -217,32 +302,39 @@ func (m *Model) Rows() []Row {
 					details = append(details, k+": "+v.Facts[k])
 				}
 			}
-			rows = append(rows, Row{Kind: "check", ID: e.ID, Title: title, Health: e.Health, Meta: meta, Details: details})
+			r := Row{Kind: "check", ID: e.ID, Title: title, Health: e.Health, Meta: meta, Cols: []string{observerNames[d.Observer], d.Kind, took, e.Freshness}, Details: details}
+			if e.Freshness == "paused" || e.Freshness == "maintenance" {
+				r.Note = e.Freshness
+			}
+			rows = append(rows, r)
 		}
 	case tabIncidents:
 		for _, i := range s.Incidents {
-			rows = append(rows, Row{Kind: "incident", ID: i.ID, Health: "down", Title: i.Scope, Meta: i.Summary, Details: incidentDetails(i)})
+			rows = append(rows, incident(i))
 		}
 	case tabObservers:
 		for _, e := range s.Observers {
 			title := e.ID
+			host := ""
 			details := []string{"Observer: " + e.ID, "State: " + e.Health, "Last evidence: " + age(m.Now, e.LastSeen), "", e.Reason}
 			for _, d := range s.Topology.Observers {
 				if d.ID == e.ID {
 					title = d.Name
+					host = nodeNames[d.Node]
 					details = append(details, "", "Host: "+d.Node, "Context: "+d.Context, "Expected route (not verified): "+d.RouteExpectation)
 					break
 				}
 			}
-			rows = append(rows, Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: age(m.Now, e.LastSeen), Details: details})
+			rows = append(rows, Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: age(m.Now, e.LastSeen), Cols: []string{host, age(m.Now, e.LastSeen)}, Details: details})
 		}
 	}
 	filtered := rows[:0]
 	search := strings.ToLower(m.Search)
 	for _, r := range rows {
-		if search == "" || strings.Contains(strings.ToLower(r.ID+" "+r.Title+" "+r.Meta), search) {
+		if search == "" || strings.Contains(strings.ToLower(r.ID+" "+r.Title+" "+r.Meta+" "+strings.Join(r.Cols, " ")), search) {
 			if m.Cached() {
 				r.Health = "unknown"
+				r.Note = "cached"
 				r.Meta = "CACHED · " + r.Meta
 				r.Details = append([]string{"CACHED VIEW — current status not established.", ""}, r.Details...)
 			}
@@ -254,6 +346,29 @@ func (m *Model) Rows() []Row {
 	}
 	return filtered
 }
+
+// tabColumns heads the list columns of the current tab: the title column
+// first, then one heading per Row.Cols entry.
+func (m *Model) tabColumns() []string {
+	switch m.Tab {
+	case tabOverview:
+		return []string{"ITEM", "OBSERVER · SINCE", "CHECKS"}
+	case tabTopology:
+		return []string{"NODE · ENDPOINT · LINK", "GROUP · NETWORK", "KIND · ADDRESS"}
+	case tabServices:
+		return []string{"SERVICE", "HOST", "ENDPOINTS"}
+	case tabPaths:
+		return []string{"PATH", "OBSERVER", "DECLARED ROUTE"}
+	case tabChecks:
+		return []string{"CHECK", "OBSERVER", "KIND", "TIME", "FRESHNESS"}
+	case tabIncidents:
+		return []string{"SCOPE", "SINCE", "CHECKS"}
+	case tabObservers:
+		return []string{"OBSERVER", "HOST", "LAST SEEN"}
+	}
+	return nil
+}
+
 func aggregateHealth(hs []string) string {
 	if len(hs) == 0 {
 		return "unknown"

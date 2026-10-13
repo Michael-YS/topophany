@@ -51,6 +51,18 @@ func (s Style) bold() Style        { return s.With(Bold) }
 func (s Style) plain() bool        { return s == Style{} }
 func (s Style) italic() Style      { return s.With(Italic) }
 
+// Merge overlays o's colors and attributes; unset colors keep s's.
+func (s Style) Merge(o Style) Style {
+	if o.FG != 0 {
+		s.FG = o.FG
+	}
+	if o.BG != 0 {
+		s.BG = o.BG
+	}
+	s.Attr |= o.Attr
+	return s
+}
+
 type cell struct {
 	ch   string
 	st   Style

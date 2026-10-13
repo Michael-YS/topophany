@@ -91,7 +91,7 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 			mode = "network graph"
 		}
 		if w >= 100 {
-			lw := min(max(w*36/100, 34), 60)
+			lw := min(max(w*40/100, 34), 84)
 			mw := w - lw
 			ix, iy, iw, ih := m.panel(cv, x, y, mw, h, title+" · "+mode, "m switch · z zoom", false)
 			m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
@@ -129,110 +129,6 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 	}
 	ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, tag, true)
 	m.drawList(cv, ix, iy, iw, ih, rows)
-}
-
-func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
-	if h <= 0 {
-		return
-	}
-	if m.Selected < m.Offset {
-		m.Offset = m.Selected
-	}
-	if m.Selected >= m.Offset+h {
-		m.Offset = m.Selected - h + 1
-	}
-	if len(rows) == 0 {
-		msg := "No matching entries / no current evidence."
-		if m.Edit != nil && m.Search == "" {
-			msg = "Nothing here yet — press a to add."
-		}
-		cv.Text(x, y, msg, fg(cMuted).italic(), w)
-		return
-	}
-	for i := 0; i < h; i++ {
-		j := m.Offset + i
-		if j >= len(rows) {
-			break
-		}
-		r := rows[j]
-		selected := j == m.Selected
-		base := Style{}
-		if selected {
-			base = Style{BG: cSelBG}
-			cv.Fill(x-1, y+i, w+2, 1, base)
-			cv.Set(x-1, y+i, '▌', fg(cAccent).Bg(cSelBG))
-		}
-		cx := x
-		if m.NoColor {
-			mark := "  "
-			if selected {
-				mark = "› "
-			}
-			cx += cv.Text(cx, y+i, mark, base, -1)
-		}
-		cx += cv.Text(cx, y+i, badge(r.Health), base.Fg(healthColor(r.Health)).bold(), x+w-cx)
-		cx += cv.Text(cx, y+i, "  ", base, x+w-cx)
-		ts := base.Fg(cText)
-		if selected {
-			ts = ts.Fg(cGlow).bold()
-		}
-		if r.Kind == "endpoint" || r.Kind == "link" {
-			ts = ts.Fg(Mix(cText, cMuted, .4))
-			if selected {
-				ts = ts.Fg(cGlow)
-			}
-		}
-		cx += cv.Text(cx, y+i, r.Title, ts, x+w-cx)
-		if r.Meta != "" && cx < x+w-3 {
-			cx += cv.Text(cx, y+i, "  · "+r.Meta, base.Fg(cMuted), x+w-cx)
-		}
-		m.hit(x-1, y+i, w+2, "row:"+itoa(j))
-	}
-	if len(rows) > h {
-		pos := "▲▼ " + itoa(m.Selected+1) + "/" + itoa(len(rows))
-		cv.Text(x+w-width(pos), y+h, pos, fg(cFaint), -1)
-	}
-}
-
-func (m *Model) drawDetail(cv *Canvas, x, y, w, h int, r Row, scroll bool) {
-	lines := []string{}
-	for _, v := range r.Details {
-		lines = append(lines, wrap(v, w)...)
-	}
-	off := 0
-	if scroll {
-		if m.Offset > max(0, len(lines)-h) {
-			m.Offset = max(0, len(lines)-h)
-		}
-		off = m.Offset
-	}
-	for i := 0; i < h && off+i < len(lines); i++ {
-		l := lines[off+i]
-		switch {
-		case strings.HasPrefix(l, "CACHED VIEW") || strings.HasPrefix(l, "LOCAL DRAFT"):
-			cv.Text(x, y+i, l, fg(cWarn).bold(), w)
-		case strings.HasSuffix(l, ":") && !strings.Contains(strings.TrimSuffix(l, ":"), ": "):
-			cv.Text(x, y+i, l, fg(cAccent).bold(), w)
-		case strings.Contains(l, ": ") && strings.Index(l, ": ") < 34:
-			k := strings.Index(l, ": ")
-			n := cv.Text(x, y+i, l[:k+1], fg(cMuted), w)
-			cv.Text(x+n, y+i, l[k+1:], fg(cText), w-n)
-		case strings.Contains(l, " → "):
-			cx := x
-			for p, part := range strings.Split(l, " → ") {
-				if p > 0 {
-					cx += cv.Text(cx, y+i, " → ", fg(cAccent), x+w-cx)
-				}
-				cx += cv.Text(cx, y+i, part, fg(cText), x+w-cx)
-			}
-		default:
-			cv.Text(x, y+i, l, fg(cText), w)
-		}
-	}
-	if len(lines) > off+h && h > 0 {
-		more := " ↓ " + itoa(len(lines)-off-h) + " more "
-		cv.Text(x+w-width(more), y+h, more, fg(cFaint), -1)
-	}
 }
 
 // cards are the Overview summary strip; bars use braille cells for a
