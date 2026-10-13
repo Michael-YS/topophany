@@ -228,6 +228,35 @@ func sgr(b *strings.Builder, s Style, profile int) {
 	color(s.BG, "48")
 	b.WriteString("m")
 }
+
+// sgrDelta moves the terminal from style cur to next writing only the
+// colors that changed; anything that must be switched off takes a reset.
+func sgrDelta(b *strings.Builder, cur, next Style, profile int) {
+	if cur.Attr != next.Attr || cur.FG != 0 && next.FG == 0 || cur.BG != 0 && next.BG == 0 {
+		sgr(b, next, profile)
+		return
+	}
+	b.WriteString("\x1b[")
+	sep := ""
+	color := func(c Color, base string) {
+		r, g, bl := c.rgb()
+		b.WriteString(sep)
+		sep = ";"
+		if profile == color256 {
+			b.WriteString(base + ";5;" + strconv.Itoa(xterm256(r, g, bl)))
+			return
+		}
+		b.WriteString(base + ";2;" + strconv.Itoa(r) + ";" + strconv.Itoa(g) + ";" + strconv.Itoa(bl))
+	}
+	if next.FG != cur.FG {
+		color(next.FG, "38")
+	}
+	if next.BG != cur.BG {
+		color(next.BG, "48")
+	}
+	b.WriteString("m")
+}
+
 func xterm256(r, g, b int) int {
 	q := func(v int) int {
 		if v < 48 {
@@ -251,11 +280,13 @@ func xterm256(r, g, b int) int {
 	return cube
 }
 
-// Lines serializes the canvas. Styles are emitted only on change, and each
-// line ends with a reset so a line can be repainted independently.
+// Lines serializes the canvas. Styles are emitted only on change and only
+// for what changed (a blank cell only needs its background), and each line
+// ends with a reset so a line can be repainted independently.
 func (c *Canvas) Lines(profile int) []string {
 	out := make([]string, c.H)
 	var b strings.Builder
+	const visibleOnBlank = Underline | Reverse
 	for y := 0; y < c.H; y++ {
 		b.Reset()
 		cur := Style{}
@@ -269,11 +300,17 @@ func (c *Canvas) Lines(profile int) []string {
 			if st.BG == 0 {
 				st.BG = c.Base
 			}
+			if p.ch == " " && (st.Attr|cur.Attr)&visibleOnBlank == 0 {
+				st.FG, st.Attr = cur.FG, cur.Attr
+			}
 			if profile != colorNone && (st != cur || !styled && !st.plain()) {
-				if st.plain() {
+				switch {
+				case st.plain():
 					b.WriteString("\x1b[0m")
-				} else {
+				case !styled:
 					sgr(&b, st, profile)
+				default:
+					sgrDelta(&b, cur, st, profile)
 				}
 				cur = st
 				styled = true
