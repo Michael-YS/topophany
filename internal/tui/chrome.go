@@ -332,21 +332,69 @@ func (m *Model) footer(cv *Canvas, y int) {
 		if m.Search != "" {
 			x += cv.Text(x, y, "Filter “"+m.Search+"”  Esc clear   ", bar.Fg(cAccent), -1)
 		}
-		keys = []keycap{{"a", "Add", "a"}, {"e", "Edit", "e"}, {"d", "Delete", "d"}}
+		// Keys in reading order, each with a rank: when the bar is too
+		// narrow the highest rank goes first, a whole rank at a time, so
+		// Details, Filter and Quit stay while the editor hints of a
+		// read-only client give way together.
+		type ranked struct {
+			k    keycap
+			rank int
+		}
+		var opts []ranked
+		add := func(rank int, key, label, action string) {
+			opts = append(opts, ranked{keycap{key, label, action}, rank})
+		}
+		mapShown := m.Tab == tabTopology || m.Tab == tabOverview && cv.W >= 90 && cv.H >= 25
 		if m.Edit != nil {
-			keys = append(keys, keycap{"^S", "Save", "ctrl-s"}, keycap{"u", "Undo", "u"})
+			add(0, "a", "Add", "a")
+			add(0, "e", "Edit", "e")
+			add(0, "d", "Delete", "d")
+			add(0, "^S", "Save", "ctrl-s")
+			add(0, "u", "Undo", "u")
+		}
+		add(1, "↵", "Details", "enter")
+		add(1, "/", "Filter", "/")
+		add(2, "v", "View", "v")
+		if m.Edit == nil {
+			add(3, "r", "Refresh", "r")
 		}
 		if m.Preview != nil {
-			keys = append(keys, keycap{"x", "Scenario", "x"}, keycap{"D", "Debug", "D"})
+			add(2, "x", "Scenario", "x")
 		}
-		keys = append(keys, keycap{"/", "Filter", "/"}, keycap{"v", "View", "v"})
+		if mapShown {
+			add(3, "m", "Map", "m")
+			add(4, "z", "Zoom", "z")
+		}
 		if m.Edit == nil {
-			keys = append(keys, keycap{"r", "Refresh", "r"})
+			add(5, "a", "Add", "a")
+			add(5, "e", "Edit", "e")
+			add(5, "d", "Delete", "d")
 		}
-		if m.Tab == tabTopology || m.Tab == tabOverview && cv.W >= 90 && cv.H >= 30 {
-			keys = append(keys, keycap{"m", "Map", "m"}, keycap{"z", "Zoom", "z"})
+		if m.Preview != nil {
+			add(6, "D", "Debug", "D")
 		}
-		keys = append(keys, keycap{"↵", "Details", "enter"}, keycap{"?", "About", "?"}, keycap{"q", "Quit", "q"})
+		add(3, "?", "About", "?")
+		add(0, "q", "Quit", "q")
+		for {
+			total, worst := 0, 0
+			for _, o := range opts {
+				total += width(o.k.key) + width(o.k.label) + 5
+				worst = max(worst, o.rank)
+			}
+			if total-1 <= cv.W-x || worst == 0 {
+				break
+			}
+			kept := opts[:0]
+			for _, o := range opts {
+				if o.rank != worst {
+					kept = append(kept, o)
+				}
+			}
+			opts = kept
+		}
+		for _, o := range opts {
+			keys = append(keys, o.k)
+		}
 	}
 	for _, k := range keys {
 		need := width(k.key) + width(k.label) + 4
