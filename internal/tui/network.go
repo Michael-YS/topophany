@@ -250,14 +250,134 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 			prev = row[v]
 		}
 	}
+	// Path hops are overlays: drawn when they fail, belong to the observer
+	// in view or to the selected route, never used to place nodes.
+	drawn := []mapEdge{}
+	for _, e := range edges {
+		route := f.hops[[2]string{e.From, e.To}] || f.hops[[2]string{e.To, e.From}]
+		if e.Kind == edgePath && !route && signalRank(e.Signal) < 3 && (m.Observer == "" || e.Observer != m.Observer) {
+			continue
+		}
+		drawn = append(drawn, e)
+	}
+	// Every edge that runs forward follows its chain of vertices, one column
+	// at a time; path overlays go straight to their target.
+	chainOf := make([][]int, len(drawn))
+	for i, e := range drawn {
+		a, b := idx[e.From], idx[e.To]
+		if vlayer[b] <= vlayer[a] {
+			continue
+		}
+		chainOf[i] = chains[[2]string{e.From, e.To}]
+		if chainOf[i] == nil {
+			chainOf[i] = []int{a, b}
+		}
+	}
+	// In the gap after each column, the steps that leave one vertex share a
+	// vertical track; tracks are ordered so that wires cross as little as
+	// possible and never run together.
+	type net struct {
+		src, ys, lo, hi int
+		targets         map[int]int // row -> vertex
+	}
+	gaps := make([]map[int]*net, nl)
+	for _, c := range chainOf {
+		for k := 1; k < len(c); k++ {
+			u, v := c[k-1], c[k]
+			l := vlayer[u]
+			if gaps[l] == nil {
+				gaps[l] = map[int]*net{}
+			}
+			n := gaps[l][u]
+			if n == nil {
+				n = &net{src: u, ys: row[u], lo: row[u], hi: row[u], targets: map[int]int{}}
+				gaps[l][u] = n
+			}
+			n.targets[row[v]] = v
+			n.lo, n.hi = min(n.lo, row[v]), max(n.hi, row[v])
+		}
+	}
+	cost := func(order []*net) int {
+		n := 0
+		for i, a := range order {
+			for j, b := range order {
+				meet := func(y, target int) {
+					switch v, ok := b.targets[y]; {
+					case y < b.lo || y > b.hi:
+					case ok && v == target:
+						// Into the same chip: the wires merge, as they should.
+					case ok || y == b.ys:
+						n += 4 // two wires would run together
+					default:
+						n++
+					}
+				}
+				switch {
+				case j < i:
+					meet(a.ys, -1) // a's run from its source passes b's track
+				case j > i:
+					for y, v := range a.targets {
+						meet(y, v) // a's runs to its targets pass b's track
+					}
+				}
+			}
+		}
+		return n
+	}
+	tracks := make([][]*net, nl)
+	for l, nets := range gaps {
+		list := []*net{}
+		for _, n := range nets {
+			if n.lo < n.hi {
+				list = append(list, n)
+			}
+		}
+		if len(list) == 0 || l+1 >= nl {
+			continue
+		}
+		sort.Slice(list, func(i, j int) bool { return list[i].ys < list[j].ys })
+		best, bestCost := append([]*net(nil), list...), cost(list)
+		if len(list) <= 6 {
+			var permute func(k int)
+			permute = func(k int) {
+				if k == len(list) {
+					if c := cost(list); c < bestCost {
+						best, bestCost = append(best[:0], list...), c
+					}
+					return
+				}
+				for i := k; i < len(list); i++ {
+					list[k], list[i] = list[i], list[k]
+					permute(k + 1)
+					list[k], list[i] = list[i], list[k]
+				}
+			}
+			permute(0)
+		} else {
+			for improved := true; improved; {
+				improved = false
+				for i := 0; i+1 < len(best); i++ {
+					best[i], best[i+1] = best[i+1], best[i]
+					if c := cost(best); c < bestCost {
+						bestCost, improved = c, true
+					} else {
+						best[i], best[i+1] = best[i+1], best[i]
+					}
+				}
+			}
+		}
+		tracks[l] = best
+	}
 	// Chips show the node name, or its (usually short) ID when the name does
-	// not fit. Each column is as wide as its widest chip; what is left becomes
-	// equal gaps for the edges.
+	// not fit. Each column is as wide as its widest chip, each gap as wide as
+	// its tracks need with a cell between them; what is left is shared out
+	// between the gaps.
 	label := make([]string, len(nodes))
 	for i, n := range nodes {
 		label[i] = n.Name
 	}
 	colW := make([]int, nl)
+	gapW := make([]int, nl)
 	sizeCols := func() int {
 		total := 0
 		for l, c := range cols {
@@ -271,9 +391,8 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		}
 		return total
 	}
-	gapW := 4
 	// Names that would lose more than a fifth of the room go to IDs.
-	if (sizeCols()+(nl-1)*gapW)*4 > (w-2)*5 {
+	if (sizeCols()+(nl-1)*4)*4 > (w-2)*5 {
 		for i, n := range nodes {
 			if width(n.ID) < width(n.Name) {
 				label[i] = n.ID
@@ -281,29 +400,56 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		}
 		sizeCols()
 	}
-	for {
-		total := (nl - 1) * gapW
-		widest := 0
-		for l, cw := range colW {
-			total += cw
-			if cw > colW[widest] {
-				widest = l
+	for l := 0; l+1 < nl; l++ {
+		gapW[l] = max(4, 2*len(tracks[l])+2)
+	}
+	// When it is too wide, chips give way first (keeping most of a name),
+	// then the spacing between tracks, then the rest of the chips and gaps.
+	fit := func(colMin int, gapMin func(int) int) {
+		for {
+			total, col, gap := 0, -1, -1
+			for l := range colW {
+				total += colW[l] + gapW[l]
+				if colW[l] > colMin && (col < 0 || colW[l] > colW[col]) {
+					col = l
+				}
+				if l+1 < nl && gapW[l] > gapMin(l) && (gap < 0 || gapW[l] > gapW[gap]) {
+					gap = l
+				}
+			}
+			switch {
+			case total <= w-2:
+				return
+			case col >= 0:
+				colW[col]--
+			case gap >= 0:
+				gapW[gap]--
+			default:
+				return
 			}
 		}
-		if total <= w-2 || colW[widest] <= 8 {
-			if nl > 1 && total < w-2 {
-				gapW += (w - 2 - total) / (nl - 1)
-			} else if nl > 1 && total > w-2 {
-				gapW = max(1, gapW-(total-w+2+nl-2)/(nl-1))
-			}
-			break
+	}
+	fit(18, func(l int) int { return gapW[l] })
+	fit(18, func(l int) int { return len(tracks[l]) + 2 })
+	fit(8, func(l int) int { return len(tracks[l]) + 2 })
+	fit(8, func(int) int { return 1 })
+	if nl > 1 {
+		// Spare room widens the gaps evenly.
+		spare := w - 2
+		for l := range colW {
+			spare -= colW[l] + gapW[l]
 		}
-		colW[widest]--
+		for l := 0; l+1 < nl && spare > 0; l++ {
+			gapW[l] += spare / (nl - 1)
+			if l < spare%(nl-1) {
+				gapW[l]++
+			}
+		}
 	}
 	colX := make([]int, nl)
 	for l, cx := 0, 1; l < nl; l++ {
 		colX[l] = cx
-		cx += colW[l] + gapW
+		cx += colW[l] + gapW[l]
 	}
 	type box struct{ x, y, w int }
 	boxes := make([]box, len(nodes))
@@ -311,75 +457,93 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		l := vlayer[i]
 		boxes[i] = box{x: colX[l], y: row[i], w: max(4, min(width(label[i])+4, colW[l], w-colX[l]))}
 	}
-	// Path hops are overlays: drawn when they fail, belong to the observer
-	// in view or to the selected route, never used to place nodes.
-	drawn := []mapEdge{}
-	for _, e := range edges {
-		route := f.hops[[2]string{e.From, e.To}] || f.hops[[2]string{e.To, e.From}]
-		if e.Kind == edgePath && !route && signalRank(e.Signal) < 3 && (m.Observer == "" || e.Observer != m.Observer) {
-			continue
+	track := map[[2]int]int{}
+	for l, list := range tracks {
+		gs, room := colX[l]+colW[l], gapW[l]-2
+		for i, n := range list {
+			tx := gs
+			if room > 0 {
+				tx = gs + 1 + (2*i+1)*room/(2*len(list))
+			}
+			track[[2]int{l, n.src}] = tx
 		}
-		drawn = append(drawn, e)
 	}
-	d := NewDots(w, h)
-	phase := m.phase()
+	ws := newWires(w, h)
 	type arrow struct {
 		x, y int
-		c    Color
+		r    rune
 	}
 	arrows := []arrow{}
-	dot := func(cx, cy int) [2]float64 { return [2]float64{float64(cx * 2), float64(cy*4 + 2)} }
-	for _, e := range drawn {
+	pulses := [][][2]int{}
+	pulseEdge := []int{}
+	for i, e := range drawn {
 		a, b := boxes[idx[e.From]], boxes[idx[e.To]]
 		c, pri, dash := edgeStyle(e, f)
-		var path [][2]float64
-		p0 := dot(a.x+a.w, a.y)
-		p0[0]++
-		p3 := dot(b.x-1, b.y)
-		p3[0]--
-		chain := chains[[2]string{e.From, e.To}]
-		switch {
-		case layer[e.From] == layer[e.To] && e.Kind == edgeContain:
-			// Stacked in one column: a bracket on the left margin.
-			q0 := [2]float64{float64(a.x*2 - 1), p0[1]}
-			q3 := [2]float64{float64(b.x*2 - 1), p3[1]}
-			path = curve(q0, [2]float64{q0[0] - 4, q0[1]}, [2]float64{q3[0] - 4, q3[1]}, q3)
-		case layer[e.To] <= layer[e.From]:
-			// Back edge: loop around the right side of both chips, dashed.
-			p3 = [2]float64{float64((b.x+b.w)*2 + 1), p3[1]}
-			bend := math.Max(p0[0], p3[0]) + 8
-			path = curve(p0, [2]float64{bend, p0[1]}, [2]float64{bend, p3[1]}, p3)
-			dash = max(dash, 2)
-		default:
-			// Through each waypoint: straight across its column, eased
-			// between columns with horizontal tangents.
-			from := p0
-			hop := func(to [2]float64) {
-				tan := math.Max((to[0]-from[0])*.45, 2)
-				path = append(path, curve(from, [2]float64{from[0] + tan, from[1]}, [2]float64{to[0] - tan, to[1]}, to)...)
-			}
-			for k := 1; k+1 < len(chain); k++ {
-				v := chain[k]
-				l := vlayer[v]
-				in, out := dot(colX[l], row[v]), dot(colX[l]+colW[l], row[v])
-				hop(in)
-				for px := in[0]; px <= out[0]; px++ {
-					path = append(path, [2]float64{px, in[1]})
+		var pts [][2]int
+		switch chain := chainOf[i]; {
+		case chain != nil:
+			pts = [][2]int{{a.x + a.w, a.y}}
+			for k := 1; k < len(chain); k++ {
+				u, v := chain[k-1], chain[k]
+				if row[u] != row[v] {
+					tx := track[[2]int{vlayer[u], u}]
+					pts = append(pts, [2]int{tx, row[u]}, [2]int{tx, row[v]})
 				}
-				from = out
+				if isNode(v) {
+					pts = append(pts, [2]int{boxes[v].x - 1, row[v]})
+				} else {
+					pts = append(pts, [2]int{colX[vlayer[v]] + colW[vlayer[v]], row[v]})
+				}
 			}
-			hop(p3)
 			if e.Kind != edgeContain {
-				arrows = append(arrows, arrow{b.x - 1, b.y, c})
+				arrows = append(arrows, arrow{b.x - 1, b.y, '▸'})
+			}
+		case e.Kind == edgeContain && a.x == b.x:
+			// Stacked in one column: a bracket on the left.
+			pts = [][2]int{{a.x - 1, a.y}, {a.x - 2, a.y}, {b.x - 2, b.y}, {b.x - 1, b.y}}
+		default:
+			// Back edge: a dashed loop around the right of both chips.
+			lx := max(a.x+a.w, b.x+b.w) + 1
+			pts = [][2]int{{a.x + a.w, a.y}, {lx, a.y}, {lx, b.y}, {b.x + b.w + 1, b.y}}
+			dash = 2
+			arrows = append(arrows, arrow{b.x + b.w, b.y, '◂'})
+		}
+		cells := ws.route(pts, i, c, pri, dash)
+		if (e.Signal == "up" || e.Signal == "carried") && e.Kind != edgeContain {
+			pulses = append(pulses, cells)
+			pulseEdge = append(pulseEdge, i)
+		}
+	}
+	ws.draw(cv, x, y)
+	// A glint runs along wires that carry traffic, so motion itself still
+	// means "getting through".
+	phase := m.phase()
+	for k, cells := range pulses {
+		n := len(cells)
+		if n < 6 {
+			continue
+		}
+		e := drawn[pulseEdge[k]]
+		head := int(math.Mod(phase*12+float64(hash32(e.ID)%97), float64(n+18)))
+		for t := 0; t < 2; t++ {
+			i := head - t
+			if i < 0 || i >= n {
+				continue
+			}
+			px, py := cells[i][0], cells[i][1]
+			if mk, _, ok := ws.top(px, py); ok && mk.edge == pulseEdge[k] && cv.in(x+px, y+py) {
+				cl := cv.at(x+px, y+py)
+				cv.put(x+px, y+py, cl.ch, 1, cl.st.Fg(Mix(Mix(cUp, cGlow, .45), mk.c, float64(t)*.5)))
 			}
 		}
-		d.Polyline(path, c, pri, dash)
-		m.pulse(d, path, e, phase, false)
 	}
-	d.Blit(cv, x, y, 0)
 	for _, a := range arrows {
 		if a.x >= 0 && a.x < w {
-			cv.Set(x+a.x, y+a.y, '▸', fg(a.c))
+			c := cFaint
+			if mk, _, ok := ws.top(a.x, a.y); ok {
+				c = mk.c
+			}
+			cv.Set(x+a.x, y+a.y, a.r, fg(c))
 		}
 	}
 	for i, n := range nodes {
