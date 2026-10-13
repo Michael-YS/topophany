@@ -51,6 +51,7 @@ type Model struct {
 	Edit                  *Editor // non-nil only for topo edit
 	Preview               Preview // non-nil only for topo preview
 	Debug                 bool    // performance/geometry overlay (D)
+	Transparent           bool    // keep the terminal background (TOPO_BACKGROUND=terminal)
 	perf                  perf
 	modal                 *modal
 	notice                string

@@ -112,6 +112,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 	if !m.NoColor {
 		m.Colors = ColorProfile()
 	}
+	m.Transparent = !paintBackground()
 	m.Now = time.Now()
 	m.Width, m.Height = term.Size()
 	ch := make(chan fetched, 1)

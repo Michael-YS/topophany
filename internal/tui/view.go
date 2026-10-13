@@ -2,8 +2,6 @@ package tui
 
 import (
 	"strings"
-
-	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
 func (m *Model) profile() int {
@@ -29,6 +27,9 @@ func (m *Model) Render() []string {
 		return []string{fit("Topophany: resize terminal (30x10 minimum)", max(w, 1))}
 	}
 	cv := NewCanvas(w, h)
+	if !m.Transparent {
+		cv.Base = cInk
+	}
 	m.header(cv)
 	m.tabBar(cv, 1)
 	m.statusBar(cv, 2)
@@ -39,198 +40,24 @@ func (m *Model) Render() []string {
 	}
 	if m.modal != nil {
 		cv.Each(func(s Style) Style {
-			c := s.FG
+			c, b := s.FG, s.BG
 			if c == 0 {
 				c = cText
 			}
-			return Style{FG: Mix(c, cDeep, .62)}
+			if b == 0 {
+				b = cInk
+			}
+			s = Style{FG: Mix(c, cInk, .66), BG: Mix(b, cInk, .66)}
+			if m.Transparent && s.BG == cInk {
+				s.BG = 0
+			}
+			return s
 		})
 		m.drawingModal = true
 		m.drawModal(cv)
 		m.drawingModal = false
 	}
 	return cv.Lines(m.profile())
-}
-
-func (m *Model) header(cv *Canvas) {
-	w := cv.W
-	bar := Style{BG: cPanelBG}
-	cv.Fill(0, 0, w, 1, bar)
-	x := 1
-	cv.Set(x, 0, '◉', fg(cAccent).Bg(cPanelBG).bold())
-	x += 2
-	for i, r := range "TOPOPHANY" {
-		cv.Set(x+i, 0, r, fg(Mix(cAccent, cAccent2, float64(i)/8)).Bg(cPanelBG).bold())
-	}
-	x += 9
-	view := m.Observer
-	if view == "" {
-		view = "all observers"
-	}
-	x += 2
-	x += cv.Text(x, 0, m.Snapshot.Project, fg(cText).Bg(cPanelBG).bold(), w-x-1)
-	x += cv.Text(x, 0, "  ·  view: ", fg(cMuted).Bg(cPanelBG), w-x-1)
-	x += cv.Text(x, 0, view, fg(cAccent2).Bg(cPanelBG), w-x-1)
-	var right []struct {
-		s  string
-		st Style
-	}
-	add := func(s string, c Color) {
-		right = append(right, struct {
-			s  string
-			st Style
-		}{s, fg(c).Bg(cPanelBG)})
-	}
-	if m.Edit != nil {
-		add("✎ LOCAL DRAFT ", cEdit)
-		add(m.Edit.Path, cMuted)
-		if m.Edit.Dirty {
-			add("  ● unsaved", cWarn)
-		} else {
-			add("  ✓ saved", cUp)
-		}
-	} else {
-		if m.Preview != nil {
-			add("◆ PREVIEW ", cEdit)
-			add(m.scenario(), cText)
-		} else {
-			if m.Snapshot.Instance != "" {
-				add(m.Snapshot.Instance, cText)
-				add(" @ ", cFaint)
-			}
-			add(m.Server, cMuted)
-		}
-		add("  ·  "+age(m.Now, m.Snapshot.GeneratedAt)+"  ", cMuted)
-		if m.Cached() {
-			add("◌ CACHED", cWarn)
-		} else {
-			// The live dot breathes with each repaint, never faster than data.
-			add("● LIVE", Mix(cUp, cGlow, .5+.5*float64(m.Now.Second()%2)))
-		}
-	}
-	total := 0
-	for _, r := range right {
-		total += width(secure.Text(r.s))
-	}
-	rx := w - 1 - total
-	if rx < x+2 {
-		// Not enough room: keep the trailing state indicator only.
-		last := right[len(right)-1]
-		cv.Text(w-1-width(last.s), 0, last.s, last.st, -1)
-		return
-	}
-	for _, r := range right {
-		rx += cv.Text(rx, 0, r.s, r.st, -1)
-	}
-}
-
-func (m *Model) tabBar(cv *Canvas, y int) {
-	labels := make([]string, len(tabs))
-	total := 0
-	for i, t := range tabs {
-		labels[i] = itoa(i+1) + " " + t
-		total += width(labels[i]) + 3
-	}
-	short := total > cv.W
-	x := 1
-	for i := range tabs {
-		label := labels[i]
-		if short && i != m.Tab {
-			label = itoa(i + 1)
-		}
-		text := " " + label + " "
-		st := fg(cMuted)
-		if i == m.Tab {
-			st = fg(cDeep).Bg(cAccent).bold()
-			if m.NoColor {
-				text = "[" + label + "]"
-			}
-		}
-		n := cv.Text(x, y, text, st, -1)
-		m.hit(x, y, n, "tab:"+itoa(i))
-		x += n + 1
-		if x >= cv.W {
-			break
-		}
-	}
-}
-
-func (m *Model) counts() (up, down, warn, unk int) {
-	for _, s := range m.Snapshot.Checks {
-		if m.Cached() {
-			unk++
-			continue
-		}
-		switch s.Health {
-		case "up":
-			up++
-		case "down":
-			down++
-		case "degraded":
-			warn++
-		default:
-			unk++
-		}
-	}
-	return
-}
-
-func (m *Model) statusBar(cv *Canvas, y int) {
-	x := 1
-	if m.notice != "" && m.Now.Sub(m.noticeAt) < 8e9 {
-		c, g := cUp, "✓ "
-		if m.noticeErr {
-			c, g = cDown, "✖ "
-		}
-		cv.Text(x, y, g+m.notice, fg(c), cv.W-2)
-		return
-	}
-	if m.Error != "" {
-		cv.Text(x, y, "⚠ OFFLINE / CACHED: "+m.Error, fg(cWarn).bold(), cv.W-2)
-		return
-	}
-	up, down, warn, unk := m.counts()
-	chip := func(label string, c Color, n int, word string) {
-		if x >= cv.W-4 {
-			return
-		}
-		x += cv.Text(x, y, label, fg(c).bold(), -1)
-		x += cv.Text(x, y, " "+itoa(n)+" "+word+"   ", fg(cMuted), -1)
-	}
-	x += cv.Text(x, y, "CHECKS  ", fg(cFaint).bold(), -1)
-	chip("●", cUp, up, "up")
-	chip("✖", cDown, down, "down")
-	chip("▲", cWarn, warn, "warning")
-	chip("○", cUnknown, unk, "unknown")
-	x += cv.Text(x, y, "│  ", fg(cLine), -1)
-	chip("⚑", cDown, len(m.Snapshot.Incidents), "incidents")
-	live := 0
-	for _, o := range m.Snapshot.Observers {
-		if o.Health == "up" && !m.Cached() {
-			live++
-		}
-	}
-	if x < cv.W-20 {
-		x += cv.Text(x, y, "│  ", fg(cLine), -1)
-		x += cv.Text(x, y, "◎ ", fg(cAccent2).bold(), -1)
-		cv.Text(x, y, itoa(live)+"/"+itoa(len(m.Snapshot.Observers))+" observers live", fg(cMuted), cv.W-x-1)
-	}
-}
-
-// panel draws a rounded frame with a title and returns the inner rectangle.
-func (m *Model) panel(cv *Canvas, x, y, w, h int, title, tag string, active bool) (int, int, int, int) {
-	border := fg(cLine)
-	if active {
-		border = fg(Mix(cLine, cAccent, .45))
-	}
-	cv.Box(x, y, w, h, border)
-	if title != "" && w > 6 {
-		n := cv.Text(x+2, y, " "+title+" ", fg(cAccent).bold(), w-4)
-		if tag != "" && x+2+n+width(tag)+3 < x+w {
-			cv.Text(x+2+n, y, tag+" ", fg(cFaint), w-4-n)
-		}
-	}
-	return x + 2, y + 1, max(0, w-4), max(0, h-2)
 }
 
 func (m *Model) body(cv *Canvas, x, y, w, h int) {
@@ -490,92 +317,6 @@ func (m *Model) cards(cv *Canvas, x, y, w int) {
 			cv.Text(cx, cy, itoa(len(t.Paths))+" paths · "+itoa(len(t.Endpoints))+" endpoints · "+itoa(len(t.Services))+" services", fg(cMuted), cw)
 		})
 	}
-}
-
-type keycap struct{ key, label, action string }
-
-func (m *Model) footer(cv *Canvas, y int) {
-	x := 1
-	if m.Searching {
-		x += cv.Text(x, y, "Filter: ", fg(cAccent).bold(), -1)
-		x += cv.Text(x, y, m.Search, fg(cGlow), cv.W-x-20)
-		cv.Text(x, y, "▏  Enter/Esc finish", fg(cMuted), -1)
-		return
-	}
-	var keys []keycap
-	if m.modal != nil {
-		switch m.modal.kind {
-		case "form":
-			keys = []keycap{{"Tab/↓", "next", ""}, {"↑", "prev", ""}, {"←→", "choose", ""}, {"Space", "toggle", ""}, {"^S", "apply", "btn:save"}, {"Esc", "cancel", "btn:cancel"}}
-		case "menu":
-			keys = []keycap{{"↑↓", "select", ""}, {"Enter", "choose", ""}, {"Esc", "close", "esc"}}
-		default:
-			keys = []keycap{{"Enter", "ok", "enter"}, {"Esc", "close", "esc"}}
-		}
-	} else {
-		if m.Search != "" {
-			x += cv.Text(x, y, "Filter: "+m.Search+"  [Esc clear]  ", fg(cAccent), -1)
-		}
-		keys = []keycap{{"a", "Add", "a"}, {"e", "Edit", "e"}, {"d", "Delete", "d"}}
-		if m.Edit != nil {
-			keys = append(keys, keycap{"^S", "Save", "ctrl-s"}, keycap{"u", "Undo", "u"})
-		}
-		if m.Preview != nil {
-			keys = append(keys, keycap{"x", "Scenario", "x"}, keycap{"D", "Debug", "D"})
-		}
-		keys = append(keys, keycap{"/", "Filter", "/"}, keycap{"v", "View", "v"})
-		if m.Edit == nil {
-			keys = append(keys, keycap{"r", "Refresh", "r"})
-		}
-		if m.Tab == tabTopology {
-			keys = append(keys, keycap{"m", "Map", "m"}, keycap{"z", "Zoom", "z"})
-		}
-		keys = append(keys, keycap{"↵", "Details", "enter"}, keycap{"?", "About", "?"}, keycap{"q", "Quit", "q"})
-	}
-	for _, k := range keys {
-		need := width(k.key) + width(k.label) + 4
-		if x+need > cv.W {
-			break
-		}
-		start := x
-		cap := " " + k.key + " "
-		if m.NoColor {
-			cap = "[" + k.key + "]"
-		}
-		x += cv.Text(x, y, cap, fg(cGlow).Bg(cKeyBG).bold(), -1)
-		x += cv.Text(x, y, " "+k.label+" ", fg(cMuted), -1)
-		if k.action != "" {
-			m.hit(start, y, x-start, "key:"+k.action)
-		}
-	}
-}
-
-// --- modals ------------------------------------------------------------------
-
-func (m *Model) modalBox(cv *Canvas, w, h int, title string) (int, int, int, int) {
-	w = min(w, cv.W-2)
-	h = min(h, cv.H-2)
-	x := (cv.W - w) / 2
-	y := max(1, (cv.H-h)/2)
-	bg := Style{BG: cPanelBG}
-	cv.Fill(x, y, w, h, bg)
-	cv.Box(x, y, w, h, fg(cAccent).Bg(cPanelBG))
-	cv.Text(x+2, y, " "+title+" ", fg(cDeep).Bg(cAccent).bold(), w-4)
-	return x + 2, y + 1, w - 4, h - 2
-}
-
-func (m *Model) button(cv *Canvas, x, y int, label, action string, focused bool) int {
-	st := fg(cText).Bg(cKeyBG)
-	if focused {
-		st = fg(cDeep).Bg(cAccent).bold()
-	}
-	text := "[ " + label + " ]"
-	if !m.NoColor {
-		text = "  " + label + "  "
-	}
-	n := cv.Text(x, y, text, st, -1)
-	m.hit(x, y, n, action)
-	return n
 }
 
 func (m *Model) drawModal(cv *Canvas) {

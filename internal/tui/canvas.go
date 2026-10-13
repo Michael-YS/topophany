@@ -59,8 +59,10 @@ type cell struct {
 
 // Canvas is a fixed grid of terminal cells. Every rendered line is exactly W
 // columns wide; untrusted text is stripped of control characters on entry.
+// Base, when set, is the background of every cell that does not set its own.
 type Canvas struct {
 	W, H  int
+	Base  Color
 	cells []cell
 }
 
@@ -245,13 +247,17 @@ func (c *Canvas) Lines(profile int) []string {
 			if p.cont {
 				continue
 			}
-			if profile != colorNone && (p.st != cur || !styled && !p.st.plain()) {
-				if p.st.plain() {
+			st := p.st
+			if st.BG == 0 {
+				st.BG = c.Base
+			}
+			if profile != colorNone && (st != cur || !styled && !st.plain()) {
+				if st.plain() {
 					b.WriteString("\x1b[0m")
 				} else {
-					sgr(&b, p.st, profile)
+					sgr(&b, st, profile)
 				}
-				cur = p.st
+				cur = st
 				styled = true
 			}
 			b.WriteString(p.ch)
