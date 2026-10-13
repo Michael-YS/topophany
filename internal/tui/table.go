@@ -44,12 +44,20 @@ const tableGap = 2
 func layoutTable(rows []Row, heads []string, w int) tableLayout {
 	l := tableLayout{}
 	ncol := 0
+	words := map[string]int{}
 	for _, r := range rows {
 		l.titleW = max(l.titleW, width(r.Tree+r.Title))
 		ncol = max(ncol, len(r.Cols))
-		if s, _ := stateWord(r); s != "" {
+		s, _ := stateWord(r)
+		words[s]++
+		if s != "" {
 			l.stateW = max(l.stateW, width(s))
 		}
+	}
+	// A state every row shares (a draft is all "unknown", a cached view all
+	// "cached") says nothing per row; the header already says it.
+	if len(words) == 1 && len(rows) >= 3 {
+		l.stateW = 0
 	}
 	if len(heads) > 0 {
 		l.titleW = max(l.titleW, width(heads[0]))
@@ -130,6 +138,19 @@ func layoutTable(rows []Row, heads []string, w int) tableLayout {
 	return l
 }
 
+// fitHead shortens a heading such as "NODE · ENDPOINT · LINK" by whole parts
+// rather than cutting it mid-word.
+func fitHead(s string, w int) string {
+	for width(s) > w {
+		i := strings.LastIndex(s, " · ")
+		if i < 0 {
+			return ellipsis(s, w)
+		}
+		s = s[:i]
+	}
+	return s
+}
+
 func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 	if h <= 0 {
 		return
@@ -147,12 +168,12 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 	if len(heads) > 0 && h >= 6 {
 		hs := fg(cFaint).bold()
 		cx := x + 2
-		cv.Text(cx, y, heads[0], hs, lay.titleW)
+		cv.Text(cx, y, fitHead(heads[0], lay.titleW), hs, lay.titleW)
 		cx += lay.titleW
 		for i, cw := range lay.cols {
 			cx += tableGap
 			if i+1 < len(heads) {
-				head := heads[i+1]
+				head := fitHead(heads[i+1], cw)
 				if lay.right[i] {
 					head = strings.Repeat(" ", max(0, cw-width(head))) + head
 				}
@@ -230,7 +251,7 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 			}
 			cx += cw
 		}
-		if word, st := stateWord(r); word != "" {
+		if word, st := stateWord(r); word != "" && lay.stateW > 0 {
 			cv.Text(x+w-width(word), y+i, word, base.Merge(st), -1)
 		}
 		m.hit(x-1, y+i, w+2, "row:"+itoa(j))

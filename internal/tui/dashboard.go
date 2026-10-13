@@ -99,8 +99,13 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 		// The big number is the failures when there are any, otherwise
 		// what passes.
 		n, label, nc := up, "checks passing", cUp
+		sub := "of " + itoa(total) + " configured"
 		switch {
-		case m.Cached() || m.Edit != nil || total == 0:
+		case total == 0 && m.Cached():
+			n, label, nc, sub = 0, "checks known", cUnknown, "no snapshot received yet"
+		case total == 0:
+			n, label, nc, sub = 0, "checks in this view", cUnknown, "nothing is measured from here"
+		case m.Cached() || m.Edit != nil:
 			n, label, nc = unk, "checks without current evidence", cUnknown
 		case down > 0:
 			n, label, nc = down, "checks failing", cDown
@@ -110,7 +115,7 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 		bw := m.bigText(cv, x, row+1, itoa(n), fg(nc).bold())
 		lx := x + bw + 3
 		cv.Text(lx, row+1, label, fg(cText), x+w-lx)
-		cv.Text(lx, row+2, "of "+itoa(total)+" configured", fg(cMuted), x+w-lx)
+		cv.Text(lx, row+2, sub, fg(cMuted), x+w-lx)
 		row += 5
 	}
 	if row < y+h {
@@ -226,6 +231,9 @@ func serviceRank(r Row) int {
 // observersCard lists each vantage point with the age of its last evidence.
 func (m *Model) observersCard(cv *Canvas, x, y, w, h int) {
 	rows := m.tabRows(tabObservers)
+	if h <= 0 {
+		return
+	}
 	if len(rows) == 0 {
 		cv.Text(x, y, "No observers declared.", fg(cMuted).italic(), w)
 		return
@@ -304,7 +312,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		ix, iy, iw, ih = m.panel(cv, x+mw, y, sw, sh, "STATUS", "", false)
 		m.statusCard(cv, ix, iy, iw, ih)
 		left := h - sh
-		oh := min(nObservers, 6) + 2
+		oh := max(1, min(nObservers, 6)) + 2
 		if mh < h {
 			// The map letterboxes: attention goes under it, the sidebar
 			// keeps services and observers.
