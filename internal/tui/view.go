@@ -90,7 +90,7 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		if m.mapMode() == "network" {
 			mode = "network graph"
 		}
-		if w >= 100 {
+		if w >= 120 {
 			lw := min(max(w*40/100, 34), 84)
 			mw := w - lw
 			// A world-spanning network letterboxes in a tall panel; the map

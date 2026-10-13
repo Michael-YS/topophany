@@ -711,6 +711,17 @@ func fit(s string, w int) string {
 	return b.String()
 }
 
+// ellipsis shortens s to at most w columns, marking the cut with "…".
+func ellipsis(s string, w int) string {
+	if width(s) <= w {
+		return s
+	}
+	if w <= 1 {
+		return strings.TrimRight(fit(s, w), " ")
+	}
+	return strings.TrimRight(fit(s, w-1), " ") + "…"
+}
+
 // wrap breaks at spaces when possible and hard-wraps long words.
 func wrap(s string, w int) []string {
 	if w < 1 {
