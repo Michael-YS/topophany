@@ -131,9 +131,9 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 			m.drawList(cv, ix, iy, iw, ih, rows)
 			return
 		}
-	case m.Tab == tabOverview && h >= 14 && w >= 60:
-		m.cards(cv, x, y, w)
-		y, h = y+4, h-4
+	case m.Tab == tabOverview:
+		m.overview(cv, x, y, w, h, rows, sel, tag)
+		return
 	}
 	if w >= 100 {
 		lw := w / 2
@@ -145,90 +145,6 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 	}
 	ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, tag, true)
 	m.drawList(cv, ix, iy, iw, ih, rows)
-}
-
-// cards are the Overview summary strip; bars use braille cells for a
-// dot-matrix look.
-func (m *Model) cards(cv *Canvas, x, y, w int) {
-	n := 3
-	if w >= 100 {
-		n = 4
-	}
-	cw := w / n
-	up, down, warn, unk := m.counts()
-	total := up + down + warn + unk
-	card := func(i int, title string, big string, bigC Color, draw func(cx, cy, cw int)) {
-		px := x + i*cw
-		pw := cw
-		if i == n-1 {
-			pw = w - i*cw
-		}
-		ix, iy, iw, _ := m.panel(cv, px, y, pw, 4, title, "", false)
-		cv.Text(ix, iy, big, fg(bigC).bold(), iw)
-		draw(ix, iy+1, iw)
-	}
-	card(0, "CHECKS", itoa(total)+" configured", cText, func(cx, cy, cw int) {
-		if total == 0 {
-			cv.Text(cx, cy, "no checks in this view", fg(cMuted), cw)
-			return
-		}
-		segs := []struct {
-			n int
-			c Color
-		}{{up, cUp}, {warn, cWarn}, {down, cDown}, {unk, cFaint}}
-		pos := 0
-		for _, s := range segs {
-			k := s.n * cw / total
-			if s.n > 0 && k == 0 {
-				k = 1
-			}
-			for j := 0; j < k && pos < cw; j++ {
-				cv.Set(cx+pos, cy, '⣿', fg(s.c))
-				pos++
-			}
-		}
-		for ; pos < cw; pos++ {
-			cv.Set(cx+pos, cy, '⣀', fg(cFaint))
-		}
-	})
-	inc := len(m.Snapshot.Incidents)
-	big, c := "none open", cUp
-	if inc > 0 {
-		big, c = itoa(inc)+" open", cDown
-	}
-	card(1, "INCIDENTS", big, c, func(cx, cy, cw int) {
-		if inc > 0 {
-			cv.Text(cx, cy, m.Snapshot.Incidents[0].Scope, fg(cMuted), cw)
-		} else {
-			cv.Text(cx, cy, "no inferred outage in this view", fg(cMuted), cw)
-		}
-	})
-	live := 0
-	for _, o := range m.Snapshot.Observers {
-		if o.Health == "up" && !m.Cached() {
-			live++
-		}
-	}
-	card(2, "OBSERVERS", itoa(live)+"/"+itoa(len(m.Snapshot.Observers))+" live", cAccent2, func(cx, cy, cw int) {
-		k := cx
-		for _, o := range m.Snapshot.Observers {
-			h := o.Health
-			if m.Cached() {
-				h = "unknown"
-			}
-			if k+2 > cx+cw {
-				break
-			}
-			cv.Set(k, cy, healthGlyph(h), fg(healthColor(h)))
-			k += 2
-		}
-	})
-	if n == 4 {
-		t := m.Snapshot.Topology
-		card(3, "TOPOLOGY", itoa(len(t.Nodes))+" nodes · "+itoa(len(t.Links))+" links", cText, func(cx, cy, cw int) {
-			cv.Text(cx, cy, itoa(len(t.Paths))+" paths · "+itoa(len(t.Endpoints))+" endpoints · "+itoa(len(t.Services))+" services", fg(cMuted), cw)
-		})
-	}
 }
 
 func (m *Model) drawModal(cv *Canvas) {

@@ -113,7 +113,7 @@ func packRows(ws, gaps []float64, lo, hi float64) {
 	}
 }
 
-func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, groups map[string]Color, focusNode, focusEdge string) {
+func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, groups map[string]Color, f mapFocus) {
 	if len(nodes) == 0 {
 		msg := "Empty topology — press a to add a node"
 		cv.Text(x+max(0, (w-width(msg))/2), y+h/2, msg, fg(cMuted).italic(), w)
@@ -311,11 +311,12 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		l := vlayer[i]
 		boxes[i] = box{x: colX[l], y: row[i], w: max(4, min(width(label[i])+4, colW[l], w-colX[l]))}
 	}
-	// Path hops are overlays: drawn when they fail or belong to the observer
-	// in view, never used to place nodes.
+	// Path hops are overlays: drawn when they fail, belong to the observer
+	// in view or to the selected route, never used to place nodes.
 	drawn := []mapEdge{}
 	for _, e := range edges {
-		if e.Kind == edgePath && signalRank(e.Signal) < 3 && (m.Observer == "" || e.Observer != m.Observer) {
+		route := f.hops[[2]string{e.From, e.To}] || f.hops[[2]string{e.To, e.From}]
+		if e.Kind == edgePath && !route && signalRank(e.Signal) < 3 && (m.Observer == "" || e.Observer != m.Observer) {
 			continue
 		}
 		drawn = append(drawn, e)
@@ -330,7 +331,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 	dot := func(cx, cy int) [2]float64 { return [2]float64{float64(cx * 2), float64(cy*4 + 2)} }
 	for _, e := range drawn {
 		a, b := boxes[idx[e.From]], boxes[idx[e.To]]
-		c, pri, dash := edgeStyle(e, focusNode, focusEdge)
+		c, pri, dash := edgeStyle(e, f)
 		var path [][2]float64
 		p0 := dot(a.x+a.w, a.y)
 		p0[0]++
@@ -392,7 +393,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		if n.Kind == "external" {
 			st = st.italic()
 		}
-		if n.ID == focusNode {
+		if f.hasNode(n.ID) {
 			chip = cSelBG
 			st = fg(cGlow).Bg(chip).bold()
 		}

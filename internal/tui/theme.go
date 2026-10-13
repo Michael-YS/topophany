@@ -64,18 +64,6 @@ func healthGlyph(h string) rune {
 	}
 	return '○'
 }
-func badge(health string) string {
-	switch health {
-	case "up":
-		return "● UP  "
-	case "down":
-		return "✖ DOWN"
-	case "degraded":
-		return "▲ WARN"
-	default:
-		return "○ UNK "
-	}
-}
 
 // healthWord is the short status label used in tables and pills.
 func healthWord(h string) string {

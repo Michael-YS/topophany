@@ -2,6 +2,7 @@ package tui
 
 import (
 	"math"
+	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
@@ -217,21 +218,94 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 	return nodes, edges, groups
 }
 
-// focus reports which node and edge IDs the current selection focuses.
-func (m *Model) focus(sel Row) (node, edge string) {
-	switch sel.Kind {
-	case "node":
-		return sel.ID, ""
-	case "link":
-		return "", sel.ID
-	case "endpoint":
-		for _, e := range m.Snapshot.Topology.Endpoints {
-			if e.ID == sel.ID {
-				return e.Node, ""
+// mapFocus is what the current selection lights up on a map: a node (shown
+// by name), or the nodes and hops of a declared path, or a single link.
+type mapFocus struct {
+	node  string
+	nodes map[string]bool
+	edges map[string]bool
+	hops  map[[2]string]bool
+}
+
+func (f mapFocus) any() bool { return f.node != "" || len(f.nodes) > 0 || len(f.edges) > 0 }
+func (f mapFocus) hasNode(id string) bool {
+	return id != "" && (id == f.node || f.nodes[id])
+}
+func (f mapFocus) hasEdge(e mapEdge) bool {
+	return f.edges[e.ID] || f.hops[[2]string{e.From, e.To}] || f.hops[[2]string{e.To, e.From}] ||
+		f.node != "" && (e.From == f.node || e.To == f.node)
+}
+
+// focus maps the selected row to what it means on the map. Services,
+// observers and endpoints focus their node; paths and incidents on a path
+// focus the whole declared route.
+func (m *Model) focus(sel Row) mapFocus {
+	t := m.Snapshot.Topology
+	f := mapFocus{nodes: map[string]bool{}, edges: map[string]bool{}, hops: map[[2]string]bool{}}
+	route := func(id string) {
+		for _, p := range t.Paths {
+			if p.ID != id {
+				continue
+			}
+			for i, n := range p.Nodes {
+				f.nodes[n] = true
+				if i > 0 {
+					f.hops[[2]string{p.Nodes[i-1], n}] = true
+				}
+			}
+			for _, l := range p.Links {
+				f.edges[l] = true
 			}
 		}
 	}
-	return "", ""
+	switch sel.Kind {
+	case "node":
+		f.node = sel.ID
+	case "link":
+		f.edges[sel.ID] = true
+	case "path":
+		route(sel.ID)
+	case "endpoint":
+		for _, e := range t.Endpoints {
+			if e.ID == sel.ID {
+				f.node = e.Node
+			}
+		}
+	case "service":
+		for _, v := range t.Services {
+			if v.ID == sel.ID {
+				f.node = v.Node
+			}
+		}
+	case "observer":
+		for _, o := range t.Observers {
+			if o.ID == sel.ID {
+				f.node = o.Node
+			}
+		}
+	case "check":
+		for _, c := range t.Checks {
+			if c.ID != sel.ID {
+				continue
+			}
+			route(c.Path)
+			for _, e := range t.Endpoints {
+				if e.ID == c.Endpoint && c.Path == "" {
+					f.node = e.Node
+				}
+			}
+		}
+	case "incident":
+		if _, scope, ok := strings.Cut(sel.ID, "/"); ok {
+			parts := strings.Split(scope, "/")
+			if len(parts) >= 3 && parts[1] == "path" {
+				route(parts[2])
+			} else if len(parts) >= 3 && parts[1] == "asset" {
+				f.node = parts[2]
+			}
+		}
+	}
+	return f
 }
 
 func (m *Model) mapMode() string {
@@ -261,16 +335,16 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 		return
 	}
 	nodes, edges, groups := m.graph()
-	focusNode, focusEdge := m.focus(sel)
+	f := m.focus(sel)
 	legend := h >= 6
 	mh := h
 	if legend {
 		mh--
 	}
 	if m.mapMode() == "geo" {
-		m.drawGeo(cv, x, y, w, mh, nodes, edges, focusNode, focusEdge)
+		m.drawGeo(cv, x, y, w, mh, nodes, edges, f)
 	} else {
-		m.drawNetwork(cv, x, y, w, mh, nodes, edges, groups, focusNode, focusEdge)
+		m.drawNetwork(cv, x, y, w, mh, nodes, edges, groups, f)
 	}
 	if legend {
 		ly := y + h - 1
@@ -307,7 +381,7 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 	}
 }
 
-func edgeStyle(e mapEdge, focusNode, focusEdge string) (Color, int8, int) {
+func edgeStyle(e mapEdge, f mapFocus) (Color, int8, int) {
 	var c Color
 	pri, dash := int8(3), 0
 	switch e.Signal {
@@ -329,7 +403,7 @@ func edgeStyle(e mapEdge, focusNode, focusEdge string) (Color, int8, int) {
 	case edgeContain:
 		c, pri, dash = Mix(cFaint, cInk, .2), 2, 1
 	}
-	if e.ID == focusEdge || focusNode != "" && (e.From == focusNode || e.To == focusNode) {
+	if f.hasEdge(e) {
 		c = Mix(c, cGlow, .4)
 		pri = 8
 	}

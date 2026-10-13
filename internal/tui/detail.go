@@ -187,8 +187,8 @@ func (m *Model) drawDetail(cv *Canvas, x, y, w, h int, r Row, scroll bool) {
 		cv.Text(x, y, strings.TrimSpace(r.Title), fg(cGlow).bold(), w-pw-1)
 		cv.Text(x+w-pw, y, label, st, -1)
 		sub := r.Kind + "  ·  " + r.ID
-		if r.Kind == "incident" && len(r.Cols) > 0 {
-			sub = "incident  ·  opened " + r.Cols[0]
+		if _, scope, ok := strings.Cut(r.ID, "/"); ok && r.Kind == "incident" {
+			sub = "incident  ·  " + scope
 		}
 		cv.Text(x, y+1, sub, fg(cFaint), w)
 		for i := 0; i < w; i++ {

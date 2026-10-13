@@ -87,7 +87,118 @@ func (m *Model) say(msg string, isErr bool) {
 	m.notice, m.noticeErr, m.noticeAt = secure.Text(msg), isErr, m.Now
 }
 
+// Rows lists the current tab, filtered by the search and marked when the
+// view is cached or a local draft.
 func (m *Model) Rows() []Row {
+	rows := m.tabRows(m.Tab)
+	filtered := rows[:0]
+	search := strings.ToLower(m.Search)
+	for _, r := range rows {
+		if search == "" || strings.Contains(strings.ToLower(r.ID+" "+r.Title+" "+r.Meta+" "+strings.Join(r.Cols, " ")), search) {
+			if m.Cached() {
+				r.Health = "unknown"
+				r.Note = "cached"
+				r.Meta = "CACHED · " + r.Meta
+				r.Details = append([]string{"CACHED VIEW — current status not established.", ""}, r.Details...)
+			}
+			if m.Edit != nil {
+				r.Details = append([]string{"LOCAL DRAFT — no live evidence in the editor.", ""}, r.Details...)
+			}
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+// needsAttention is true for rows a person should look at: confirmed or
+// partial failures, entities on a failing path, and silent observers.
+func needsAttention(r Row) bool {
+	switch {
+	case r.Kind == "incident", r.Health == "down", r.Health == "degraded", r.Note == "affected":
+		return true
+	case r.Kind == "observer":
+		return r.Health != "up"
+	}
+	return false
+}
+
+func attentionRank(r Row) int {
+	switch {
+	case r.Kind == "incident":
+		return 0
+	case r.Health == "down":
+		return 1
+	case r.Health == "degraded":
+		return 2
+	case r.Kind == "observer":
+		return 3
+	}
+	return 4
+}
+
+// incidentTitle names an incident by who saw it and what failed, e.g.
+// "长沙 Windows → 主链 DMIT → AAITR 家宽" for scope cs-win/path/w-dmit-aaitr.
+func (m *Model) incidentTitle(i model.Incident) string {
+	t := m.Snapshot.Topology
+	name := func(id string, list func(string) string) string {
+		if n := list(id); n != "" {
+			return n
+		}
+		return id
+	}
+	observer := func(id string) string {
+		for _, o := range t.Observers {
+			if o.ID == id {
+				return o.Name
+			}
+		}
+		return ""
+	}
+	path := func(id string) string {
+		for _, p := range t.Paths {
+			if p.ID == id {
+				return p.Name
+			}
+		}
+		return ""
+	}
+	node := func(id string) string {
+		for _, n := range t.Nodes {
+			if n.ID == id {
+				return n.Name
+			}
+		}
+		return ""
+	}
+	check := func(id string) string {
+		for _, c := range t.Checks {
+			if c.ID == id {
+				return c.Name
+			}
+		}
+		return ""
+	}
+	parts := strings.Split(strings.TrimSuffix(i.Scope, "/policy"), "/")
+	what := ""
+	switch {
+	case len(parts) >= 3 && parts[1] == "path":
+		what = name(parts[2], path)
+	case len(parts) >= 3 && parts[1] == "asset":
+		what = name(parts[2], node)
+	case len(parts) >= 2:
+		what = name(parts[1], check)
+	default:
+		return i.Scope
+	}
+	title := name(parts[0], observer) + " → " + what
+	if strings.HasSuffix(i.Scope, "/policy") {
+		title += " · policy"
+	}
+	return title
+}
+
+// tabRows builds the unfiltered rows of a tab.
+func (m *Model) tabRows(tab int) []Row {
 	s := m.Snapshot
 	rows := []Row{}
 	nodeNames := map[string]string{}
@@ -124,27 +235,32 @@ func (m *Model) Rows() []Row {
 		return model.EntityState{ID: id, Health: "unknown", Evidence: "unknown", Reason: "no state in this view"}
 	}
 	incident := func(i model.Incident) Row {
-		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: i.Scope, Meta: i.Summary, Cols: []string{age(m.Now, i.Since), itoa(len(i.Checks)) + " checks"}, Details: incidentDetails(i)}
+		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: m.incidentTitle(i), Meta: i.Summary, Cols: []string{age(m.Now, i.Since), itoa(len(i.Checks)) + " checks"}, Details: incidentDetails(i)}
 	}
-	switch m.Tab {
+	switch tab {
 	case tabOverview:
+		// Everything that needs a look, worst first: incidents, failures,
+		// partial failures, silent observers, then whatever sits on a
+		// failing path. Nothing here means nothing needs attention.
 		for _, i := range s.Incidents {
-			rows = append(rows, incident(i))
-		}
-		for _, p := range s.Paths {
-			r := entity("path", p, "Path / "+p.ID, "", nil)
-			for _, d := range s.Topology.Paths {
-				if d.ID == p.ID {
-					r.Title, r.Cols = d.Name, []string{observerNames[d.Observer]}
-				}
-			}
+			r := incident(i)
+			r.Cols = []string{"incident"}
 			rows = append(rows, r)
 		}
-		if len(rows) == 0 {
-			for _, v := range s.Services {
-				rows = append(rows, entity("service", v, "Service / "+v.ID, "", nil))
+		kinds := map[int]string{tabServices: "service", tabPaths: "path", tabTopology: "node", tabObservers: "observer"}
+		for _, t := range []int{tabServices, tabPaths, tabTopology, tabObservers} {
+			if t == tabObservers && m.Edit != nil {
+				continue
+			}
+			for _, r := range m.tabRows(t) {
+				if r.Kind == kinds[t] && needsAttention(r) {
+					r.Tree = ""
+					r.Cols = []string{r.Kind}
+					rows = append(rows, r)
+				}
 			}
 		}
+		sort.SliceStable(rows, func(i, j int) bool { return attentionRank(rows[i]) < attentionRank(rows[j]) })
 	case tabTopology:
 		checkHealth := map[string][]string{}
 		for _, cs := range s.Checks {
@@ -328,23 +444,7 @@ func (m *Model) Rows() []Row {
 			rows = append(rows, Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: age(m.Now, e.LastSeen), Cols: []string{host, age(m.Now, e.LastSeen)}, Details: details})
 		}
 	}
-	filtered := rows[:0]
-	search := strings.ToLower(m.Search)
-	for _, r := range rows {
-		if search == "" || strings.Contains(strings.ToLower(r.ID+" "+r.Title+" "+r.Meta+" "+strings.Join(r.Cols, " ")), search) {
-			if m.Cached() {
-				r.Health = "unknown"
-				r.Note = "cached"
-				r.Meta = "CACHED · " + r.Meta
-				r.Details = append([]string{"CACHED VIEW — current status not established.", ""}, r.Details...)
-			}
-			if m.Edit != nil {
-				r.Details = append([]string{"LOCAL DRAFT — no live evidence in the editor.", ""}, r.Details...)
-			}
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
+	return rows
 }
 
 // tabColumns heads the list columns of the current tab: the title column
@@ -352,7 +452,7 @@ func (m *Model) Rows() []Row {
 func (m *Model) tabColumns() []string {
 	switch m.Tab {
 	case tabOverview:
-		return []string{"ITEM", "OBSERVER · SINCE", "CHECKS"}
+		return []string{"ITEM", "KIND"}
 	case tabTopology:
 		return []string{"NODE · ENDPOINT · LINK", "GROUP · NETWORK", "KIND · ADDRESS"}
 	case tabServices:
@@ -507,12 +607,19 @@ func (m *Model) Key(k string) string {
 			}
 		}
 		k = ""
-	case strings.HasPrefix(k, "select:"):
+	case strings.HasPrefix(k, "select:"), strings.HasPrefix(k, "goto:"):
+		// select: picks a row in this tab when it has one; goto: (and a
+		// select: this tab cannot satisfy) opens the entity's own tab.
 		parts := strings.SplitN(k, ":", 3)
+		found := false
 		for i, r := range m.Rows() {
-			if len(parts) == 3 && r.Kind == parts[1] && r.ID == parts[2] {
+			if len(parts) == 3 && parts[0] == "select" && r.Kind == parts[1] && r.ID == parts[2] {
 				m.Selected = i
+				found = true
 			}
+		}
+		if !found && len(parts) == 3 {
+			m.selectEntity(parts[1], parts[2])
 		}
 		k = ""
 	case strings.HasPrefix(k, "key:"):

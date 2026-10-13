@@ -307,7 +307,7 @@ func (m *Model) footer(cv *Canvas, y int) {
 		if m.Edit == nil {
 			keys = append(keys, keycap{"r", "Refresh", "r"})
 		}
-		if m.Tab == tabTopology {
+		if m.Tab == tabTopology || m.Tab == tabOverview && cv.W >= 90 && cv.H >= 30 {
 			keys = append(keys, keycap{"m", "Map", "m"}, keycap{"z", "Zoom", "z"})
 		}
 		keys = append(keys, keycap{"↵", "Details", "enter"}, keycap{"?", "About", "?"}, keycap{"q", "Quit", "q"})

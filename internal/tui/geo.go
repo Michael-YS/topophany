@@ -164,12 +164,13 @@ type geoSite struct {
 	nodes   []int
 	places  []string
 	signal  string
-	focused bool
+	focused bool // holds the selected node
+	onRoute bool // holds a node of the selected path
 }
 
 // geoSites merges placed nodes into sites: the same declared place, or
 // close enough on screen that their markers would collide.
-func geoSites(nodes []mapNode, g geoView, focusNode string) []*geoSite {
+func geoSites(nodes []mapNode, g geoView, f mapFocus) []*geoSite {
 	sites := []*geoSite{}
 	for i, n := range nodes {
 		if !n.Located {
@@ -193,7 +194,8 @@ func geoSites(nodes []mapNode, g geoView, focusNode string) []*geoSite {
 		}
 		s.nodes = append(s.nodes, i)
 		s.signal = worseSignal(s.signal, nodeSignal(n))
-		s.focused = s.focused || n.ID == focusNode
+		s.focused = s.focused || n.ID == f.node
+		s.onRoute = s.onRoute || f.nodes[n.ID]
 	}
 	for _, s := range sites {
 		sx, sy := 0.0, 0.0
@@ -231,14 +233,14 @@ type geoArc struct {
 	links, implied, problems int
 }
 
-func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, focusNode, focusEdge string) {
+func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, f mapFocus) {
 	unplaced := []int{}
 	pts := [][2]float64{}
 	var focus *[2]float64
 	for i, n := range nodes {
 		if n.Located {
 			pts = append(pts, [2]float64{n.Lat, n.Lon})
-			if n.ID == focusNode {
+			if n.ID == f.node || focus == nil && f.nodes[n.ID] {
 				focus = &[2]float64{n.Lat, n.Lon}
 			}
 		} else {
@@ -257,7 +259,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 	g := fitGeo(pts, W, H, m.Zoom, focus)
 	d := NewDots(w, mh)
 	m.drawLand(cv, d, x, y, w, mh, g)
-	sites := geoSites(nodes, g, focusNode)
+	sites := geoSites(nodes, g, f)
 	siteOf := map[string]int{}
 	for k, s := range sites {
 		for _, i := range s.nodes {
@@ -277,7 +279,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		if !okA || !okB || sa == sb {
 			continue
 		}
-		focused := e.ID == focusEdge || focusNode != "" && (e.From == focusNode || e.To == focusNode)
+		focused := f.hasEdge(e)
 		if e.Kind == edgePath && !focused && signalRank(e.Signal) < 3 && (m.Observer == "" || e.Observer != m.Observer) {
 			continue
 		}
@@ -333,7 +335,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		if a.declared {
 			e.Kind = edgeLink
 		}
-		c, pri, dash := edgeStyle(e, "", "")
+		c, pri, dash := edgeStyle(e, mapFocus{})
 		if a.focused {
 			c, pri = Mix(c, cGlow, .4), 8
 		}
@@ -351,7 +353,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 	for k, s := range sites {
 		c := signalColor(s.signal)
 		ring := Mix(c, cInk, .62)
-		if s.focused {
+		if s.focused || s.onRoute {
 			ring = Mix(c, cGlow, .25)
 		}
 		halo(d, s.x, s.y, 3.2, ring, 7)
@@ -361,7 +363,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		}
 	}
 	d.Blit(cv, x, y, 0)
-	m.geoMarkers(cv, x, y, w, mh, nodes, sites, focusNode)
+	m.geoMarkers(cv, x, y, w, mh, nodes, sites, f.node)
 	if tray {
 		ty := y + mh
 		cx := x + 1
@@ -372,7 +374,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 				break
 			}
 			st := fg(cMuted)
-			if n.ID == focusNode {
+			if f.hasNode(n.ID) {
 				st = fg(cGlow).Bg(cSelBG).bold()
 			}
 			sig := nodeSignal(n)
