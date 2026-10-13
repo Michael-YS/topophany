@@ -253,6 +253,12 @@ func TestAboutAnimatesAndNamesTheEtymology(t *testing.T) {
 	if m.Animating() > 100*time.Millisecond {
 		t.Fatal("About not animated")
 	}
+	// The wheel turns the globe instead of moving a selection.
+	still := strings.Join(m.Render(), "\n")
+	m.Key("mouse:65:20:10:M")
+	if m.aboutSpin == 0 || m.Selected != 0 || strings.Join(m.Render(), "\n") == still {
+		t.Fatal("wheel does not turn the globe")
+	}
 }
 
 func TestEveryModeFrameBounds(t *testing.T) {

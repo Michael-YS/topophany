@@ -7,8 +7,8 @@ import (
 )
 
 // Topophany = τόπος (place) + -phany (φαίνειν, to show): the appearance of
-// place. The About art is a globe whose declared places surface as light and
-// connect, rendered as an ordered-dither braille dot matrix.
+// place. The About art is a one-bit dithered globe on which the places
+// declared in the topology are the only lights.
 
 var font5x7 = map[rune][7]string{
 	'T': {"#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."},
@@ -34,25 +34,44 @@ var defaultPlaces = []place{
 }
 
 // aboutPlaces uses the operator's declared node locations when present, so
-// the art literally shows *their* places appearing.
+// the art literally shows *their* places appearing. Nodes at one declared
+// place become one light.
 func (m *Model) aboutPlaces() ([]place, [][2]int) {
 	nodes, edges, _ := m.graph()
 	ps := []place{}
 	at := map[string]int{}
+	byPlace := map[string]int{}
 	for _, n := range nodes {
 		if !n.Located || n.Inherited {
 			continue
 		}
+		key := n.Place
+		if key == "" {
+			key = n.ID
+		}
+		if k, ok := byPlace[key]; ok {
+			at[n.ID] = k
+			ps[k].health = worseSignal(ps[k].health, nodeSignal(n))
+			continue
+		}
+		name := n.Place
+		if name == "" {
+			name = n.Name
+		}
+		byPlace[key] = len(ps)
 		at[n.ID] = len(ps)
-		ps = append(ps, place{n.Name, n.Lat, n.Lon, n.Health})
+		ps = append(ps, place{name, n.Lat, n.Lon, nodeSignal(n)})
 	}
 	arcs := [][2]int{}
 	if len(ps) >= 2 {
 		seen := map[[2]int]bool{}
 		for _, e := range edges {
+			if e.Kind == edgeContain {
+				continue
+			}
 			a, okA := at[e.From]
 			b, okB := at[e.To]
-			if okA && okB && a != b && !seen[[2]int{a, b}] {
+			if okA && okB && a != b && !seen[[2]int{a, b}] && !seen[[2]int{b, a}] {
 				seen[[2]int{a, b}] = true
 				arcs = append(arcs, [2]int{a, b})
 			}
@@ -88,6 +107,17 @@ func (g globe) toView(v vec) vec {
 	ts, tc := math.Sin(g.tilt), math.Cos(g.tilt)
 	return vec{x, y*tc - z*ts, y*ts + z*tc}
 }
+
+var (
+	cLandDay  = Hex(0xB4F5E8)
+	cLandDusk = Hex(0x2F9389)
+	cLandDark = Hex(0x1A4448)
+	cSeaDot   = Hex(0x183F57)
+	cSeaLit   = Hex(0x4A93B5)
+	cLimb     = Hex(0x235A77)
+	cCity     = Hex(0xFCD34D)
+)
+
 func (g globe) toWorld(v vec) vec {
 	ts, tc := math.Sin(-g.tilt), math.Cos(-g.tilt)
 	y, z := v[1]*tc-v[2]*ts, v[1]*ts+v[2]*tc
@@ -95,146 +125,188 @@ func (g globe) toWorld(v vec) vec {
 	return vec{v[0]*c + z*s, y, -v[0]*s + z*c}
 }
 
-func (m *Model) drawGlobe(cv *Canvas, x, y, w, h int, t float64) {
+// drawGlobe renders the globe centred in w×h cells as one-bit dot art:
+// land is an ordered dither lit by the sun with a crisp dotted coast, the
+// ocean a faint halftone that follows the light, the limb a thin line with a
+// haze beyond it. t is seconds since the About view opened; spin is extra
+// rotation from the mouse wheel.
+func (m *Model) drawGlobe(cv *Canvas, x, y, w, h int, t, spin float64) {
 	d := NewDots(w, h)
-	W, H := float64(w*2), float64(h*4)
-	R := math.Min(W, H)/2 - 3
-	if R < 4 {
+	W, H := w*2, h*4
+	R := math.Min(float64(W), float64(H))/2 - math.Max(3, math.Min(float64(W), float64(H))*.05)
+	if R < 6 {
 		return
 	}
-	cx, cy := W/2, H/2
+	cx, cy := float64(W)/2, float64(H)/2
 	places, arcs := m.aboutPlaces()
 	// Start with the first declared place facing the viewer, then drift east.
-	g := globe{spin: places[0].lon*math.Pi/180 - .5 + t*.16, tilt: .38}
-	light := vec{-.55, .45, .70}.norm()
+	g := globe{spin: places[0].lon*math.Pi/180 - .35 + t*.11 + spin, tilt: .36}
+	light := vec{-.62, .42, .66}.norm()
 	half := vec{light[0], light[1], light[2] + 1}.norm()
-	landAt := func(px, py int) bool {
+	normal := func(px, py int) (vec, bool) {
 		nx, ny := (float64(px)+.5-cx)/R, (float64(py)+.5-cy)/R
 		r2 := nx*nx + ny*ny
-		if r2 > 1 {
-			return false
-		}
-		wv := g.toWorld(vec{nx, -ny, math.Sqrt(1 - r2)})
-		return land(math.Asin(clamp(wv[1], -1, 1))*180/math.Pi, math.Atan2(wv[0], wv[2])*180/math.Pi)
+		return vec{nx, -ny, math.Sqrt(math.Max(0, 1-r2))}, r2 <= 1
 	}
-	for py := 0; py < h*4; py++ {
-		for px := 0; px < w*2; px++ {
-			nx, ny := (float64(px)+.5-cx)/R, (float64(py)+.5-cy)/R
-			r2 := nx*nx + ny*ny
-			if r2 > 1 {
-				if r2 < 1.16 {
-					glow := (1.16 - r2) / .16
-					if dither(px, py, glow*glow*.55) {
-						d.Set(px, py, Mix(cDeep, cAccent2, glow*.8), 0)
-					}
-					continue
-				}
-				// Sparse twinkling starfield.
-				hs := hash32(string([]byte{byte(px), byte(px >> 8), byte(py), byte(py >> 8)}))
-				if hs%173 == 0 {
-					tw := .5 + .5*math.Sin(t*(1.3+float64(hs%7)*.4)+float64(hs%97))
-					if tw > .35 {
-						d.Set(px, py, Mix(cFaint, cGlow, tw*.7), 0)
-					}
-				}
-				continue
-			}
-			v := vec{nx, -ny, math.Sqrt(1 - r2)}
-			wv := g.toWorld(v)
-			lat := math.Asin(clamp(wv[1], -1, 1)) * 180 / math.Pi
-			lon := math.Atan2(wv[0], wv[2]) * 180 / math.Pi
-			diff := math.Max(0, v.dot(light))
-			if land(lat, lon) {
-				if !landAt(px-1, py) || !landAt(px+1, py) || !landAt(px, py-1) || !landAt(px, py+1) {
-					d.Set(px, py, Mix(cCoast, cGlow, math.Pow(diff, 1.3)*.8), 1)
-					continue
-				}
-				b := .06 + .62*diff
-				if diff < .06 {
-					// Night side: scattered "city lights" are places appearing in the dark.
-					cell := hash32(string([]byte{byte(int(lat*1.5) + 128), byte(int(lon*1.5) + 128), byte(int(lon*1.5)>>8 + 9)}))
-					if cell%19 == 0 && dither(px, py, .7) {
-						d.Set(px, py, Hex(0xFCD34D), 2)
-						continue
-					}
-				}
-				if dither(px, py, b) {
-					d.Set(px, py, Mix(cLand, cGlow, math.Pow(diff, 1.6)*.75), 1)
-				}
-				continue
-			}
-			spec := math.Pow(math.Max(0, v.dot(half)), 28)
-			b := .02 + .12*diff*diff + .8*spec
-			if math.Abs(math.Mod(lat+900, 15)) < .7 || math.Abs(math.Mod(lon+1800, 15)) < .7 {
-				b += .1 + .1*diff
-			}
-			if dither(px, py, b) {
-				d.Set(px, py, Mix(cOcean, cAccent2, math.Min(1, diff*.5+spec)), 0)
+	// Which dots are land, once per frame; the coast test reads neighbours.
+	grid := make([]bool, W*H)
+	for py := 0; py < H; py++ {
+		for px := 0; px < W; px++ {
+			if v, in := normal(px, py); in {
+				wv := g.toWorld(v)
+				grid[py*W+px] = land(math.Asin(clamp(wv[1], -1, 1))*180/math.Pi, math.Atan2(wv[0], wv[2])*180/math.Pi)
 			}
 		}
 	}
-	project := func(v vec) (float64, float64, bool) {
-		p := g.toView(v)
-		sx, sy := cx+p[0]*R, cy-p[1]*R
-		visible := p[2] > 0 || p[0]*p[0]+p[1]*p[1] > 1
-		return sx, sy, visible
-	}
-	// Great-circle arcs lifted off the surface, with a travelling pulse.
-	for k, a := range arcs {
-		va, vb := sphere(places[a[0]].lat, places[a[0]].lon), sphere(places[a[1]].lat, places[a[1]].lon)
-		omega := math.Acos(clamp(va.dot(vb), -1, 1))
-		if omega < 1e-3 {
-			continue
+	isLand := func(px, py int) bool { return px >= 0 && py >= 0 && px < W && py < H && grid[py*W+px] }
+	// Shades are quantized: neighbouring cells share colors, which keeps
+	// the escape stream small without visible banding at dot scale.
+	landColor := func(lit, z float64) Color {
+		lit, z = math.Round(lit*10)/10, math.Round(z*5)/5
+		c := Mix(cLandDark, cLandDusk, math.Min(1, lit*3))
+		if lit > .33 {
+			c = Mix(cLandDusk, cLandDay, math.Pow((lit-.33)/.67, .8))
 		}
-		steps := int(omega*R*1.6) + 8
-		head := math.Mod(t*.35+float64(k)*.37, 1.4)
-		for i := 0; i <= steps; i++ {
-			s := float64(i) / float64(steps)
-			sa, sb := math.Sin((1-s)*omega)/math.Sin(omega), math.Sin(s*omega)/math.Sin(omega)
-			lift := 1 + .18*math.Sin(math.Pi*s)*math.Min(1, omega)
-			p := vec{(va[0]*sa + vb[0]*sb) * lift, (va[1]*sa + vb[1]*sb) * lift, (va[2]*sa + vb[2]*sb) * lift}
-			sx, sy, ok := project(p)
-			if !ok {
-				continue
-			}
-			dist := head - s
+		return Mix(cInk, c, .5+.5*math.Sqrt(z))
+	}
+	thick := math.Max(3, R*.09)
+	for py := 0; py < H; py++ {
+		for px := 0; px < W; px++ {
+			dx, dy := float64(px)+.5-cx, float64(py)+.5-cy
+			r := math.Hypot(dx, dy)
 			switch {
-			case dist >= 0 && dist < .06:
-				d.Set(int(sx), int(sy), Mix(cGlow, cAccent, dist/.06), 8)
-			case i%2 == 0:
-				d.Set(int(sx), int(sy), Mix(cAccent, cDeep, .35), 5)
+			case r > R+thick*2:
+				// Sparse stars far from the globe.
+				hs := hash32(string([]byte{byte(px), byte(px >> 8), byte(py), byte(py >> 8)}))
+				if hs%241 == 0 {
+					tw := .5 + .5*math.Sin(t*(.9+float64(hs%7)*.3)+float64(hs%97))
+					if tw > .3 {
+						d.Set(px, py, Mix(cInk, cMuted, .25+.45*tw), 0)
+					}
+				}
+			case r > R+thick:
+			case r > R:
+				// Atmosphere: an ordered-dither haze, brightest sunward.
+				f := 1 - (r-R)/thick
+				side := math.Max(0, (dx*light[0]-dy*light[1])/r)
+				if dither(px, py, f*f*(.18+.82*side)) {
+					d.Set(px, py, Mix(cInk, cAccent2, .25+.5*math.Round(f*4)/4), 1)
+				}
+			case r > R-1:
+				// The limb: one thin line, so the sphere keeps its shape on
+				// the night side too.
+				d.Set(px, py, cLimb, 1)
+			default:
+				v, _ := normal(px, py)
+				lit := math.Max(0, v.dot(light))
+				if grid[py*W+px] {
+					if !isLand(px-1, py) || !isLand(px+1, py) || !isLand(px, py-1) || !isLand(px, py+1) {
+						d.Set(px, py, landColor(math.Max(lit, .2), v[2]), 2)
+					} else if dither(px, py, .3+.7*lit) {
+						d.Set(px, py, landColor(lit, v[2]), 2)
+					}
+					continue
+				}
+				// Ocean: a sparse halftone that follows the light, with a
+				// soft specular glint.
+				spec := math.Pow(math.Max(0, v.dot(half)), 26)
+				if dither(px, py, .16*math.Pow(lit, 1.3)+.4*spec) {
+					d.Set(px, py, Mix(cSeaDot, cSeaLit, math.Round(math.Min(1, lit*.7+spec)*6)/6), 0)
+				}
 			}
 		}
 	}
-	// Places: a bright core and a breathing ring.
+	project := func(v vec) (float64, float64, vec) {
+		p := g.toView(v)
+		return cx + p[0]*R, cy - p[1]*R, p
+	}
+	// Great-circle arcs a little above the surface, each with a pulse; a
+	// small globe keeps only its places.
+	if R >= 36 {
+		for k, a := range arcs {
+			va, vb := sphere(places[a[0]].lat, places[a[0]].lon), sphere(places[a[1]].lat, places[a[1]].lon)
+			omega := math.Acos(clamp(va.dot(vb), -1, 1))
+			if omega < 1e-3 {
+				continue
+			}
+			steps := int(omega*R*1.4) + 8
+			head := math.Mod(t*.3+float64(k)*.37, 1.5)
+			for i := 0; i <= steps; i++ {
+				s := float64(i) / float64(steps)
+				sa, sb := math.Sin((1-s)*omega)/math.Sin(omega), math.Sin(s*omega)/math.Sin(omega)
+				lift := 1 + .07*math.Sin(math.Pi*s)*math.Min(1, omega)
+				p := vec{(va[0]*sa + vb[0]*sb) * lift, (va[1]*sa + vb[1]*sb) * lift, (va[2]*sa + vb[2]*sb) * lift}
+				sx, sy, v := project(p)
+				if v[2] < 0 {
+					continue // behind the globe
+				}
+				dist := head - s
+				switch {
+				case dist >= 0 && dist < .05:
+					d.Set(int(sx), int(sy), Mix(cGlow, cAccent, dist/.05), 8)
+				case i%2 == 0:
+					d.Set(int(sx), int(sy), Mix(cAccent, cInk, .5), 5)
+				}
+			}
+		}
+	}
+	// Places: a bright core and a slow ring; their health colors them when
+	// the topology has evidence, otherwise they are warm lights.
+	type mark struct {
+		x, y int
+		name string
+		c    Color
+	}
+	marks := []mark{}
 	for i, p := range places {
-		sx, sy, ok := project(sphere(p.lat, p.lon))
-		if !ok || sphere(p.lat, p.lon) == (vec{}) {
+		sx, sy, v := project(sphere(p.lat, p.lon))
+		if v[2] < .08 {
 			continue
 		}
-		if g.toView(sphere(p.lat, p.lon))[2] < .05 {
-			continue
-		}
-		c := cGlow
+		c := cCity
 		if p.health != "" && p.health != "unknown" {
-			c = healthColor(p.health)
+			c = signalColor(p.health)
 		}
-		for dy := -1; dy <= 1; dy++ {
-			for dx := -1; dx <= 1; dx++ {
+		core := 1
+		if R < 40 {
+			core = 0
+		}
+		for dy := -core; dy <= 1; dy++ {
+			for dx := -core; dx <= 0; dx++ {
 				d.Set(int(sx)+dx, int(sy)+dy, c, 9)
 			}
 		}
-		ring := 2.5 + 2.5*math.Mod(t*.8+float64(i)*.23, 1)
-		for a := 0.0; a < 2*math.Pi; a += .35 {
-			d.Set(int(sx+math.Cos(a)*ring), int(sy+math.Sin(a)*ring*.9), Mix(c, cDeep, ring/6), 7)
+		grow := math.Min(1, R/60)
+		ring := 2 + 3*grow*math.Mod(t*.6+float64(i)*.23, 1)
+		halo(d, sx, sy, ring, Mix(c, cInk, .3+ring/8), 7)
+		if v[2] > .3 && R >= 30 {
+			marks = append(marks, mark{int(sx) / 2, int(sy) / 4, p.name, c})
 		}
 	}
 	d.Blit(cv, x, y, 0)
+	// Names of the places facing the viewer, where they do not collide.
+	used := map[[2]int]bool{}
+	for _, mk := range marks {
+		lx, ly := mk.x+2, mk.y
+		n := width(mk.name)
+		free := lx+n < w && ly >= 0 && ly < h
+		for i := -1; i <= n && free; i++ {
+			free = !used[[2]int{lx + i, ly}]
+		}
+		if !free {
+			continue
+		}
+		for i := -1; i <= n; i++ {
+			used[[2]int{lx + i, ly}] = true
+		}
+		cv.Text(x+lx, y+ly, mk.name, fg(Mix(mk.c, cText, .55)).bold(), -1)
+	}
 }
 
-// drawWordmark renders TOPOPHANY from a 5x7 font where each font pixel is a
-// 2x2 block of braille dots. Dot density follows a dithered left-to-right
-// reveal, a travelling highlight, and a faint dithered halo around strokes.
+// drawWordmark sets TOPOPHANY in a 5x7 pixel face, two pixels per cell with
+// half blocks, filled with an ordered-dither gradient that a slow highlight
+// sweeps across. It dithers into view from the left on opening. Returns its
+// height in rows.
 func (m *Model) drawWordmark(cv *Canvas, x, y int, t float64) int {
 	const word = "TOPOPHANY"
 	gw, gh := len(word)*6-1, 7
@@ -244,103 +316,142 @@ func (m *Model) drawWordmark(cv *Canvas, x, y int, t float64) int {
 		}
 		return font5x7[rune(word[gx/6])][gy][gx%6] == '#'
 	}
-	d := NewDots(gw, (gh*2+3)/4+1)
-	for py := 0; py < d.H*4; py++ {
-		for px := 0; px < d.W*2; px++ {
-			gx, gy := px/2, py/2
-			reveal := clamp((t*1.1-float64(gx)/float64(gw)*.9-bayer8[py&7][px&7]*.5)*2.2, 0, 1)
-			band := math.Exp(-math.Pow(math.Mod(t*.55, 2.4)*36-float64(gx)+float64(gy)*.5-8, 2) / 20)
-			if on(gx, gy) {
-				v := reveal * (.9 + .1*band)
-				if dither(px, py, v) {
-					d.Set(px, py, Mix(Mix(cAccent, cAccent2, float64(gx)/float64(gw)), cGlow, band*.85), 2)
-				}
-				continue
+	ramp := []Color{cGlow, Hex(0xA7F3E4), cAccent, Hex(0x2DB3A3), Hex(0x1F7F78)}
+	band := math.Mod(t*9, float64(gw)*2.2) - 12
+	pixel := func(gx, gy int) Color {
+		reveal := clamp(t*1.4-float64(gx)/float64(gw)*.9, 0, 1)
+		if on(gx, gy) {
+			if reveal < bayer8[gy&7][gx&7] {
+				return 0
 			}
-			near := 0
-			for _, o := range [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, 1}, {-1, 1}, {1, -1}} {
-				if on(gx+o[0], gy+o[1]) {
-					near++
-				}
+			v := float64(gy)/float64(gh-1)*float64(len(ramp)-1) + bayer8[gy&7][gx&7] - .5
+			c := ramp[int(clamp(math.Round(v), 0, float64(len(ramp)-1)))]
+			if b := math.Exp(-math.Pow(float64(gx)-band-float64(gy)*.6, 2) / 18); b > .05 {
+				c = Mix(c, cGlow, b*.8)
 			}
-			if near > 0 && dither(px, py, reveal*(.02+.025*float64(near))*(1+2*band)) {
-				d.Set(px, py, Mix(cDeep, cAccent, .45+.4*band), 1)
+			return c
+		}
+		if on(gx-1, gy-1) && reveal >= 1 && !m.NoColor {
+			return Mix(cAccent, cInk, .8) // the shadow
+		}
+		return 0
+	}
+	rows := (gh + 2) / 2
+	for r := 0; r < rows; r++ {
+		for gx := 0; gx <= gw; gx++ {
+			top, bottom := pixel(gx, r*2), pixel(gx, r*2+1)
+			switch {
+			case top != 0 && bottom != 0 && top == bottom:
+				cv.Set(x+gx, y+r, '█', fg(top))
+			case top != 0 && bottom != 0:
+				cv.Set(x+gx, y+r, '▀', fg(top).Bg(bottom))
+			case top != 0:
+				cv.Set(x+gx, y+r, '▀', fg(top))
+			case bottom != 0:
+				cv.Set(x+gx, y+r, '▄', fg(bottom))
 			}
 		}
 	}
-	d.Blit(cv, x, y, 0)
-	return d.H
+	return rows
 }
 
+type aboutLine struct {
+	parts []span
+}
+
+// aboutText is the right-hand (or lower) column of the About view; the
+// caption about the globe is left out when there is no globe.
+func (m *Model) aboutText(globe bool) []aboutLine {
+	c := m.Snapshot.Topology
+	sp := func(s string, st Style) span { return span{s, st} }
+	greek, latin, gloss := fg(cAccent).bold(), fg(cMuted).italic(), fg(cText)
+	lines := []aboutLine{
+		{[]span{sp("τόπος", greek), sp("   tópos    ", latin), sp("place", gloss)}},
+		{[]span{sp("φαίνω", greek), sp("   phaínō   ", latin), sp("to bring to light · to appear", gloss)}},
+		{},
+		{[]span{sp("topophany", fg(cGlow).bold()), sp("  n.  ", latin), sp("the appearance of a place —", gloss)}},
+		{[]span{sp("the moment a network shows where it actually is.", gloss)}},
+		{},
+		{[]span{sp("From where, through which path, reaching what,", fg(cAccent))}},
+		{[]span{sp("and on what evidence.", fg(cAccent))}},
+		{},
+		{[]span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("`topo`", fg(cMuted))}},
+	}
+	if c.Project != "" {
+		lines = append(lines, aboutLine{[]span{sp(c.Project, fg(cText)), sp("  ·  "+itoa(len(c.Nodes))+" nodes  ·  "+itoa(len(c.Links))+" links  ·  "+itoa(len(c.Checks))+" checks", fg(cMuted))}})
+	}
+	if globe {
+		lines = append(lines, aboutLine{}, aboutLine{[]span{sp("Each lit point on the globe is a place you declared.", fg(cFaint).italic())}})
+	}
+	return lines
+}
+
+const aboutTextW = 58
+
+// drawAbout composes the globe and the text for the space available:
+// side by side and centred when wide, the globe over the text when tall,
+// the text alone when small.
 func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 	t := m.Now.Sub(m.aboutAt).Seconds()
 	if m.aboutAt.IsZero() || t < 0 {
 		t = 0
 	}
-	textW := 58
-	gw := min(w-textW-2, h*2+4)
-	if w < 90 {
-		gw = 0
+	spin := m.aboutSpin
+	lines := m.aboutText(true)
+	textH := len(lines) + 5 // wordmark and a blank row
+	big := w >= aboutTextW+4
+	if !big {
+		textH = len(lines) + 2
 	}
-	if gw >= 16 {
-		m.drawGlobe(cv, x, y, gw, h, t)
+	tw := min(aboutTextW, w-2)
+	var gx, gy, gw, gh, tx, ty int
+	switch {
+	case w >= aboutTextW+44 && h >= 14:
+		// Side by side: the globe is as tall as the view allows (and no
+		// wider than leaves room for the text), the pair centred.
+		gh = h
+		gw = min(gh*2+2, w-aboutTextW-6)
+		gh = min(gh, gw/2+1)
+		total := gw + 6 + tw
+		gx = x + max(0, (w-total)/2)
+		gy = y + (h-gh)/2
+		tx = gx + gw + 6
+		ty = y + max(0, (h-textH)/2)
+	case h >= textH+12 && w >= 30:
+		// Stacked: the globe above, the text below, both centred.
+		gh = min(h-textH-1, w/2)
+		gw = min(w, gh*2+2)
+		gx = x + (w-gw)/2
+		gy = y + max(0, (h-gh-textH-1)/2)
+		tx = x + max(1, (w-tw)/2)
+		ty = gy + gh + 1
+	default:
+		tx = x + max(1, (w-tw)/2)
+		ty = y + max(0, (h-textH)/2)
+	}
+	if gw >= 16 && gh >= 7 {
+		m.drawGlobe(cv, gx, gy, gw, gh, t, spin)
 	} else {
-		gw = 0
+		lines = m.aboutText(false)
 	}
-	tx := x + gw + 2
-	tw := x + w - tx
-	if gw == 0 {
-		tx, tw = x+2, w-4
-	}
-	ty := y + max(0, (h-24)/2)
-	if gw == 0 && h >= 26 && w >= 30 {
-		// Narrow terminals: the globe sits above the text.
-		gh := h - 22
-		m.drawGlobe(cv, x+max(0, (w-gh*2-4)/2), y, min(w, gh*2+4), gh, t)
-		ty = y + gh
-	}
-	if tw >= 54 && ty+7 < y+h {
+	if big && ty+5 < y+h {
 		ty += m.drawWordmark(cv, tx, ty, t) + 1
 	} else {
-		cv.Text(tx, ty, "T O P O P H A N Y", m.st(fg(cAccent).bold()), tw)
+		cv.Text(tx, ty, "T O P O P H A N Y", fg(cAccent).bold(), tw)
 		ty += 2
 	}
-	fade := func(i int) Style {
-		k := clamp(t*1.6-float64(i)*.18, 0, 1)
-		return fg(Mix(cDeep, cText, k))
-	}
-	c := m.Snapshot.Topology
-	lines := []struct {
-		text string
-		st   func(int) Style
-	}{
-		{"τόπος   tópos     place", func(i int) Style { return fade(i).bold() }},
-		{"φαίνω   phaínō    to bring to light · to appear", func(i int) Style { return fade(i).bold() }},
-		{"", fade},
-		{"topophany  n.  the appearance of a place —", fade},
-		{"the moment a network shows where it actually is.", fade},
-		{"", fade},
-		{"From where, through which path, reaching what,", func(i int) Style { return fg(Mix(cDeep, cAccent, clamp(t*1.6-float64(i)*.18, 0, 1))) }},
-		{"and on what evidence.", func(i int) Style { return fg(Mix(cDeep, cAccent, clamp(t*1.6-float64(i)*.18, 0, 1))) }},
-		{"", fade},
-		{"Topophany " + model.Version + "  ·  MIT  ·  self-hosted  ·  `topo`", func(i int) Style { return fade(i).Fg(Mix(cDeep, cMuted, clamp(t*1.6-float64(i)*.18, 0, 1))) }},
-		{"", fade},
-	}
-	if c.Project != "" {
-		lines = append(lines, struct {
-			text string
-			st   func(int) Style
-		}{c.Project + "  ·  " + itoa(len(c.Nodes)) + " nodes  ·  " + itoa(len(c.Links)) + " links  ·  " + itoa(len(c.Checks)) + " checks", func(i int) Style { return fg(Mix(cDeep, cMuted, clamp(t*1.6-float64(i)*.18, 0, 1))) }})
-	}
-	lines = append(lines, struct {
-		text string
-		st   func(int) Style
-	}{"Each lit point on the globe is a place you declared.", func(i int) Style { return fg(Mix(cDeep, cFaint, clamp(t*1.6-float64(i)*.18, 0, 1))).italic() }})
+	// Lines fade up one after another on opening.
 	for i, l := range lines {
 		if ty >= y+h {
 			break
 		}
-		cv.Text(tx, ty, l.text, m.st(l.st(i)), tw)
+		k := clamp(t*1.6-float64(i)*.16, 0, 1)
+		cx := tx
+		for _, s := range l.parts {
+			st := s.st
+			st.FG = Mix(cInk, st.FG, k)
+			cx += cv.Text(cx, ty, s.s, st, tx+tw-cx)
+		}
 		ty++
 	}
 }

@@ -63,6 +63,7 @@ type Model struct {
 	noticeErr             bool
 	noticeAt              time.Time
 	aboutAt               time.Time
+	aboutSpin             float64 // extra globe rotation from the mouse wheel
 	hits                  []hit
 	drawingModal          bool
 }
@@ -701,17 +702,28 @@ func (m *Model) Key(k string) string {
 		} else {
 			m.Selected--
 		}
-	case "wheel-down":
+	case "wheel-down", "wheel-up":
+		if m.Tab == tabAbout {
+			// The wheel turns the globe.
+			if k == "wheel-down" {
+				m.aboutSpin += .3
+			} else {
+				m.aboutSpin -= .3
+			}
+			return ""
+		}
+		if k == "wheel-up" {
+			if m.Detail {
+				m.Offset -= 3
+			} else {
+				m.Selected -= 3
+			}
+			break
+		}
 		if m.Detail {
 			m.Offset += 3
 		} else {
 			m.Selected += 3
-		}
-	case "wheel-up":
-		if m.Detail {
-			m.Offset -= 3
-		} else {
-			m.Selected -= 3
 		}
 	case "pgdown":
 		if m.Detail {
