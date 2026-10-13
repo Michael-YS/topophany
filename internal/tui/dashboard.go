@@ -66,6 +66,10 @@ func (m *Model) verdict() (string, Color) {
 	switch {
 	case m.Edit != nil:
 		return "◇ LOCAL DRAFT", cEdit
+	case m.Loading != "" && m.Snapshot.GeneratedAt.IsZero() && len(m.Snapshot.Topology.Nodes) == 0:
+		return "◌ CONNECTING", cAccent2
+	case m.Loading != "":
+		return "◌ LOADING", cAccent2
 	case m.Cached():
 		return "◌ CACHED", cWarn
 	case up+down+warn+unk == 0:
@@ -88,8 +92,11 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 	word, c := m.verdict()
 	cv.Text(x, y, word, fg(c).bold(), w)
 	when := "updated " + age(m.Now, m.Snapshot.GeneratedAt)
-	if m.Edit != nil {
+	switch {
+	case m.Edit != nil:
 		when = "no live evidence"
+	case m.Loading != "":
+		when = "waiting for data"
 	}
 	if width(word)+width(when)+2 <= w {
 		cv.Text(x+w-width(when), y, when, fg(cFaint), -1)
@@ -101,6 +108,8 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 		n, label, nc := up, "checks passing", cUp
 		sub := "of " + itoa(total) + " configured"
 		switch {
+		case total == 0 && m.Loading != "":
+			n, label, nc, sub = 0, "checks known", cUnknown, m.Loading+"…"
 		case total == 0 && m.Cached():
 			n, label, nc, sub = 0, "checks known", cUnknown, "no snapshot received yet"
 		case total == 0:
@@ -112,7 +121,11 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 		case warn > 0:
 			n, label, nc = warn, "checks warning", cWarn
 		}
-		bw := m.bigText(cv, x, row+1, itoa(n), fg(nc).bold())
+		big := itoa(n)
+		if m.Loading != "" && total == 0 {
+			big = "-" // not zero: not known yet
+		}
+		bw := m.bigText(cv, x, row+1, big, fg(nc).bold())
 		lx := x + bw + 3
 		cv.Text(lx, row+1, label, fg(cText), x+w-lx)
 		cv.Text(lx, row+2, sub, fg(cMuted), x+w-lx)
@@ -180,7 +193,7 @@ func (m *Model) servicesCard(cv *Canvas, x, y, w, h int) {
 	rows := m.tabRows(tabServices)
 	sort.SliceStable(rows, func(i, j int) bool { return serviceRank(rows[i]) < serviceRank(rows[j]) })
 	if len(rows) == 0 {
-		cv.Text(x, y, "No services declared.", fg(cMuted).italic(), w)
+		cv.Text(x, y, m.nothing("services"), fg(cMuted).italic(), w)
 		return
 	}
 	cellW := 0
@@ -220,6 +233,15 @@ func (m *Model) servicesCard(cv *Canvas, x, y, w, h int) {
 	}
 }
 
+// nothing is what an empty card says: nothing declared, or nothing known
+// yet while the first snapshot is on its way.
+func (m *Model) nothing(what string) string {
+	if m.Loading != "" && len(m.Snapshot.Topology.Nodes) == 0 {
+		return "Waiting for the topology…"
+	}
+	return "No " + what + " declared."
+}
+
 func serviceRank(r Row) int {
 	switch {
 	case r.Health == "down":
@@ -241,7 +263,7 @@ func (m *Model) observersCard(cv *Canvas, x, y, w, h int) {
 		return
 	}
 	if len(rows) == 0 {
-		cv.Text(x, y, "No observers declared.", fg(cMuted).italic(), w)
+		cv.Text(x, y, m.nothing("observers"), fg(cMuted).italic(), w)
 		return
 	}
 	for i, r := range rows {
@@ -285,6 +307,8 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		switch {
 		case m.Edit != nil:
 			msg, sub, c = "◇ Local draft", "The editor has no live evidence; preview it with topo preview --config.", cEdit
+		case m.Loading != "":
+			msg, sub, c = "◌ Waiting for evidence", "Nothing current is known yet; this fills in as soon as a snapshot arrives.", cAccent2
 		case m.Cached():
 			msg, sub, c = "◌ Status not established", "Showing the last snapshot; nothing current is known.", cWarn
 		case len(m.Snapshot.Checks) == 0:

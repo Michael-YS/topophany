@@ -132,6 +132,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 			}
 		}()
 	}
+	m.Loading = "connecting to the collector"
 	request()
 	keys := time.NewTicker(30 * time.Millisecond)
 	defer keys.Stop()
@@ -167,6 +168,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 				request()
 				continue
 			}
+			m.Loading = ""
 			if msg.err != nil {
 				m.Error = msg.err.Error()
 			} else {
@@ -196,7 +198,11 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 					m.NextObserver()
 					topology := m.Snapshot.Topology
 					m.Snapshot = model.Snapshot{Topology: topology}
-					m.Error = "loading selected observer"
+					m.Error = ""
+					m.Loading = "loading the view from " + m.Observer
+					if m.Observer == "" {
+						m.Loading = "loading all observers"
+					}
 					request()
 				}
 			}

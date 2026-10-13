@@ -42,6 +42,7 @@ type Model struct {
 	Snapshot              model.Snapshot
 	Server                string
 	Error                 string
+	Loading               string // a request in flight while nothing current is shown
 	Observer              string
 	Tab, Selected, Offset int
 	Width, Height         int

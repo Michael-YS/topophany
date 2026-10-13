@@ -56,9 +56,12 @@ func (m *Model) header(cv *Canvas) {
 			add(m.Server, cMuted)
 		}
 		add("   "+age(m.Now, m.Snapshot.GeneratedAt)+"  ", cFaint)
-		if m.Cached() {
+		switch {
+		case m.Loading != "":
+			add("◌ LOADING", cAccent2)
+		case m.Cached():
 			add("◌ CACHED", cWarn)
-		} else {
+		default:
 			// The live dot breathes with each repaint, never faster than data.
 			add("● LIVE", Mix(cUp, cGlow, .5*float64(m.Now.Second()%2)))
 		}
@@ -199,9 +202,9 @@ func (m *Model) healthBar(cv *Canvas, x, y, w int, up, warn, down, unk int, glyp
 	}
 }
 
-// hasNews is a notice still on show, or an error.
+// hasNews is a notice still on show, an error, or a request in flight.
 func (m *Model) hasNews() bool {
-	return m.notice != "" && m.Now.Sub(m.noticeAt) < 8e9 || m.Error != ""
+	return m.notice != "" && m.Now.Sub(m.noticeAt) < 8e9 || m.Error != "" || m.Loading != ""
 }
 
 func (m *Model) statusBar(cv *Canvas, y int) {
@@ -216,6 +219,10 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 	}
 	if m.Error != "" {
 		cv.Text(x, y, "⚠ OFFLINE / CACHED: "+m.Error, fg(cWarn).bold(), cv.W-2)
+		return
+	}
+	if m.Loading != "" {
+		cv.Text(x, y, "◌ "+m.Loading+"…", fg(cAccent2), cv.W-2)
 		return
 	}
 	if m.Edit != nil {

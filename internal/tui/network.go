@@ -115,7 +115,13 @@ func packRows(ws, gaps []float64, lo, hi float64) {
 
 func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, groups map[string]Color, f mapFocus) {
 	if len(nodes) == 0 {
-		msg := "Empty topology — press a to add a node"
+		msg := "No nodes in this topology"
+		switch {
+		case m.Edit != nil:
+			msg = "Empty topology — press a to add a node"
+		case m.Loading != "":
+			msg = "Waiting for the topology…"
+		}
 		cv.Text(x+max(0, (w-width(msg))/2), y+h/2, msg, fg(cMuted).italic(), w)
 		return
 	}
