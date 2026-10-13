@@ -196,21 +196,17 @@ func (m *Model) servicesCard(cv *Canvas, x, y, w, h int) {
 		cv.Text(x, y, m.nothing("services"), fg(cMuted).italic(), w)
 		return
 	}
-	cellW := 0
-	for _, r := range rows {
-		cellW = max(cellW, width(r.Title)+4)
-	}
-	cols := max(1, min(w/min(cellW, 26), (len(rows)+h-1)/max(1, h)+1))
-	cols = max(1, min(cols, w/12))
-	cellW = w / cols
+	// As few columns as the height needs (no more than fit), filled evenly.
+	fits := serviceCols(rows, w)
+	cols := max(1, min(fits, (len(rows)+h-1)/max(1, h)))
+	per := max(1, min(h, (len(rows)+cols-1)/cols))
+	cellW := w / cols
 	for i, r := range rows {
-		cx, cy := x+(i/h)*cellW, y+i%h
-		if i/h >= cols {
-			more := "+" + itoa(len(rows)-i) + " more"
-			cv.Text(x+w-width(more), y+h-1, more, fg(cFaint), -1)
+		cx, cy := x+(i/per)*cellW, y+i%per
+		if i/per >= cols {
 			break
 		}
-		if i%h == h-1 && i/h == cols-1 && i < len(rows)-1 {
+		if i%per == per-1 && i/per == cols-1 && i < len(rows)-1 {
 			more := "+" + itoa(len(rows)-i) + " more"
 			cv.Text(cx, cy, more, fg(cFaint), -1)
 			break
@@ -240,6 +236,15 @@ func (m *Model) nothing(what string) string {
 		return "Waiting for the topology…"
 	}
 	return "No " + what + " declared."
+}
+
+// serviceCols is how many columns of service names fit in w.
+func serviceCols(rows []Row, w int) int {
+	cellW := 0
+	for _, r := range rows {
+		cellW = max(cellW, width(r.Title)+4)
+	}
+	return max(1, min(w/max(1, min(cellW, 26)), w/12))
 }
 
 func serviceRank(r Row) int {
@@ -357,8 +362,10 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		vh := min((nServices+1)/2+2, max(4, left/3))
 		if len(rows) == 0 && m.Search == "" {
 			// Nothing to attend to: a short all-clear, and the room goes
-			// to the service matrix.
-			vh = max(vh, left-oh-5)
+			// to the service matrix, as much as it can fill.
+			svc := m.tabRows(tabServices)
+			fits := serviceCols(svc, sw-4)
+			vh = max(vh, min(left-oh-5, (len(svc)+fits-1)/fits+2))
 		}
 		if left-oh-vh < 5 {
 			oh = 0
