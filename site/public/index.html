@@ -63,7 +63,7 @@
         <canvas class="wordmark" aria-hidden="true"></canvas>
       </h1>
       <p class="lede">From where, via which path, reaching&nbsp;what — and on what evidence.</p>
-      <p class="sub">Self-hosted monitoring of network topology and service availability, read in the terminal. One Go binary with no dependencies is the client, the collector and the observer. It tells you what was measured, from where and how recently. It never shows a check as green that hasn't passed.</p>
+      <p class="sub">Self-hosted network and service monitoring, read in the terminal. One Go binary, no dependencies, and nothing turns green until a check passes.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#install">Install</a>
         <a class="btn" href="https://github.com/WhitenWhiten/topophany">
@@ -89,7 +89,7 @@
     <div class="head">
       <p class="eyebrow"><span>01</span> The terminal UI</p>
       <h2>Is anything wrong, and&nbsp;where?</h2>
-      <p class="lead">The Overview answers before you read a word: a verdict, a map of every place and path, and the short list of what needs attention. Below is <code>topo preview</code> recorded frame by frame from the TUI's own renderer. The evidence is synthetic, but it goes through the real state engine.</p>
+      <p class="lead">A recording of <code>topo preview</code>: the real TUI, on synthetic evidence.</p>
     </div>
 
     <figure class="term" id="term" data-tour="/data/tour.en.json">
@@ -109,23 +109,23 @@
     </figure>
 
     <ol class="chapters" id="chapters" aria-label="Chapters">
-      <li><button type="button" data-chapter="outage" data-title="An outage arrives" data-text="All is well until x switches the preview to a scenario where the DMIT line is blocked from mainland China. Checks fail one sample at a time, and only confirmed failures turn red. Shown as a time-lapse."><span class="ch-bar"><i></i></span><span class="ch-n">1</span><span class="ch-t">Outage</span></button></li>
-      <li><button type="button" data-chapter="route" data-title="Follow the route" data-text="Select something that needs attention and its whole route lights up on the map. Enter opens the evidence behind it."><span class="ch-bar"><i></i></span><span class="ch-n">2</span><span class="ch-t">Route</span></button></li>
-      <li><button type="button" data-chapter="vantage" data-title="Two vantage points" data-text="The same moment, viewed from two observers. From the MacBook in Changsha the line is down. From the server in New York every check passes. Each observer reports only what it can see from where it is."><span class="ch-bar"><i></i></span><span class="ch-n">3</span><span class="ch-t">Vantage</span></button></li>
-      <li><button type="button" data-chapter="virtual" data-title="Virtual geo" data-text="A schematic of the world that keeps its order but not its distances. A crowded city gets as much room as a lone island, and a glint runs along each wire whose traffic gets through."><span class="ch-bar"><i></i></span><span class="ch-n">4</span><span class="ch-t">Virtual geo</span></button></li>
-      <li><button type="button" data-chapter="geo" data-title="Geo" data-text="A braille dot-matrix world map from Natural Earth. Nodes sit where you declared them, never where an IP lookup guesses."><span class="ch-bar"><i></i></span><span class="ch-n">5</span><span class="ch-t">Geo</span></button></li>
-      <li><button type="button" data-chapter="network" data-title="Network" data-text="A layered schematic with sources on the left and each link one column further. Crossings are bridged, and hosted-in relations are dotted."><span class="ch-bar"><i></i></span><span class="ch-n">6</span><span class="ch-t">Network</span></button></li>
-      <li><button type="button" data-chapter="servers" data-title="Servers" data-text="A card for every server: its services and the edge in front of each, its addresses by network, the containers and VMs it hosts, and your notes as a memo at the foot."><span class="ch-bar"><i></i></span><span class="ch-n">7</span><span class="ch-t">Servers</span></button></li>
-      <li><button type="button" data-chapter="incidents" data-title="Incidents" data-text="Each incident lists the checks that failed and what other observers still see. A guess is labeled as a hypothesis, not a finding."><span class="ch-bar"><i></i></span><span class="ch-n">8</span><span class="ch-t">Incidents</span></button></li>
-      <li><button type="button" data-chapter="about" data-title="About" data-text="τόπος, place, and φαίνω, to bring to light. A globe on which the places you declared are the only lights."><span class="ch-bar"><i></i></span><span class="ch-n">9</span><span class="ch-t">About</span></button></li>
+      <li><button type="button" data-chapter="outage" data-title="An outage arrives" data-text="Press x and the DMIT line is blocked from mainland China. Only confirmed failures turn red."><span class="ch-bar"><i></i></span><span class="ch-n">1</span><span class="ch-t">Outage</span></button></li>
+      <li><button type="button" data-chapter="route" data-title="Follow the route" data-text="Select a problem and its route lights up. Enter shows the evidence."><span class="ch-bar"><i></i></span><span class="ch-n">2</span><span class="ch-t">Route</span></button></li>
+      <li><button type="button" data-chapter="vantage" data-title="Two vantage points" data-text="Down from Changsha, fine from New York. Each observer reports only what it can see."><span class="ch-bar"><i></i></span><span class="ch-n">3</span><span class="ch-t">Vantage</span></button></li>
+      <li><button type="button" data-chapter="virtual" data-title="Virtual geo" data-text="A schematic world that keeps the order of places, not their distances."><span class="ch-bar"><i></i></span><span class="ch-n">4</span><span class="ch-t">Virtual geo</span></button></li>
+      <li><button type="button" data-chapter="geo" data-title="Geo" data-text="A braille world map. Nodes sit where you put them, not where an IP lookup guesses."><span class="ch-bar"><i></i></span><span class="ch-n">5</span><span class="ch-t">Geo</span></button></li>
+      <li><button type="button" data-chapter="network" data-title="Network" data-text="Sources on the left, each link one column further right."><span class="ch-bar"><i></i></span><span class="ch-n">6</span><span class="ch-t">Network</span></button></li>
+      <li><button type="button" data-chapter="servers" data-title="Servers" data-text="A card per server: its services, addresses, containers and your notes."><span class="ch-bar"><i></i></span><span class="ch-n">7</span><span class="ch-t">Servers</span></button></li>
+      <li><button type="button" data-chapter="incidents" data-title="Incidents" data-text="What failed, what other observers still see, and guesses labeled as guesses."><span class="ch-bar"><i></i></span><span class="ch-n">8</span><span class="ch-t">Incidents</span></button></li>
+      <li><button type="button" data-chapter="about" data-title="About" data-text="τόπος, place, and φαίνω, to bring to light."><span class="ch-bar"><i></i></span><span class="ch-n">9</span><span class="ch-t">About</span></button></li>
     </ol>
 
     <div class="caption">
       <div class="caption-text" aria-live="polite">
         <h3 id="cap-title">An outage arrives</h3>
-        <p id="cap-text">All is well until x switches the preview to a scenario where the DMIT line is blocked from mainland China. Checks fail one sample at a time, and only confirmed failures turn red. Shown as a time-lapse.</p>
+        <p id="cap-text">Press x and the DMIT line is blocked from mainland China. Only confirmed failures turn red.</p>
       </div>
-      <p class="keys"><kbd>1</kbd>–<kbd>9</kbd> chapters <kbd>m</kbd> map <kbd>v</kbd> view <kbd>x</kbd> scenario <kbd>space</kbd> pause, or click the tabs inside the terminal. Run <code>topo preview</code> to try the real thing.</p>
+      <p class="keys"><kbd>1</kbd>–<kbd>9</kbd> chapters <kbd>space</kbd> pause. Or run <code>topo preview</code> yourself.</p>
     </div>
   </div>
 </section>
@@ -135,7 +135,7 @@
     <div class="head">
       <p class="eyebrow"><span>02</span> Semantics</p>
       <h2>Evidence, not colors</h2>
-      <p class="lead">Health, the source of the evidence and its freshness are separate fields. Nothing turns green without a passing check, a service nobody monitors stays <em class="unknown">unknown</em>, and a cached view says so.</p>
+      <p class="lead">Nothing turns green without a passing check. What nobody monitors stays <em class="unknown">unknown</em>.</p>
     </div>
 
     <div class="grid-2">
@@ -147,7 +147,7 @@
           <div class="tr" role="row"><span role="cell"><b class="unk">○</b>Home panel<i>notes only</i></span><span role="cell">registered, not monitored<i>no check configured</i></span><span role="cell" class="unk">unknown</span></div>
           <div class="tr" role="row"><span role="cell"><b class="bad">✖</b>VLESS+Reality entry<i>DMIT · Los Angeles</i></span><span role="cell">tcp timeout · 6s ago<i>from Changsha MacBook · 3 of 3 samples</i></span><span role="cell" class="bad">DOWN</span></div>
         </div>
-        <p>The state column stays empty for healthy rows, so problems are the only words lit. A service that is registered but has no check is not up. It is <em>registered, not monitored</em>.</p>
+        <p>Healthy rows stay quiet. No check means <em>unknown</em>, never up.</p>
       </article>
 
       <article class="panel">
@@ -167,7 +167,7 @@
           <line x1="6" x2="514" y1="190" y2="190" class="v-rule"/>
           <text x="6" y="208" class="v-verdict"><tspan class="v-k">verdict</tspan>  fault on the path from Changsha · server up</text>
         </svg>
-        <p>Each observer measures from where it actually is. A failure seen from home is a fault on that path, not a server outage, and the incident shows which observers still get through.</p>
+        <p>A failure seen from one place is a fault on that path, not a server outage.</p>
       </article>
 
       <article class="panel">
@@ -184,7 +184,7 @@
             <span class="warn">▲ affected</span>
           </div>
         </div>
-        <p>Behind Cloudflare, Vercel or another CDN, any answer from the edge, even an error page, proves the edge. The origin counts only a passing response the edge did not serve from cache. The probe records which edge answered and from where.</p>
+        <p>An answer from the CDN proves the edge. Only an uncached response proves the origin.</p>
       </article>
 
       <article class="panel">
@@ -198,22 +198,9 @@ w-exit-s2-aaitr, w-exit-s2-qqpr
 <span class="i-h">HYPOTHESIS (NOT A FINDING)</span>
 source/path-specific interference, filtering or
 routing fault is possible; blocking authority and
-untested protocols are not established
-<span class="i-n">No inference about all IP ports, untested UDP,
-physical power or GFW authority.</span></pre>
-        <p>Incidents carry the failed checks and what other observers still see. Nothing is inferred about ports or protocols that nobody tested.</p>
+untested protocols are not established</pre>
+        <p>Incidents show their evidence. Anything more is marked as a hypothesis.</p>
       </article>
-    </div>
-
-    <div class="claims">
-      <h3 class="claims-title">What it will not claim</h3>
-      <dl>
-        <div><dt>A TCP connection is accepted</dt><dd>Only that a connection was established. Not the application protocol, not proxy authentication, not the whole path.</dd></div>
-        <div><dt>A request succeeds, but the egress IP is outside policy</dt><dd>A <code>policy</code> outcome. Reachability and egress policy are judged separately.</dd></div>
-        <div><dt>An observer stops reporting</dt><dd>Its view goes stale, then unknown. Remote assets are not marked down.</dd></div>
-        <div><dt>The primary path fails, a candidate succeeds</dt><dd>The candidate is available and redundancy is degraded. It does not claim production traffic has switched.</dd></div>
-        <div><dt>The collector is unreachable</dt><dd>The cached view is kept, marked CACHED, and every item turns unknown.</dd></div>
-      </dl>
     </div>
   </div>
 </section>
@@ -223,14 +210,14 @@ physical power or GFW authority.</span></pre>
     <div class="head">
       <p class="eyebrow"><span>03</span> Architecture</p>
       <h2>One binary, three roles</h2>
-      <p class="lead">No CGO, no database daemon, no Node.js, and zero external Go modules. <code>topo</code> is the terminal client, the collector and the observer, and closing the client does not stop monitoring.</p>
+      <p class="lead"><code>topo</code> is the client, the collector and the observer. No CGO, no database, no external modules.</p>
     </div>
 
     <ul class="stats">
       <li><span class="dots" data-dots="1"></span><span class="stat-l">binary<small>client, collector and worker</small></span></li>
-      <li><span class="dots" data-dots="0"></span><span class="stat-l">external Go modules<small>the standard library, nothing else</small></span></li>
+      <li><span class="dots" data-dots="0"></span><span class="stat-l">external Go modules<small>standard library only</small></span></li>
       <li><span class="dots" data-dots="6"></span><span class="stat-l">release builds<small>Linux, macOS, Windows · amd64, arm64</small></span></li>
-      <li><span class="dots" data-dots="9"></span><span class="stat-l">tabs<small>at 30×10 and up, mouse included</small></span></li>
+      <li><span class="dots" data-dots="9"></span><span class="stat-l">tabs<small>mouse included</small></span></li>
     </ul>
 
     <div class="arch" role="img" aria-label="Workers at each vantage point send observations to two independent collectors, which the read-only TUI clients query.">
@@ -257,15 +244,15 @@ physical power or GFW authority.</span></pre>
     <div class="grid-3 notes">
       <div>
         <h3>Two collectors, no consensus theatre</h3>
-        <p>Workers deliver to both collectors on their own and buffer in a bounded outbox. Duplicates are dropped by observation ID, and records from a mismatched configuration revision are quarantined.</p>
+        <p>Workers send to both and buffer while one is away.</p>
       </div>
       <div>
         <h3>Read-only by design</h3>
-        <p>There is no remote configuration API, no remote shell and no automated remediation. Topology lives in reviewed local JSON, edited with <code>topo edit</code> and checked with <code>topo validate</code>.</p>
+        <p>No remote config API, no remote shell. Topology is local JSON you review.</p>
       </div>
       <div>
         <h3>Bounded, and says so</h3>
-        <p>By default it keeps 24 hours or 20,000 raw records and gives the worker outbox 32 MiB. When a quota fills, probing stops with an error rather than dropping evidence.</p>
+        <p>When a quota fills, probing stops with an error rather than dropping evidence.</p>
       </div>
     </div>
   </div>
@@ -276,7 +263,7 @@ physical power or GFW authority.</span></pre>
     <div class="head">
       <p class="eyebrow"><span>04</span> Probes</p>
       <h2>What it measures</h2>
-      <p class="lead">Native probes and explicit proxy chains, plus read-only adapters for the tools already on your hosts.</p>
+      <p class="lead">Native probes, proxy chains, and read-only adapters for tools you already run.</p>
     </div>
     <div class="probes">
       <div class="probe-group">
@@ -304,11 +291,10 @@ physical power or GFW authority.</span></pre>
     <div class="head">
       <p class="eyebrow"><span>05</span> Install</p>
       <h2>Up in a minute</h2>
-      <p class="lead">Prebuilt archives for Linux, macOS and Windows, or one <code>go install</code>. The demo probes only its own loopback API and generates fresh credentials each time it runs.</p>
+      <p class="lead">Prebuilt archives, or one <code>go install</code>.</p>
     </div>
 
     <div class="install-grid">
-      <div class="install-side">
       <div class="panel tabs" data-tabs>
         <div class="tablist" role="tablist" aria-label="Ways to install">
           <button role="tab" type="button" id="t-go" aria-controls="p-go" aria-selected="true">go install</button>
@@ -317,10 +303,10 @@ physical power or GFW authority.</span></pre>
         </div>
         <div class="tabpanel" role="tabpanel" id="p-go" aria-labelledby="t-go">
           <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest"><span class="cmd-prompt" aria-hidden="true">$</span><code>go install github.com/WhitenWhiten/topophany/cmd/topo@latest</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
-          <p class="fine">Needs Go 1.26.9 or newer. Building downloads no modules.</p>
+          <p class="fine">Needs Go 1.26.9 or newer.</p>
         </div>
         <div class="tabpanel" role="tabpanel" id="p-rel" aria-labelledby="t-rel" hidden>
-          <p>Archives for Linux, macOS and Windows on amd64 and arm64, each with <code>SHA256SUMS.txt</code>.</p>
+          <p>Linux, macOS and Windows, amd64 and arm64, with <code>SHA256SUMS.txt</code>.</p>
           <a class="btn btn-primary" href="https://github.com/WhitenWhiten/topophany/releases/latest">Latest release</a>
         </div>
         <div class="tabpanel" role="tabpanel" id="p-src" aria-labelledby="t-src" hidden>
@@ -329,27 +315,16 @@ physical power or GFW authority.</span></pre>
 <span class="cmd-prompt" aria-hidden="true">$ </span>go build -trimpath -o topo ./cmd/topo</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
         </div>
       </div>
-        <div class="panel runs">
-          <h3 class="panel-title">Runs on</h3>
-          <dl class="kv">
-            <div><dt>systems</dt><dd>Linux, macOS, Windows · amd64, arm64</dd></div>
-            <div><dt>terminal</dt><dd>100×28 or more recommended, 30×10 at least</dd></div>
-            <div><dt>color</dt><dd>truecolor, xterm-256, or none under <code>NO_COLOR</code></dd></div>
-            <div><dt>services</dt><dd>systemd units for the collector and the worker</dd></div>
-            <div><dt>storage</dt><dd>a local append-only journal, no database</dd></div>
-          </dl>
-        </div>
-      </div>
 
       <ol class="steps">
         <li>
           <h3>Look around</h3>
-          <p>The full TUI on a built-in topology with synthetic evidence. Press <kbd>x</kbd> to break something.</p>
+          <p>A built-in demo. Press <kbd>x</kbd> to break something.</p>
           <div class="cmd" data-copy="topo preview"><span class="cmd-prompt" aria-hidden="true">$</span><code>topo preview</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
         </li>
         <li>
           <h3>Start a collector</h3>
-          <p>Writes a demo topology and fresh credentials, then serves on <code>127.0.0.1:7447</code>.</p>
+          <p>Serves a demo on <code>127.0.0.1:7447</code>.</p>
           <div class="cmd cmd-multi" data-copy="topo init --dir ./demo&#10;topo serve --config ./demo/topology.json --auth ./demo/auth.json --data ./demo/collector-data --observer demo"><code><span class="cmd-prompt" aria-hidden="true">$ </span>topo init --dir ./demo
 <span class="cmd-prompt" aria-hidden="true">$ </span>topo serve --config ./demo/topology.json \
     --auth ./demo/auth.json \
@@ -358,7 +333,7 @@ physical power or GFW authority.</span></pre>
         </li>
         <li>
           <h3>Open the TUI</h3>
-          <p>In another terminal. Later, <code>topo login</code> saves a remote profile, and then plain <code>topo</code> is enough.</p>
+          <p>In another terminal.</p>
           <div class="cmd" data-copy="topo --credentials ./demo/credentials.json"><span class="cmd-prompt" aria-hidden="true">$</span><code>topo --credentials ./demo/credentials.json</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
         </li>
       </ol>
