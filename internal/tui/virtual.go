@@ -334,6 +334,8 @@ type vRouter struct {
 	prev  []int32
 	gen   int32
 	heap  []vItem
+
+	work *layoutWork
 }
 
 type vItem struct{ f, s int32 }
@@ -341,7 +343,7 @@ type vItem struct{ f, s int32 }
 func newRouter(w, h int) *vRouter {
 	n := w * h
 	r := &vRouter{w: w, h: h, solid: make([]bool, n), port: make([]int32, n), zone: make([]int32, n), near: make([]bool, n), ws: newWires(w, h),
-		g: make([]int32, 2*n), stamp: make([]int32, 2*n), prev: make([]int32, 2*n)}
+		g: make([]int32, 2*n), stamp: make([]int32, 2*n), prev: make([]int32, 2*n), work: newLayoutWork()}
 	for i := range r.port {
 		r.port[i], r.zone[i] = -1, -1
 	}
@@ -374,6 +376,9 @@ func (r *vRouter) enter(c, ax, e int) int32 {
 	}
 	cross, shared := false, false
 	for _, mk := range r.ws.marks[c] {
+		if !r.work.take() {
+			return -1
+		}
 		if r.kin(e, mk.edge, c) {
 			shared = shared || mk.dirs&along != 0
 			continue
@@ -400,7 +405,7 @@ func (r *vRouter) enter(c, ax, e int) int32 {
 // already there shares an end with it, which makes the turn a branch.
 func (r *vRouter) turnable(c, e int) bool {
 	for _, mk := range r.ws.marks[c] {
-		if !r.kin(e, mk.edge, c) {
+		if !r.work.take() || !r.kin(e, mk.edge, c) {
 			return false
 		}
 	}
@@ -449,8 +454,11 @@ func (r *vRouter) pop() vItem {
 
 // path finds the cheapest wire for edge e from any cell of srcs to any cell
 // of dsts, leaving and arriving across, as the cells it passes in order; nil
-// when there is none.
+// when there is none or when the shared render budget is exhausted.
 func (r *vRouter) path(srcs, dsts []int, e int) []int {
+	if len(srcs) == 0 || len(dsts) == 0 || r.work.remaining <= 0 {
+		return nil
+	}
 	r.gen++
 	r.heap = r.heap[:0]
 	goal := func(c int) bool {
@@ -473,7 +481,7 @@ func (r *vRouter) path(srcs, dsts []int, e int) []int {
 		r.stamp[s], r.g[s], r.prev[s] = r.gen, 0, -1
 		r.push(vItem{est(c), s})
 	}
-	for budget := 8 * r.w * r.h; len(r.heap) > 0 && budget > 0; budget-- {
+	for budget := 8 * r.w * r.h; len(r.heap) > 0 && budget > 0 && r.work.take(); budget-- {
 		it := r.pop()
 		s := int(it.s)
 		c, ax := s/2, s%2
@@ -606,8 +614,13 @@ type vLayout struct {
 }
 
 // layoutVirtual lays the map out in a w×h area in at most maxCols columns
-// (0 for as many as fit), or returns nil when no node has a location.
+// (0 for as many as fit), or returns nil when no node has a location or when
+// structural limits would make optional layout unsafe in the event loop.
 func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdge, f mapFocus) *vLayout {
+	// virtualRows uses a tall measurement area but never allocates a grid.
+	if !mapGraphAllowed(w, len(nodes), len(edges)) || h <= 0 || h > 1<<12 {
+		return nil
+	}
 	cards := virtualCards(nodes)
 	var places []*vCard
 	pts := [][2]float64{}
@@ -666,14 +679,16 @@ func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdg
 	for _, c := range cards {
 		natural[c] = min(c.natural(nodes), vMaxW)
 	}
+	// The gap ordering does not depend on the candidate column count. Sort
+	// once rather than multiplying O(n log n) sorting by every width retry.
+	gaps := make([]int, len(places)-1)
+	for i := range gaps {
+		gaps[i] = i
+	}
+	sort.SliceStable(gaps, func(a, b int) bool {
+		return places[gaps[a]+1].key-places[gaps[a]].key > places[gaps[b]+1].key-places[gaps[b]].key
+	})
 	split := func(k int) []int {
-		gaps := make([]int, len(places)-1)
-		for i := range gaps {
-			gaps[i] = i
-		}
-		sort.SliceStable(gaps, func(a, b int) bool {
-			return places[gaps[a]+1].key-places[gaps[a]].key > places[gaps[b]+1].key-places[gaps[b]].key
-		})
 		cut := make([]bool, len(places))
 		for _, i := range gaps[:k-1] {
 			cut[i+1] = true
@@ -942,7 +957,7 @@ func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdg
 
 // virtualRows is how many rows the virtual map needs at width w to show
 // every card unfolded, two rows apart, with a third more for latitude to
-// show; 0 when no node has a location.
+// show; 0 when no node has a location or the graph needs the bounded fallback.
 func (m *Model) virtualRows(w int) int {
 	nodes, edges, _ := m.graph()
 	l := m.layoutVirtual(w, 1<<12, 0, nodes, edges, mapFocus{})
@@ -1056,19 +1071,22 @@ func (l *vLayout) router() *vRouter {
 	return r
 }
 
-// route lays every drawn edge's wire, each around those laid before it.
-// Wires that find no way through go first in another attempt, a few times
-// over, and the attempt that lays the most wires is kept; an edge that never
-// fits gets no wire.
-func (l *vLayout) route() [][]int {
+// routeBudget lays every drawn edge's wire, each around those laid before it.
+// The same work counter is retained across edges, retries and alternate layouts.
+// An unfinished search drops a wire; it never fabricates a partial route.
+func (l *vLayout) routeBudget(work *layoutWork) [][]int {
+	best := make([][]int, len(l.drawn))
+	if work == nil || !mapLayoutAllowed(l.w, l.h, len(l.cardOf), len(l.drawn)) {
+		return best
+	}
 	order := make([]int, len(l.drawn))
 	for k := range order {
 		order[k] = k
 	}
-	var best [][]int
 	bestN := -1
-	for try := 0; try < 4; try++ {
+	for try := 0; try < 4 && work.remaining > 0; try++ {
 		r := l.router()
+		r.work = work
 		r.ends = make([][2]int32, len(l.drawn))
 		for k, d := range l.drawn {
 			r.ends[k] = [2]int32{d.pa, d.pb}
@@ -1076,6 +1094,9 @@ func (l *vLayout) route() [][]int {
 		paths := make([][]int, len(l.drawn))
 		n := 0
 		for _, k := range order {
+			if work.remaining == 0 {
+				break
+			}
 			d := l.drawn[k]
 			if paths[k] = r.path(l.ports(d.a), l.ports(d.b), k); paths[k] != nil {
 				r.ws.route(corners(paths[k], l.w), k, 0, 0, 0)
@@ -1102,6 +1123,10 @@ func (l *vLayout) route() [][]int {
 }
 
 func (m *Model) drawVirtual(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, groups map[string]Color, f mapFocus) {
+	if !mapLayoutAllowed(w, h, len(nodes), len(edges)) {
+		drawLayoutLimit(cv, x, y, w, h, len(nodes), len(edges))
+		return
+	}
 	if len(nodes) == 0 {
 		m.drawNetwork(cv, x, y, w, h, nodes, edges, groups, f)
 		return
@@ -1115,14 +1140,15 @@ func (m *Model) drawVirtual(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 	// Routing is the costly part and between frames only the animation
 	// moves, so the wires are kept while the layout holds. When some wires
 	// find no way through, one column fewer leaves wider gaps between the
-	// columns; the layout that lays more wires wins.
+	// columns; the layout that lays more wires wins, within the same budget.
 	key := l.key()
 	if m.vcache.key != key {
-		c := vCache{key: key, paths: l.route()}
+		work := newLayoutWork()
+		c := vCache{key: key, paths: l.routeBudget(work)}
 		c.dropped = unrouted(c.paths)
-		if c.dropped > 0 && l.cols > 1 {
+		if c.dropped > 0 && l.cols > 1 && work.remaining > 0 {
 			if l2 := m.layoutVirtual(w, h, l.cols-1, nodes, edges, f); l2 != nil {
-				if p2 := l2.route(); unrouted(p2) < c.dropped {
+				if p2 := l2.routeBudget(work); unrouted(p2) < c.dropped {
 					c.cols, c.paths, c.dropped = l.cols-1, p2, unrouted(p2)
 				}
 			}
