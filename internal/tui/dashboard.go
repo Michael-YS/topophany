@@ -23,12 +23,16 @@ var bigGlyphs = map[rune][5]string{
 	'-': {"...", "...", "###", "...", "..."},
 }
 
-// bigText draws s three cells tall and returns its width. Under NO_COLOR, or
-// for characters the font lacks, it falls back to plain text.
+// bigText draws s three cells tall and returns its width, lit from above:
+// each of the five pixel rows a shade of st's color, from a glow at the
+// top to a touch of shadow at the foot. Under NO_COLOR, or for characters
+// the font lacks, it falls back to plain text.
 func (m *Model) bigText(cv *Canvas, x, y int, s string, st Style) int {
 	if m.NoColor {
 		return cv.Text(x, y+1, s, st, -1)
 	}
+	c := st.FG
+	shade := [5]Color{Mix(c, cGlow, .4), Mix(c, cGlow, .18), c, Mix(c, cInk, .14), Mix(c, cInk, .28)}
 	cx := x
 	for _, r := range s {
 		g, ok := bigGlyphs[r]
@@ -40,17 +44,13 @@ func (m *Model) bigText(cv *Canvas, x, y int, s string, st Style) int {
 			for col := 0; col < 3; col++ {
 				top := g[row*2][col] == '#'
 				bottom := row*2+1 < 5 && g[row*2+1][col] == '#'
-				ch := ' '
 				switch {
 				case top && bottom:
-					ch = '█'
+					cv.Set(cx+col, y+row, '▀', st.Fg(shade[row*2]).Bg(shade[row*2+1]))
 				case top:
-					ch = '▀'
+					cv.Set(cx+col, y+row, '▀', st.Fg(shade[row*2]))
 				case bottom:
-					ch = '▄'
-				}
-				if ch != ' ' {
-					cv.Set(cx+col, y+row, ch, st)
+					cv.Set(cx+col, y+row, '▄', st.Fg(shade[row*2+1]))
 				}
 			}
 		}
