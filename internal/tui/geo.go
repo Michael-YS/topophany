@@ -16,21 +16,22 @@ import (
 // mid-latitude network keeps its shape. Longitudes lon0+x0 .. lon0+x1 and
 // latitudes lo .. hi exist on screen: a panel wider than the world shows it
 // once, centred, and spare height is left empty rather than filled with
-// Antarctica.
-type geoView struct{ lon0, lat0, scale, kx, x0, x1, lo, hi float64 }
+// Antarctica. Dots are ky times as tall as they are wide; scale is degrees
+// per dot width, so the map keeps its shape whatever shape a cell is.
+type geoView struct{ lon0, lat0, scale, kx, ky, x0, x1, lo, hi float64 }
 
 func (g geoView) project(lat, lon float64) (float64, float64) {
 	d := math.Mod(lon-g.lon0-g.x0, 360)
 	if d < 0 {
 		d += 360
 	}
-	return (d + g.x0) * g.kx / g.scale, (g.lat0 - lat) / g.scale
+	return (d + g.x0) * g.kx / g.scale, (g.lat0 - lat) / g.scale / g.ky
 }
 
 // at is the inverse of project; ok is false off the world.
 func (g geoView) at(px, py float64) (lat, lon float64, ok bool) {
 	d := px * g.scale / g.kx
-	lat = g.lat0 - py*g.scale
+	lat = g.lat0 - py*g.ky*g.scale
 	return lat, g.lon0 + d, d >= g.x0 && d < g.x1 && lat >= g.lo && lat <= g.hi
 }
 
@@ -54,8 +55,10 @@ func lonBounds(points [][2]float64) (centre, span float64) {
 
 // fitGeo frames the view: zoom 0 fits every placed node, 1 frames the focused
 // node's region, 2 shows the world. Antarctica is left out unless a node is
-// there, and the frame never zooms out past one world.
-func fitGeo(points [][2]float64, wd, hd float64, zoom int, focus *[2]float64) geoView {
+// there, and the frame never zooms out past one world. The view is wd×hd
+// dots, each ky times as tall as it is wide.
+func fitGeo(points [][2]float64, wd, hd, ky float64, zoom int, focus *[2]float64) geoView {
+	hd *= ky // in dot widths from here on
 	lo, hi := -56.0, 80.0
 	for _, p := range points {
 		lo, hi = math.Min(lo, p[0]-10), math.Max(hi, p[0]+10)
@@ -89,7 +92,7 @@ func fitGeo(points [][2]float64, wd, hd float64, zoom int, focus *[2]float64) ge
 		cLat = clamp(cLat, lo+vs/2, hi-vs/2)
 	}
 	hs := wd * scale / kx
-	g := geoView{lon0: cLon - hs/2, lat0: cLat + vs/2, scale: scale, kx: kx, x1: hs, lo: lo, hi: hi}
+	g := geoView{lon0: cLon - hs/2, lat0: cLat + vs/2, scale: scale, kx: kx, ky: ky, x1: hs, lo: lo, hi: hi}
 	if hs > 360 {
 		g.x0, g.x1 = (hs-360)/2, (hs+360)/2
 	}
@@ -107,8 +110,9 @@ func (m *Model) geoRows(w int) int {
 			pts = append(pts, [2]float64{n.Lat, n.Lon})
 		}
 	}
-	g := fitGeo(pts, float64(w*2), 1e6, 0, nil)
-	return int(math.Ceil((g.hi - g.lo) / g.scale / 4))
+	ky := m.cellAspect() / 2
+	g := fitGeo(pts, float64(w*2), 1e6, ky, 0, nil)
+	return int(math.Ceil((g.hi - g.lo) / g.scale / ky / 4))
 }
 
 // drawLand shades each cell by how much land it covers, then lays a regular
@@ -256,7 +260,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		focus = &pts[0]
 	}
 	W, H := float64(w*2), float64(mh*4)
-	g := fitGeo(pts, W, H, m.Zoom, focus)
+	g := fitGeo(pts, W, H, m.cellAspect()/2, m.Zoom, focus)
 	d := NewDots(w, mh)
 	m.drawLand(cv, d, x, y, w, mh, g)
 	sites := geoSites(nodes, g, f)
@@ -356,10 +360,10 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		if s.focused || s.onRoute {
 			ring = Mix(c, cGlow, .25)
 		}
-		halo(d, s.x, s.y, 3.2, ring, 7)
+		halo(d, s.x, s.y, 3.2, g.ky, ring, 7)
 		if signalRank(s.signal) >= 3 {
 			t := math.Mod(phase*.5+float64(k)*.37, 1)
-			halo(d, s.x, s.y, 4.5+5.5*t, Mix(c, cInk, .35+.6*t), 6)
+			halo(d, s.x, s.y, 4.5+5.5*t, g.ky, Mix(c, cInk, .35+.6*t), 6)
 		}
 	}
 	d.Blit(cv, x, y, 0)
@@ -394,13 +398,13 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 	m.hit(tx, y, width(tag), "key:z")
 }
 
-// halo rings a point with dots; the vertical radius matches the horizontal
-// one because braille dots are close to square.
-func halo(d plotter, cx, cy, r float64, c Color, pri int8) {
+// halo rings a point with dots r dot widths from it, round on screen when
+// dots are ky times as tall as they are wide.
+func halo(d plotter, cx, cy, r, ky float64, c Color, pri int8) {
 	steps := max(12, int(r*7))
 	for i := 0; i < steps; i++ {
 		a := 2 * math.Pi * float64(i) / float64(steps)
-		d.Set(int(math.Round(cx+math.Cos(a)*r)), int(math.Round(cy+math.Sin(a)*r)), c, pri)
+		d.Set(int(math.Round(cx+math.Cos(a)*r)), int(math.Round(cy+math.Sin(a)*r/ky)), c, pri)
 	}
 }
 

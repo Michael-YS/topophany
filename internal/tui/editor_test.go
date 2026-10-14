@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -168,6 +169,34 @@ func TestViewerExplainsReadOnlyEditing(t *testing.T) {
 	}
 }
 
+// On cells 2.6 times as tall as wide the geographic map keeps its shape on
+// screen: the same latitudes over fewer rows, every place still in view and
+// still where a click finds it.
+func TestGeoKeepsItsShapeOnTallCells(t *testing.T) {
+	m := homelabModel(t)
+	m.setTab(tabTopology)
+	m.MapMode = "geo"
+	square := m.geoRows(120)
+	m.Cell = 2.6
+	if tall, want := m.geoRows(120), float64(square)*2/2.6; float64(tall) < want-1 || float64(tall) > want+1 {
+		t.Fatalf("map is %d rows on 2.6:1 cells and %d on 2:1", tall, square)
+	}
+	pts := [][2]float64{{31.2, 121.5}, {34.05, -118.24}, {35.68, 139.69}}
+	g := fitGeo(pts, 160, 100, 1.3, 0, nil)
+	for _, p := range pts {
+		x, y := g.project(p[0], p[1])
+		if x < 0 || x >= 160 || y < 0 || y >= 100 {
+			t.Fatal("point outside view", p, x, y, g)
+		}
+		if lat, lon, ok := g.at(x, y); !ok || math.Abs(lat-p[0]) > 1e-9 || math.Abs(math.Mod(lon-p[1]+540, 360)-180) > 1e-9 {
+			t.Fatal("at does not invert project", p, lat, lon)
+		}
+	}
+	if out := visible(&m); !regexp.MustCompile(`Shanghai [●○▲✖]{3}`).MatchString(out) {
+		t.Fatal("cluster missing on tall cells", out)
+	}
+}
+
 func TestMouseDecodingAndClicks(t *testing.T) {
 	var d Decoder
 	now := time.Now()
@@ -213,7 +242,7 @@ func TestMouseDecodingAndClicks(t *testing.T) {
 
 func TestGeoFitCrossesPacificAndClustersNodes(t *testing.T) {
 	pts := [][2]float64{{31.2, 121.5}, {34.05, -118.24}, {35.68, 139.69}}
-	g := fitGeo(pts, 160, 100, 0, nil)
+	g := fitGeo(pts, 160, 100, 1, 0, nil)
 	for _, p := range pts {
 		x, y := g.project(p[0], p[1])
 		if x < 0 || x >= 160 || y < 0 || y >= 100 {

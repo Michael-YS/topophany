@@ -340,7 +340,7 @@ func (m *Model) paintGlobe(d plotter, W, H int, ky, t, spin float64) []globeMark
 		}
 		grow := math.Min(1, R/60)
 		ring := 2 + 3*grow*math.Mod(t*.6+float64(i)*.23, 1)
-		halo(d, sx, sy, ring, Mix(c, cInk, .3+ring/8), 7)
+		halo(d, sx, sy, ring, ky, Mix(c, cInk, .3+ring/8), 7)
 		if v[2] > .3 && R >= 30 {
 			marks = append(marks, globeMark{int(sx), int(sy), p.name, c})
 		}
