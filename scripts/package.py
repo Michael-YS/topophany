@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -34,23 +35,39 @@ def digest(path: Path) -> str:
     return h.hexdigest()
 
 
-def files_to_export() -> list[Path]:
-    result = []
-    for path in sorted(ROOT.rglob("*")):
-        rel = path.relative_to(ROOT)
-        if any(part in EXCLUDED_PARTS for part in rel.parts):
+def git(*args: str) -> bytes:
+    return subprocess.check_output(["git", *args], cwd=ROOT)
+
+
+def accepted(rel: Path) -> bool:
+    return not any(part in EXCLUDED_PARTS for part in rel.parts) and (
+        len(rel.parts) == 1 and rel.name in ALLOWED_ROOT_FILES or
+        len(rel.parts) > 1 and rel.parts[0] in ALLOWED_ROOT_DIRS)
+
+
+def files_to_export(revision: str = "HEAD") -> dict[str, bytes]:
+    """Read immutable Git blobs, never bytes from the physical worktree."""
+    revision = git("rev-parse", "--verify", revision + "^{commit}").decode().strip()
+    if git("status", "--porcelain", "--untracked-files=no").strip():
+        raise RuntimeError("source export requires a clean tracked worktree and index")
+    for flags in (("--exclude-standard",), ("--ignored", "--exclude-standard")):
+        for name in git("ls-files", "--others", "-z", *flags).split(b"\0"):
+            if name and accepted(Path(os.fsdecode(name))):
+                raise RuntimeError("untracked or ignored source input: " + os.fsdecode(name))
+    result = {}
+    for entry in git("ls-tree", "-rz", "--full-tree", revision).split(b"\0"):
+        if not entry:
             continue
-        if path.is_symlink():
-            raise RuntimeError("source tree contains a symlink: " + str(rel))
-        if not path.is_file():
+        meta, name = entry.split(b"\t", 1)
+        mode, kind, oid = meta.split()
+        rel = Path(os.fsdecode(name))
+        if not accepted(rel):
             continue
-        if len(rel.parts) == 1 and rel.name not in ALLOWED_ROOT_FILES:
-            raise RuntimeError("unreviewed file at source root: " + str(rel))
-        if len(rel.parts) > 1 and rel.parts[0] not in ALLOWED_ROOT_DIRS:
-            raise RuntimeError("unreviewed directory at source root: " + str(rel))
-        if path.suffix in {".exe", ".pyc", ".zip", ".gz"} or rel.name in {"topo", "auth.json", "credentials.json", "worker-credentials.json", "NETWORK-MEMO.md"}:
-            raise RuntimeError("runtime/private artifact in source tree: " + str(rel))
-        result.append(path)
+        if kind != b"blob" or mode not in (b"100644", b"100755"):
+            raise RuntimeError("source contains a symlink or nonregular Git entry: " + str(rel))
+        if rel.suffix.lower() in {".exe", ".pyc", ".zip", ".gz", ".env", ".pem", ".key", ".p12", ".pfx"} or rel.name.lower() in {".env", "topo", "auth.json", "credentials.json", "worker-credentials.json", "network-memo.md", "id_rsa", "id_ed25519"} or rel.name.lower().startswith(".env."):
+            raise RuntimeError("runtime/private artifact in source revision: " + str(rel))
+        result[rel.as_posix()] = git("cat-file", "blob", oid.decode())
     return result
 
 
@@ -70,16 +87,20 @@ def main() -> int:
     summary = json.loads((args.verification / "summary.json").read_text())
     if summary.get("status") != "pass" or summary.get("quality_gate_failures"):
         raise RuntimeError("refusing release: verification is missing or failing")
-    source_files = files_to_export()
-    source_sha = {str(p.relative_to(ROOT)): digest(p) for p in source_files}
+    revision = git("rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+    source_files = files_to_export(revision)
+    source_sha = {name: hashlib.sha256(body).hexdigest() for name, body in source_files.items()}
     zip_path = output / (args.name + ".zip")
     tar_path = output / (args.name + ".tar.gz")
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-        for path in source_files:
-            zf.write(path, "topophany/" + str(path.relative_to(ROOT)))
+        for name, body in source_files.items():
+            zf.writestr("topophany/" + name, body)
     with tarfile.open(tar_path, "w:gz", compresslevel=9) as tf:
-        for path in source_files:
-            tf.add(path, arcname="topophany/" + str(path.relative_to(ROOT)), recursive=False)
+        for name, body in source_files.items():
+            info = tarfile.TarInfo("topophany/" + name)
+            info.size = len(body)
+            info.mode = 0o644
+            tf.addfile(info, io.BytesIO(body))
     env = os.environ.copy()
     env.update(GOTOOLCHAIN="local", GOPROXY="off", GOSUMDB="off", GOMAXPROCS="4")
     rebuild_log = output / "Topophany-archive-rebuild.log"
@@ -129,7 +150,7 @@ def main() -> int:
         "exported_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         "original_source_recovered": False,
         "verification": summary,
-        "source_files": len(source_files), "go_files": summary["go_files"], "go_test_files": summary["go_test_files"],
+        "source_revision": revision, "source_files": len(source_files), "go_files": summary["go_files"], "go_test_files": summary["go_test_files"],
         "archive_member_integrity": "pass", "extracted_source_matches": True,
         "archive_rebuild_exit_code": 0, "archive_rebuild_commands": commands,
         "archives": [{"file": p.name, "bytes": p.stat().st_size, "sha256": digest(p)} for p in (zip_path, tar_path)],

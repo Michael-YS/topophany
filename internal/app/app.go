@@ -197,7 +197,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
-	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Retention: *retention, MaxHistory: *maxHistory})
+	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory})
 	if e != nil {
 		return e
 	}
@@ -378,6 +378,9 @@ func (a *App) view(ctx context.Context, args []string) error {
 		p.Servers = []client.Endpoint{{URL: *server, Token: *token, CAFile: *ca, AllowInsecure: *insecure}}
 	}
 	if *token != "" {
+		if len(p.Servers) != 1 {
+			return errors.New("--credential requires --server for a multi-server profile")
+		}
 		for i := range p.Servers {
 			p.Servers[i].Token = *token
 			p.Servers[i].TokenEnv = ""
@@ -596,4 +599,12 @@ func DemoConfig() model.Config {
 	c := model.Config{Schema: 1, Project: "topophany-demo", Nodes: []model.Node{{ID: "collector", Name: "Local collector", Group: "Demo", Kind: "host"}, {ID: "home", Name: "Home workstation", Group: "Demo", Kind: "host", Notes: "Registered identity, deliberately not monitored by this local-only demo."}}, Observers: []model.Observer{{ID: "demo", Name: "Local process", Node: "collector", Context: "native local process; explicit loopback probe", StaleSeconds: 30}}, Endpoints: []model.Endpoint{{ID: "api-loopback", Node: "collector", Address: "http://127.0.0.1:7447/healthz", Network: "loopback", Observer: "demo"}}, Services: []model.Service{{ID: "panel", Name: "Topophany collector", Node: "collector", Endpoints: []string{"api-loopback"}}, {ID: "notes-only", Name: "Notes-only service", Node: "home", Notes: "No probe configured. Unknown is intentional; never counted as uptime."}}, Paths: []model.Path{{ID: "loopback", Name: "Local API access", Observer: "demo", Nodes: []string{"collector"}}}, Checks: []model.Check{{ID: "api-health", Name: "Collector health response", Observer: "demo", Endpoint: "api-loopback", Service: "panel", Path: "loopback", Kind: "http", IntervalSeconds: 5, TimeoutSeconds: 2, StaleSeconds: 15, FailureThreshold: 2, RecoveryThreshold: 2, HTTP: model.HTTPOptions{Status: []int{200}, Contains: `"status":"ok"`}}}}
 	config.Defaults(&c)
 	return c
+}
+
+func observerIDs(c model.Config) []string {
+	ids := make([]string, 0, len(c.Observers))
+	for _, o := range c.Observers {
+		ids = append(ids, o.ID)
+	}
+	return ids
 }

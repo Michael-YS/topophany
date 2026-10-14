@@ -34,6 +34,9 @@ func Decode(r io.Reader) (model.Config, error) {
 	if len(b) > 4<<20 {
 		return c, errors.New("topology exceeds 4 MiB")
 	}
+	if err := secure.JSONBudget(b); err != nil {
+		return c, err
+	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
 	if err = d.Decode(&c); err != nil {
@@ -95,8 +98,8 @@ func Validate(c model.Config) error {
 	if !ID(c.Project) {
 		return errors.New("invalid project ID")
 	}
-	if len(c.Checks) > 4096 || len(c.Nodes) > 4096 {
-		return errors.New("topology limit: 4096 nodes/checks")
+	if e := PresentationBounds(c); e != nil {
+		return e
 	}
 	nodes := map[string]bool{}
 	ends := map[string]model.Endpoint{}
@@ -224,6 +227,9 @@ func Validate(c model.Config) error {
 			default:
 				return fmt.Errorf("unsupported proxy kind %q", pv.Kind)
 			}
+			if e := ProxyCredentials(pv, i); e != nil {
+				return fmt.Errorf("path %s: %w", p.ID, e)
+			}
 			if len(pv.Username) > 255 {
 				return errors.New("proxy username too long")
 			}
@@ -313,6 +319,9 @@ func Validate(c model.Config) error {
 			u, e := url.Parse(t)
 			if e != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Fragment != "" {
 				return fmt.Errorf("check %s: requires HTTP(S) URL without userinfo/fragment", x.ID)
+			}
+			if e := HTTPCredentials(c, x); e != nil {
+				return e
 			}
 			if x.HTTP.Method != "GET" && x.HTTP.Method != "HEAD" {
 				return fmt.Errorf("check %s: only read-only HTTP methods allowed", x.ID)
@@ -404,28 +413,42 @@ func Validate(c model.Config) error {
 	return nil
 }
 func acyclic(g map[string][]string) error {
-	state := map[string]int{}
-	var visit func(string) error
-	visit = func(s string) error {
-		if state[s] == 1 {
-			return fmt.Errorf("reference cycle at %s", s)
-		}
-		if state[s] == 2 {
-			return nil
-		}
-		state[s] = 1
-		for _, t := range g[s] {
-			if e := visit(t); e != nil {
-				return e
+	remaining := map[string]int{}
+	parents := map[string][]string{}
+	depth := map[string]int{}
+	for id, deps := range g {
+		remaining[id] = len(deps)
+		for _, dep := range deps {
+			parents[dep] = append(parents[dep], id)
+			if _, ok := remaining[dep]; !ok {
+				remaining[dep] = 0
 			}
 		}
-		state[s] = 2
-		return nil
 	}
-	for s := range g {
-		if e := visit(s); e != nil {
-			return e
+	queue := []string{}
+	for id, n := range remaining {
+		if n == 0 {
+			queue = append(queue, id)
+			depth[id] = 1
 		}
+	}
+	for i := 0; i < len(queue); i++ {
+		id := queue[i]
+		if depth[id] > 32 {
+			return errors.New("reference depth exceeds 32")
+		}
+		for _, parent := range parents[id] {
+			if depth[parent] < depth[id]+1 {
+				depth[parent] = depth[id] + 1
+			}
+			remaining[parent]--
+			if remaining[parent] == 0 {
+				queue = append(queue, parent)
+			}
+		}
+	}
+	if len(queue) != len(remaining) {
+		return errors.New("reference cycle")
 	}
 	return nil
 }

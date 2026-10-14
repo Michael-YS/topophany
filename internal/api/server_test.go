@@ -219,8 +219,8 @@ func TestInputBudgetsAndRateLimit(t *testing.T) {
 		srv.slots <- struct{}{}
 	}
 	w = request(h, "GET", "/healthz", "", "", nil)
-	if w.Code != 503 {
-		t.Fatal("concurrency budget absent")
+	if w.Code != 200 {
+		t.Fatal("ingestion slots blocked health")
 	}
 }
 func TestStorageFailureIsNotAcknowledged(t *testing.T) {

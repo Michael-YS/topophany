@@ -24,6 +24,7 @@ var ErrConflict = errors.New("observation ID reused with different contents")
 var ErrCapacity = errors.New("receipt capacity reached; collection paused instead of losing deduplication")
 
 type Options struct {
+	Observers       []string
 	Revision        string
 	MaxHistory      int
 	MaxReceipts     int
@@ -33,8 +34,9 @@ type Options struct {
 	Now             func() time.Time
 }
 type receipt struct {
-	Hash string    `json:"hash"`
-	At   time.Time `json:"at"`
+	Observer string    `json:"observer,omitempty"`
+	Hash     string    `json:"hash"`
+	At       time.Time `json:"at"`
 }
 type diskState struct {
 	Schema int                        `json:"schema"`
@@ -47,23 +49,28 @@ type envelope struct {
 	Payload json.RawMessage `json:"payload"`
 }
 type Store struct {
-	mu         sync.Mutex
-	dir        string
-	file       *os.File
-	unlock     func() error
-	options    Options
-	rows       []model.Observation
-	tails      map[string][]model.Observation
-	seen       map[string]receipt
-	beats      map[string]model.Heartbeat
-	bytes      int64
-	closed     bool
-	poisoned   error
-	rowSizes   map[string]int64
-	stateBytes int64
+	mu            sync.Mutex
+	dir           string
+	file          *os.File
+	unlock        func() error
+	options       Options
+	rows          []model.Observation
+	tails         map[string][]model.Observation
+	seen          map[string]receipt
+	beats         map[string]model.Heartbeat
+	bytes         int64
+	closed        bool
+	poisoned      error
+	rowSizes      map[string]int64
+	stateBytes    int64
+	rowHashes     map[string]string
+	rowObservers  map[string]string
+	scopeBytes    map[string]int64
+	scopeReceipts map[string]int
 }
 
 func Open(dir string, o Options) (s *Store, err error) {
+	o.Observers = append([]string(nil), o.Observers...)
 	if o.MaxHistory == 0 {
 		o.MaxHistory = 20000
 	}
@@ -92,7 +99,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}}
 	opened := s
 	defer func() {
 		if err != nil {
@@ -121,7 +128,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 			// State tails outlive receipts. Restore their receipts during replay
 			// so a crash after checkpoint replacement cannot add them twice.
 			if _, ok := s.seen[v.ID]; !ok {
-				s.seen[v.ID] = receipt{Hash: observationHash(v), At: v.SampledAt}
+				s.seen[v.ID] = receipt{Hash: observationHash(v), At: v.SampledAt, Observer: v.Observer}
 			}
 		}
 	} else if !errors.Is(e, os.ErrNotExist) {
@@ -210,6 +217,8 @@ func (s *Store) addRow(v model.Observation) {
 	if _, ok := s.rowSizes[v.ID]; !ok {
 		b, _ := json.Marshal(v)
 		s.rowSizes[v.ID] = int64(len(b)) + 1
+		s.rowHashes[v.ID] = observationHash(v)
+		s.rowObservers[v.ID] = v.Observer
 	}
 	s.rows = append(s.rows, v)
 	if s.options.Revision != "" && v.Revision != s.options.Revision {
@@ -241,7 +250,7 @@ func (s *Store) apply(b model.Batch, recovery bool) error {
 			}
 			continue
 		}
-		s.seen[v.ID] = receipt{Hash: h, At: v.SampledAt}
+		s.seen[v.ID] = receipt{Hash: h, At: v.SampledAt, Observer: v.Observer}
 		s.addRow(v)
 	}
 	if b.Heartbeat != nil {
@@ -267,7 +276,6 @@ func (s *Store) Put(b model.Batch) error {
 	if s.poisoned != nil {
 		return s.poisoned
 	}
-	s.prune()
 	// JSON roundtrip transfers ownership of maps/slices away from the caller.
 	payload, e := json.Marshal(b)
 	if e != nil {
@@ -301,13 +309,9 @@ func (s *Store) Put(b model.Batch) error {
 			}
 			continue
 		}
-		if _, retained := s.rowSizes[v.ID]; retained {
-			// A tail may outlive its receipt. It still owns the observation ID,
-			// but must not consume an expired receipt-capacity slot forever.
-			for _, old := range s.allRows() {
-				if old.ID == v.ID && observationHash(old) != h {
-					return ErrConflict
-				}
+		if old, retained := s.rowHashes[v.ID]; retained {
+			if old != h {
+				return ErrConflict
 			}
 			continue
 		}
@@ -315,9 +319,7 @@ func (s *Store) Put(b model.Batch) error {
 		v.ReceivedAt = now
 		kept = append(kept, v)
 	}
-	if len(s.seen)+len(pending) > s.options.MaxReceipts {
-		return ErrCapacity
-	}
+	s.prune()
 	b.Observations = kept
 	if b.Heartbeat != nil {
 		b.Heartbeat.ReceivedAt = now
@@ -332,8 +334,15 @@ func (s *Store) Put(b model.Batch) error {
 	if b.Heartbeat != nil {
 		raw, _ := json.Marshal(b.Heartbeat)
 		projected += int64(len(raw)) + 1024
+		if old, ok := s.beats[b.Heartbeat.Observer]; ok {
+			raw, _ := json.Marshal(old)
+			projected -= int64(len(raw)) + 1024
+		}
 	}
-	if projected > s.options.MaxStateBytes {
+	if err := s.checkScopeCapacity(b); err != nil {
+		return err
+	}
+	if len(s.seen)+len(pending) > s.options.MaxReceipts || projected > s.options.MaxStateBytes {
 		return ErrCapacity
 	}
 	if len(kept) == 0 && b.Heartbeat == nil {
@@ -396,12 +405,25 @@ func (s *Store) prune() {
 			delete(s.seen, id)
 		}
 	}
+	s.scopeBytes = map[string]int64{}
+	s.scopeReceipts = map[string]int{}
+	for id, r := range s.seen {
+		if r.Observer == "" {
+			r.Observer = receiptObserver(id)
+			s.seen[id] = r
+		}
+		s.scopeBytes[r.Observer] += 512
+		s.scopeReceipts[r.Observer]++
+	}
 	s.stateBytes = 1024 + int64(len(s.seen))*512
 	for id, size := range s.rowSizes {
 		if keep[id] {
 			s.stateBytes += size
+			s.scopeBytes[s.rowObservers[id]] += size
 		} else {
 			delete(s.rowSizes, id)
+			delete(s.rowHashes, id)
+			delete(s.rowObservers, id)
 		}
 	}
 	for _, h := range s.beats {
@@ -471,31 +493,39 @@ func (s *Store) Checkpoint() error {
 // View returns detached copies so readers cannot mutate persisted evidence.
 func (s *Store) View() ([]model.Observation, map[string]model.Heartbeat) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows := s.allRows()
-	b, _ := json.Marshal(rows)
-	var out []model.Observation
-	_ = json.Unmarshal(b, &out)
 	beats := map[string]model.Heartbeat{}
 	for k, v := range s.beats {
 		beats[k] = v
 	}
+	s.mu.Unlock()
+	b, _ := json.Marshal(rows)
+	var out []model.Observation
+	_ = json.Unmarshal(b, &out)
 	return out, beats
 }
+
+// History returns at most 1 MiB of newest full observations. A response may
+// contain fewer than limit entries; serialization never holds the writer lock.
 func (s *Store) History(check, revision string, limit int) []model.Observation {
 	if limit < 1 || limit > 500 {
 		limit = 100
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	cut := s.options.Now().Add(-s.options.Retention)
 	out := []model.Observation{}
+	size := int64(2)
 	for i := len(s.rows) - 1; i >= 0 && len(out) < limit; i-- {
 		v := s.rows[i]
 		if v.Check == check && v.Revision == revision && !v.SampledAt.Before(cut) {
+			size += s.rowSizes[v.ID]
+			if size > 1<<20 {
+				break
+			}
 			out = append(out, v)
 		}
 	}
+	s.mu.Unlock()
 	b, _ := json.Marshal(out)
 	_ = json.Unmarshal(b, &out)
 	return out

@@ -87,6 +87,7 @@ def main() -> int:
         formatting = run("gofmt", ["gofmt", "-l", "cmd", "internal"])
         if (output / "gofmt.log").read_text().strip():
             formatting.update(status="fail", exit_code=1, error="gofmt emitted unformatted filenames")
+        run("source-and-release-boundaries", [sys.executable, "-m", "unittest", "discover", "-s", "scripts", "-p", "test_*.py"])
         run("module-integrity", ["go", "mod", "verify"])
         run("vet", ["go", "vet", "./..."])
         cov_path = str((output / "coverage.out").relative_to(ROOT)) if (output / "coverage.out").is_relative_to(ROOT) else str(output / "coverage.out")
@@ -98,6 +99,7 @@ def main() -> int:
         fuzz = [
             ("tui", "FuzzDecoderAndRendering"),
             ("api", "FuzzValidateBatch"),
+            ("client", "FuzzSnapshotStructure"),
             ("engine", "FuzzStateNeverPromotesExpiredSample"),
             ("config", "FuzzDecodeTopology"),
             ("store", "FuzzEnvelope"),
@@ -170,7 +172,7 @@ def main() -> int:
         "top_level_test_functions": {action: sum(v["Action"] == action for v in top_tests) for action in ("pass", "fail", "skip")},
         "fuzz_root_seed_suites": {action: sum(v["Action"] == action for v in fuzz_roots) for action in ("pass", "fail", "skip")},
         "skipped_tests": [event for event in events if event["Action"] == "skip"],
-        "package_results": packages, "bounded_fuzz_targets": 8,
+        "package_results": packages, "bounded_fuzz_targets": len(fuzz),
         "fuzz_seconds_per_target": args.fuzz_seconds,
         "process_acceptance": smoke,
         "cross_builds_are_execution_tests": False,

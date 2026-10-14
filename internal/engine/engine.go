@@ -113,6 +113,10 @@ func Evaluate(x model.Check, rows []model.Observation, now time.Time) model.Chec
 func Build(c model.Config, instance, view string, rows []model.Observation, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
 	revision := config.Revision(c)
 	out := model.Snapshot{Schema: model.SchemaVersion, Version: model.Version, Project: c.Project, Instance: instance, Revision: revision, GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Public(c), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
+	checkDefs := map[string]model.Check{}
+	for _, x := range c.Checks {
+		checkDefs[x.ID] = x
+	}
 	histories := map[string][]model.Observation{}
 	lastSeen := map[string]time.Time{}
 	for id, h := range beats {
@@ -124,7 +128,7 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 		if v.Project != c.Project || v.Revision != revision {
 			continue
 		}
-		x, ok := config.Check(c, v.Check)
+		x, ok := checkDefs[v.Check]
 		if !ok || x.Observer != v.Observer {
 			continue
 		}
@@ -213,7 +217,7 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			up, down, unknown := 0, 0, 0
 			for _, q := range p.Candidates {
 				cs := evalPath(q)
-				s.Checks = append(s.Checks, cs.Checks...)
+				s.Checks = boundedChecks(s.Checks, cs.Checks)
 				switch cs.Health {
 				case "up":
 					up++
@@ -349,7 +353,7 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			for _, other := range c.Checks {
 				cs := allStates[other.ID]
 				if other.Observer != x.Observer && other.Endpoint != "" && endpoints[other.Endpoint].Node == node && cs.Freshness == "fresh" && cs.Last != nil && cs.Last.Evidence == "measured" && cs.Last.Connectivity && cs.Last.Facts["response_proof"] != "" && cs.Last.Facts["response_proof"] != "none" {
-					inc.CounterEvidence = append(inc.CounterEvidence, other.ID)
+					inc.CounterEvidence = boundedChecks(inc.CounterEvidence, []string{other.ID})
 				}
 			}
 			if len(inc.CounterEvidence) > 0 {
@@ -435,4 +439,23 @@ func pathEvidenceStates(states []model.CheckState) []model.CheckState {
 		}
 	}
 	return out
+}
+
+// A shared candidate DAG must not expand the same descendant list repeatedly.
+// Summaries carry a bounded sample; the topology and check list retain all IDs.
+func boundedChecks(dst, src []string) []string {
+	seen := map[string]bool{}
+	for _, id := range dst {
+		seen[id] = true
+	}
+	for _, id := range src {
+		if len(dst) >= 32 {
+			break
+		}
+		if !seen[id] {
+			dst = append(dst, id)
+			seen[id] = true
+		}
+	}
+	return dst
 }

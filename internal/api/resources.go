@@ -1,0 +1,138 @@
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/engine"
+	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/secure"
+)
+
+func (s *Server) acquire(scope, role string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inflight[scope] >= 2 {
+		return false
+	}
+	slots := s.slots
+	if role == "viewer" {
+		slots = s.viewerSlots
+	}
+	select {
+	case slots <- struct{}{}:
+		s.inflight[scope]++
+		return true
+	default:
+		return false
+	}
+}
+func (s *Server) release(scope, role string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.inflight[scope]--
+	slots := s.slots
+	if role == "viewer" {
+		slots = s.viewerSlots
+	}
+	<-slots
+}
+
+func (s *Server) writeSnapshot(w http.ResponseWriter, view string) {
+	raw, status, code := s.cachedSnapshot(view)
+	if status != http.StatusOK {
+		if status == 429 {
+			w.Header().Set("Retry-After", "1")
+		}
+		writeError(w, status, code)
+		return
+	}
+	// A slow reader must not retain the cache/build mutex.
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
+}
+
+func (s *Server) cachedSnapshot(view string) ([]byte, int, string) {
+	// Capture bounded store tails once per second. Cache at most eight observer
+	// projections (32 MiB total) so switching views cannot amplify store reads.
+	// Waiting readers never queue expensive work, and writes use a separate mutex.
+	if !s.snapshotMu.TryLock() {
+		return nil, 429, "snapshot_busy"
+	}
+	defer s.snapshotMu.Unlock()
+	if s.snapshotCache == nil || s.Now().Sub(s.snapshotAt) >= time.Second {
+		s.snapshotRows, s.snapshotBeats = s.Store.StateView()
+		s.snapshotAt = s.Now()
+		s.snapshotCache = map[string][]byte{}
+		s.snapshotCacheBytes = 0
+	}
+	if raw, ok := s.snapshotCache[view]; ok {
+		return raw, http.StatusOK, ""
+	}
+	if len(s.snapshotCache) >= 8 || s.snapshotCacheBytes >= 32<<20 {
+		return nil, 429, "snapshot_rate_limited"
+	}
+	snap := engine.Build(s.Config, s.Instance, view, s.snapshotRows, s.snapshotBeats, s.snapshotAt)
+	raw, err := summaryJSON(snap)
+	if err != nil {
+		return nil, 503, "snapshot_budget_exceeded"
+	}
+	if s.snapshotCacheBytes+len(raw) > 32<<20 {
+		return nil, 429, "snapshot_rate_limited"
+	}
+	s.snapshotCache[view] = raw
+	s.snapshotCacheBytes += len(raw)
+	return raw, http.StatusOK, ""
+}
+
+var errSnapshotBudget = errors.New("snapshot budget exceeded")
+
+func summaryJSON(s model.Snapshot) ([]byte, error) {
+	// History remains the source of full diagnostic evidence.
+	s.DetailsOmitted = true
+	for i := range s.Checks {
+		c := &s.Checks[i]
+		c.Reason = model.SummaryText(c.Reason)
+		if c.Last != nil {
+			v := model.SummaryObservation(*c.Last)
+			c.Last = &v
+		}
+	}
+	references := 8192
+	trim := func(ids []string) []string {
+		n := min(len(ids), 32, references)
+		references -= n
+		return ids[:n]
+	}
+	for i := range s.Incidents {
+		s.Incidents[i].Checks = trim(s.Incidents[i].Checks)
+		s.Incidents[i].CounterEvidence = trim(s.Incidents[i].CounterEvidence)
+	}
+	for _, states := range [][]model.EntityState{s.Nodes, s.Services, s.Paths, s.Links} {
+		for i := range states {
+			states[i].Reason = model.SummaryText(states[i].Reason)
+			states[i].Checks = trim(states[i].Checks)
+		}
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > model.MaxSnapshotBytes || secure.JSONBudget(raw) != nil {
+		for i := range s.Checks {
+			s.Checks[i].Last = nil
+			s.Checks[i].Reason = "summary budget reached; consult check history"
+		}
+		raw, err = json.Marshal(s)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > model.MaxSnapshotBytes || secure.JSONBudget(raw) != nil {
+		return nil, errSnapshotBudget
+	}
+	return raw, nil
+}

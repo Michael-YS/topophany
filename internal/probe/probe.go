@@ -38,6 +38,10 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 		o.Detail = "check not executed"
 		return o
 	}
+	if (x.Kind == "http" || x.Kind == "mihomo") && config.HTTPCredentials(c, x) != nil {
+		o.Outcome, o.Code, o.Detail = "error", "insecure_http_credentials", "credentials require encrypted transport"
+		return o
+	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(x.TimeoutSeconds)*time.Second)
 	defer cancel()
 	d := Dialer{Proxies: config.Path(c, x.Path).Proxies, BindIP: x.BindIP}

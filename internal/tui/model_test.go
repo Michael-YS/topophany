@@ -130,9 +130,9 @@ func TestKeyboardNavigationSearchAndEmptyViews(t *testing.T) {
 func TestTerminalEscapesAndWideText(t *testing.T) {
 	m := fixtureModel()
 	m.Tab = 1
-	m.Snapshot.Topology.Nodes[0].Name = "家里\x1b[2J\x1b]0;fake\a\u202ehost"
+	m.Snapshot.Topology.Nodes[0].Name = "家里\x1b[2J\x1b]0;fake\a\u202e\u061c\u200e\u200fhost"
 	frame := m.Frame()
-	if strings.Contains(frame, "\x1b[2J") || strings.Contains(frame, "\x1b]0;") || strings.Contains(frame, "\u202e") {
+	if strings.Contains(frame, "\x1b[2J") || strings.Contains(frame, "\x1b]0;") || strings.ContainsAny(frame, "\u202e\u061c\u200e\u200f") {
 		t.Fatal("terminal injection")
 	}
 	if width("住宅") != 4 || width("e\u0301") != 1 {

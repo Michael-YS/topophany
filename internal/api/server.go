@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
-	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
@@ -76,15 +75,23 @@ func ValidateAuth(a Auth, c model.Config) error {
 }
 
 type Server struct {
-	Config       model.Config
-	Instance     string
-	Store        *store.Store
-	Auth         Auth
-	MaxSampleAge time.Duration
-	Now          func() time.Time
-	mu           sync.Mutex
-	limits       map[string]limit
-	slots        chan struct{}
+	Config             model.Config
+	Instance           string
+	Store              *store.Store
+	Auth               Auth
+	MaxSampleAge       time.Duration
+	Now                func() time.Time
+	mu                 sync.Mutex
+	limits             map[string]limit
+	slots              chan struct{}
+	viewerSlots        chan struct{}
+	inflight           map[string]int
+	snapshotMu         sync.Mutex
+	snapshotAt         time.Time
+	snapshotRows       []model.Observation
+	snapshotBeats      map[string]model.Heartbeat
+	snapshotCache      map[string][]byte
+	snapshotCacheBytes int
 }
 type limit struct {
 	At    time.Time
@@ -92,7 +99,14 @@ type limit struct {
 }
 
 func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
-	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, slots: make(chan struct{}, 64)}
+	ids := make([]string, 0, len(c.Observers))
+	for _, o := range c.Observers {
+		ids = append(ids, o.ID)
+	}
+	if s != nil {
+		s.SetObservers(ids)
+	}
+	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -105,13 +119,6 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		select {
-		case s.slots <- struct{}{}:
-			defer func() { <-s.slots }()
-		default:
-			writeError(w, 503, "busy")
-			return
-		}
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -145,11 +152,20 @@ func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Req
 			writeError(w, 403, "role_forbidden")
 			return
 		}
-		if !s.allow(hash) {
+		scope := hash
+		if role == "worker" {
+			scope = "worker:" + found.Observer
+		}
+		if !s.allow(scope) {
 			w.Header().Set("Retry-After", "1")
 			writeError(w, 429, "rate_limited")
 			return
 		}
+		if !s.acquire(scope, role) {
+			writeError(w, 429, "concurrency_limited")
+			return
+		}
+		defer s.release(scope, role)
 		next(w, r, found)
 	}
 }
@@ -177,8 +193,7 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, _ Principal) {
 			return
 		}
 	}
-	rows, beats := s.Store.View()
-	writeJSON(w, 200, engine.Build(s.Config, s.Instance, view, rows, beats, s.Now()))
+	s.writeSnapshot(w, view)
 }
 func (s *Server) topology(w http.ResponseWriter, r *http.Request, _ Principal) {
 	writeJSON(w, 200, struct {
@@ -214,11 +229,16 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 		return
 	}
 	defer r.Body.Close()
+	// Bound body occupancy independently of the server's general read timeout.
+	controller := http.NewResponseController(w)
+	_ = controller.SetReadDeadline(time.Now().Add(3 * time.Second))
 	var b model.Batch
 	if e := secure.Decode(r.Body, &b, 1<<20); e != nil {
+		w.Header().Set("Connection", "close")
 		writeError(w, 400, "invalid_batch_json")
 		return
 	}
+	_ = controller.SetReadDeadline(time.Time{})
 	if code, status := s.ValidateBatch(b, p.Observer); code != "" {
 		writeError(w, status, code)
 		return
@@ -227,6 +247,8 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 		switch {
 		case errors.Is(e, store.ErrConflict):
 			writeError(w, 409, "observation_id_conflict")
+		case errors.Is(e, store.ErrScopeCapacity):
+			writeError(w, 429, "observer_storage_quota")
 		case errors.Is(e, store.ErrCapacity):
 			writeError(w, 503, "storage_receipt_capacity")
 		default:

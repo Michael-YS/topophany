@@ -191,7 +191,7 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 			}
 			continue
 		}
-		b, e := io.ReadAll(io.LimitReader(resp.Body, 8<<20+1))
+		b, e := io.ReadAll(io.LimitReader(resp.Body, model.MaxSnapshotBytes+1))
 		resp.Body.Close()
 		if e != nil {
 			continue
@@ -205,11 +205,11 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 		if resp.StatusCode != 200 {
 			return empty, "", fmt.Errorf("collector rejected read (HTTP %d)", resp.StatusCode)
 		}
-		if len(b) > 8<<20 {
+		if len(b) > model.MaxSnapshotBytes {
 			return empty, "", errors.New("snapshot budget exceeded")
 		}
 		var snap model.Snapshot
-		if e = json.Unmarshal(b, &snap); e != nil {
+		if e = decodeSnapshot(b, &snap); e != nil {
 			return empty, "", errors.New("invalid collector snapshot")
 		}
 		if snap.Project != c.profile.Project || snap.Topology.Project != c.profile.Project {

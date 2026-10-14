@@ -76,7 +76,7 @@ topo login --server https://monitor.example.invalid:7447 \
 topo                            # Connects to remote collector using saved credentials and opens TUI
 topo --observer observer-local  # Explicitly select observation vantage point
 topo --json                     # Emits a structured snapshot from the API without opening the terminal UI
-topo --credential TOKEN         # Explicit, transient credential override (visible in local process table)
+topo --credential TOKEN         # Single-server profiles only; use --server with failover profiles. Explicit, transient credential override (visible in local process table)
 ```
 
 Credentials are saved by default to the operating system user configuration path under `topophany/credentials.json` (`$XDG_CONFIG_HOME` or `~/.config` on Linux; `~/Library/Application Support` on macOS; `%APPDATA%` on Windows). The `--credentials` flag overrides the file path, and `--profile` switches between saved project profiles. On Windows, files inherit ACLs from the user profile directory; **the application does not treat POSIX 0600 as a substitute for Windows ACLs** (verify per [docs/SECURITY.md](docs/SECURITY.md)).
