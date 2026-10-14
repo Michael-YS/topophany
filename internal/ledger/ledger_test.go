@@ -3,6 +3,7 @@ package ledger
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -164,8 +165,12 @@ func TestLedgerSurvivesRestartWithinItsBounds(t *testing.T) {
 	h := &history{t: t, c: c, l: l, clock: time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)}
 	h.sample("home-http", "fail", "fail", "fail")
 	h.judge(true)
-	if info, e := os.Stat(path); e != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("ledger not written privately", e)
+	info, e := os.Stat(path)
+	if e != nil {
+		t.Fatal("ledger not written", e)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Fatal("ledger not written privately", info.Mode())
 	}
 	again, e := Open(path)
 	if e != nil || len(again.Records()) != 1 || again.Records()[0].State != "open" {
