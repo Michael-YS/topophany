@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The TUI writes only the cells that changed since the last frame, not
+  every line with a change, so animation on the maps sends a few hundred
+  bytes a step instead of tens of kilobytes.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added

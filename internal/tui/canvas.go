@@ -280,49 +280,106 @@ func xterm256(r, g, b int) int {
 	return cube
 }
 
+const visibleOnBlank = Underline | Reverse
+
 // Lines serializes the canvas. Styles are emitted only on change and only
 // for what changed (a blank cell only needs its background), and each line
 // ends with a reset so a line can be repainted independently.
 func (c *Canvas) Lines(profile int) []string {
 	out := make([]string, c.H)
 	var b strings.Builder
-	const visibleOnBlank = Underline | Reverse
 	for y := 0; y < c.H; y++ {
 		b.Reset()
-		cur := Style{}
-		styled := false
-		for x := 0; x < c.W; x++ {
-			p := c.at(x, y)
-			if p.cont {
-				continue
-			}
-			st := p.st
-			if st.BG == 0 {
-				st.BG = c.Base
-			}
-			if p.ch == " " && (st.Attr|cur.Attr)&visibleOnBlank == 0 {
-				st.FG, st.Attr = cur.FG, cur.Attr
-			}
-			if profile != colorNone && (st != cur || !styled && !st.plain()) {
-				switch {
-				case st.plain():
-					b.WriteString("\x1b[0m")
-				case !styled:
-					sgr(&b, st, profile)
-				default:
-					sgrDelta(&b, cur, st, profile)
-				}
-				cur = st
-				styled = true
-			}
-			b.WriteString(p.ch)
-		}
-		if styled && !cur.plain() {
-			b.WriteString("\x1b[0m")
-		}
+		c.span(&b, y, 0, c.W, profile)
 		out[y] = b.String()
 	}
 	return out
+}
+
+// span writes the cells from column a up to e of row y, starting from and
+// returning to the terminal's default style.
+func (c *Canvas) span(b *strings.Builder, y, a, e, profile int) {
+	cur := Style{}
+	styled := false
+	for x := a; x < e; x++ {
+		p := c.at(x, y)
+		if p.cont {
+			continue
+		}
+		st := p.st
+		if st.BG == 0 {
+			st.BG = c.Base
+		}
+		if p.ch == " " && (st.Attr|cur.Attr)&visibleOnBlank == 0 {
+			st.FG, st.Attr = cur.FG, cur.Attr
+		}
+		if profile != colorNone && (st != cur || !styled && !st.plain()) {
+			switch {
+			case st.plain():
+				b.WriteString("\x1b[0m")
+			case !styled:
+				sgr(b, st, profile)
+			default:
+				sgrDelta(b, cur, st, profile)
+			}
+			cur = st
+			styled = true
+		}
+		b.WriteString(p.ch)
+	}
+	if styled && !cur.plain() {
+		b.WriteString("\x1b[0m")
+	}
+}
+
+// same reports whether cell (x,y) looks the same on both canvases; a blank
+// shows only its background, so its foreground does not count.
+func (c *Canvas) same(prev *Canvas, x, y int) bool {
+	p, q := c.at(x, y), prev.at(x, y)
+	if p.ch != q.ch || p.cont != q.cont {
+		return false
+	}
+	if p.ch == " " && (p.st.Attr|q.st.Attr)&visibleOnBlank == 0 {
+		return p.st.BG == q.st.BG
+	}
+	return p.st == q.st
+}
+
+// diffGap is how many unchanged cells a run of changes may span before it
+// is cheaper to move the cursor past them than to write them again.
+const diffGap = 12
+
+// Diff serializes what changed since prev: each run of changed cells after
+// a cursor move to where it starts, so a glint moving along a wire costs a
+// few bytes rather than its whole line. The right half of a wide rune
+// carries its style, so it changes only with the rune and a run never
+// splits one. Without a previous canvas of the same size and base, every
+// line is written.
+func (c *Canvas) Diff(prev *Canvas, profile int) string {
+	var b strings.Builder
+	full := prev == nil || prev.W != c.W || prev.H != c.H || prev.Base != c.Base
+	for y := 0; y < c.H; y++ {
+		if full {
+			b.WriteString("\x1b[" + strconv.Itoa(y+1) + ";1H")
+			c.span(&b, y, 0, c.W, profile)
+			continue
+		}
+		for x := 0; x < c.W; {
+			if c.same(prev, x, y) {
+				x++
+				continue
+			}
+			a, e := x, x+1
+			for x = e; x < c.W && x-e < diffGap; x++ {
+				if !c.same(prev, x, y) {
+					e = x + 1
+				}
+			}
+			b.WriteString("\x1b[" + strconv.Itoa(y+1) + ";" + strconv.Itoa(a+1) + "H")
+			c.span(&b, y, a, e, profile)
+		}
+	}
+	return b.String()
 }
 func clamp(v, lo, hi float64) float64 {
 	if v < lo {

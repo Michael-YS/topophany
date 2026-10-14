@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -58,42 +57,51 @@ func ColorProfile() int {
 	return color256
 }
 
-// screen repaints only lines that changed since the previous frame, inside a
-// synchronized-update block so animation does not tear.
+// screen repaints only the cells that changed since the previous frame,
+// inside a synchronized-update block so animation does not tear.
 type screen struct {
 	w, h  int
-	lines []string
+	prev  *Canvas
+	small string // the line shown while the terminal is too small
 }
 
-func (s *screen) paint(out *os.File, lines []string, w, h int) (int, error) {
+// frame is what moves the terminal from the previous frame to cv, or to
+// the one-line notice when cv is nil; "" when nothing changed.
+func (s *screen) frame(cv *Canvas, notice string, profile, w, h int) string {
 	var b strings.Builder
 	if w != s.w || h != s.h {
 		b.WriteString("\x1b[0m\x1b[2J")
-		s.lines = nil
+		s.prev, s.small = nil, ""
 		s.w, s.h = w, h
 	}
-	changed := false
-	for i, l := range lines {
-		if i < len(s.lines) && s.lines[i] == l {
-			continue
+	diff := ""
+	switch {
+	case cv == nil:
+		if s.prev != nil || notice != s.small {
+			diff = "\x1b[H" + notice + "\x1b[J"
 		}
-		if !changed {
-			b.WriteString("\x1b[?2026h")
-			changed = true
-		}
-		b.WriteString("\x1b[" + strconv.Itoa(i+1) + ";1H" + l)
-		if len(lines) == 1 {
-			b.WriteString("\x1b[J")
-		}
+		s.prev, s.small = nil, notice
+	default:
+		diff = cv.Diff(s.prev, profile)
+		s.prev, s.small = cv, ""
 	}
-	s.lines = lines
-	if !changed && b.Len() == 0 {
+	if diff != "" {
+		b.WriteString("\x1b[?2026h" + diff + "\x1b[?2026l")
+	}
+	return b.String()
+}
+
+func (s *screen) paint(out *os.File, m *Model) (int, error) {
+	cv := m.draw()
+	notice := ""
+	if cv == nil {
+		notice = m.Render()[0]
+	}
+	f := s.frame(cv, notice, m.profile(), m.Width, m.Height)
+	if f == "" {
 		return 0, nil
 	}
-	if changed {
-		b.WriteString("\x1b[?2026l")
-	}
-	return fmt.Fprint(out, b.String())
+	return fmt.Fprint(out, f)
 }
 
 func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error {
@@ -149,8 +157,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 		m.Now = time.Now()
 		m.Width, m.Height = term.Size()
 		last = m.Now
-		lines := m.Render()
-		n, e := scr.paint(out, lines, m.Width, m.Height)
+		n, e := scr.paint(out, m)
 		m.measured(time.Since(last), n, last)
 		return e
 	}
