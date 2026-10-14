@@ -37,8 +37,8 @@ func TestViewerRevisionsDoNotExposePrivateExecutionIdentity(t *testing.T) {
 		t.Fatalf("worker acknowledgement lost execution identity: %d %s", ack.Code, ack.Body.String())
 	}
 	for _, tc := range []struct {
-		path     string
-		minimum  int
+		path    string
+		minimum int
 	}{
 		{"/v1/config", 1},
 		{"/v1/history?check=" + b.Observations[0].Check, 2},
