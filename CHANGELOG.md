@@ -302,6 +302,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   oldest rollups of observers that held far less. A collector now sheds
   the oldest buckets of the observer whose rollups take the most room;
   each series records its observer, and keeps it through checkpoints.
+- Viewers no longer see the fragment of an endpoint address or check
+  target (`https://host/path#secret`), nor the user information or query
+  of an address that is not a URL (`user:pass@host:22`). The public
+  topology removed user information and queries only from URLs with a
+  scheme, and kept every fragment. Adapter test URLs and the topology
+  now share one sanitizer.
 
 ## [0.3.0] - 2026-10-14
 

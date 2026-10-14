@@ -93,6 +93,7 @@ This document lists the finite, verifiable scenario contracts for version 0.3.0,
 | A heartbeat that changes nothing, such as one sent again, is acknowledged without a journal write or fsync; a newer one, or one under another revision, is written and recovered | `TestHeartbeatThatChangesNothingIsNotWritten` |
 | Viewer reads (GET and HEAD of config, history and rollups) are served from what a topology gives once when it is loaded, never by projecting it or deriving its contracts again per request | `TestViewerReadsDoNotDeriveTheTopologyAgain` |
 | A peer sent a secret (HTTP bearer or private header, Mihomo token, proxy password over plain HTTP) cannot hand it back into an observation: edge labels, exit addresses, controller mode, undeclared proxy names and test URLs are withheld or closed, and cache statuses come from a closed list | `TestHTTPSentASecretCannotEchoIt`, `TestMihomoSentATokenCannotEchoIt`, `TestEdgeFactsFromEachNetworkAndUntrustedValues`, `TestRealThreeHopConnectSOCKSConnect` |
+| Addresses viewers see, URLs or not, lose user information, query values and fragments; changing only those leaves the public revision unchanged | `TestPublicURLKeepsNoUserQueryOrFragment`, `TestPublicRevisionIgnoresEveryRedactedField`, `TestAPIReadBoundariesAndRedaction` |
 
 ## Boundaries Beyond Automated Suite Claims
 

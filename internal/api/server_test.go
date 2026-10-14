@@ -182,11 +182,17 @@ func TestHeartbeatNotANewMeasurement(t *testing.T) {
 func TestAPIReadBoundariesAndRedaction(t *testing.T) {
 	srv, h, _ := fixture(t)
 	srv.Config.Checks[0].HTTP.BearerEnv = "PRIVATE_API_TOKEN"
-	srv.Config.Checks[0].Target = "https://example.invalid/health?secret=private"
-	w := request(h, "GET", "/v1/config", viewerToken, "", nil)
-	if strings.Contains(w.Body.String(), "PRIVATE_API_TOKEN") || strings.Contains(w.Body.String(), "secret=private") {
-		t.Fatal("configuration credentials leaked", w.Body.String())
+	srv.Config.Checks[0].Target = "https://example.invalid/health?secret=private#secret-fragment"
+	srv.Config.Endpoints[0].Address = "https://user:secret-password@example.invalid/#secret-fragment"
+	for _, path := range []string{"/v1/config", "/v1/snapshot"} {
+		w := request(h, "GET", path, viewerToken, "", nil)
+		for _, secret := range []string{"PRIVATE_API_TOKEN", "secret=private", "secret-fragment", "secret-password"} {
+			if w.Code != 200 || strings.Contains(w.Body.String(), secret) {
+				t.Fatal(path, "configuration credentials leaked", secret, w.Body.String())
+			}
+		}
 	}
+	var w *httptest.ResponseRecorder
 	if srv.Config.Checks[0].HTTP.BearerEnv == "" {
 		t.Fatal("redaction mutated runtime")
 	}

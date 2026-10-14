@@ -25,6 +25,31 @@ func revisionFixture(t testing.TB) model.Config {
 	return c
 }
 
+// Every form an address can take loses its user information, query and
+// fragment before viewers see it.
+func TestPublicURLKeepsNoUserQueryOrFragment(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://u:p@example.test:8443/a/b?k=v#frag": "https://example.test:8443/a/b?redacted",
+		"https://example.test/a#frag":                "https://example.test/a",
+		"https://example.test/a%23b#frag%20x":        "https://example.test/a%23b",
+		"https://[2001:db8::1]:443/?q#f":             "https://[2001:db8::1]:443/?redacted",
+		"http://[fe80::1%25eth0]:80/x#f":             "http://[fe80::1%25eth0]:80/x",
+		"example.test:443#frag":                      "example.test:443",
+		"192.0.2.1:443#frag":                         "192.0.2.1:443",
+		"[2001:db8::1]:22#frag":                      "[2001:db8::1]:22",
+		"user:pass@example.test:443?q=1#frag":        "example.test:443?redacted",
+		"user:pass@192.0.2.1:22":                     "192.0.2.1:22",
+		"example.test":                               "example.test",
+		"https://example.test/no-secret":             "https://example.test/no-secret",
+		"https://example.test/%zz#frag":              "https://example.test/%zz",
+		"https://example.test/?#":                    "https://example.test/?",
+	} {
+		if got := PublicURL(in); got != want {
+			t.Errorf("PublicURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestPublicRevisionIgnoresEveryRedactedField(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -33,6 +58,8 @@ func TestPublicRevisionIgnoresEveryRedactedField(t *testing.T) {
 		{"endpoint_query", func(c *model.Config) { c.Endpoints[0].Address = "https://example.test/check?secret=two" }},
 		{"target_query", func(c *model.Config) { c.Checks[0].Target = "https://example.test/check?secret=two" }},
 		{"url_userinfo", func(c *model.Config) { c.Endpoints[0].Address = "https://user:password@example.test/check?secret=one" }},
+		{"endpoint_fragment", func(c *model.Config) { c.Endpoints[0].Address = "https://example.test/check?secret=one#secret-two" }},
+		{"target_fragment", func(c *model.Config) { c.Checks[0].Target = "https://example.test/check?secret=one#secret-two" }},
 		{"bearer_env", func(c *model.Config) { c.Checks[0].HTTP.BearerEnv = "TOKEN_B" }},
 		{"adapter_env", func(c *model.Config) { c.Checks[0].Adapter.TokenEnv = "ADAPTER_B" }},
 		{"header_value", func(c *model.Config) { c.Checks[0].HTTP.RequestHeaders["Authorization"] = "private-b" }},

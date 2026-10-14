@@ -532,28 +532,39 @@ func Revision(c model.Config) string {
 	return hex.EncodeToString(h[:])
 }
 
-// Public returns a deep copy; redaction never modifies executor configuration.
-func Public(c model.Config) model.Config {
-	b, _ := json.Marshal(c)
-	var out model.Config
-	_ = json.Unmarshal(b, &out)
-	redactURL := func(s string) string {
-		u, e := url.Parse(s)
-		if e != nil || u.Scheme == "" {
-			return s
-		}
+// PublicURL is s as viewers may see it: without user information or a
+// fragment, and with any query replaced by "redacted". An address that is
+// not a URL, such as host:port, loses the same parts: what precedes an @,
+// what follows a ? and what follows a #.
+func PublicURL(s string) string {
+	s, _, _ = strings.Cut(s, "#")
+	if u, e := url.Parse(s); e == nil && u.Scheme != "" && u.Opaque == "" {
 		u.User = nil
 		if u.RawQuery != "" {
 			u.RawQuery = "redacted"
 		}
 		return u.String()
 	}
+	if i := strings.LastIndexByte(s, '@'); i >= 0 {
+		s = s[i+1:]
+	}
+	if before, _, ok := strings.Cut(s, "?"); ok {
+		s = before + "?redacted"
+	}
+	return s
+}
+
+// Public returns a deep copy; redaction never modifies executor configuration.
+func Public(c model.Config) model.Config {
+	b, _ := json.Marshal(c)
+	var out model.Config
+	_ = json.Unmarshal(b, &out)
 	for i := range out.Endpoints {
-		out.Endpoints[i].Address = redactURL(out.Endpoints[i].Address)
+		out.Endpoints[i].Address = PublicURL(out.Endpoints[i].Address)
 	}
 	for i := range out.Checks {
 		x := &out.Checks[i]
-		x.Target = redactURL(x.Target)
+		x.Target = PublicURL(x.Target)
 		x.HTTP.BearerEnv = ""
 		x.Adapter.TokenEnv = ""
 		x.HTTP.RequestHeaders = nil

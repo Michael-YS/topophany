@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -319,16 +320,10 @@ func safeFact(s string) string {
 	return s
 }
 func publicURL(s string) string {
-	u, e := url.Parse(s)
-	if e != nil {
+	if _, e := url.Parse(s); e != nil {
 		return ""
 	}
-	u.User = nil
-	u.Fragment = ""
-	if u.RawQuery != "" {
-		u.RawQuery = "redacted"
-	}
-	return safeFact(u.String())
+	return safeFact(config.PublicURL(s))
 }
 
 type cappedOutput struct {
