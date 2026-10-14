@@ -57,7 +57,7 @@
   <canvas class="sky" aria-hidden="true"></canvas>
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="pill"><span class="pill-dot"></span>v0.3.0 · MIT · セルフホスト</p>
+      <p class="release">v0.3.0 · MIT · セルフホスト</p>
       <h1 class="wordmark-h1">
         <span class="sr-only">Topophany — 場所の顕現</span>
         <canvas class="wordmark" aria-hidden="true"></canvas>
@@ -81,7 +81,6 @@
       <p class="globe-note" aria-hidden="true">ドラッグで地球を回せます</p>
     </div>
   </div>
-  <a class="scroll-cue" href="#demo" aria-label="デモへスクロール"><span></span></a>
 </header>
 
 <main>
@@ -95,9 +94,8 @@
 
     <figure class="term" id="term" data-tour="/data/tour.ja.json">
       <div class="term-bar">
-        <span class="term-lights" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="term-title"><span class="term-prompt">~</span> topo preview</span>
-        <span class="term-meta"><span class="rec" aria-hidden="true"></span><span class="term-state">再生中</span> · 140×42</span>
+        <span class="term-meta"><span class="term-state">再生中</span> · 140×42</span>
         <button class="term-play" type="button" aria-label="再生を一時停止" aria-pressed="false">
           <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3" width="3" height="10" rx="1"/><rect x="9.5" y="3" width="3" height="10" rx="1"/></svg>
           <svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z"/></svg>
@@ -164,7 +162,6 @@
           <path class="v-wire v-bad" d="M154 43 H236 Q248 43 256 51 L282 77"/>
           <g class="v-x" transform="translate(290 85)"><circle r="9"/><path d="M-3.6 -3.6L3.6 3.6M3.6 -3.6L-3.6 3.6"/></g>
           <path class="v-wire v-ok" d="M154 145 H250 Q262 145 270 133 L296 105 Q304 94 318 94 H362" marker-end="url(#arr-ok)"/>
-          <path class="v-flow" d="M154 145 H250 Q262 145 270 133 L296 105 Q304 94 318 94 H362"/>
           <text x="172" y="33" class="v-ev bad">tcp タイムアウト ×3</text>
           <text x="172" y="166" class="v-ev ok">http 200 · 182 ms</text>
           <line x1="6" x2="514" y1="190" y2="190" class="v-rule"/>
@@ -245,12 +242,12 @@ physical power or GFW authority.</span></pre>
         <div class="node"><code>topo worker</code><span>東京のサーバー</span></div>
         <div class="node"><code>topo serve --observer</code><span>コレクター自身の基準</span></div>
       </div>
-      <div class="arch-link" aria-hidden="true"><span class="flow"></span><small>観測結果。分断の間はバッファ</small></div>
+      <div class="arch-link" aria-hidden="true"><small>観測結果。分断の間はバッファ</small></div>
       <div class="arch-col">
         <div class="node node-c"><code>topo serve</code><span>ジャーナル A · ACK の前に fsync</span></div>
         <div class="node node-c"><code>topo serve</code><span>ジャーナル B · 独立</span></div>
       </div>
-      <div class="arch-link" aria-hidden="true"><span class="flow"></span><small>読み取り専用のスナップショット</small></div>
+      <div class="arch-link" aria-hidden="true"><small>読み取り専用のスナップショット</small></div>
       <div class="arch-col">
         <div class="node"><code>topo</code><span>TUI、フェイルオーバー付き</span></div>
         <div class="node"><code>topo --json</code><span>スクリプト向けのスナップショット</span></div>
@@ -355,7 +352,8 @@ physical power or GFW authority.</span></pre>
           <p>デモ用のトポロジーと新しい認証情報を書き出し、<code>127.0.0.1:7447</code> で待ち受けます。</p>
           <div class="cmd cmd-multi" data-copy="topo init --dir ./demo&#10;topo serve --config ./demo/topology.json --auth ./demo/auth.json --data ./demo/collector-data --observer demo"><code><span class="cmd-prompt" aria-hidden="true">$ </span>topo init --dir ./demo
 <span class="cmd-prompt" aria-hidden="true">$ </span>topo serve --config ./demo/topology.json \
-    --auth ./demo/auth.json --data ./demo/collector-data \
+    --auth ./demo/auth.json \
+    --data ./demo/collector-data \
     --observer demo</code><button class="copy" type="button" aria-label="コピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
         </li>
         <li>

@@ -23,7 +23,6 @@
   "hero.copy": "Copy the install command",
   "hero.globe": "A dotted globe turning slowly. Lit places are joined by paths: healthy paths faint with pulses running along them, one failing path red and dashed.",
   "hero.globe-note": "drag to turn the world",
-  "hero.scroll": "Scroll to the demo",
   "demo.eyebrow": "The terminal UI",
   "demo.title.html": "Is anything wrong, and&nbsp;where?",
   "demo.lead.html": "The Overview answers before you read a word: a verdict, a map of every place and path, and the short list of what needs attention. Below is <code>topo preview</code> recorded frame by frame from the TUI's own renderer. The evidence is synthetic, but it goes through the real state engine.",

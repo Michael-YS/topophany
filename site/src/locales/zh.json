@@ -23,7 +23,6 @@
   "hero.copy": "复制安装命令",
   "hero.globe": "缓缓转动的点阵地球。亮起的地点由路径相连：健康的路径淡淡发光、有脉冲流过，一条故障路径显示为红色虚线。",
   "hero.globe-note": "拖动以旋转地球",
-  "hero.scroll": "滚动到演示",
   "demo.eyebrow": "终端界面",
   "demo.title.html": "有没有出问题？在哪里？",
   "demo.lead.html": "Overview 在你读到任何文字之前就给出答案：一个结论、一张涵盖所有地点和路径的地图，以及需要关注的简短清单。下面是由 TUI 自己的渲染器逐帧录制的 <code>topo preview</code>。证据是合成的，但经过了真实的状态引擎。",
