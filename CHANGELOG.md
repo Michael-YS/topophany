@@ -151,6 +151,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the pixel size the terminal gives with its rows and columns, or
   asks for it with `CSI 16 t`, and `TOPO_CELL_ASPECT` (a cell's height
   over its width, such as `2.6`) sets it where the terminal says neither.
+  Windows Terminal answers the query with a fixed 10×20 cell whatever its
+  font, so there it takes the variable.
 - The homepage no longer scrolls sideways on phones. On narrow screens the
   panels of its Semantics section were as wide as their widest line, up to
   65 pixels wider than the screen at 320; they now fit, and the edge

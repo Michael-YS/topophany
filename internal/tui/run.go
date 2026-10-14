@@ -166,8 +166,10 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 	m.Hyperlinks = hyperlinks()
 	// A cell's shape, which keeps the globe round: TOPO_CELL_ASPECT, else
 	// the pixel size the terminal gives with its rows and columns, else
-	// its answer to CSI 16 t. Windows hands Read one key at a time, too
-	// slowly for the decoder to keep an answer together, so it is not asked.
+	// its answer to CSI 16 t. Windows Terminal answers 10x20 whatever its
+	// font, the 2:1 assumed anyway, so there only TOPO_CELL_ASPECT helps.
+	// Windows hands Read one key at a time, too slowly for the decoder to
+	// keep an answer together, so it is not asked.
 	fixed := false
 	if a, e := strconv.ParseFloat(os.Getenv("TOPO_CELL_ASPECT"), 64); e == nil {
 		m.Cell, fixed = a, true
