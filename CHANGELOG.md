@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On small terminals such as 80x24 the Overview keeps the verdict's big
   number, puts the observers beside it, and when nothing needs attention
   gives the room under a short all-clear to the service matrix.
+- The glints on the Overview's map run as smoothly as on the Topology
+  tab, and About's globe, once its introduction has played, turns at ten
+  frames a second rather than fourteen.
 
 ### Fixed
 

@@ -606,15 +606,18 @@ func (m *Model) setTab(t int) {
 	m.Detail = false
 }
 
-// Animating reports how often the run loop should repaint without input.
+// Animating reports how often the run loop should repaint without input:
+// as often as what is on screen moves, and no more.
 func (m *Model) Animating() time.Duration {
 	switch {
+	case m.Tab == tabAbout && m.Now.Sub(m.aboutAt) < 3*time.Second:
+		return 70 * time.Millisecond // the wordmark and the lines come in
 	case m.Tab == tabAbout:
-		return 70 * time.Millisecond
+		return 100 * time.Millisecond // then only the globe turns
 	case m.Loading != "":
 		return 90 * time.Millisecond // the spinner turns
-	case m.Tab == tabTopology && !m.Detail:
-		return 140 * time.Millisecond
+	case !m.Detail && (m.Tab == tabTopology || m.Tab == tabOverview && m.Width >= 90 && m.Height >= 25):
+		return 140 * time.Millisecond // glints run along the map's wires
 	}
 	return 500 * time.Millisecond
 }

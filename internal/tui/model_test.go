@@ -323,3 +323,28 @@ func TestLoadingSpins(t *testing.T) {
 		t.Fatal("still spinning after loading")
 	}
 }
+
+// The run loop repaints as often as what is on screen moves: the glints on
+// either map, the About intro and then its globe, and otherwise seldom.
+func TestRepaintsArePacedToWhatMoves(t *testing.T) {
+	m := previewModel(t)
+	for _, c := range []struct {
+		tab, w, h int
+		after     time.Duration
+		want      time.Duration
+	}{
+		{tabOverview, 160, 48, 0, 140 * time.Millisecond},
+		{tabOverview, 80, 24, 0, 500 * time.Millisecond}, // no map
+		{tabTopology, 80, 24, 0, 140 * time.Millisecond},
+		{tabServices, 160, 48, 0, 500 * time.Millisecond},
+		{tabAbout, 160, 48, time.Second, 70 * time.Millisecond},
+		{tabAbout, 160, 48, 5 * time.Second, 100 * time.Millisecond},
+	} {
+		m.Width, m.Height = c.w, c.h
+		m.setTab(c.tab)
+		m.Now = m.Now.Add(c.after)
+		if got := m.Animating(); got != c.want {
+			t.Errorf("%s at %dx%d after %v repaints every %v, want %v", tabs[c.tab], c.w, c.h, c.after, got, c.want)
+		}
+	}
+}
