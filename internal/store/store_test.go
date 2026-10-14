@@ -204,8 +204,8 @@ func TestReceiptCapacityAndHeartbeatMonotonicity(t *testing.T) {
 		t.Fatal("old heartbeat resurrected")
 	}
 	now = now.Add(2 * time.Minute)
-	if e := s.Put(batch(c, testkit.Observation(c, "home-http", 3, now, "ok"))); e != nil {
-		t.Fatal("expired receipts not released", e)
+	if e := s.Put(batch(c, testkit.Observation(c, "home-http", 3, now, "ok"))); !errors.Is(e, ErrCapacity) {
+		t.Fatal("durable tombstone capacity was released", e)
 	}
 }
 func TestStorageErrorsFailClosed(t *testing.T) {

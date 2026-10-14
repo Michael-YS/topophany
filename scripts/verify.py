@@ -20,6 +20,8 @@ import sys
 import tempfile
 import time
 
+from source_identity import source_identity, require_unchanged
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -36,6 +38,7 @@ def main() -> int:
         parser.error("Go must be installed and on PATH")
     env = os.environ.copy()
     env.update(GOTOOLCHAIN="local", GOPROXY="off", GOSUMDB="off", GOMAXPROCS="4")
+    source_before = source_identity(ROOT)
     results: list[dict] = []
     started = dt.datetime.now(dt.timezone.utc).isoformat()
     start_clock = time.monotonic()
@@ -155,9 +158,16 @@ def main() -> int:
     top_tests = [event for event in events if "/" not in event["Test"] and event["Test"].startswith("Test")]
     fuzz_roots = [event for event in events if "/" not in event["Test"] and event["Test"].startswith("Fuzz")]
     sources = list((ROOT / "cmd").rglob("*.go")) + list((ROOT / "internal").rglob("*.go"))
+    source_after = source_identity(ROOT)
+    try:
+        require_unchanged(source_before, source_after)
+    except RuntimeError as exc:
+        results.append({"name": "source-identity", "status": "fail", "exit_code": 1,
+                        "error": str(exc), "duration_seconds": 0, "log": "results.json"})
     failures = [r["name"] for r in results if r["status"] != "pass"]
     summary = {
         "schema": 1, "project": "Topophany", "version": "0.1.0",
+        "source_before": source_before, "source_after": source_after,
         "started_utc": started, "finished_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         "duration_seconds": round(time.monotonic() - start_clock, 3),
         "host_platform": platform.platform(),

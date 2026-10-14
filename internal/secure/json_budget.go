@@ -11,6 +11,11 @@ import (
 // Only the bounded parser stack and object keys are retained during this pass.
 // Duplicate keys are rejected so validation and consumption see the same object.
 func JSONBudget(raw []byte) error {
+	return JSONResponseBudget(raw, 128, 4096, 32768)
+}
+
+// JSONResponseBudget applies tighter endpoint-specific object, array and container limits.
+func JSONResponseBudget(raw []byte, maxObject, maxArray, maxContainers int) error {
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.UseNumber()
 	tokens, entries, containers := 0, 0, 0
@@ -32,7 +37,7 @@ func JSONBudget(raw []byte) error {
 			return nil
 		}
 		containers++
-		if containers > 32768 {
+		if containers > maxContainers {
 			return errors.New("JSON container budget exceeded")
 		}
 		if delim != '[' && delim != '{' {
@@ -43,7 +48,7 @@ func JSONBudget(raw []byte) error {
 		for d.More() {
 			count++
 			if delim == '{' {
-				if count > 128 {
+				if count > maxObject {
 					return errors.New("JSON object budget exceeded")
 				}
 				k, err := d.Token()
@@ -57,7 +62,7 @@ func JSONBudget(raw []byte) error {
 				keys[key] = true
 			} else {
 				entries++
-				if count > 4096 || entries > 262144 {
+				if count > maxArray || entries > 262144 {
 					return errors.New("JSON array budget exceeded")
 				}
 			}

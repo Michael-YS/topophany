@@ -18,6 +18,14 @@ import (
 
 var ErrFull = errors.New("outbox byte budget exhausted; execution must stop")
 
+// DegradedError reports destinations whose new evidence could not be queued.
+// Other destinations have already been durably queued; callers must continue delivery.
+type DegradedError struct{ Recipients []string }
+
+func (e *DegradedError) Error() string {
+	return fmt.Sprintf("outbox destination quota exhausted; new evidence dropped for %v", e.Recipients)
+}
+
 type Item struct {
 	Schema  int         `json:"schema"`
 	ID      string      `json:"id"`
@@ -33,6 +41,8 @@ type Queue struct {
 	used           int64
 	quarantineUsed int64
 	items          map[string]Item
+	itemSizes      map[string]int64
+	recipientBytes map[string]int64
 	unlock         func() error
 	closed         bool
 }
@@ -52,7 +62,7 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 	if e != nil {
 		return nil, e
 	}
-	q := &Queue{dir: dir, project: project, max: maxBytes, items: map[string]Item{}, unlock: unlock}
+	q := &Queue{dir: dir, project: project, max: maxBytes, items: map[string]Item{}, itemSizes: map[string]int64{}, recipientBytes: map[string]int64{}, unlock: unlock}
 	ok := false
 	defer func() {
 		if !ok {
@@ -94,7 +104,7 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 			if e = json.Unmarshal(b, &v); e != nil || v.Schema != 1 || v.SHA256 != itemHash(v) || entry.Name() != v.ID+".json" || v.Batch.Project != project || !validItem(v) {
 				return nil, errors.New("outbox corruption or project mismatch")
 			}
-			q.items[v.ID] = v
+			q.account(v, info.Size())
 		}
 	}
 	if q.used-q.quarantineUsed > maxBytes {
@@ -144,9 +154,22 @@ func (q *Queue) write(v Item) error {
 		return e
 	}
 	q.used = q.used - old + int64(len(b))
-	q.items[v.ID] = v
+	q.account(v, int64(len(b)))
 	return nil
 }
+
+// account updates independent recipient reservations on durable record changes.
+func (q *Queue) account(v Item, size int64) {
+	old := q.items[v.ID]
+	for _, r := range old.Pending {
+		q.recipientBytes[r] -= q.itemSizes[v.ID]
+	}
+	for _, r := range v.Pending {
+		q.recipientBytes[r] += size
+	}
+	q.items[v.ID], q.itemSizes[v.ID] = v, size
+}
+
 func (q *Queue) Add(b model.Batch, recipients []string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -181,7 +204,33 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 			return errors.New("duplicate recipient")
 		}
 	}
-	return q.write(v)
+	// Charge each recipient the full record size, even though bytes are shared.
+	// This conservative reservation guarantees the sum cannot exceed the global
+	// budget and is reconstructed from pending records after every restart.
+	v.SHA256 = itemHash(v)
+	encoded, _ := json.Marshal(v)
+	share := q.max / int64(len(recipients))
+	admitted, rejected := []string{}, []string{}
+	for _, r := range v.Pending {
+		if q.recipientBytes[r]+int64(len(encoded)) > share {
+			rejected = append(rejected, r)
+		} else {
+			admitted = append(admitted, r)
+		}
+	}
+	if len(recipients) == 1 && len(admitted) == 0 {
+		return ErrFull
+	}
+	v.Pending = admitted
+	if len(admitted) > 0 {
+		if err := q.write(v); err != nil {
+			return err
+		}
+	}
+	if len(rejected) > 0 {
+		return &DegradedError{Recipients: rejected}
+	}
+	return nil
 }
 func (q *Queue) Pending(recipient string, limit int) []Item {
 	q.mu.Lock()
@@ -251,7 +300,9 @@ func (q *Queue) ack(id, recipient string) error {
 			return e
 		}
 		q.used -= st.Size()
+		q.account(Item{ID: id}, 0)
 		delete(q.items, id)
+		delete(q.itemSizes, id)
 		return secure.SyncDir(filepath.Join(q.dir, "pending"))
 	}
 	return q.write(v)

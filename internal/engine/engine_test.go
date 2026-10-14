@@ -178,7 +178,7 @@ func TestHeartbeatDoesNotRefreshCheckAndForeignRevisionIgnored(t *testing.T) {
 	c := testkit.Config()
 	now := time.Now()
 	v := testkit.Observation(c, "home-http", 1, now.Add(-time.Hour), "ok")
-	beats := map[string]model.Heartbeat{"home": {Observer: "home", Boot: "new", SampledAt: now}}
+	beats := map[string]model.Heartbeat{"home": {Project: c.Project, Revision: config.Revision(c), Observer: "home", Boot: "new", SampledAt: now}}
 	s := Build(c, "a", "home", []model.Observation{v}, beats, now)
 	if s.Observers[0].Health != "up" || s.Checks[0].Freshness != "stale" {
 		t.Fatal("heartbeat confused with fresh check")

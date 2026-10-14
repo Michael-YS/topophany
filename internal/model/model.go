@@ -167,6 +167,8 @@ type Observation struct {
 	Facts        map[string]string `json:"facts,omitempty"`
 }
 type Heartbeat struct {
+	Project    string    `json:"project,omitempty"`
+	Revision   string    `json:"revision,omitempty"`
 	Observer   string    `json:"observer"`
 	Boot       string    `json:"boot"`
 	SampledAt  time.Time `json:"sampled_at"`

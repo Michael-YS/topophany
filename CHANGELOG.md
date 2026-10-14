@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Bound Exit-IP and Mihomo JSON structure before decoding; escape bidirectional controls in CLI JSON without changing parsed values.
+- Reserve outbox capacity per destination, history capacity per observer, and snapshot computation per viewer; bound connections and pre-authentication work.
+- Retain durable observation-ID bindings until administrative archival and scope persisted heartbeats to their project and configuration revision.
+- Bind source verification to the tested commit and file manifest; resolve release tags back to the built commit immediately before publication.
+- Add regression tests for all eleven scan-bundle findings, including restart recovery, invalid acknowledgements, and moved release tags.
+
 ## [0.1.0] - 2026-10-13
 
 Initial release.

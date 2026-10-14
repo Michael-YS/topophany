@@ -333,6 +333,9 @@ func exitIP(b []byte, h model.HTTPOptions) (netip.Addr, error) {
 			}
 		}
 	case "json":
+		if err := secure.JSONResponseBudget(b, 16, 16, 32); err != nil {
+			return netip.Addr{}, err
+		}
 		var v map[string]json.RawMessage
 		if e := json.Unmarshal(b, &v); e != nil {
 			return netip.Addr{}, e

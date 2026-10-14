@@ -29,6 +29,50 @@ class ReleaseBoundaryTests(unittest.TestCase):
         for forbidden in ("actions/checkout", "go test", "go build", "scripts/", "tar -", "unzip"):
             self.assertNotIn(forbidden, publish)
 
+class ReleaseTagBindingTests(unittest.TestCase):
+    def test_publish_resolves_lightweight_and_nested_annotated_tags(self):
+        import os
+        import subprocess
+        import tempfile
+        source = (ROOT / ".github/workflows/release.yml").read_text().split("\n  publish:\n")[1]
+        self.assertIn("SOURCE_SHA: ${{ github.sha }}", source)
+        script = source.split("        run: |\n")[1]
+        script = "\n".join(line[10:] for line in script.splitlines())
+        for mode in ("matching", "moved", "annotated", "nested", "cycle", "missing"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "dist").mkdir()
+                for name in ("fixture.tar.gz", "fixture.zip"):
+                    (root / "dist" / name).write_bytes(b"inert archive")
+                checksums = subprocess.check_output(["sha256sum", "fixture.tar.gz", "fixture.zip"], cwd=root / "dist")
+                (root / "dist/SHA256SUMS.txt").write_bytes(checksums)
+                gh = root / "gh"
+                gh.write_text('''#!/bin/bash
+set -eu
+if [ "$1" = release ]; then
+  printf '%s\\n' "$@" > "$PUBLISHED"
+  exit 0
+fi
+case "$MODE:$2" in
+ missing:*) exit 1;;
+ moved:*) printf 'commit\\tother\\n';;
+ cycle:*) printf 'tag\\tcycle\\n';;
+ annotated:*/ref/*|nested:*/ref/*) printf 'tag\\touter\\n';;
+ nested:*/tags/outer) printf 'tag\\tinner\\n';;
+ *) printf 'commit\\texpected\\n';;
+esac
+''')
+                gh.chmod(0o755)
+                env = dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"], MODE=mode,
+                           SOURCE_SHA="expected", VERSION="v1.2.3", GH_REPO="test/repo",
+                           PUBLISHED=str(root / "published"))
+                result = subprocess.run(["bash", "-c", script], cwd=root, env=env, capture_output=True)
+                success = mode in {"matching", "annotated", "nested"}
+                self.assertEqual(result.returncode == 0, success, result.stderr.decode())
+                self.assertEqual((root / "published").exists(), success)
+                if success:
+                    self.assertIn("Source commit: expected", (root / "published").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -75,6 +75,11 @@ func readCore(ctx context.Context, c *http.Client, base, path, token string, v a
 	if len(b) > 2<<20 {
 		return local("adapter_api", "response_limit_exceeded")
 	}
+	// Bound proxy/provider maps, member/history arrays and aggregate containers
+	// before allocating typed response objects, including ignored fields.
+	if e = secure.JSONResponseBudget(b, 128, 256, 4096); e != nil {
+		return local("adapter_api", "response_complexity_exceeded")
+	}
 	if e = json.Unmarshal(b, v); e != nil {
 		return local("adapter_api", "unsupported_response_shape")
 	}

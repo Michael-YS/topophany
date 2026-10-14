@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -92,7 +93,12 @@ type Server struct {
 	snapshotBeats      map[string]model.Heartbeat
 	snapshotCache      map[string][]byte
 	snapshotCacheBytes int
+	snapshotMisses     map[string]int
+	snapshotBuilds     int
+	preauthSlots       chan struct{}
 }
+type admissionKey struct{}
+
 type limit struct {
 	At    time.Time
 	Count int
@@ -106,7 +112,7 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 	if s != nil {
 		s.SetObservers(ids)
 	}
-	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
+	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -119,6 +125,20 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		select {
+		case s.preauthSlots <- struct{}{}:
+		default:
+			writeError(w, 429, "preauth_busy")
+			return
+		}
+		var once sync.Once
+		release := func() { once.Do(func() { <-s.preauthSlots }) }
+		defer release()
+		if !s.allowBudget("preauth", 300) {
+			writeError(w, 429, "preauth_rate_limited")
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), admissionKey{}, release))
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -152,6 +172,9 @@ func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Req
 			writeError(w, 403, "role_forbidden")
 			return
 		}
+		if release, ok := r.Context().Value(admissionKey{}).(func()); ok {
+			release()
+		}
 		scope := hash
 		if role == "worker" {
 			scope = "worker:" + found.Observer
@@ -169,7 +192,8 @@ func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Req
 		next(w, r, found)
 	}
 }
-func (s *Server) allow(key string) bool {
+func (s *Server) allow(key string) bool { return s.allowBudget(key, 30) }
+func (s *Server) allowBudget(key string, maximum int) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.Now()
@@ -179,9 +203,9 @@ func (s *Server) allow(key string) bool {
 	}
 	v.Count++
 	s.limits[key] = v
-	return v.Count <= 30
+	return v.Count <= maximum
 }
-func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, _ Principal) {
+func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, p Principal) {
 	view := r.URL.Query().Get("observer")
 	if view != "" {
 		exists := false
@@ -193,7 +217,7 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, _ Principal) {
 			return
 		}
 	}
-	s.writeSnapshot(w, view)
+	s.writeSnapshot(w, view, p.TokenSHA256)
 }
 func (s *Server) topology(w http.ResponseWriter, r *http.Request, _ Principal) {
 	writeJSON(w, 200, struct {

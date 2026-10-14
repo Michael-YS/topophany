@@ -128,7 +128,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 			// State tails outlive receipts. Restore their receipts during replay
 			// so a crash after checkpoint replacement cannot add them twice.
 			if _, ok := s.seen[v.ID]; !ok {
-				s.seen[v.ID] = receipt{Hash: observationHash(v), At: v.SampledAt, Observer: v.Observer}
+				s.seen[v.ID] = receipt{Hash: observationHash(v), At: v.ReceivedAt, Observer: v.Observer}
 			}
 		}
 	} else if !errors.Is(e, os.ErrNotExist) {
@@ -250,13 +250,14 @@ func (s *Store) apply(b model.Batch, recovery bool) error {
 			}
 			continue
 		}
-		s.seen[v.ID] = receipt{Hash: h, At: v.SampledAt, Observer: v.Observer}
+		s.seen[v.ID] = receipt{Hash: h, At: v.ReceivedAt, Observer: v.Observer}
 		s.addRow(v)
 	}
 	if b.Heartbeat != nil {
 		h := *b.Heartbeat
+		h.Project, h.Revision = b.Project, b.Revision
 		old, ok := s.beats[h.Observer]
-		if !ok || h.SampledAt.After(old.SampledAt) {
+		if !ok || h.Project != old.Project || h.Revision != old.Revision || h.SampledAt.After(old.SampledAt) {
 			s.beats[h.Observer] = h
 		}
 	}
@@ -387,7 +388,25 @@ func (s *Store) prune() {
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return before(rows[i], rows[j]) })
-	if len(rows) > s.options.MaxHistory {
+	if len(s.options.Observers) > 0 {
+		counts := map[string]int{}
+		allowed := map[string]bool{}
+		for _, id := range s.options.Observers {
+			allowed[id] = true
+		}
+		quota := s.options.MaxHistory / len(s.options.Observers)
+		kept := make([]model.Observation, 0, min(len(rows), s.options.MaxHistory))
+		for i := len(rows) - 1; i >= 0; i-- {
+			if allowed[rows[i].Observer] && counts[rows[i].Observer] < quota {
+				kept = append(kept, rows[i])
+				counts[rows[i].Observer]++
+			}
+		}
+		for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
+			kept[i], kept[j] = kept[j], kept[i]
+		}
+		rows = kept
+	} else if len(rows) > s.options.MaxHistory {
 		rows = rows[len(rows)-s.options.MaxHistory:]
 	}
 	s.rows = rows
@@ -400,11 +419,8 @@ func (s *Store) prune() {
 			keep[v.ID] = true
 		}
 	}
-	for id, r := range s.seen {
-		if r.At.Before(cutoff) {
-			delete(s.seen, id)
-		}
-	}
+	// Receipts are durable ID-to-content tombstones until administrative archival.
+	// Ageing out history must never reopen an observation identity.
 	s.scopeBytes = map[string]int64{}
 	s.scopeReceipts = map[string]int{}
 	for id, r := range s.seen {

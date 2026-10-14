@@ -173,7 +173,9 @@ func TestSnapshotViewCacheHasGlobalBudget(t *testing.T) {
 		srv.Config.Observers = append(srv.Config.Observers, model.Observer{ID: fmt.Sprintf("view-%d", i), Context: "test", StaleSeconds: 90})
 	}
 	for i := 0; i < 9; i++ {
-		got := request(h, "GET", fmt.Sprintf("/v1/snapshot?observer=view-%d", i), viewerToken, "", nil)
+		token := fmt.Sprintf("%064x", i+100)
+		srv.Auth.Tokens = append(srv.Auth.Tokens, Principal{TokenSHA256: secure.Hash(token), Role: "viewer"})
+		got := request(h, "GET", fmt.Sprintf("/v1/snapshot?observer=view-%d", i), token, "", nil)
 		want := 200
 		if i == 8 {
 			want = 429

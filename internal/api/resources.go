@@ -40,8 +40,8 @@ func (s *Server) release(scope, role string) {
 	<-slots
 }
 
-func (s *Server) writeSnapshot(w http.ResponseWriter, view string) {
-	raw, status, code := s.cachedSnapshot(view)
+func (s *Server) writeSnapshot(w http.ResponseWriter, view, principal string) {
+	raw, status, code := s.cachedSnapshot(view, principal)
 	if status != http.StatusOK {
 		if status == 429 {
 			w.Header().Set("Retry-After", "1")
@@ -55,7 +55,7 @@ func (s *Server) writeSnapshot(w http.ResponseWriter, view string) {
 	_, _ = w.Write(raw)
 }
 
-func (s *Server) cachedSnapshot(view string) ([]byte, int, string) {
+func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	// Capture bounded store tails once per second. Cache at most eight observer
 	// projections (32 MiB total) so switching views cannot amplify store reads.
 	// Waiting readers never queue expensive work, and writes use a separate mutex.
@@ -68,20 +68,28 @@ func (s *Server) cachedSnapshot(view string) ([]byte, int, string) {
 		s.snapshotAt = s.Now()
 		s.snapshotCache = map[string][]byte{}
 		s.snapshotCacheBytes = 0
+		s.snapshotMisses = map[string]int{}
+		s.snapshotBuilds = 0
 	}
 	if raw, ok := s.snapshotCache[view]; ok {
 		return raw, http.StatusOK, ""
 	}
-	if len(s.snapshotCache) >= 8 || s.snapshotCacheBytes >= 32<<20 {
+	if s.snapshotMisses[principal] >= 2 || s.snapshotBuilds >= 8 {
 		return nil, 429, "snapshot_rate_limited"
 	}
+	s.snapshotMisses[principal]++
+	s.snapshotBuilds++
 	snap := engine.Build(s.Config, s.Instance, view, s.snapshotRows, s.snapshotBeats, s.snapshotAt)
 	raw, err := summaryJSON(snap)
 	if err != nil {
 		return nil, 503, "snapshot_budget_exceeded"
 	}
-	if s.snapshotCacheBytes+len(raw) > 32<<20 {
-		return nil, 429, "snapshot_rate_limited"
+	for key, old := range s.snapshotCache {
+		if s.snapshotCacheBytes+len(raw) <= 32<<20 && len(s.snapshotCache) < 8 {
+			break
+		}
+		delete(s.snapshotCache, key)
+		s.snapshotCacheBytes -= len(old)
 	}
 	s.snapshotCache[view] = raw
 	s.snapshotCacheBytes += len(raw)

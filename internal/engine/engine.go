@@ -120,7 +120,7 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 	histories := map[string][]model.Observation{}
 	lastSeen := map[string]time.Time{}
 	for id, h := range beats {
-		if !h.SampledAt.After(now.Add(5 * time.Second)) {
+		if h.Project == c.Project && h.Revision == revision && !h.SampledAt.After(now.Add(5*time.Second)) {
 			lastSeen[id] = h.SampledAt
 		}
 	}

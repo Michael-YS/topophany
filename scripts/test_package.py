@@ -78,6 +78,52 @@ class SourceExportTests(unittest.TestCase):
         self.assertEqual(files["README.md"], b"reviewed revision\n")
         self.assertEqual(set(files), {"README.md", ".gitignore"})
 
+    def test_old_revision_evidence_is_rejected(self):
+        from source_identity import source_identity, require_verified
+        before = source_identity(self.root)
+        summary = {"source_before": before, "source_after": before}
+        old_files = {name: package.hashlib.sha256(body).hexdigest()
+                     for name, body in package.files_to_export().items()}
+        require_verified(summary, before["revision"], old_files)
+        (self.root / "README.md").write_text("different revision\n")
+        self.git("add", ".")
+        self.commit()
+        revision = self.git("rev-parse", "HEAD").decode().strip()
+        files = {name: package.hashlib.sha256(body).hexdigest()
+                 for name, body in package.files_to_export().items()}
+        with self.assertRaisesRegex(RuntimeError, "revision"):
+            require_verified(summary, revision, files)
+
+    def test_mutation_during_verification_is_rejected(self):
+        from source_identity import source_identity, require_unchanged, require_verified
+        before = source_identity(self.root)
+        (self.root / "README.md").write_text("changed while tests ran\n")
+        after = source_identity(self.root)
+        with self.assertRaisesRegex(RuntimeError, "changed during"):
+            require_unchanged(before, after)
+        with self.assertRaises(RuntimeError):
+            require_verified({"source_before": before, "source_after": after},
+                             before["revision"], before["files"])
+        with self.assertRaisesRegex(RuntimeError, "manifest"):
+            require_verified({"source_before": before, "source_after": before},
+                             before["revision"], {"README.md": "wrong digest"})
+
+
+    def test_ignored_source_is_part_of_verification_identity(self):
+        from source_identity import source_identity, require_unchanged, require_verified
+        before = source_identity(self.root)
+        (self.root / ".git/info/exclude").write_text("internal/local_test.go\n")
+        local = self.root / "internal/local_test.go"
+        local.write_text("package local\n")
+        after = source_identity(self.root)
+        self.assertIn("internal/local_test.go", after["files"])
+        self.assertFalse(after["clean"])
+        with self.assertRaises(RuntimeError):
+            require_unchanged(before, after)
+        with self.assertRaises(RuntimeError):
+            require_verified({"source_before": after, "source_after": after},
+                             after["revision"], before["files"])
+
 
 if __name__ == "__main__":
     unittest.main()

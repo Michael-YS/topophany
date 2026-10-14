@@ -53,6 +53,22 @@ This document lists the finite, verifiable scenario contracts for version 0.1.0,
 | Default `topo` invocation loads saved credentials to connect to remote collector; multiple independent daemons run detached from TUI lifecycle | `TestLoginRemoteJSONAndSavedDefault`, `TestServeActualHTTPAndGracefulShutdown`, `TestWorkerActualRemoteIngestion`, `scripts/smoke.py` |
 | Offline reproducible Go build; sanitized example topologies validate cleanly; `init` generates unique random credentials without overwriting | `TestCLIDispatchAndHelp`, `TestInitFreshCredentialsNoOverwriteAndSanitizedExport`, `TestShippedTopologyExamplesValidateAndHomelabIsPaused`, `scripts/verify.py` |
 
+## Scan-bundle regression coverage
+
+| Finding | Regression tests |
+|---|---|
+| Exit-IP structural JSON budgets | `TestExitJSONComplexity` |
+| Mihomo proxy/provider/history/member budgets | `TestMihomoResponseBudgets` |
+| Non-acknowledging collector isolation | `TestUnacknowledgedDestinationCannotStopHealthyDelivery`, `TestInvalidACKCollectorIsolationEndToEnd` |
+| Observer history reservations across restart | `TestHistoryReservationSurvivesCheckpoint`, `TestObserverQuotasSurviveRestartAndReserveHeartbeats` |
+| Pre-authentication connection and request admission | `TestConnectionLimitCoversPartialHeadersAndReleases`, `TestPreauthenticationConcurrencyAndRateBounds` |
+| Fair snapshot cache computation | `TestViewerCannotReserveAllSnapshotBuilds`, `TestSnapshotViewCacheHasGlobalBudget` |
+| Heartbeat project/revision provenance | `TestRecoveredHeartbeatContract` |
+| Durable expired observation-ID binding | `TestExpiredEvictedIDRemainsBoundAcrossRestart` |
+| Terminal-safe machine-readable remote JSON | `TestJSONOutputEscapesAllBidiControlsLosslessly`, `TestRemoteJSONEscapesBidiControls` |
+| Verification commit/tree binding | `test_old_revision_evidence_is_rejected`, `test_mutation_during_verification_is_rejected` |
+| Release tag-to-build binding | `test_publish_resolves_lightweight_and_nested_annotated_tags` (matching, moved, missing, nested and cyclic tag fixtures) |
+
 ## Boundaries Beyond Automated Suite Claims
 
 Verifying whether virtual network interfaces or host tunnel adapters successfully bypass underlying physical drivers requires empirical testing on target hardware. Mock scripts, cross-compilation passes, and loopback unit tests do not substitute for live hardware verification.

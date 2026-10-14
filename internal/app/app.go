@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/WhitenWhiten/topophany/internal/api"
 	"github.com/WhitenWhiten/topophany/internal/client"
@@ -115,9 +116,21 @@ func parsed(f *flag.FlagSet, args []string) error {
 	return nil
 }
 func printJSON(w io.Writer, v any) error {
-	e := json.NewEncoder(w)
-	e.SetIndent("", "  ")
-	return e.Encode(v)
+	raw, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	var out strings.Builder
+	for _, r := range string(raw) {
+		if unicode.Is(unicode.Bidi_Control, r) {
+			fmt.Fprintf(&out, "\\u%04x", r)
+		} else {
+			out.WriteRune(r)
+		}
+	}
+	out.WriteByte('\n')
+	_, err = io.WriteString(w, out.String())
+	return err
 }
 func (a *App) token(args []string) error {
 	f := a.flags("token")
@@ -228,9 +241,9 @@ func (a *App) serve(parent context.Context, args []string) error {
 		defer wg.Done()
 		var e error
 		if *cert != "" {
-			e = srv.ServeTLS(ln, *cert, *key)
+			e = srv.ServeTLS(api.LimitListener(ln, 128), *cert, *key)
 		} else {
-			e = srv.Serve(ln)
+			e = srv.Serve(api.LimitListener(ln, 128))
 		}
 		if e != nil && !errors.Is(e, http.ErrServerClosed) {
 			select {
@@ -310,7 +323,13 @@ func (a *App) worker(parent context.Context, args []string) error {
 	var wg sync.WaitGroup
 	defer func() { cancel(); wg.Wait() }()
 	s, e := runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
-		return q.Add(model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, d.Recipients())
+		err := q.Add(model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, d.Recipients())
+		var degraded *outbox.DegradedError
+		if errors.As(err, &degraded) {
+			fmt.Fprintln(a.Err, degraded)
+			return nil
+		}
+		return err
 	})
 	if e != nil {
 		return e

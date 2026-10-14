@@ -20,11 +20,9 @@ import tarfile
 import tempfile
 import zipfile
 
+from source_identity import accepted, require_verified
+
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWED_ROOT_FILES = {"go.mod", "go.sum", "README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
-                      "CHANGELOG.md", "Makefile", ".gitignore", ".gitattributes", ".editorconfig"}
-ALLOWED_ROOT_DIRS = {"cmd", "internal", "scripts", "docs", "deploy", "examples", ".github"}
-EXCLUDED_PARTS = {"__pycache__", ".git", ".verify-build", "bin", "dist", "demo"}
 
 
 def digest(path: Path) -> str:
@@ -39,10 +37,6 @@ def git(*args: str) -> bytes:
     return subprocess.check_output(["git", *args], cwd=ROOT)
 
 
-def accepted(rel: Path) -> bool:
-    return not any(part in EXCLUDED_PARTS for part in rel.parts) and (
-        len(rel.parts) == 1 and rel.name in ALLOWED_ROOT_FILES or
-        len(rel.parts) > 1 and rel.parts[0] in ALLOWED_ROOT_DIRS)
 
 
 def files_to_export(revision: str = "HEAD") -> dict[str, bytes]:
@@ -90,6 +84,7 @@ def main() -> int:
     revision = git("rev-parse", "--verify", "HEAD^{commit}").decode().strip()
     source_files = files_to_export(revision)
     source_sha = {name: hashlib.sha256(body).hexdigest() for name, body in source_files.items()}
+    require_verified(summary, revision, source_sha)
     zip_path = output / (args.name + ".zip")
     tar_path = output / (args.name + ".tar.gz")
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
