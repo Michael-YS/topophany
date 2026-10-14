@@ -16,6 +16,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -106,6 +107,16 @@ type Store struct {
 	floors        map[string]uint64
 	rollups       *rollup.Store
 	settled       time.Time // when the rollups last settled
+
+	// Receipts in the order they were taken, from receiptHead on, so the
+	// expired ones are found at the front rather than by visiting them all;
+	// and what the held rows add up to, in all and by observer. prune keeps
+	// these up to date; recount derives them afresh.
+	receiptQueue []string
+	receiptHead  int
+	rowBytes     int64
+	rowScope     map[string]int64
+	rowsDropped  bool // a tail let rows go since the last prune
 }
 
 func Open(dir string, o Options) (s *Store, err error) {
@@ -141,7 +152,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, rollups: rollup.New(o.RollupBytes)}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
 	s.rollups.SetCurrent(s.currentKey)
 	opened := s
 	defer func() {
@@ -238,8 +249,43 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if _, e = s.file.Seek(0, io.SeekEnd); e != nil {
 		return nil, e
 	}
+	s.recount()
 	s.prune()
 	return s, nil
+}
+
+// recount derives the receipt queue and the accounting of receipts and
+// rows from what the store holds, as when it opens.
+func (s *Store) recount() {
+	s.receiptQueue, s.receiptHead = make([]string, 0, len(s.seen)), 0
+	s.scopeReceipts = map[string]int{}
+	for id, r := range s.seen {
+		if r.Observer == "" {
+			r.Observer = receiptObserver(id)
+			s.seen[id] = r
+		}
+		s.scopeReceipts[r.Observer]++
+		s.receiptQueue = append(s.receiptQueue, id)
+	}
+	slices.SortFunc(s.receiptQueue, func(a, b string) int {
+		if c := s.seen[a].At.Compare(s.seen[b].At); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
+	s.rowBytes, s.rowScope = 0, map[string]int64{}
+	for id, size := range s.rowSizes {
+		s.rowBytes += size
+		s.rowScope[s.rowObservers[id]] += size
+	}
+	s.rowsDropped = true
+}
+
+// receive records the receipt of a sample.
+func (s *Store) receive(id string, r receipt) {
+	s.seen[id] = r
+	s.scopeReceipts[r.Observer]++
+	s.receiptQueue = append(s.receiptQueue, id)
 }
 func wrap(v any) ([]byte, error) {
 	p, e := json.Marshal(v)
@@ -362,6 +408,8 @@ func (s *Store) addRow(v model.Observation) {
 		s.rowSizes[v.ID] = int64(len(b)) + 1
 		s.rowHashes[v.ID] = observationHash(v)
 		s.rowObservers[v.ID] = v.Observer
+		s.rowBytes += s.rowSizes[v.ID]
+		s.rowScope[v.Observer] += s.rowSizes[v.ID]
 	}
 	s.rows = append(s.rows, v)
 	if !s.current(v) {
@@ -383,6 +431,7 @@ func (s *Store) trim(key string, tail []model.Observation) []model.Observation {
 	if len(tail) <= tailLength {
 		return tail
 	}
+	s.rowsDropped = true
 	k := s.carries[key]
 	for _, v := range tail[:len(tail)-tailLength] {
 		if v.Contract != "" && !k.Holds(v) {
@@ -416,7 +465,7 @@ func (s *Store) apply(b model.Batch, recovery bool) error {
 			// Recovery replays a record whose receipt has since expired.
 			continue
 		}
-		s.seen[v.ID] = receipt{Hash: h, At: v.ReceivedAt, Observer: v.Observer}
+		s.receive(v.ID, receipt{Hash: h, At: v.ReceivedAt, Observer: v.Observer})
 		s.addRow(v)
 		s.roll(v)
 	}
@@ -581,52 +630,71 @@ func (s *Store) prune() {
 	} else if len(rows) > s.options.MaxHistory {
 		rows = rows[len(rows)-s.options.MaxHistory:]
 	}
-	s.rows = rows
-	keep := make(map[string]bool, len(s.rowSizes))
-	for _, v := range rows {
-		keep[v.ID] = true
-	}
-	for _, tail := range s.tails {
-		for _, v := range tail {
+	// Rows nothing holds any more give up their accounting, looked for only
+	// when the history or a tail let some go.
+	if len(rows) < len(s.rows) || s.rowsDropped {
+		keep := make(map[string]bool, len(s.rowSizes))
+		for _, v := range rows {
 			keep[v.ID] = true
 		}
+		for _, tail := range s.tails {
+			for _, v := range tail {
+				keep[v.ID] = true
+			}
+		}
+		for id, size := range s.rowSizes {
+			if !keep[id] {
+				s.rowBytes -= size
+				s.rowScope[s.rowObservers[id]] -= size
+				if s.rowScope[s.rowObservers[id]] == 0 {
+					delete(s.rowScope, s.rowObservers[id])
+				}
+				delete(s.rowSizes, id)
+				delete(s.rowHashes, id)
+				delete(s.rowObservers, id)
+			}
+		}
+		s.rowsDropped = false
 	}
+	s.rows = rows
 	// A receipt binds an ID to its content for as long as a sample with
 	// that ID could still be accepted: the ingestion window and an hour.
 	// Then it goes, and its boot's floor keeps the ID bound for good, so
-	// ageing out never reopens an observation identity.
+	// ageing out never reopens an observation identity. Receipts are taken
+	// in order, so those due to go are at the front of the queue; one taken
+	// while the clock stood behind waits for those in front of it.
 	expiry := s.options.Now().Add(-s.options.Retention - receiptGrace)
-	s.scopeBytes = map[string]int64{}
-	s.scopeReceipts = map[string]int{}
-	for id, r := range s.seen {
-		if r.At.Before(expiry) {
-			if boot, seq, ok := bootOf(id); ok {
-				s.floors[boot] = max(s.floors[boot], seq)
-				delete(s.seen, id)
-				continue
+	for s.receiptHead < len(s.receiptQueue) {
+		id := s.receiptQueue[s.receiptHead]
+		r, ok := s.seen[id]
+		if ok && !r.At.Before(expiry) {
+			break
+		}
+		s.receiptHead++
+		// One whose ID names no boot has no floor to bind it, so it stays.
+		if boot, seq, parsed := bootOf(id); ok && parsed {
+			s.floors[boot] = max(s.floors[boot], seq)
+			delete(s.seen, id)
+			if s.scopeReceipts[r.Observer]--; s.scopeReceipts[r.Observer] == 0 {
+				delete(s.scopeReceipts, r.Observer)
 			}
 		}
-		if r.Observer == "" {
-			r.Observer = receiptObserver(id)
-			s.seen[id] = r
-		}
-		s.scopeBytes[r.Observer] += 512
-		s.scopeReceipts[r.Observer]++
+	}
+	if s.receiptHead > 1024 && s.receiptHead > len(s.receiptQueue)/2 {
+		s.receiptQueue = append([]string(nil), s.receiptQueue[s.receiptHead:]...)
+		s.receiptHead = 0
+	}
+	s.scopeBytes = make(map[string]int64, len(s.scopeReceipts)+len(s.rowScope))
+	for id, n := range s.scopeReceipts {
+		s.scopeBytes[id] += int64(n) * 512
 	}
 	for boot := range s.floors {
 		s.scopeBytes[receiptObserver(boot+".0")] += floorBytes
 	}
-	s.stateBytes = 1024 + int64(len(s.seen))*512 + int64(len(s.floors))*floorBytes + int64(len(s.carries))*carryBytes
-	for id, size := range s.rowSizes {
-		if keep[id] {
-			s.stateBytes += size
-			s.scopeBytes[s.rowObservers[id]] += size
-		} else {
-			delete(s.rowSizes, id)
-			delete(s.rowHashes, id)
-			delete(s.rowObservers, id)
-		}
+	for id, size := range s.rowScope {
+		s.scopeBytes[id] += size
 	}
+	s.stateBytes = 1024 + int64(len(s.seen))*512 + int64(len(s.floors))*floorBytes + int64(len(s.carries))*carryBytes + s.rowBytes
 	for _, h := range s.beats {
 		raw, _ := json.Marshal(h)
 		s.stateBytes += int64(len(raw)) + 1024

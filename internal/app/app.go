@@ -267,6 +267,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 		defer wg.Done()
 		a.watch(ctx, backend, ledger.Settle(c), notifier)
 	}()
+	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
 	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	// Local checks, if any, under a topology; reloads replace them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
@@ -380,6 +381,36 @@ func loadAlerts(path string, c model.Config) (alert.Config, error) {
 		return a, fmt.Errorf("%s: %w", path, e)
 	}
 	return a, nil
+}
+
+// watchStorage logs what a collector's store holds when it starts and then
+// says, once each time it happens, when an observer's receipts are set to
+// fill its share at the last hour's rate, and when they no longer are.
+func (a *App) watchStorage(ctx context.Context, st *store.Store, every time.Duration) {
+	fmt.Fprintln(a.Err, st.Usage())
+	warned := map[string]bool{}
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		for _, o := range st.Usage().Observers {
+			name := o.Observer
+			if name == "" {
+				name = "all"
+			}
+			switch {
+			case o.Fills && !warned[name]:
+				fmt.Fprintf(a.Err, "storage: observer %s fills its share in about %s at the last hour's %d receipts, and its samples are refused from then; sample less often or shorten --retention\n", name, o.FullIn.Round(time.Minute), o.LastHour)
+			case !o.Fills && warned[name]:
+				fmt.Fprintf(a.Err, "storage: observer %s settles within its share again\n", name)
+			}
+			warned[name] = o.Fills
+		}
+	}
 }
 
 // watch keeps a collector's incident ledger until ctx ends, judging the

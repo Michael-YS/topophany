@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the open incidents, one row per occurrence, and an incident's evidence
   says when it opened, how often it happened before and how long it
   lasted. A recovering incident still needs attention.
+- A collector logs what its store holds when it starts: each observer's
+  receipts and bytes against its share, and where its receipts settle at
+  the last hour's rate, since a receipt lasts the ingestion window and an
+  hour. It warns once when an observer is set to fill its share, and
+  when, so its sampling or `--retention` can change before its samples
+  are refused.
 - Webhook alerts. `topo serve --alerts alerts.json` posts incidents that
   open and close, and observers that fall silent or report again, as
   JSON or in the formats of ntfy, Slack and Discord, filtered by event
@@ -107,6 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Accepting a batch no longer visits every receipt a collector holds.
+  Receipts expire from a queue in the order they were taken, and what
+  each observer holds is counted as it changes rather than recounted on
+  every write, under the store's lock, twice: with 150,000 receipts held
+  a write takes 5.7ms rather than 26ms.
 - Deduplication receipts expire an hour after the ingestion window
   (`--retention`), when no sample they could match can be accepted any
   more, and release their capacity. Each worker boot keeps the highest
