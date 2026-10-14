@@ -28,7 +28,7 @@ export class Screen {
     this.chars = new Array(cols * rows).fill(' ');
     this.style = new Int32Array(cols * rows);
     this.styles = styles.map(([fg, bg, attr]) => ({
-      fg: fg < 0 ? TEXT : hex(fg), bg: hex(bg), bold: !!(attr & 1), italic: !!(attr & 4),
+      fg: fg < 0 ? TEXT : hex(fg), bg: hex(bg), bold: !!(attr & 1), italic: !!(attr & 4), underline: !!(attr & 8),
     }));
     this.dirty = new Uint8Array(cols * rows).fill(1);
     this.resize();
@@ -119,6 +119,7 @@ export class Screen {
     c.textAlign = 'center';
     c.textBaseline = 'alphabetic';
     c.fillText(chr, (x0 + x1) / 2, (y0 + y1) / 2 + this.capH / 2, (x1 - x0) * 1.15);
+    if (st.underline) c.fillRect(x0, Math.round((y0 + y1) / 2 + this.capH / 2 + this.line * 2), x1 - x0, this.line);
   }
 
   braille(bits, x0, y0, x1, y1) {
