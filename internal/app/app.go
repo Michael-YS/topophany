@@ -169,7 +169,7 @@ func (a *App) topologyCommand(ctx context.Context, cmd string, args []string) er
 	}
 	switch cmd {
 	case "validate":
-		return printJSON(a.Out, map[string]any{"project": c.Project, "revision": config.Revision(c), "nodes": len(c.Nodes), "checks": len(c.Checks), "valid": true})
+		return printJSON(a.Out, map[string]any{"project": c.Project, "revision": config.Revision(c), "contracts": config.Contracts(c), "nodes": len(c.Nodes), "checks": len(c.Checks), "valid": true})
 	case "export":
 		return printJSON(a.Out, config.Public(c))
 	case "once":
@@ -223,7 +223,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
-	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory})
+	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory})
 	if e != nil {
 		return e
 	}
@@ -238,7 +238,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	var scheduler *runner.Scheduler
 	if *observer != "" {
 		scheduler, e = runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
-			return st.Put(model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}})
+			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}})
 		})
 		if e != nil {
 			return e
@@ -336,7 +336,7 @@ func (a *App) worker(parent context.Context, args []string) error {
 	var wg sync.WaitGroup
 	defer func() { cancel(); wg.Wait() }()
 	s, e := runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
-		err := q.Add(model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, d.Recipients())
+		err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, d.Recipients())
 		var degraded *outbox.DegradedError
 		if errors.As(err, &degraded) {
 			fmt.Fprintln(a.Err, degraded)
@@ -460,7 +460,7 @@ func (a *App) edit(ctx context.Context, args []string) error {
 		if !config.ID(*project) {
 			return errors.New("invalid --project for a new topology")
 		}
-		c, e = model.Config{Schema: model.SchemaVersion, Project: *project}, nil
+		c, e = model.Config{Schema: model.ConfigSchema, Project: *project}, nil
 	}
 	if e != nil {
 		return fmt.Errorf("%s: %w (fix the JSON, or run topo validate for details)", *path, e)

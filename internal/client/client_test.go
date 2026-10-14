@@ -25,7 +25,7 @@ const token = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 func snapshot() model.Snapshot {
 	c := testkit.Config()
-	return model.Snapshot{Schema: 1, Project: c.Project, Revision: config.Revision(c), Instance: "fixture", GeneratedAt: time.Now().UTC(), Topology: config.Public(c)}
+	return model.Snapshot{Schema: model.SnapshotSchema, Project: c.Project, Revision: config.PublicRevision(c), Instance: "fixture", GeneratedAt: time.Now().UTC(), Topology: config.Public(c)}
 }
 func newClient(t *testing.T, urls ...string) *Client {
 	t.Helper()
@@ -70,7 +70,7 @@ func TestReadFailClosedSecurityBoundaries(t *testing.T) {
 		name   string
 		status int
 		mutate func(*model.Snapshot)
-	}{{"auth", 401, nil}, {"scope", 403, nil}, {"bad_request", 400, nil}, {"project", 200, func(s *model.Snapshot) { s.Project = "foreign" }}, {"embedded_project", 200, func(s *model.Snapshot) { s.Topology.Project = "foreign" }}, {"schema", 200, func(s *model.Snapshot) { s.Schema = 2 }}, {"zero_generated", 200, func(s *model.Snapshot) { s.GeneratedAt = time.Time{} }}, {"view", 200, func(s *model.Snapshot) { s.ViewObserver = "cloud" }}}
+	}{{"auth", 401, nil}, {"scope", 403, nil}, {"bad_request", 400, nil}, {"project", 200, func(s *model.Snapshot) { s.Project = "foreign" }}, {"embedded_project", 200, func(s *model.Snapshot) { s.Topology.Project = "foreign" }}, {"schema", 200, func(s *model.Snapshot) { s.Schema = 1 }}, {"future_schema", 200, func(s *model.Snapshot) { s.Schema = 3 }}, {"zero_generated", 200, func(s *model.Snapshot) { s.GeneratedAt = time.Time{} }}, {"view", 200, func(s *model.Snapshot) { s.ViewObserver = "cloud" }}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := snapshot()
@@ -227,7 +227,7 @@ func TestTokenEnvAndNoEnvironmentProxy(t *testing.T) {
 }
 func batch() model.Batch {
 	c := testkit.Config()
-	return model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", 1, time.Now(), "ok")}}
+	return model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", 1, time.Now(), "ok")}}
 }
 func TestPostAcknowledgementMustMatchExactBatch(t *testing.T) {
 	b := batch()
@@ -285,7 +285,7 @@ func TestHistoryFailoverAndValidation(t *testing.T) {
 	rev := config.Revision(c)
 	history := func() History {
 		v := testkit.Observation(c, "home-http", 1, time.Now().UTC(), "fail")
-		return History{Project: c.Project, Revision: rev, Entries: []model.Observation{v}}
+		return History{Project: c.Project, Revision: rev, Check: "home-http", Contract: v.Contract, Entries: []model.Observation{v}}
 	}
 	good := jsonServer(t, 200, history())
 	dead := httptest.NewServer(http.NotFoundHandler())
@@ -299,7 +299,7 @@ func TestHistoryFailoverAndValidation(t *testing.T) {
 		name   string
 		status int
 		mutate func(*History)
-	}{{"auth", 401, nil}, {"unknown_check", 404, nil}, {"bad_request", 400, nil}, {"project", 200, func(h *History) { h.Project = "foreign" }}, {"check", 200, func(h *History) { h.Entries[0].Check = "home-ssh" }}, {"revision", 200, func(h *History) { h.Entries[0].Revision = strings.Repeat("0", 64) }}, {"too_many", 200, func(h *History) { h.Entries = append(h.Entries, h.Entries[0], h.Entries[0]) }}} {
+	}{{"auth", 401, nil}, {"unknown_check", 404, nil}, {"bad_request", 400, nil}, {"project", 200, func(h *History) { h.Project = "foreign" }}, {"check", 200, func(h *History) { h.Entries[0].Check = "home-ssh" }}, {"contract", 200, func(h *History) { h.Entries[0].Contract = strings.Repeat("0", 64) }}, {"revision", 200, func(h *History) { h.Entries[0].Revision = h.Revision }}, {"other_check", 200, func(h *History) { h.Check = "home-ssh" }}, {"too_many", 200, func(h *History) { h.Entries = append(h.Entries, h.Entries[0], h.Entries[0]) }}} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := history()
 			if tc.mutate != nil {

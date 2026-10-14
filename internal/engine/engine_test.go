@@ -174,7 +174,7 @@ func TestTCPAcceptAndReportedTelemetryNotHostProof(t *testing.T) {
 		})
 	}
 }
-func TestHeartbeatDoesNotRefreshCheckAndForeignRevisionIgnored(t *testing.T) {
+func TestHeartbeatDoesNotRefreshCheckAndForeignContractIgnored(t *testing.T) {
 	c := testkit.Config()
 	now := time.Now()
 	v := testkit.Observation(c, "home-http", 1, now.Add(-time.Hour), "ok")
@@ -183,17 +183,86 @@ func TestHeartbeatDoesNotRefreshCheckAndForeignRevisionIgnored(t *testing.T) {
 	if s.Observers[0].Health != "up" || s.Checks[0].Freshness != "stale" {
 		t.Fatal("heartbeat confused with fresh check")
 	}
-	v.Revision = "old-target-revision"
+	v.Contract = "old-target-contract"
 	v.SampledAt = now
 	s = Build(c, "a", "home", []model.Observation{v}, beats, now)
 	if s.Checks[0].Freshness != "never" {
 		t.Fatal("old test URL reused in new measurement contract")
 	}
-	v.Revision = config.Revision(c)
+	// A schema 1 sample counts only under the very revision it was taken with.
+	v.Contract, v.Revision = "", config.Revision(c)
+	if s = Build(c, "a", "home", []model.Observation{v}, beats, now); s.Checks[0].Freshness != "fresh" {
+		t.Fatal("schema 1 sample of the current revision ignored")
+	}
+	v.Revision = strings.Repeat("0", 64)
+	if s = Build(c, "a", "home", []model.Observation{v}, beats, now); s.Checks[0].Freshness != "never" {
+		t.Fatal("schema 1 sample of another revision counted")
+	}
+	v.Contract, v.Revision = config.Contract(c, c.Checks[0]), ""
 	v.Observer = "cloud"
 	s = Build(c, "a", "home", []model.Observation{v}, nil, now)
 	if s.Checks[0].Last != nil {
 		t.Fatal("foreign observer result accepted")
+	}
+}
+
+// A check's samples, its state and the incident it is part of survive any
+// edit that changes nothing it measures, such as a note, a name, a place, a
+// threshold or another check, and are left behind by one that does. The
+// snapshot shows only public contracts.
+func TestContractsSurviveEditsThatMeasureNothingNew(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now()
+	rows := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		rows = append(rows, testkit.Observation(c, "home-http", uint64(i+1), now.Add(-time.Duration(3-i)*time.Second), "fail"))
+	}
+	before := Build(c, "a", "", rows, nil, now)
+	if len(before.Incidents) == 0 {
+		t.Fatal("fixture raised no incident")
+	}
+	state := func(s model.Snapshot) model.CheckState {
+		for _, cs := range s.Checks {
+			if cs.ID == "home-http" {
+				return cs
+			}
+		}
+		return model.CheckState{}
+	}
+	if cs := state(before); cs.Contract != config.PublicContracts(c)["home-http"] || cs.Last == nil || cs.Last.Contract != cs.Contract || cs.Last.Revision != "" || before.Revision != config.PublicRevision(c) {
+		t.Fatal("snapshot does not show public digests only")
+	}
+	for name, edit := range map[string]func(*model.Config){
+		"note":      func(c *model.Config) { c.Checks[0].Notes = "edited" },
+		"name":      func(c *model.Config) { c.Checks[0].Name = "renamed"; c.Nodes[0].Name = "renamed" },
+		"place":     func(c *model.Config) { c.Nodes[2].Location = &model.Location{Label: "LA", Lat: 34, Lon: -118} },
+		"threshold": func(c *model.Config) { c.Checks[0].FailureThreshold = 2; c.Checks[0].IntervalSeconds = 30 },
+		"other":     func(c *model.Config) { c.Checks[2].Target = "https://192.0.2.99/" }, // cloud-http, another scope
+		"service": func(c *model.Config) {
+			c.Services = append(c.Services, model.Service{ID: "new", Name: "New", Node: "s2"})
+		},
+	} {
+		edited := testkit.Config()
+		edit(&edited)
+		after := Build(edited, "a", "", rows, nil, now)
+		if cs := state(after); cs.Health != "down" || cs.Contract != state(before).Contract {
+			t.Fatalf("%s edit reset the check: %s", name, cs.Health)
+		}
+		if len(after.Incidents) == 0 || after.Incidents[0].ID != before.Incidents[0].ID {
+			t.Fatalf("%s edit renamed the incident", name)
+		}
+	}
+	for name, edit := range map[string]func(*model.Config){
+		"target":    func(c *model.Config) { c.Endpoints[0].Address = "https://192.0.2.11/" },
+		"assertion": func(c *model.Config) { c.Checks[0].HTTP.Status = []int{204} },
+		"timeout":   func(c *model.Config) { c.Checks[0].TimeoutSeconds++ },
+		"proxy":     func(c *model.Config) { c.Paths[0].Proxies = []model.Proxy{{Kind: "socks5", Address: "192.0.2.5:1080"}} },
+	} {
+		edited := testkit.Config()
+		edit(&edited)
+		if cs := state(Build(edited, "a", "", rows, nil, now)); cs.Freshness != "never" || cs.Contract == state(before).Contract {
+			t.Fatalf("%s edit kept samples of what was measured before", name)
+		}
 	}
 }
 func TestStoppedObserverIsUnknownNotMassOutage(t *testing.T) {

@@ -60,7 +60,7 @@ func TestObserverQuotasSurviveRestartAndReserveHeartbeats(t *testing.T) {
 				t.Fatal("one observer blocked another", err)
 			}
 			for _, id := range opts.Observers {
-				b := model.Batch{Project: c.Project, Heartbeat: &model.Heartbeat{Observer: id, Boot: "new-boot", SampledAt: now}}
+				b := model.Batch{Schema: model.BatchSchema, Project: c.Project, Heartbeat: &model.Heartbeat{Observer: id, Boot: "new-boot", SampledAt: now}}
 				if err := s.Put(b); err != nil {
 					t.Fatal("full observations blocked heartbeat", err)
 				}
@@ -95,7 +95,7 @@ func TestStateViewDetachesLatestEvidenceAndRetainsEvaluationTail(t *testing.T) {
 			t.Fatal("state view aliased durable evidence")
 		}
 	}
-	full := s.History("home-http", rows[0].Revision, 1)
+	full := s.History("home-http", map[string]string{"home-http": rows[0].Contract}, "", 1)
 	if len(full) != 1 || len(full[0].Facts["large"]) != 2048 {
 		t.Fatal("summary modified full history")
 	}
@@ -112,7 +112,7 @@ func TestHistoryBoundsBytesWithoutTruncatingIndividualEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	rows := s.History("home-http", config.Revision(c), 500)
+	rows := s.History("home-http", config.Contracts(c), config.Revision(c), 500)
 	if len(rows) == 0 || len(rows) >= 20 {
 		t.Fatal("history byte limit not applied", len(rows))
 	}

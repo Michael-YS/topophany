@@ -6,7 +6,16 @@ import "time"
 
 const MaxSnapshotBytes = 8 << 20
 
-const SchemaVersion = 1
+// Schemas of what is written and sent. A topology file is schema 1. Batches
+// and snapshots are schema 2: observations carry the contract of their
+// check, not the revision of the whole topology. A collector still accepts
+// a schema 1 batch, whose observations carry the revision, while that
+// revision is its own.
+const (
+	ConfigSchema   = 1
+	BatchSchema    = 2
+	SnapshotSchema = 2
+)
 const Version = "0.3.0"
 
 type Config struct {
@@ -148,10 +157,13 @@ type AdapterOptions struct {
 
 // Observation is a single bounded measurement. ReceivedAt is assigned by the
 // collector; SampledAt must not be replaced when replaying an outbox.
+// Contract identifies what its check measured (see config.Contract); a
+// schema 1 observation carries the revision of the whole topology instead.
 type Observation struct {
 	ID           string            `json:"id"`
 	Project      string            `json:"project"`
-	Revision     string            `json:"revision"`
+	Contract     string            `json:"contract,omitempty"`
+	Revision     string            `json:"revision,omitempty"`
 	Check        string            `json:"check"`
 	Observer     string            `json:"observer"`
 	Boot         string            `json:"boot"`
@@ -177,7 +189,12 @@ type Heartbeat struct {
 	SampledAt  time.Time `json:"sampled_at"`
 	ReceivedAt time.Time `json:"received_at"`
 }
+
+// Batch is what an executor delivers. Revision is the topology revision it
+// ran; under schema 2 it only describes the sender, whose observations each
+// carry their own contract.
 type Batch struct {
+	Schema       int           `json:"schema,omitempty"`
 	Project      string        `json:"project"`
 	Revision     string        `json:"revision"`
 	Observations []Observation `json:"observations"`
@@ -185,6 +202,7 @@ type Batch struct {
 }
 type CheckState struct {
 	ID        string       `json:"id"`
+	Contract  string       `json:"contract"` // the public contract its samples count under
 	Observer  string       `json:"observer"`
 	Health    string       `json:"health"`    // up,degraded,down,unknown
 	Freshness string       `json:"freshness"` // fresh,stale,never,paused,maintenance

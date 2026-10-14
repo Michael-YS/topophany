@@ -76,7 +76,7 @@ topo --credentials ./demo/credentials.json
 | `topo login` | Save and verify a connection to a collector |
 | `topo serve` | Run a collector, optionally with checks of its own |
 | `topo worker` | Run checks from this machine and report them |
-| `topo edit` / `topo validate` | Edit a topology file in a TUI / check it and print its revision |
+| `topo edit` / `topo validate` | Edit a topology file in a TUI / check it and print its revision and contracts |
 | `topo preview` | Open the TUI on synthetic evidence |
 | `topo init` | Create a local demo with fresh credentials |
 

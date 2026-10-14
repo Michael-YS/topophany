@@ -34,7 +34,7 @@ func fixture(t *testing.T) (*Server, http.Handler, model.Batch) {
 	srv := New(c, "test", s, a)
 	srv.Now = func() time.Time { return now }
 	v := testkit.Observation(c, "home-http", 1, now.Add(-time.Minute), "ok")
-	return srv, srv.Handler(), model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}
+	return srv, srv.Handler(), model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}
 }
 func request(h http.Handler, method, path, token, content string, body []byte) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, bytes.NewReader(body))
@@ -104,7 +104,14 @@ func TestBatchValidationContract(t *testing.T) {
 		mutate func(*model.Batch)
 		status int
 	}{
-		{"project", func(b *model.Batch) { b.Project = "other" }, 409}, {"revision", func(b *model.Batch) { b.Revision = "old" }, 409},
+		{"project", func(b *model.Batch) { b.Project = "other" }, 409}, {"revision_format", func(b *model.Batch) { b.Revision = "old" }, 400},
+		{"schema", func(b *model.Batch) { b.Schema = 3 }, 400}, {"contract", func(b *model.Batch) { b.Observations[0].Contract = strings.Repeat("0", 64) }, 409},
+		{"contract_with_revision", func(b *model.Batch) { b.Observations[0].Revision = b.Revision }, 409},
+		{"legacy_revision", func(b *model.Batch) {
+			b.Schema, b.Revision = 0, strings.Repeat("a", 64)
+			b.Observations[0].Contract, b.Observations[0].Revision = "", b.Revision
+		}, 409},
+		{"legacy_with_contract", func(b *model.Batch) { b.Schema = 1 }, 409},
 		{"observer", func(b *model.Batch) { b.Observations[0].Observer = "cloud" }, 403}, {"foreign_check", func(b *model.Batch) { b.Observations[0].Check = "cloud-http" }, 403},
 		{"unknown_check", func(b *model.Batch) { b.Observations[0].Check = "missing" }, 403}, {"observation_contract", func(b *model.Batch) { b.Observations[0].Project = "wrong" }, 409},
 		{"zero_sequence", func(b *model.Batch) { b.Observations[0].Sequence = 0 }, 400}, {"id", func(b *model.Batch) { b.Observations[0].ID = "forged" }, 400}, {"boot", func(b *model.Batch) { b.Observations[0].Boot = "../bad" }, 400},
@@ -256,7 +263,7 @@ func FuzzValidateBatch(f *testing.F) {
 	s := New(c, "test", nil, Auth{})
 	s.Now = func() time.Time { return time.Unix(2000000000, 0) }
 	f.Add([]byte(`{}`))
-	b := model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", 1, s.Now(), "ok")}}
+	b := model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", 1, s.Now(), "ok")}}
 	v, _ := json.Marshal(b)
 	f.Add(v)
 	f.Fuzz(func(t *testing.T, v []byte) {
@@ -272,4 +279,41 @@ func FuzzValidateBatch(f *testing.F) {
 			t.Fatal("invalid status contract")
 		}
 	})
+}
+
+// A worker not yet upgraded sends schema 1 batches, stamped with the
+// revision of the whole topology. They count while that revision is the
+// collector's own, and read back under the check's public contract.
+func TestSchemaOneBatchCountsWhileItsRevisionIsCurrent(t *testing.T) {
+	srv, h, b := fixture(t)
+	b.Schema = 0
+	for i := range b.Observations {
+		b.Observations[i].Contract, b.Observations[i].Revision = "", b.Revision
+	}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var snap model.Snapshot
+	if w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil); w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &snap) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	public := config.PublicContracts(srv.Config)["home-http"]
+	for _, cs := range snap.Checks {
+		if cs.ID == "home-http" && (cs.Last == nil || cs.Last.Contract != public || cs.Last.Revision != "") {
+			t.Fatal("schema 1 sample not counted under the public contract", cs.Last)
+		}
+	}
+	var history struct {
+		Contract string
+		Entries  []model.Observation
+	}
+	w := request(h, "GET", "/v1/history?check=home-http", viewerToken, "", nil)
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &history) != nil || history.Contract != public || len(history.Entries) != 1 || history.Entries[0].Contract != public || history.Entries[0].Revision != "" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	// Once the topology changes, a schema 1 batch no longer counts at all.
+	srv.Config.Nodes[0].Notes = "edited"
+	if code, status := srv.ValidateBatch(b, "home"); code != "revision_mismatch" || status != 409 {
+		t.Fatal(code, status)
+	}
 }

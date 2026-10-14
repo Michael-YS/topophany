@@ -248,16 +248,19 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 		}
 		n = v
 	}
-	revision := config.PublicRevision(s.Config)
-	entries := s.Store.History(id, config.Revision(s.Config), n)
+	x, _ := config.Check(s.Config, id)
+	contract := config.PublicContracts(s.Config)[id]
+	entries := s.Store.History(id, map[string]string{id: config.Contract(s.Config, x)}, config.Revision(s.Config), n)
 	for i := range entries {
-		entries[i].Revision = revision
+		entries[i].Contract, entries[i].Revision = contract, ""
 	}
 	writeJSON(w, 200, struct {
 		Project  string              `json:"project"`
 		Revision string              `json:"revision"`
+		Check    string              `json:"check"`
+		Contract string              `json:"contract"`
 		Entries  []model.Observation `json:"entries"`
-	}{s.Config.Project, revision, entries})
+	}{s.Config.Project, config.PublicRevision(s.Config), id, contract, entries})
 }
 func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 	if ct, _, e := mime.ParseMediaType(r.Header.Get("Content-Type")); e != nil || ct != "application/json" {
@@ -292,16 +295,27 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 		}
 		return
 	}
-	writeJSON(w, 202, map[string]any{"project": s.Config.Project, "revision": config.Revision(s.Config), "accepted": len(b.Observations)})
+	// The acknowledgement echoes the batch's revision: under schema 2 it
+	// describes the sender, not what the collector counts.
+	writeJSON(w, 202, map[string]any{"project": s.Config.Project, "revision": b.Revision, "accepted": len(b.Observations)})
 }
 func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 	if b.Project != s.Config.Project {
 		return "project_mismatch", 409
 	}
+	// A schema 1 batch counts only under the very topology it was taken
+	// with; a schema 2 observation, under its check's contract.
 	revision := config.Revision(s.Config)
-	if b.Revision != revision {
+	legacy := b.Schema == 0 || b.Schema == 1
+	switch {
+	case !legacy && b.Schema != model.BatchSchema:
+		return "unsupported_batch_schema", 400
+	case len(b.Revision) != 64 || strings.Trim(b.Revision, "0123456789abcdef") != "":
+		return "invalid_batch_revision", 400
+	case legacy && b.Revision != revision:
 		return "revision_mismatch", 409
 	}
+	contracts := map[string]string{}
 	if len(b.Observations) > 100 || len(b.Observations) == 0 && b.Heartbeat == nil {
 		return "invalid_batch_size", 400
 	}
@@ -318,8 +332,16 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 		if !ok || x.Observer != observer || v.Observer != observer {
 			return "observer_scope_violation", 403
 		}
-		if v.Project != b.Project || v.Revision != b.Revision {
+		if v.Project != b.Project || legacy && (v.Revision != b.Revision || v.Contract != "") {
 			return "observation_contract_mismatch", 409
+		}
+		if !legacy {
+			if _, ok := contracts[x.ID]; !ok {
+				contracts[x.ID] = config.Contract(s.Config, x)
+			}
+			if v.Revision != "" || v.Contract != contracts[x.ID] {
+				return "contract_mismatch", 409
+			}
 		}
 		// Boot cannot contain the identity separator: otherwise observer=a,
 		// boot=b.c can collide with observer=a.b, boot=c.

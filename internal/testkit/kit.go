@@ -37,7 +37,7 @@ func Observation(c model.Config, id string, seq uint64, at time.Time, outcome st
 	if !connected {
 		proof = ""
 	}
-	return model.Observation{ID: x.Observer + ".boot." + itoa(seq), Project: c.Project, Revision: config.Revision(c), Check: id, Observer: x.Observer, Boot: "boot", Sequence: seq, SampledAt: at, Outcome: outcome, Evidence: "measured", Stage: "test", Detail: "fixture evidence", DurationMS: 1, Connectivity: connected, PathEvidence: "requested_not_route_verified", Facts: map[string]string{"response_proof": proof}}
+	return model.Observation{ID: x.Observer + ".boot." + itoa(seq), Project: c.Project, Contract: config.Contract(c, x), Check: id, Observer: x.Observer, Boot: "boot", Sequence: seq, SampledAt: at, Outcome: outcome, Evidence: "measured", Stage: "test", Detail: "fixture evidence", DurationMS: 1, Connectivity: connected, PathEvidence: "requested_not_route_verified", Facts: map[string]string{"response_proof": proof}}
 }
 func itoa(n uint64) string {
 	if n == 0 {

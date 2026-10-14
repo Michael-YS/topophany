@@ -11,15 +11,21 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/store"
 )
 
-func TestViewerRevisionsDoNotExposePrivateExecutionIdentity(t *testing.T) {
+// Viewers see public revisions and contracts only: digests over private
+// fields would permit offline guesses at them. Executors and storage keep
+// the private contract, so a private-only change still invalidates old
+// samples, while a change that measures nothing new does not.
+func TestViewerContractsDoNotExposePrivateExecutionIdentity(t *testing.T) {
 	original, _, b := fixture(t)
 	c := original.Config
 	c.Checks[0].HTTP.RequestHeaders = map[string]string{"X-Private": "low-entropy-secret-a"}
-	private, public := config.Revision(c), config.PublicRevision(c)
-	if private == public {
-		t.Fatal("fixture does not distinguish private and public revisions")
+	x := c.Checks[0]
+	private, public := config.Contract(c, x), config.PublicContracts(c)[x.ID]
+	revision, publicRevision := config.Revision(c), config.PublicRevision(c)
+	if private == public || revision == publicRevision {
+		t.Fatal("fixture does not distinguish private and public digests")
 	}
-	st, err := store.Open(t.TempDir(), store.Options{Revision: private, Now: original.Now})
+	st, err := store.Open(t.TempDir(), store.Options{Revision: revision, Contracts: config.Contracts(c), Now: original.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,31 +33,32 @@ func TestViewerRevisionsDoNotExposePrivateExecutionIdentity(t *testing.T) {
 	srv := New(c, "revision-test", st, original.Auth)
 	srv.Now = original.Now
 	h := srv.Handler()
-	b.Revision = private
+	b.Revision = revision
 	for i := range b.Observations {
-		b.Observations[i].Revision = private
+		b.Observations[i].Contract = private
 		b.Observations[i].SampledAt = srv.Now().Add(-time.Second)
 	}
 	ack := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b))
-	if ack.Code != 202 || !strings.Contains(ack.Body.String(), private) {
-		t.Fatalf("worker acknowledgement lost execution identity: %d %s", ack.Code, ack.Body.String())
+	if ack.Code != 202 || !strings.Contains(ack.Body.String(), revision) {
+		t.Fatalf("worker acknowledgement lost its revision: %d %s", ack.Code, ack.Body.String())
 	}
 	for _, tc := range []struct {
 		path    string
 		minimum int
 	}{
 		{"/v1/config", 1},
-		{"/v1/history?check=" + b.Observations[0].Check, 2},
-		{"/v1/snapshot", 2},
-		{"/v1/snapshot?observer=home", 2},
-		{"/v1/snapshot", 2}, // Exercise cached bytes, not only a fresh build.
+		{"/v1/history?check=" + x.ID, 3},
+		{"/v1/snapshot", 3},
+		{"/v1/snapshot?observer=home", 3},
+		{"/v1/snapshot", 3}, // Exercise cached bytes, not only a fresh build.
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			response := request(h, "GET", tc.path, viewerToken, "", nil)
 			if response.Code != 200 {
 				t.Fatalf("viewer response: %d %s", response.Code, response.Body.String())
 			}
-			if strings.Contains(response.Body.String(), private) || strings.Contains(response.Body.String(), "low-entropy-secret-a") {
+			body := response.Body.String()
+			if strings.Contains(body, private) || strings.Contains(body, revision) || strings.Contains(body, "low-entropy-secret-a") {
 				t.Fatal("private identity or private field escaped to viewer")
 			}
 			var decoded any
@@ -61,48 +68,59 @@ func TestViewerRevisionsDoNotExposePrivateExecutionIdentity(t *testing.T) {
 			count := 0
 			var walk func(any)
 			walk = func(v any) {
-				switch x := v.(type) {
+				switch y := v.(type) {
 				case map[string]any:
-					for key, value := range x {
-						if key == "revision" {
+					for key, value := range y {
+						switch {
+						case key == "revision":
+							count++
+							if value != publicRevision {
+								t.Errorf("revision=%v, want public revision %s", value, publicRevision)
+							}
+						case key == "contract" && (y["check"] == x.ID || y["id"] == x.ID):
 							count++
 							if value != public {
-								t.Errorf("revision=%v, want public revision %s", value, public)
+								t.Errorf("contract=%v, want public contract %s", value, public)
 							}
 						}
 						walk(value)
 					}
 				case []any:
-					for _, value := range x {
+					for _, value := range y {
 						walk(value)
 					}
 				}
 			}
 			walk(decoded)
 			if count < tc.minimum {
-				t.Fatalf("vacuous privacy assertion: only %d revisions, want at least %d", count, tc.minimum)
+				t.Fatalf("vacuous privacy assertion: only %d digests, want at least %d", count, tc.minimum)
 			}
 		})
 	}
 	rows, _ := st.View()
-	if len(rows) != 1 || rows[0].Revision != private {
+	if len(rows) != 1 || rows[0].Contract != private {
 		t.Fatal("viewer redaction mutated stored evidence")
 	}
 	if code, _ := srv.ValidateBatch(b, "home"); code != "" {
-		t.Fatalf("valid worker revision rejected after viewer reads: %s", code)
+		t.Fatalf("valid worker contract rejected after viewer reads: %s", code)
 	}
 	publicBatch := b
-	publicBatch.Revision = public
-	if code, status := srv.ValidateBatch(publicBatch, "home"); code != "revision_mismatch" || status != 409 {
-		t.Fatal("public revision accepted as private execution identity")
+	publicBatch.Observations = []model.Observation{b.Observations[0]}
+	publicBatch.Observations[0].Contract = public
+	if code, status := srv.ValidateBatch(publicBatch, "home"); code != "contract_mismatch" || status != 409 {
+		t.Fatal("public contract accepted as private execution identity")
 	}
-	// A private-only configuration change must still invalidate old work.
+	// Notes measure nothing; a private-only change still invalidates old work.
+	srv.Config.Checks[0].Notes = "edited"
+	if code, _ := srv.ValidateBatch(b, "home"); code != "" {
+		t.Fatalf("a note edit invalidated in-flight samples: %s", code)
+	}
 	srv.Config.Checks[0].HTTP.RequestHeaders["X-Private"] = "low-entropy-secret-b"
-	if config.PublicRevision(srv.Config) != public {
-		t.Fatal("private-only change affected public revision")
+	if config.PublicContracts(srv.Config)[x.ID] != public {
+		t.Fatal("private-only change affected the public contract")
 	}
-	if code, status := srv.ValidateBatch(b, "home"); code != "revision_mismatch" || status != 409 {
-		t.Fatal("old worker batch survived a private configuration change")
+	if code, status := srv.ValidateBatch(b, "home"); code != "contract_mismatch" || status != 409 {
+		t.Fatal("old worker sample survived a private configuration change")
 	}
 }
 

@@ -30,7 +30,7 @@ func TestOnceScopeIdentityAndExclusions(t *testing.T) {
 		t.Fatal(len(got))
 	}
 	for i, v := range got {
-		if v.Observer != "home" || v.Project != c.Project || v.Revision != config.Revision(c) || v.Sequence != uint64(i+1) || !v.ReceivedAt.IsZero() || v.Boot != s.Boot {
+		if v.Observer != "home" || v.Project != c.Project || v.Contract != config.Contracts(c)[v.Check] || v.Revision != "" || v.Sequence != uint64(i+1) || !v.ReceivedAt.IsZero() || v.Boot != s.Boot {
 			t.Fatal(v)
 		}
 	}

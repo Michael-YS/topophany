@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Wire format (schema 2).** Each observation carries the measurement
+  contract of its check, a digest of what the check measures (kind,
+  observer, target, timeout, bind and resolve settings, assertions,
+  adapter options, the proxies of its path), instead of the revision of
+  the whole topology. Editing a note, a name, a place, a threshold, an
+  interval or another check no longer resets a check's history, refuses
+  in-flight samples or renames its incident; changing what it measures
+  still starts it afresh. `topo validate` prints every contract, snapshots
+  and history show public contracts, and incidents are ordered by scope.
+  Collectors accept the schema 1 batches of 0.4 workers while the
+  topology is unchanged; upgrade collectors first, then workers, then
+  viewers, which read only schema 2 snapshots.
 - What the TUI shows is derived in one place, `internal/view`, which the
   TUI draws and the CLI prints; a test holds the two to the same rows,
   evidence, verdict and counts across every preview scenario.

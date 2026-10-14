@@ -30,10 +30,10 @@ func TestHistoryReservationSurvivesCheckpoint(t *testing.T) {
 	}
 	s.Close()
 	s = openTest(t, dir, opts)
-	if got := s.History("cloud-http", config.Revision(c), 100); len(got) != 1 {
+	if got := s.History("cloud-http", config.Contracts(c), config.Revision(c), 100); len(got) != 1 {
 		t.Fatal("foreign flood evicted history", len(got))
 	}
-	if got := s.History("home-http", config.Revision(c), 100); len(got) != 2 {
+	if got := s.History("home-http", config.Contracts(c), config.Revision(c), 100); len(got) != 2 {
 		t.Fatal("history quota not enforced", len(got))
 	}
 }
@@ -104,10 +104,12 @@ func TestRecoveredHeartbeatContract(t *testing.T) {
 				h.Revision = ""
 				beats["home"] = h
 			}
+			// An executor running another revision of the topology is
+			// alive; whether its samples count is decided per contract.
 			snap := engine.Build(changed, "test", "home", nil, beats, now)
 			for _, o := range snap.Observers {
-				if o.ID == "home" && o.Health == "up" {
-					t.Fatal("foreign heartbeat made observer up", checkpoint, change)
+				if o.ID == "home" && (o.Health == "up") != (change == "revision") {
+					t.Fatal("heartbeat judged wrongly", checkpoint, change, o.Health)
 				}
 			}
 		}

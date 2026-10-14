@@ -113,7 +113,7 @@ func summaryJSON(s model.Snapshot) ([]byte, error) {
 		c.Reason = model.SummaryText(c.Reason)
 		if c.Last != nil {
 			v := model.SummaryObservation(*c.Last)
-			v.Revision = s.Revision
+			v.Contract, v.Revision = c.Contract, ""
 			c.Last = &v
 		}
 	}

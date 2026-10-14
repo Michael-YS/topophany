@@ -87,13 +87,16 @@ func (d *Delivery) Tick(ctx context.Context, q *Queue, hb *model.Heartbeat) []Re
 			if len(items) == 0 {
 				dest.isolating = false
 			}
-			batch := model.Batch{Project: d.Project, Revision: d.Revision, Observations: []model.Observation{}}
+			batch := model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: d.Revision, Observations: []model.Observation{}}
 			ids := []string{}
 			if len(items) > 0 {
+				// Items queued before an upgrade or a reload travel with
+				// their own schema and revision, never mixed with others.
+				batch.Schema = items[0].Batch.Schema
 				batch.Project = items[0].Batch.Project
 				batch.Revision = items[0].Batch.Revision
 				for _, v := range items {
-					if v.Batch.Project != batch.Project || v.Batch.Revision != batch.Revision || len(batch.Observations)+len(v.Batch.Observations) > 100 {
+					if v.Batch.Schema != batch.Schema || v.Batch.Project != batch.Project || v.Batch.Revision != batch.Revision || len(batch.Observations)+len(v.Batch.Observations) > 100 {
 						continue
 					}
 					previous := len(batch.Observations)
@@ -107,7 +110,7 @@ func (d *Delivery) Tick(ctx context.Context, q *Queue, hb *model.Heartbeat) []Re
 					ids = append(ids, v.ID)
 				}
 			}
-			if hb != nil && batch.Revision == d.Revision {
+			if hb != nil && batch.Revision == d.Revision && batch.Schema == model.BatchSchema {
 				h := *hb
 				batch.Heartbeat = &h
 			}

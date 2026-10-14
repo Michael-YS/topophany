@@ -216,7 +216,7 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 		if snap.Project != c.profile.Project || snap.Topology.Project != c.profile.Project {
 			return empty, "", errors.New("project identity mismatch; response rejected")
 		}
-		if snap.Schema != 1 || snap.GeneratedAt.IsZero() {
+		if snap.Schema != model.SnapshotSchema || snap.GeneratedAt.IsZero() {
 			return empty, "", errors.New("unsupported snapshot contract")
 		}
 		if snap.ViewObserver != observer {
@@ -235,11 +235,13 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 // unreachable, failing or, for a snapshot, stale.
 var ErrNoCollector = errors.New("no configured collector answered")
 
-// History is a check's raw samples for the collector's current revision,
-// newest first.
+// History is a check's raw samples under its current contract, newest
+// first. Revision is the topology's and Contract the check's, both public.
 type History struct {
 	Project  string              `json:"project"`
 	Revision string              `json:"revision"`
+	Check    string              `json:"check"`
+	Contract string              `json:"contract"`
 	Entries  []model.Observation `json:"entries"`
 }
 
@@ -290,11 +292,11 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 		if h.Project != c.profile.Project {
 			return empty, "", errors.New("project identity mismatch; response rejected")
 		}
-		if len(h.Revision) != 64 || len(h.Entries) > limit {
+		if len(h.Revision) != 64 || len(h.Contract) != 64 || h.Check != check || len(h.Entries) > limit {
 			return empty, "", errors.New("invalid collector history")
 		}
 		for _, v := range h.Entries {
-			if v.Check != check || v.Project != h.Project || v.Revision != h.Revision || len(v.Facts) > 32 || len(v.Timings) > 16 {
+			if v.Check != check || v.Project != h.Project || v.Contract != h.Contract || v.Revision != "" || len(v.Facts) > 32 || len(v.Timings) > 16 {
 				return empty, "", errors.New("invalid collector history")
 			}
 		}

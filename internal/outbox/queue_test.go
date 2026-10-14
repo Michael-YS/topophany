@@ -27,7 +27,7 @@ const workerToken = "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
 func makeBatch(seq uint64) model.Batch {
 	c := testkit.Config()
-	return model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", seq, time.Now().UTC().Add(-time.Minute), "ok")}}
+	return model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", seq, time.Now().UTC().Add(-time.Minute), "ok")}}
 }
 func queue(t *testing.T) *Queue {
 	t.Helper()
@@ -374,5 +374,38 @@ func TestDeliveryHeartbeatAndBatchLimit(t *testing.T) {
 	r = d.Tick(context.Background(), q, hb)
 	if r[0].Error != "" {
 		t.Fatal(r)
+	}
+}
+
+// A worker upgraded with samples still queued delivers them as they were
+// taken: the schema 1 items in a batch of their own, which a collector
+// counts while their revision is its own, never merged with schema 2 ones.
+func TestQueuedSchemaOneItemsTravelApart(t *testing.T) {
+	c := testkit.Config()
+	srv, st := collector(t, c, nil)
+	d, e := NewDelivery(client.Profile{Project: c.Project, Servers: []client.Endpoint{{URL: srv.URL, Token: workerToken}}}, config.Revision(c))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	q := queue(t)
+	legacy := makeBatch(1)
+	legacy.Schema = 0
+	legacy.Observations[0].Contract, legacy.Observations[0].Revision = "", legacy.Revision
+	for _, b := range []model.Batch{legacy, makeBatch(2)} {
+		if e = q.Add(b, d.Recipients()); e != nil {
+			t.Fatal(e)
+		}
+	}
+	accepted := 0
+	for i := 0; i < 2; i++ {
+		r := d.Tick(context.Background(), q, nil)
+		if r[0].Error != "" || r[0].Accepted != 1 {
+			t.Fatal("each schema travels in its own batch", r)
+		}
+		accepted += r[0].Accepted
+	}
+	if rows, _ := st.View(); accepted != 2 || len(rows) != 2 {
+		t.Fatal(accepted, len(rows))
 	}
 }

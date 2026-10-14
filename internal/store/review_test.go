@@ -16,7 +16,7 @@ func TestExpiredTailCheckpointCrashReplayIsIdempotent(t *testing.T) {
 	c := testkit.Config()
 	now := time.Now().UTC()
 	dir := t.TempDir()
-	o := Options{Revision: config.Revision(c), Retention: time.Minute, Now: func() time.Time { return now }}
+	o := Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Retention: time.Minute, Now: func() time.Time { return now }}
 	s := openTest(t, dir, o)
 	v := testkit.Observation(c, "home-http", 1, now, "fail")
 	if e := s.Put(batch(c, v)); e != nil {

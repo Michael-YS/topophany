@@ -3,6 +3,8 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"sort"
@@ -111,22 +113,30 @@ func Evaluate(x model.Check, rows []model.Observation, now time.Time) model.Chec
 	}
 	return s
 }
+
+// Build derives the snapshot of c at now from stored observations and
+// heartbeats. A sample counts when it carries its check's contract in c
+// (or, from a schema 1 executor, c's revision). The snapshot shows only
+// public revisions and contracts.
 func Build(c model.Config, instance, view string, rows []model.Observation, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
 	revision := config.Revision(c)
-	out := model.Snapshot{Schema: model.SchemaVersion, Version: model.Version, Project: c.Project, Instance: instance, Revision: revision, GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Public(c), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
+	contracts, public := config.Contracts(c), config.PublicContracts(c)
+	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: config.PublicRevision(c), GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Public(c), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
 	checkDefs := map[string]model.Check{}
 	for _, x := range c.Checks {
 		checkDefs[x.ID] = x
 	}
 	histories := map[string][]model.Observation{}
 	lastSeen := map[string]time.Time{}
+	// An executor is alive whatever topology it runs; whether its samples
+	// count is decided sample by sample.
 	for id, h := range beats {
-		if h.Project == c.Project && h.Revision == revision && !h.SampledAt.After(now.Add(5*time.Second)) {
+		if h.Project == c.Project && !h.SampledAt.After(now.Add(5*time.Second)) {
 			lastSeen[id] = h.SampledAt
 		}
 	}
 	for _, v := range rows {
-		if v.Project != c.Project || v.Revision != revision {
+		if v.Project != c.Project || !config.Counted(v, contracts, revision) {
 			continue
 		}
 		x, ok := checkDefs[v.Check]
@@ -142,7 +152,14 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 	checks := map[string]model.Check{}
 	for _, x := range c.Checks {
 		checks[x.ID] = x
-		allStates[x.ID] = Evaluate(x, histories[x.ID], now)
+		st := Evaluate(x, histories[x.ID], now)
+		st.Contract = public[x.ID]
+		if st.Last != nil {
+			last := *st.Last
+			last.Contract, last.Revision = st.Contract, ""
+			st.Last = &last
+		}
+		allStates[x.ID] = st
 		if view == "" || view == x.Observer {
 			out.Checks = append(out.Checks, allStates[x.ID])
 		}
@@ -318,6 +335,21 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 	}
 	// Incidents aggregate only confirmed failures in the same observer/endpoint
 	// scope. They do not diagnose an IP-wide ban, GFW, or untested UDP behavior.
+	scopeOf := func(x model.Check) string {
+		switch {
+		case x.Path != "":
+			return x.Observer + "/path/" + x.Path
+		case x.Endpoint != "":
+			return x.Observer + "/asset/" + endpoints[x.Endpoint].Node
+		}
+		return x.Observer + "/" + x.ID
+	}
+	// An incident's ID names its scope after what the checks in that scope
+	// measure, so it holds across edits that change nothing measured.
+	measured := map[string][]string{}
+	for _, x := range c.Checks {
+		measured[scopeOf(x)] = append(measured[scopeOf(x)], public[x.ID])
+	}
 	incidents := map[string]*model.Incident{}
 	for _, x := range c.Checks {
 		if !relevant(x) {
@@ -331,20 +363,14 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 		if s.Health != "down" && !policy {
 			continue
 		}
-		scope := x.Observer + "/" + x.Endpoint
-		if x.Path != "" {
-			scope = x.Observer + "/path/" + x.Path
-		} else if x.Endpoint != "" {
-			scope = x.Observer + "/asset/" + endpoints[x.Endpoint].Node
-		} else {
-			scope = x.Observer + "/" + x.ID
-		}
+		base := scopeOf(x)
+		scope := base
 		if policy {
 			scope += "/policy"
 		}
 		inc := incidents[scope]
 		if inc == nil {
-			inc = &model.Incident{ID: revision[:12] + "/" + scope, Scope: scope, Summary: "confirmed failure of the listed checks from this observer", Checks: []string{}, CounterEvidence: []string{}, Since: s.Since}
+			inc = &model.Incident{ID: digest(measured[base])[:12] + "/" + scope, Scope: scope, Summary: "confirmed failure of the listed checks from this observer", Checks: []string{}, CounterEvidence: []string{}, Since: s.Since}
 			if policy {
 				inc.Summary = "observed policy constraint violation"
 			}
@@ -378,7 +404,8 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 		inc.CounterEvidence = dedup(inc.CounterEvidence)
 		out.Incidents = append(out.Incidents, *inc)
 	}
-	sort.Slice(out.Incidents, func(i, j int) bool { return out.Incidents[i].ID < out.Incidents[j].ID })
+	// Incidents read in the order of their scopes: by observer, then what failed.
+	sort.Slice(out.Incidents, func(i, j int) bool { return out.Incidents[i].Scope < out.Incidents[j].Scope })
 	return out
 }
 
@@ -420,6 +447,13 @@ func withStatus(v *model.Observation) string {
 		return " with HTTP " + code
 	}
 	return ""
+}
+
+// digest is the SHA-256 of a set of strings, in hex.
+func digest(set []string) string {
+	sorted := slices.Sorted(slices.Values(set))
+	h := sha256.Sum256([]byte(strings.Join(sorted, "\n")))
+	return hex.EncodeToString(h[:])
 }
 
 func dedup(s []string) []string {

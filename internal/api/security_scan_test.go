@@ -59,7 +59,7 @@ func TestSlowBodiesAreIsolatedByObserverAndExpire(t *testing.T) {
 			t.Fatal("slow worker blocked read", path, w.Code)
 		}
 	}
-	b := model.Batch{Project: srv.Config.Project, Revision: config.Revision(srv.Config), Heartbeat: &model.Heartbeat{Observer: "cloud", Boot: "boot", SampledAt: srv.Now()}}
+	b := model.Batch{Schema: model.BatchSchema, Project: srv.Config.Project, Revision: config.Revision(srv.Config), Heartbeat: &model.Heartbeat{Observer: "cloud", Boot: "boot", SampledAt: srv.Now()}}
 	if w := request(h, "POST", "/v1/observations", other, "application/json", payload(t, b)); w.Code != 202 {
 		t.Fatal("slow worker blocked other observer", w.Code, w.Body.String())
 	}
@@ -129,7 +129,7 @@ func TestLargeValidDiagnosticsFitOfficialSnapshotClient(t *testing.T) {
 	srv := New(c, "test", nil, Auth{})
 	srv.Now = func() time.Time { return now }
 	for _, v := range rows {
-		if code, _ := srv.ValidateBatch(model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, v.Observer); code != "" {
+		if code, _ := srv.ValidateBatch(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, v.Observer); code != "" {
 			t.Fatal("invalid fixture", code)
 		}
 		break

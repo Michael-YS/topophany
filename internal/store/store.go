@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -23,9 +24,13 @@ import (
 var ErrConflict = errors.New("observation ID reused with different contents")
 var ErrCapacity = errors.New("receipt capacity reached; collection paused instead of losing deduplication")
 
+// Options bound the store. Revision and Contracts, when set, are the
+// topology a collector counts samples under (see config.Counted): only
+// their samples keep state tails.
 type Options struct {
 	Observers       []string
 	Revision        string
+	Contracts       map[string]string
 	MaxHistory      int
 	MaxReceipts     int
 	Retention       time.Duration
@@ -212,7 +217,25 @@ func observationHash(v model.Observation) string {
 	b, _ := json.Marshal(v)
 	return secure.Hash(string(b))
 }
-func tailKey(v model.Observation) string { return v.Revision + "/" + v.Check }
+
+// tailKey is a check's series: its samples under one contract, or for
+// schema 1 samples under one revision.
+func tailKey(v model.Observation) string {
+	if v.Contract != "" {
+		return v.Contract + "/" + v.Check
+	}
+	return v.Revision + "/" + v.Check
+}
+
+// current reports whether v counts under the topology the store is told
+// of; every sample does when it is told of none.
+func (s *Store) current(v model.Observation) bool {
+	if s.options.Revision == "" && s.options.Contracts == nil {
+		return true
+	}
+	return config.Counted(v, s.options.Contracts, s.options.Revision)
+}
+
 func (s *Store) addRow(v model.Observation) {
 	if _, ok := s.rowSizes[v.ID]; !ok {
 		b, _ := json.Marshal(v)
@@ -221,7 +244,7 @@ func (s *Store) addRow(v model.Observation) {
 		s.rowObservers[v.ID] = v.Observer
 	}
 	s.rows = append(s.rows, v)
-	if s.options.Revision != "" && v.Revision != s.options.Revision {
+	if !s.current(v) {
 		return
 	}
 	key := tailKey(v)
@@ -523,7 +546,7 @@ func (s *Store) View() ([]model.Observation, map[string]model.Heartbeat) {
 
 // History returns at most 1 MiB of newest full observations. A response may
 // contain fewer than limit entries; serialization never holds the writer lock.
-func (s *Store) History(check, revision string, limit int) []model.Observation {
+func (s *Store) History(check string, contracts map[string]string, revision string, limit int) []model.Observation {
 	if limit < 1 || limit > 500 {
 		limit = 100
 	}
@@ -533,7 +556,7 @@ func (s *Store) History(check, revision string, limit int) []model.Observation {
 	size := int64(2)
 	for i := len(s.rows) - 1; i >= 0 && len(out) < limit; i-- {
 		v := s.rows[i]
-		if v.Check == check && v.Revision == revision && !v.SampledAt.Before(cut) {
+		if v.Check == check && config.Counted(v, contracts, revision) && !v.SampledAt.Before(cut) {
 			size += s.rowSizes[v.ID]
 			if size > 1<<20 {
 				break

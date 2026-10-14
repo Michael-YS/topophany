@@ -281,7 +281,7 @@ func (v View) Rows(tab int) []Row {
 			}
 			meta := d.Observer + " · " + d.Kind + " · " + e.Freshness
 			took := ""
-			details := []string{"Check: " + e.ID, "Source: " + e.Observer, "Health: " + e.Health, "Freshness: " + e.Freshness, "Evidence: " + e.Evidence, "", e.Reason, "", "Path: " + d.Path, "Target: " + d.Target, "Endpoint: " + d.Endpoint, "Service: " + d.Service, "Failure / recovery threshold: " + fmt.Sprint(d.FailureThreshold) + " / " + fmt.Sprint(d.RecoveryThreshold)}
+			details := []string{"Check: " + e.ID, "Source: " + e.Observer, "Health: " + e.Health, "Freshness: " + e.Freshness, "Evidence: " + e.Evidence, "Contract: " + e.Contract[:min(12, len(e.Contract))], "", e.Reason, "", "Path: " + d.Path, "Target: " + d.Target, "Endpoint: " + d.Endpoint, "Service: " + d.Service, "Failure / recovery threshold: " + fmt.Sprint(d.FailureThreshold) + " / " + fmt.Sprint(d.RecoveryThreshold)}
 			if s.DetailsOmitted {
 				details = append(details, "", "Summary diagnostics; full evidence is available in check history.")
 			}

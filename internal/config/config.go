@@ -93,7 +93,7 @@ func Defaults(c *model.Config) {
 	}
 }
 func Validate(c model.Config) error {
-	if c.Schema != model.SchemaVersion {
+	if c.Schema != model.ConfigSchema {
 		return fmt.Errorf("unsupported schema: %d", c.Schema)
 	}
 	if !ID(c.Project) {

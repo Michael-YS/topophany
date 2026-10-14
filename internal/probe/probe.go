@@ -33,7 +33,7 @@ type Runner struct {
 
 func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Observation {
 	start := time.Now().UTC()
-	o := model.Observation{Project: c.Project, Revision: config.Revision(c), Check: x.ID, Observer: x.Observer, SampledAt: start, Outcome: "unknown", Evidence: "measured", Stage: "setup", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
+	o := model.Observation{Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: x.Observer, SampledAt: start, Outcome: "unknown", Evidence: "measured", Stage: "setup", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
 	if x.Disabled || x.Maintenance {
 		o.Detail = "check not executed"
 		return o

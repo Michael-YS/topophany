@@ -124,7 +124,7 @@ topo show TAB                        # A tab as a table: overview, topology, ser
 topo show TAB ID                     # The evidence behind one entry, as the TUI's evidence panel has it; a server adds its card
 topo show topology node:home         # IDs are unique within a kind; KIND:ID picks one where a tab mixes kinds
 topo show map                        # The map's nodes and edges, with what each may claim (up, carried, affected, ...)
-topo history CHECK --limit 50        # A check's raw samples for the current revision, newest first (1..500)
+topo history CHECK --limit 50        # A check's raw samples under its current contract, newest first (1..500)
 ```
 
 Each takes `--json` for the same view as data (rows keep their state, columns and every evidence line; servers carry their cards), `--observer ID` for one vantage point, and the connection flags of `topo` itself (`--credentials`, `--profile`, `--server`, ...). Flags may come before or after the arguments. Text is plain: no color, one entry per line, with `Key: value` lines and aligned tables; control characters from the evidence are dropped.
@@ -199,13 +199,15 @@ topo worker --config topology.json --observer observer-local-workstation \
 
 Configure two collector endpoints in the worker's credential profile under `servers`. The worker dispatches to both independently, buffering in a local bounded outbox during network partitions. Each collector maintains independent storage; never share database or journal directories across NFS/SMB mounts. Client credentials can also configure multiple endpoints for read-only failover. **Viewer and worker roles must use distinct tokens.**
 
-Collectors must share matching project identities and normalized configuration revision hashes. Mismatched configuration revisions are rejected and quarantined, preventing stale measurement definitions from corrupting active metrics. Data is fsynced prior to returning delivery ACKs; retransmitted records retain original sample timestamps; duplicate deliveries are deduplicated by observation ID. Permanently rejected records are retained for administrative review under hard storage quotas; when quotas are reached, probing stops with an error rather than silently discarding evidence.
+Collectors must share matching project identities and the same reviewed topology. An observation whose check measures something else on a collector than it did on the worker (a different measurement contract) is rejected and quarantined, preventing stale measurement definitions from corrupting active metrics; edits that change nothing a check measures do not disturb it. Data is fsynced prior to returning delivery ACKs; retransmitted records retain original sample timestamps; duplicate deliveries are deduplicated by observation ID. Permanently rejected records are retained for administrative review under hard storage quotas; when quotas are reached, probing stops with an error rather than silently discarding evidence.
 
 This architecture provides multi-replica availability for observations and dashboards, not a distributed consensus cluster for administrative mutations. There is no automated leader election and no remote management takeover. Shared upstream networks, common egress gateways, and local worker host failures remain common points of failure. For details, see [Deployment and Operations](OPERATIONS.md).
 
 ## Configuration, Resources, and Architecture
 
-Configurations use strict JSON rather than maintaining parallel YAML and database copies. Running `topo validate --config topology.json` validates references, dependency loops, execution scopes, timing budgets, and probe compatibility, emitting a normalized summary. Configuration updates require a graceful restart; implicit hot-reloading and remote mutation APIs are not provided.
+Configurations use strict JSON rather than maintaining parallel YAML and database copies. Running `topo validate --config topology.json` validates references, dependency loops, execution scopes, timing budgets, and probe compatibility, emitting a normalized summary with the topology's revision and every check's measurement contract.
+
+Each check's samples count only under its **measurement contract**, a digest of what it measures: its kind, observer, target, timeout, bind and resolve settings, assertions, adapter options and the proxies of its path. Editing anything else, such as a note, a name, a place, a threshold, an interval or another check, leaves a check's contract, its samples, its history and the ID of its incident as they were, so an operator can annotate the topology freely; changing what a check measures starts it afresh. Field-level detail is in the [reference](REFERENCE.md). Configuration updates require a graceful restart; implicit hot-reloading and remote mutation APIs are not provided.
 
 `examples/homelab.json` provides an anonymized modeling template with **all checks paused by default**, using documentation IP ranges and `.invalid` domain names. Populate actual endpoints, dedicated listeners, credential environment variables, and observer definitions before enabling checks individually. `examples/minimal.json` provides a loopback demonstration topology matching `init` output without tokens.
 

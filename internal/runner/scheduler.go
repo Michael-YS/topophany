@@ -17,13 +17,14 @@ import (
 type Probe func(context.Context, model.Config, model.Check) model.Observation
 type Sink func(model.Observation) error
 type Scheduler struct {
-	Config   model.Config
-	Observer string
-	Workers  int
-	Boot     string
-	Probe    Probe
-	Sink     Sink
-	sequence uint64
+	Config    model.Config
+	Observer  string
+	Workers   int
+	Boot      string
+	Probe     Probe
+	Sink      Sink
+	sequence  uint64
+	contracts map[string]string
 }
 type completed struct {
 	index       int
@@ -52,8 +53,12 @@ func New(c model.Config, observer string, workers int, p Probe, sink Sink) (*Sch
 }
 func (s *Scheduler) stamp(v model.Observation) model.Observation {
 	s.sequence++
+	if s.contracts == nil {
+		s.contracts = config.Contracts(s.Config)
+	}
 	v.Project = s.Config.Project
-	v.Revision = config.Revision(s.Config)
+	v.Contract = s.contracts[v.Check]
+	v.Revision = ""
 	v.Observer = s.Observer
 	v.Boot = s.Boot
 	v.Sequence = s.sequence

@@ -203,7 +203,6 @@ func (s *Sim) Snapshot(view string, now time.Time) (model.Snapshot, error) {
 		return model.Snapshot{}, errors.New("preview: simulated collector outage (connection refused)")
 	}
 	c := s.configFor(cur)
-	rev := config.Revision(c)
 	rows := []model.Observation{}
 	for _, x := range c.Checks {
 		every := time.Duration(x.IntervalSeconds) * time.Second
@@ -215,7 +214,7 @@ func (s *Sim) Snapshot(view string, now time.Time) (model.Snapshot, error) {
 			if has(sc.Offline, x.Observer) {
 				continue
 			}
-			o := s.observe(c, rev, x, t, sc)
+			o := s.observe(c, x, t, sc)
 			if d := sc.Skew[x.Observer]; d != 0 {
 				o.SampledAt = o.SampledAt.Add(d)
 			}
@@ -243,7 +242,6 @@ func (s *Sim) History(check string, limit int, now time.Time) ([]model.Observati
 		return nil, errors.New("preview: simulated collector outage (connection refused)")
 	}
 	c := s.configFor(cur)
-	rev := config.Revision(c)
 	x, ok := config.Check(c, check)
 	if !ok {
 		return nil, fmt.Errorf("preview: no check %q", check)
@@ -258,7 +256,7 @@ func (s *Sim) History(check string, limit int, now time.Time) ([]model.Observati
 		if has(sc.Offline, x.Observer) {
 			continue
 		}
-		o := s.observe(c, rev, x, t, sc)
+		o := s.observe(c, x, t, sc)
 		if d := sc.Skew[x.Observer]; d != 0 {
 			o.SampledAt = o.SampledAt.Add(d)
 		}
@@ -394,8 +392,8 @@ func (s *Sim) rtt(x model.Check, reach []string, t time.Time) float64 {
 	return base * (.92 + .22*unit(x.ID, t.Unix(), 1))
 }
 
-func (s *Sim) observe(c model.Config, rev string, x model.Check, t time.Time, sc Scenario) model.Observation {
-	o := model.Observation{ID: x.Observer + ".preview." + strconv.FormatInt(t.Unix(), 10), Project: c.Project, Revision: rev, Check: x.ID, Observer: x.Observer, Boot: "preview", Sequence: uint64(t.Unix()), SampledAt: t, ReceivedAt: t.Add(180 * time.Millisecond), Evidence: "measured", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
+func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) model.Observation {
+	o := model.Observation{ID: x.Observer + ".preview." + strconv.FormatInt(t.Unix(), 10), Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: x.Observer, Boot: "preview", Sequence: uint64(t.Unix()), SampledAt: t, ReceivedAt: t.Add(180 * time.Millisecond), Evidence: "measured", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
 	if x.Maintenance || x.Disabled {
 		o.Outcome, o.Stage, o.Detail = "unknown", "setup", "check not executed"
 		return o

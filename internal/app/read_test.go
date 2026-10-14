@@ -200,7 +200,7 @@ func TestReadCommandsAgainstACollector(t *testing.T) {
 		t.Fatalf("nothing measured yet: exit %d, %v\n%s", exitCode(e), e, out)
 	}
 	now := time.Now().UTC()
-	batch := model.Batch{Project: c.Project, Revision: config.Revision(c)}
+	batch := model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c)}
 	for i := 0; i < 3; i++ {
 		batch.Observations = append(batch.Observations, testkit.Observation(c, "home-http", uint64(i+1), now.Add(-time.Duration(3-i)*time.Second), "fail"))
 	}
@@ -301,7 +301,7 @@ func TestStatusAllClearExitsZero(t *testing.T) {
 	defer st.Close()
 	now := time.Now().UTC()
 	beat := &model.Heartbeat{Observer: "demo", Boot: "boot", SampledAt: now}
-	if e = st.Put(model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "api-health", 1, now.Add(-time.Second), "ok")}, Heartbeat: beat}); e != nil {
+	if e = st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "api-health", 1, now.Add(-time.Second), "ok")}, Heartbeat: beat}); e != nil {
 		t.Fatal(e)
 	}
 	viewer := strings.Repeat("v", 64)

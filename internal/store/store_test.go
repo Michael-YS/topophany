@@ -15,7 +15,7 @@ import (
 )
 
 func batch(c model.Config, v ...model.Observation) model.Batch {
-	return model.Batch{Project: c.Project, Revision: config.Revision(c), Observations: v}
+	return model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: v}
 }
 func openTest(t *testing.T, dir string, o Options) *Store {
 	t.Helper()
@@ -30,7 +30,7 @@ func TestDurableDetachedDedupeAndLateReplay(t *testing.T) {
 	c := testkit.Config()
 	now := time.Now().UTC()
 	dir := t.TempDir()
-	opts := Options{Revision: config.Revision(c), Now: func() time.Time { return now }}
+	opts := Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Now: func() time.Time { return now }}
 	s := openTest(t, dir, opts)
 	newer := testkit.Observation(c, "home-http", 2, now.Add(-time.Second), "ok")
 	older := testkit.Observation(c, "home-http", 1, now.Add(-time.Minute), "fail")
@@ -164,7 +164,7 @@ func TestHistoryBudgetKeepsReceiptsAndState(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if n := len(s.History("home-http", config.Revision(c), 500)); n != 2 {
+	if n := len(s.History("home-http", config.Contracts(c), config.Revision(c), 500)); n != 2 {
 		t.Fatal("history cap failed", n)
 	}
 	rows, _ := s.View()

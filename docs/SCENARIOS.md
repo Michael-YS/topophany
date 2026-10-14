@@ -6,7 +6,8 @@ This document lists the finite, verifiable scenario contracts for version 0.3.0,
 |---|---|
 | Native host and virtual containers can share IP addresses while maintaining distinct asset identities; loopback endpoints must bind to specific observers | `TestConfigIdentityAndStrictDecode`, `TestConfigRejectsBrokenTopology`, `TestDefaultTimingAndScope` |
 | Malformed references, duplicate IDs, dependency / parent-child / candidate routing loops, and invalid port/timing/protocol combinations must be rejected at validation | `TestConfigRejectsBrokenTopology`, `FuzzDecodeTopology` |
-| Changing test URLs, methods, assertions, or target contracts produces a new configuration revision; historical metrics cannot blend into the new revision contract | `TestRedactionIsDetachedAndRevisionChangesWithMeasurement`, `TestHeartbeatDoesNotRefreshCheckAndForeignRevisionIgnored` |
+| Changing test URLs, methods, assertions, timeouts or proxies produces a new measurement contract for that check; historical metrics cannot blend into it, while edits that measure nothing new keep a check's samples, state and incident ID | `TestRedactionIsDetachedAndRevisionChangesWithMeasurement`, `TestHeartbeatDoesNotRefreshCheckAndForeignContractIgnored`, `TestContractsSurviveEditsThatMeasureNothingNew` |
+| Viewers see only public revisions and contracts; a private-only change still invalidates old samples; a 0.4 worker's schema 1 batch counts while its revision is current, and its queued items travel apart from schema 2 ones | `TestViewerContractsDoNotExposePrivateExecutionIdentity`, `TestSchemaOneBatchCountsWhileItsRevisionIsCurrent`, `TestQueuedSchemaOneItemsTravelApart`, `TestBatchValidationContract` |
 | Multiple failures from a local observer toward a transit gateway while cloud observers observe success: aggregate by observer; do not assert whole-server outage or blanket network drop | `TestSourceScopedFilteringNotServerDowntime` |
 | TCP connection establishment (TCP accept) does not prove remote application health or proxy chain integrity | `TestTCPAcceptAndReportedTelemetryNotHostProof`, `TestStreamEvidenceIsProtocolSpecific`, `TestRuntimeSelectionAndTCPAcceptNeverProvePathRecovery` |
 | Service outages, path failures, unmonitored registered entities, and transitive dependency impacts are reported distinctly | `TestServiceDependencyImpactAndRemarks`, `TestEveryTabFrameBoundsAndDetails` |
@@ -67,7 +68,7 @@ This document lists the finite, verifiable scenario contracts for version 0.3.0,
 | Observer history reservations across restart | `TestHistoryReservationSurvivesCheckpoint`, `TestObserverQuotasSurviveRestartAndReserveHeartbeats` |
 | Pre-authentication connection and request admission | `TestConnectionLimitCoversPartialHeadersAndReleases`, `TestPreauthenticationConcurrencyAndRateBounds` |
 | Fair snapshot cache computation | `TestViewerCannotReserveAllSnapshotBuilds`, `TestSnapshotViewCacheHasGlobalBudget` |
-| Heartbeat project/revision provenance | `TestRecoveredHeartbeatContract` |
+| Heartbeat project provenance; an executor on another topology revision stays alive | `TestRecoveredHeartbeatContract` |
 | Durable expired observation-ID binding | `TestExpiredEvictedIDRemainsBoundAcrossRestart` |
 | Terminal-safe machine-readable remote JSON | `TestJSONOutputEscapesAllBidiControlsLosslessly`, `TestRemoteJSONEscapesBidiControls` |
 | Verification commit/tree binding | `test_old_revision_evidence_is_rejected`, `test_mutation_during_verification_is_rejected` |

@@ -20,14 +20,14 @@ func (s *Store) StateView() ([]model.Observation, map[string]model.Heartbeat) {
 	s.mu.Unlock()
 
 	seen := make(map[string]bool, len(rows))
-	latest := map[[2]string]int{}
+	latest := map[string]int{}
 	out := rows[:0]
 	for _, v := range rows {
 		if seen[v.ID] {
 			continue
 		}
 		seen[v.ID] = true
-		key := [2]string{v.Revision, v.Check}
+		key := tailKey(v)
 		if i, ok := latest[key]; !ok || before(out[i], v) {
 			latest[key] = len(out)
 		}
@@ -36,7 +36,7 @@ func (s *Store) StateView() ([]model.Observation, map[string]model.Heartbeat) {
 	clear(rows[len(out):])
 	for i := range out {
 		v := &out[i]
-		if latest[[2]string{v.Revision, v.Check}] == i {
+		if latest[tailKey(*v)] == i {
 			*v = model.SummaryObservation(*v)
 		} else {
 			v.Facts = nil

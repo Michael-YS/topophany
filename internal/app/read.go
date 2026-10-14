@@ -110,7 +110,12 @@ func (p *previewed) reader() reader {
 			if e != nil {
 				return client.History{}, "", &ExitError{ExitUnreachable, e}
 			}
-			return client.History{Project: p.config.Project, Revision: config.Revision(p.config), Entries: entries}, server, nil
+			// As a collector would serve them: public, with no revision.
+			contract := config.PublicContracts(p.config)[check]
+			for i := range entries {
+				entries[i].Contract, entries[i].Revision = contract, ""
+			}
+			return client.History{Project: p.config.Project, Revision: config.PublicRevision(p.config), Check: check, Contract: contract, Entries: entries}, server, nil
 		},
 	}
 }
@@ -235,6 +240,9 @@ func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed
 	}
 	return a.showTab(v, h, tab, *asJSON)
 }
+
+// short is the head of a digest, as revisions and contracts are shown.
+func short(digest string) string { return digest[:min(12, len(digest))] }
 
 func (a *App) now() time.Time {
 	if a.Now != nil {
@@ -523,6 +531,7 @@ func (a *App) history(ctx context.Context, r reader, check string, limit int, as
 	t.kv("Project", h.Project)
 	t.kv("Collector", server)
 	t.kv("Check", check)
+	t.kv("Contract", short(h.Contract))
 	t.kv("Samples", strconv.Itoa(len(h.Entries))+", newest first")
 	t.line()
 	cells := [][]string{{"SAMPLED", "AGE", "OUTCOME", "EVIDENCE", "STAGE", "CODE", "ELAPSED", "DETAIL"}}

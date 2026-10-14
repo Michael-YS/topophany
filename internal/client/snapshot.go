@@ -36,7 +36,10 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 			return errors.New("invalid snapshot check")
 		}
 		seen[c.ID] = true
-		if v := c.Last; v != nil && (v.Check != c.ID || v.Observer != c.Observer || v.Project != s.Project || v.Revision != s.Revision || len(v.Facts) > 32 || len(v.Timings) > 16) {
+		if len(c.Contract) != 64 {
+			return errors.New("invalid snapshot check contract")
+		}
+		if v := c.Last; v != nil && (v.Check != c.ID || v.Observer != c.Observer || v.Project != s.Project || v.Contract != c.Contract || v.Revision != "" || len(v.Facts) > 32 || len(v.Timings) > 16) {
 			return errors.New("invalid snapshot observation")
 		}
 	}
