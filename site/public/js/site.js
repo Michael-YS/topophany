@@ -5,6 +5,13 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
+// The page's words for its scripts, written into it in its language
+// (scripts/build_site.py); a missing word reads as its key.
+const STRINGS = (() => {
+  try { return JSON.parse($('#strings').textContent); } catch { return {}; }
+})();
+const t = (key, vars = {}) => (STRINGS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
+
 // ---------------------------------------------------------------- nav
 
 const nav = $('.nav');
@@ -14,20 +21,21 @@ onScroll();
 
 // ---------------------------------------------------------------- hero
 
-// The About tab's reference places; links carry the map's evidence colours.
+// The About tab's reference places, named in the page's language; links
+// carry the map's evidence colours.
 const PLACES = [
-  { name: 'Shanghai', lat: 31.2, lon: 121.5 }, { name: 'Tokyo', lat: 35.7, lon: 139.7 },
-  { name: 'Singapore', lat: 1.35, lon: 103.8 }, { name: 'Frankfurt', lat: 50.1, lon: 8.7 },
-  { name: 'London', lat: 51.5, lon: -0.1 }, { name: 'Ashburn', lat: 39.0, lon: -77.5 },
-  { name: 'Los Angeles', lat: 34.05, lon: -118.25 }, { name: 'São Paulo', lat: -23.5, lon: -46.6 },
-  { name: 'Sydney', lat: -33.9, lon: 151.2 }, { name: 'Mumbai', lat: 19.1, lon: 72.9 },
-];
-const at = (name) => { const p = PLACES.find((q) => q.name === name); return [p.lat, p.lon]; };
+  { id: 'shanghai', lat: 31.2, lon: 121.5 }, { id: 'tokyo', lat: 35.7, lon: 139.7 },
+  { id: 'singapore', lat: 1.35, lon: 103.8 }, { id: 'frankfurt', lat: 50.1, lon: 8.7 },
+  { id: 'london', lat: 51.5, lon: -0.1 }, { id: 'ashburn', lat: 39.0, lon: -77.5 },
+  { id: 'los-angeles', lat: 34.05, lon: -118.25 }, { id: 'sao-paulo', lat: -23.5, lon: -46.6 },
+  { id: 'sydney', lat: -33.9, lon: 151.2 }, { id: 'mumbai', lat: 19.1, lon: 72.9 },
+].map((p) => ({ ...p, name: t(`place.${p.id}`) }));
+const at = (id) => { const p = PLACES.find((q) => q.id === id); return [p.lat, p.lon]; };
 const LINKS = [
-  ['Shanghai', 'Tokyo', 'up'], ['Shanghai', 'Los Angeles', 'down'], ['Tokyo', 'Los Angeles', 'up'],
-  ['Singapore', 'Sydney', 'up'], ['Singapore', 'Mumbai', 'up'], ['Mumbai', 'Frankfurt', 'warn'],
-  ['Frankfurt', 'London', 'up'], ['London', 'Ashburn', 'up'], ['Ashburn', 'São Paulo', 'unknown'],
-  ['Los Angeles', 'Ashburn', 'up'], ['Shanghai', 'Singapore', 'up'],
+  ['shanghai', 'tokyo', 'up'], ['shanghai', 'los-angeles', 'down'], ['tokyo', 'los-angeles', 'up'],
+  ['singapore', 'sydney', 'up'], ['singapore', 'mumbai', 'up'], ['mumbai', 'frankfurt', 'warn'],
+  ['frankfurt', 'london', 'up'], ['london', 'ashburn', 'up'], ['ashburn', 'sao-paulo', 'unknown'],
+  ['los-angeles', 'ashburn', 'up'], ['shanghai', 'singapore', 'up'],
 ].map(([a, b, state]) => ({ from: at(a), to: at(b), state }));
 
 function hero() {
@@ -192,7 +200,7 @@ class Player {
       if (on) {
         this.title.textContent = b.dataset.title;
         this.text.textContent = b.dataset.text;
-        this.canvas.setAttribute('aria-label', `Recording of the Topophany terminal UI: ${b.dataset.title}. ${b.dataset.text}`);
+        this.canvas.setAttribute('aria-label', t('recording', { title: b.dataset.title, text: b.dataset.text }));
         const strip = b.closest('.chapters');
         if (strip.scrollWidth > strip.clientWidth) strip.scrollTo({ left: b.parentElement.offsetLeft - 8, behavior: reduced ? 'auto' : 'smooth' });
       }
@@ -244,9 +252,9 @@ class Player {
     this.playing = on;
     this.root.classList.toggle('paused', !on);
     const btn = $('.term-play', this.root);
-    btn.setAttribute('aria-label', on ? 'Pause the replay' : 'Play the replay');
+    btn.setAttribute('aria-label', t(on ? 'pause' : 'play'));
     btn.setAttribute('aria-pressed', String(!on));
-    $('.term-state', this.root).textContent = on ? 'replay' : 'paused';
+    $('.term-state', this.root).textContent = t(on ? 'replay' : 'paused');
     this.kick();
   }
 
@@ -284,8 +292,8 @@ class Player {
     if (i >= 0) this.seek(i, true); else this.toast(tab);
   }
 
+  // toast says a tab is not recorded, by the name the TUI gives it.
   toast(tab) {
-    const names = ['Overview', 'Topology', 'Servers', 'Services', 'Paths', 'Checks', 'Incidents', 'Observers', 'About'];
     if (!this.toastEl) {
       this.toastEl = document.createElement('div');
       this.toastEl.className = 'term-toast';
@@ -294,10 +302,12 @@ class Player {
     }
     this.toastEl.innerHTML = '';
     const b = document.createElement('b');
-    b.textContent = names[tab];
+    b.textContent = this.data.names?.[tab] ?? String(tab + 1);
     const code = document.createElement('code');
     code.textContent = 'topo preview';
-    this.toastEl.append(b, ' is not in this recording. Run ', code, ' to see it.');
+    const parts = { tab: b, cmd: code };
+    const words = t('missing').split(/(\{\w+\})/).filter((s) => s !== '');
+    this.toastEl.append(...words.map((s) => (/^\{\w+\}$/.test(s) && parts[s.slice(1, -1)]) || s));
     this.toastEl.classList.add('on');
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => this.toastEl.classList.remove('on'), 2600);
@@ -311,11 +321,11 @@ function tour() {
     if (started) return;
     started = true;
     try {
-      const res = await fetch('/data/tour.json');
+      const res = await fetch(root.dataset.tour);
       const data = await res.json();
       new Player(root, data);
     } catch (err) {
-      $('.term-loading', root).lastChild.textContent = 'the recording could not be loaded';
+      $('.term-loading', root).lastChild.textContent = t('failed');
       console.error(err);
     }
   };
@@ -386,11 +396,12 @@ function copyButtons() {
       }
       btn.classList.add('done');
       icon.setAttribute('href', '#check');
-      btn.setAttribute('aria-label', 'Copied');
+      const label = btn.getAttribute('aria-label');
+      btn.setAttribute('aria-label', t('copied'));
       setTimeout(() => {
         btn.classList.remove('done');
         icon.setAttribute('href', '#copy');
-        btn.setAttribute('aria-label', 'Copy');
+        btn.setAttribute('aria-label', label);
       }, 1600);
     });
   }
@@ -420,6 +431,51 @@ function tabs() {
   }
 }
 
+// languageMenu closes the language list when focus or a click goes elsewhere.
+function languageMenu() {
+  const menu = $('details.lang');
+  if (!menu) return;
+  const close = () => { menu.open = false; };
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) close(); });
+  menu.addEventListener('focusout', (e) => { if (!menu.contains(e.relatedTarget)) close(); });
+  menu.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu.open) { close(); $('summary', menu).focus(); }
+  });
+}
+
+// suggestLanguage offers this page in the visitor's own language when they
+// arrive from elsewhere and the site has it. It never moves them: the
+// offer is a link, and closing it stores nothing.
+function suggestLanguage() {
+  const offers = STRINGS.languages || [];
+  const here = document.documentElement.lang.toLowerCase();
+  let from = '';
+  try { from = document.referrer && new URL(document.referrer).origin; } catch { /* no referrer */ }
+  if (!offers.length || from === location.origin) return;
+  const primary = (tag) => tag.toLowerCase().split('-')[0];
+  let best;
+  for (const want of navigator.languages || [navigator.language || '']) {
+    best = offers.find((o) => o.tag.toLowerCase() === want.toLowerCase())
+      || offers.find((o) => primary(o.tag) === primary(want));
+    if (best) break;
+  }
+  if (!best || best.tag.toLowerCase() === here) return;
+  const bar = document.createElement('aside');
+  bar.className = 'lang-offer';
+  bar.lang = best.tag;
+  const link = document.createElement('a');
+  link.href = best.href + location.hash;
+  link.hreflang = best.tag;
+  link.textContent = `${best.suggest} →`;
+  const shut = document.createElement('button');
+  shut.type = 'button';
+  shut.setAttribute('aria-label', best.dismiss);
+  shut.textContent = '×';
+  shut.addEventListener('click', () => bar.remove());
+  bar.append(link, shut);
+  document.body.append(bar);
+}
+
 function reveal() {
   if (reduced) return;
   const els = $$('.section .head, .panel, .claims, .stats, .arch, .notes > div, .probe-group, .install-grid > *, .docs');
@@ -442,4 +498,6 @@ tour();
 dotNumerals();
 copyButtons();
 tabs();
+languageMenu();
+suggestLanguage();
 reveal();

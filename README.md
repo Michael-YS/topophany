@@ -143,7 +143,7 @@ site/           the topophany.com homepage (a separate module, not part of go in
 go test ./...                # unit and integration tests
 go test -race ./...
 python3 scripts/verify.py    # the full acceptance suite (Linux, Go, Python 3)
-make site                    # re-record the homepage's TUI replay after changing the TUI
+make site                    # re-record the homepage's TUI replays and rewrite its pages
 ```
 
 Building needs no module downloads. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) before sending changes, and report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).

@@ -70,6 +70,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `topo preview scenarios --json` gives each scenario an `id` that is the
   same in every language. A test holds every language to the same
   evidence, scenario by scenario.
+- The homepage is in English at `/`, Japanese at `/ja/` and Chinese at
+  `/zh/`, each linking the others, with a language menu and a hint that
+  offers a visitor arriving from elsewhere the page in their browser's
+  language. The pages are written by `scripts/build_site.py` from one
+  template per page in `site/src` and one catalog per language, and each
+  language replays a TUI recording of its own preview.
 
 ### Changed
 

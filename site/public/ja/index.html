@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topophany — 場所の顕現</title>
+<meta name="description" content="ネットワークトポロジーとサービスの可用性を、Go のバイナリ 1 つでセルフホスト監視。どこから、どの経路で、何に届いたのか — そして、何を根拠に。">
+<meta name="theme-color" content="#0a1016">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://topophany.com/ja/">
+<link rel="alternate" hreflang="en" href="https://topophany.com/">
+<link rel="alternate" hreflang="ja" href="https://topophany.com/ja/">
+<link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/">
+<link rel="alternate" hreflang="x-default" href="https://topophany.com/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://topophany.com/ja/">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:title" content="Topophany — 場所の顕現">
+<meta property="og:description" content="どこから、どの経路で、何に届いたのか — そして、何を根拠に。ターミナル UI で読む、Go のバイナリ 1 つのセルフホスト型ネットワーク監視。">
+<meta property="og:image" content="https://topophany.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="preload" href="/data/land.bin" as="fetch" type="application/octet-stream" crossorigin>
+<script type="module" src="/js/site.js"></script>
+<script type="application/json" id="strings">{"replay":"再生中","paused":"一時停止","pause":"再生を一時停止","play":"再生する","recording":"Topophany ターミナル UI の録画：{title}。{text}","missing":"{tab} はこの録画に含まれていません。{cmd} を実行すると見られます。","failed":"録画を読み込めませんでした","copy":"コピー","copied":"コピーしました","place.shanghai":"上海","place.tokyo":"東京","place.singapore":"シンガポール","place.frankfurt":"フランクフルト","place.london":"ロンドン","place.ashburn":"アッシュバーン","place.los-angeles":"ロサンゼルス","place.sao-paulo":"サンパウロ","place.sydney":"シドニー","place.mumbai":"ムンバイ","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
+</head>
+<body>
+<a class="skip" href="#demo">デモへスキップ</a>
+
+<nav class="nav" aria-label="メイン">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/ja/" aria-label="Topophany ホーム">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#mark"/></svg>
+      <span>topophany</span>
+    </a>
+    <div class="nav-links">
+      <a href="#demo">デモ</a>
+      <a href="#evidence">根拠</a>
+      <a href="#architecture">構成</a>
+      <a href="#install">インストール</a>
+      <details class="lang">
+        <summary aria-label="言語"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#globe"/></svg><span>日本語</span></summary>
+        <ul><li><a href="/" hreflang="en" lang="en">English</a></li><li><a href="/ja/" hreflang="ja" lang="ja" aria-current="page">日本語</a></li><li><a href="/zh/" hreflang="zh-Hans" lang="zh-Hans">简体中文</a></li></ul>
+      </details>
+      <a class="nav-gh" href="https://github.com/WhitenWhiten/topophany">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <canvas class="sky" aria-hidden="true"></canvas>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="pill"><span class="pill-dot"></span>v0.3.0 · MIT · セルフホスト</p>
+      <h1 class="wordmark-h1">
+        <span class="sr-only">Topophany — 場所の顕現</span>
+        <canvas class="wordmark" aria-hidden="true"></canvas>
+      </h1>
+      <p class="lede">どこから、どの経路で、何に届いたのか — そして、何を根拠に。</p>
+      <p class="sub">ネットワークトポロジーとサービスの可用性をセルフホストで監視し、ターミナルで読み取ります。依存関係のない Go のバイナリ 1 つが、クライアントにも、コレクターにも、観測点にもなります。何が、どこから、どれだけ最近に測られたのかを伝え、通っていないチェックを緑で示すことはありません。</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#install">インストール</a>
+        <a class="btn" href="https://github.com/WhitenWhiten/topophany">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>GitHub でソースを見る
+        </a>
+      </div>
+      <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest">
+        <span class="cmd-prompt" aria-hidden="true">$</span>
+        <code>go install github.com/WhitenWhiten/topophany/cmd/topo@latest</code>
+        <button class="copy" type="button" aria-label="インストールコマンドをコピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button>
+      </div>
+    </div>
+    <div class="hero-globe">
+      <canvas class="globe" aria-label="ゆっくり回る点描の地球儀。光る場所どうしを経路が結び、正常な経路は淡くパルスが流れ、障害のある 1 本は赤い破線で示されます。" role="img"></canvas>
+      <p class="globe-note" aria-hidden="true">ドラッグで地球を回せます</p>
+    </div>
+  </div>
+  <a class="scroll-cue" href="#demo" aria-label="デモへスクロール"><span></span></a>
+</header>
+
+<main>
+<section class="section demo" id="demo">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>01</span> ターミナル UI</p>
+      <h2>どこかおかしい？ それはどこ？</h2>
+      <p class="lead">Overview は、一語も読まないうちに答えます：判定、すべての場所と経路の地図、そして対処が必要なものの短いリスト。下にあるのは、TUI 自身のレンダラーで 1 フレームずつ記録した <code>topo preview</code> です。根拠は合成ですが、本物の状態エンジンを通っています。</p>
+    </div>
+
+    <figure class="term" id="term" data-tour="/data/tour.ja.json">
+      <div class="term-bar">
+        <span class="term-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="term-title"><span class="term-prompt">~</span> topo preview</span>
+        <span class="term-meta"><span class="rec" aria-hidden="true"></span><span class="term-state">再生中</span> · 140×42</span>
+        <button class="term-play" type="button" aria-label="再生を一時停止" aria-pressed="false">
+          <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3" width="3" height="10" rx="1"/><rect x="9.5" y="3" width="3" height="10" rx="1"/></svg>
+          <svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z"/></svg>
+        </button>
+      </div>
+      <div class="term-screen">
+        <canvas id="term-canvas" tabindex="0" role="img" aria-label="Topophany ターミナル UI の録画"></canvas>
+        <div class="term-loading" aria-hidden="true"><span></span>録画を読み込み中</div>
+      </div>
+      <figcaption class="sr-only">プレビューモードの Topophany ターミナル UI の録画。下のチャプターから選べます。</figcaption>
+    </figure>
+
+    <ol class="chapters" id="chapters" aria-label="チャプター">
+      <li><button type="button" data-chapter="outage" data-title="障害が起きる" data-text="すべて正常な状態から、x でプレビューを DMIT 回線が中国本土から遮断されるシナリオに切り替えます。チェックはサンプルごとに 1 つずつ失敗し、確定した失敗だけが赤くなります。タイムラプスで表示しています。"><span class="ch-bar"><i></i></span><span class="ch-n">1</span><span class="ch-t">障害</span></button></li>
+      <li><button type="button" data-chapter="route" data-title="経路をたどる" data-text="対処が必要な項目を選ぶと、その経路全体が地図上に浮かび上がります。Enter で裏付けとなる根拠が開きます。"><span class="ch-bar"><i></i></span><span class="ch-n">2</span><span class="ch-t">経路</span></button></li>
+      <li><button type="button" data-chapter="vantage" data-title="2 つの観測点" data-text="同じ瞬間を 2 つの観測点から見ます。長沙の MacBook からは回線がダウン。ニューヨークのサーバーからはすべてのチェックが通ります。各観測点は、自分のいる場所から見えることだけを報告します。"><span class="ch-bar"><i></i></span><span class="ch-n">3</span><span class="ch-t">観測点</span></button></li>
+      <li><button type="button" data-chapter="virtual" data-title="仮想地図" data-text="順序は保ち、距離は保たない世界の模式図。混み合った都市にも離れ小島と同じだけの場所が与えられ、通信が通っている配線には光が走ります。"><span class="ch-bar"><i></i></span><span class="ch-n">4</span><span class="ch-t">仮想地図</span></button></li>
+      <li><button type="button" data-chapter="geo" data-title="地図" data-text="Natural Earth による点字ドットマトリクスの世界地図。ノードは宣言した場所に置かれ、IP の位置推定で決めることはありません。"><span class="ch-bar"><i></i></span><span class="ch-n">5</span><span class="ch-t">地図</span></button></li>
+      <li><button type="button" data-chapter="network" data-title="ネットワーク" data-text="左に起点を置き、リンクごとに 1 列ずつ右へ進む階層型の模式図。交差は橋渡しされ、ホスト関係は点線で示されます。"><span class="ch-bar"><i></i></span><span class="ch-n">6</span><span class="ch-t">ネットワーク</span></button></li>
+      <li><button type="button" data-chapter="servers" data-title="サーバー" data-text="サーバーごとのカード：各サービスとその前段のエッジ、ネットワークごとのアドレス、ホストしているコンテナと VM、そして末尾にはメモとしてあなたのノート。"><span class="ch-bar"><i></i></span><span class="ch-n">7</span><span class="ch-t">サーバー</span></button></li>
+      <li><button type="button" data-chapter="incidents" data-title="インシデント" data-text="各インシデントには、失敗したチェックと、ほかの観測点からまだ見えているものが並びます。推測は所見ではなく仮説と明記されます。"><span class="ch-bar"><i></i></span><span class="ch-n">8</span><span class="ch-t">インシデント</span></button></li>
+      <li><button type="button" data-chapter="about" data-title="About" data-text="τόπος（場所）と φαίνω（明るみに出す）。あなたが宣言した場所だけが光る地球儀。"><span class="ch-bar"><i></i></span><span class="ch-n">9</span><span class="ch-t">About</span></button></li>
+    </ol>
+
+    <div class="caption">
+      <div class="caption-text" aria-live="polite">
+        <h3 id="cap-title">障害が起きる</h3>
+        <p id="cap-text">すべて正常な状態から、x でプレビューを DMIT 回線が中国本土から遮断されるシナリオに切り替えます。チェックはサンプルごとに 1 つずつ失敗し、確定した失敗だけが赤くなります。タイムラプスで表示しています。</p>
+      </div>
+      <p class="keys"><kbd>1</kbd>–<kbd>9</kbd> チャプター <kbd>m</kbd> 地図 <kbd>v</kbd> 視点 <kbd>x</kbd> シナリオ <kbd>space</kbd> 一時停止。ターミナル内のタブもクリックできます。本物は <code>topo preview</code> で試せます。</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="evidence">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>02</span> セマンティクス</p>
+      <h2>色ではなく根拠を</h2>
+      <p class="lead">健全性、根拠の出どころ、その鮮度はそれぞれ別のフィールドです。通過したチェックなしに緑になるものはなく、誰も監視していないサービスは <em class="unknown">unknown</em> のまま、キャッシュされた表示はそうと明示されます。</p>
+    </div>
+
+    <div class="grid-2">
+      <article class="panel">
+        <h3 class="panel-title">初めから緑のものはない</h3>
+        <div class="tui-table" role="table" aria-label="3 つのサービスとその根拠">
+          <div class="tr th" role="row"><span role="columnheader">サービス</span><span role="columnheader">根拠</span><span role="columnheader">状態</span></div>
+          <div class="tr" role="row"><span role="cell"><b class="ok">●</b>メインサイト<i>Cloudflare ⇢ S1</i></span><span role="cell">http 200 · 4 秒前<i>Cloudflare NRT が応答 · キャッシュ DYNAMIC</i></span><span role="cell"></span></div>
+          <div class="tr" role="row"><span role="cell"><b class="unk">○</b>自宅ダッシュボード<i>ノートのみ</i></span><span role="cell">登録済み・未監視<i>チェックが未設定</i></span><span role="cell" class="unk">unknown</span></div>
+          <div class="tr" role="row"><span role="cell"><b class="bad">✖</b>VLESS+Reality 入口<i>DMIT · ロサンゼルス</i></span><span role="cell">tcp タイムアウト · 6 秒前<i>長沙 MacBook から · 3 サンプル中 3</i></span><span role="cell" class="bad">DOWN</span></div>
+        </div>
+        <p>正常な行では状態の列が空のままなので、光る言葉は問題だけです。登録されていてもチェックのないサービスは、稼働中ではありません。<em>登録済み・未監視</em>です。</p>
+      </article>
+
+      <article class="panel">
+        <h3 class="panel-title">観測点を明示する</h3>
+        <svg class="vantage" viewBox="0 0 520 214" role="img" aria-label="長沙からはロサンゼルスのサーバーへの経路がタイムアウトし、ニューヨークからは HTTP 200 で応答。判定：長沙の経路の障害であり、サーバーの停止ではない。">
+          <defs>
+            <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L8 4L0 8z" fill="#4ade80"/></marker>
+          </defs>
+          <g class="v-node"><rect x="6" y="20" width="148" height="46" rx="6"/><text x="20" y="40" class="v-place">長沙</text><text x="20" y="56" class="v-name">worker · MacBook</text></g>
+          <g class="v-node"><rect x="6" y="122" width="148" height="46" rx="6"/><text x="20" y="142" class="v-place">ニューヨーク</text><text x="20" y="158" class="v-name">worker · S1</text></g>
+          <g class="v-node v-target"><rect x="364" y="71" width="150" height="46" rx="6"/><text x="378" y="91" class="v-place">ロサンゼルス</text><text x="378" y="107" class="v-name">DMIT 入口</text></g>
+          <path class="v-wire v-bad" d="M154 43 H236 Q248 43 256 51 L282 77"/>
+          <g class="v-x" transform="translate(290 85)"><circle r="9"/><path d="M-3.6 -3.6L3.6 3.6M3.6 -3.6L-3.6 3.6"/></g>
+          <path class="v-wire v-ok" d="M154 145 H250 Q262 145 270 133 L296 105 Q304 94 318 94 H362" marker-end="url(#arr-ok)"/>
+          <path class="v-flow" d="M154 145 H250 Q262 145 270 133 L296 105 Q304 94 318 94 H362"/>
+          <text x="172" y="33" class="v-ev bad">tcp タイムアウト ×3</text>
+          <text x="172" y="166" class="v-ev ok">http 200 · 182 ms</text>
+          <line x1="6" x2="514" y1="190" y2="190" class="v-rule"/>
+          <text x="6" y="208" class="v-verdict"><tspan class="v-k">判定</tspan>  長沙からの経路の障害 · サーバーは稼働中</text>
+        </svg>
+        <p>各観測点は、実際にいる場所から測ります。自宅から見えた失敗はその経路の障害であってサーバーの停止ではなく、インシデントにはまだ到達できている観測点が示されます。</p>
+      </article>
+
+      <article class="panel">
+        <h3 class="panel-title">エッジが応答した</h3>
+        <div class="edge">
+          <div class="edge-row">
+            <span class="chip">訪問者</span><span class="wire ok"></span>
+            <span class="chip chip-edge">Cloudflare <small>NRT</small></span><span class="wire bad"></span>
+            <span class="chip">S1 オリジン</span>
+          </div>
+          <div class="edge-row edge-ev">
+            <span></span><span></span>
+            <span class="ok">● HTTP 521 · エッジは稼働</span><span></span>
+            <span class="warn">▲ 影響あり</span>
+          </div>
+        </div>
+        <p>Cloudflare や Vercel などの CDN の背後では、エッジからの応答はエラーページであってもエッジの稼働を証明するだけです。オリジンの根拠になるのは、エッジがキャッシュから返したのではない成功応答だけ。プローブは、どのエッジがどこから応答したかを記録します。</p>
+      </article>
+
+      <article class="panel">
+        <h3 class="panel-title">推測は推測と明記する</h3>
+        <pre class="incident" aria-label="インシデントの根拠"><span class="i-h">FAILED CHECKS</span>
+m-exit-dmit-aaitr
+
+<span class="i-h">OTHER-OBSERVER RESPONSE EVIDENCE</span>
+w-exit-s2-aaitr, w-exit-s2-qqpr
+
+<span class="i-h">HYPOTHESIS (NOT A FINDING)</span>
+source/path-specific interference, filtering or
+routing fault is possible; blocking authority and
+untested protocols are not established
+<span class="i-n">No inference about all IP ports, untested UDP,
+physical power or GFW authority.</span></pre>
+        <p>インシデントには、失敗したチェックと、ほかの観測点からまだ見えているものが含まれます。誰もテストしていないポートやプロトコルについて推論することはありません。</p>
+      </article>
+    </div>
+
+    <div class="claims">
+      <h3 class="claims-title">主張しないこと</h3>
+      <dl>
+        <div><dt>TCP 接続が受け付けられた</dt><dd>接続が確立したということだけ。アプリケーションプロトコルでも、プロキシ認証でも、経路全体でもありません。</dd></div>
+        <div><dt>リクエストは成功したが、出口 IP がポリシー外</dt><dd><code>policy</code> という結果になります。到達性と出口ポリシーは別々に判定されます。</dd></div>
+        <div><dt>観測点が報告を止めた</dt><dd>その視点は stale になり、続いて unknown になります。遠隔の資産が down とされることはありません。</dd></div>
+        <div><dt>主経路が失敗し、候補が成功した</dt><dd>候補は利用可能で、冗長性は縮退しています。本番のトラフィックが切り替わったとは主張しません。</dd></div>
+        <div><dt>コレクターに到達できない</dt><dd>キャッシュされた表示は残って CACHED と示され、すべての項目が unknown になります。</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="architecture">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>03</span> 構成</p>
+      <h2>1 つのバイナリ、3 つの役割</h2>
+      <p class="lead">CGO も、データベースのデーモンも、Node.js も不要で、外部の Go モジュールはゼロ。<code>topo</code> はターミナルクライアントであり、コレクターであり、観測点でもあります。クライアントを閉じても監視は止まりません。</p>
+    </div>
+
+    <ul class="stats">
+      <li><span class="dots" data-dots="1"></span><span class="stat-l">バイナリ<small>クライアント、コレクター、ワーカー</small></span></li>
+      <li><span class="dots" data-dots="0"></span><span class="stat-l">外部 Go モジュール<small>標準ライブラリのみ</small></span></li>
+      <li><span class="dots" data-dots="6"></span><span class="stat-l">リリースビルド<small>Linux、macOS、Windows · amd64、arm64</small></span></li>
+      <li><span class="dots" data-dots="9"></span><span class="stat-l">タブ<small>30×10 から使え、マウスにも対応</small></span></li>
+    </ul>
+
+    <div class="arch" role="img" aria-label="各観測点のワーカーが 2 つの独立したコレクターに観測結果を送り、読み取り専用の TUI クライアントがそれを問い合わせます。">
+      <p class="arch-h">観測点</p>
+      <p class="arch-h">コレクター</p>
+      <p class="arch-h">クライアント</p>
+      <div class="arch-col">
+        <div class="node"><code>topo worker</code><span>自宅のノート PC</span></div>
+        <div class="node"><code>topo worker</code><span>東京のサーバー</span></div>
+        <div class="node"><code>topo serve --observer</code><span>コレクター自身の基準</span></div>
+      </div>
+      <div class="arch-link" aria-hidden="true"><span class="flow"></span><small>観測結果。分断の間はバッファ</small></div>
+      <div class="arch-col">
+        <div class="node node-c"><code>topo serve</code><span>ジャーナル A · ACK の前に fsync</span></div>
+        <div class="node node-c"><code>topo serve</code><span>ジャーナル B · 独立</span></div>
+      </div>
+      <div class="arch-link" aria-hidden="true"><span class="flow"></span><small>読み取り専用のスナップショット</small></div>
+      <div class="arch-col">
+        <div class="node"><code>topo</code><span>TUI、フェイルオーバー付き</span></div>
+        <div class="node"><code>topo --json</code><span>スクリプト向けのスナップショット</span></div>
+      </div>
+    </div>
+
+    <div class="grid-3 notes">
+      <div>
+        <h3>2 つのコレクター、合意形成の芝居はなし</h3>
+        <p>ワーカーは両方のコレクターにそれぞれ届け、上限のある送信箱にバッファします。重複は観測 ID で除かれ、構成リビジョンが合わない記録は隔離されます。</p>
+      </div>
+      <div>
+        <h3>設計からして読み取り専用</h3>
+        <p>リモートの設定 API も、リモートシェルも、自動修復もありません。トポロジーはレビュー済みのローカル JSON にあり、<code>topo edit</code> で編集し、<code>topo validate</code> で確認します。</p>
+      </div>
+      <div>
+        <h3>上限があり、それを明言する</h3>
+        <p>既定では 24 時間分または 20,000 件の生データを保持し、ワーカーの送信箱には 32 MiB を割り当てます。上限に達すると、根拠を捨てる代わりにエラーで計測を止めます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="probes">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>04</span> プローブ</p>
+      <h2>計測できるもの</h2>
+      <p class="lead">ネイティブのプローブと明示的なプロキシチェーンに加え、ホストにすでにあるツール向けの読み取り専用アダプター。</p>
+    </div>
+    <div class="probes">
+      <div class="probe-group">
+        <h3>ネイティブプローブ</h3>
+        <ul class="chips"><li>HTTP · ステータス、本文、ヘッダー、出口 IP</li><li>TCP</li><li>TLS · 証明書の検証</li><li>SSH バナー</li><li>DNS A/AAAA</li><li>UDP エコー · ランダムな nonce</li><li>ICMP · IPv4</li></ul>
+      </div>
+      <div class="probe-group">
+        <h3>プロキシチェーン</h3>
+        <ul class="chips"><li>HTTP CONNECT</li><li>HTTPS CONNECT</li><li>SOCKS5 · リモート DNS</li><li>OpenSSH <code>-W</code> · ホスト検証</li></ul>
+      </div>
+      <div class="probe-group">
+        <h3>読み取り専用アダプター</h3>
+        <ul class="chips"><li>Mihomo</li><li>Tailscale</li><li>WireGuard</li></ul>
+      </div>
+      <div class="probe-group">
+        <h3>エッジとプラットフォーム</h3>
+        <ul class="chips"><li>Cloudflare · Workers, Pages</li><li>Vercel</li><li>Supabase</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section install" id="install">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>05</span> インストール</p>
+      <h2>1 分で動く</h2>
+      <p class="lead">Linux、macOS、Windows 向けのビルド済みアーカイブ、または <code>go install</code> ひとつで。デモは自分自身のループバック API だけを計測し、実行のたびに新しい認証情報を生成します。</p>
+    </div>
+
+    <div class="install-grid">
+      <div class="install-side">
+      <div class="panel tabs" data-tabs>
+        <div class="tablist" role="tablist" aria-label="インストール方法">
+          <button role="tab" type="button" id="t-go" aria-controls="p-go" aria-selected="true">go install</button>
+          <button role="tab" type="button" id="t-rel" aria-controls="p-rel" aria-selected="false" tabindex="-1">リリース</button>
+          <button role="tab" type="button" id="t-src" aria-controls="p-src" aria-selected="false" tabindex="-1">ソース</button>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="p-go" aria-labelledby="t-go">
+          <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest"><span class="cmd-prompt" aria-hidden="true">$</span><code>go install github.com/WhitenWhiten/topophany/cmd/topo@latest</code><button class="copy" type="button" aria-label="コピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+          <p class="fine">Go 1.26.9 以降が必要です。ビルドでモジュールはダウンロードされません。</p>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="p-rel" aria-labelledby="t-rel" hidden>
+          <p>amd64 と arm64 の Linux、macOS、Windows 向けアーカイブ。それぞれに <code>SHA256SUMS.txt</code> が付きます。</p>
+          <a class="btn btn-primary" href="https://github.com/WhitenWhiten/topophany/releases/latest">最新リリース</a>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="p-src" aria-labelledby="t-src" hidden>
+          <div class="cmd cmd-multi" data-copy="git clone https://github.com/WhitenWhiten/topophany&#10;cd topophany&#10;go build -trimpath -o topo ./cmd/topo"><code><span class="cmd-prompt" aria-hidden="true">$ </span>git clone https://github.com/WhitenWhiten/topophany
+<span class="cmd-prompt" aria-hidden="true">$ </span>cd topophany
+<span class="cmd-prompt" aria-hidden="true">$ </span>go build -trimpath -o topo ./cmd/topo</code><button class="copy" type="button" aria-label="コピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </div>
+      </div>
+        <div class="panel runs">
+          <h3 class="panel-title">動作環境</h3>
+          <dl class="kv">
+            <div><dt>OS</dt><dd>Linux、macOS、Windows · amd64、arm64</dd></div>
+            <div><dt>端末</dt><dd>100×28 以上を推奨、最小 30×10</dd></div>
+            <div><dt>色</dt><dd>truecolor、xterm-256、<code>NO_COLOR</code> では色なし</dd></div>
+            <div><dt>サービス</dt><dd>コレクターとワーカー用の systemd ユニット</dd></div>
+            <div><dt>ストレージ</dt><dd>ローカルの追記専用ジャーナル。データベースは不要</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <h3>見て回る</h3>
+          <p>組み込みのトポロジーと合成の根拠で、TUI のすべてを。<kbd>x</kbd> を押して何かを壊してみてください。</p>
+          <div class="cmd" data-copy="topo preview"><span class="cmd-prompt" aria-hidden="true">$</span><code>topo preview</code><button class="copy" type="button" aria-label="コピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </li>
+        <li>
+          <h3>コレクターを起動する</h3>
+          <p>デモ用のトポロジーと新しい認証情報を書き出し、<code>127.0.0.1:7447</code> で待ち受けます。</p>
+          <div class="cmd cmd-multi" data-copy="topo init --dir ./demo&#10;topo serve --config ./demo/topology.json --auth ./demo/auth.json --data ./demo/collector-data --observer demo"><code><span class="cmd-prompt" aria-hidden="true">$ </span>topo init --dir ./demo
+<span class="cmd-prompt" aria-hidden="true">$ </span>topo serve --config ./demo/topology.json \
+    --auth ./demo/auth.json --data ./demo/collector-data \
+    --observer demo</code><button class="copy" type="button" aria-label="コピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </li>
+        <li>
+          <h3>TUI を開く</h3>
+          <p>別のターミナルで。あとで <code>topo login</code> がリモートのプロファイルを保存すれば、<code>topo</code> だけで済みます。</p>
+          <div class="cmd" data-copy="topo --credentials ./demo/credentials.json"><span class="cmd-prompt" aria-hidden="true">$</span><code>topo --credentials ./demo/credentials.json</code><button class="copy" type="button" aria-label="コピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </li>
+      </ol>
+    </div>
+
+    <ul class="docs">
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/GUIDE.md"><b>ユーザーガイド</b><span>TUI、編集、デプロイ (英語)</span></a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/REFERENCE.md"><b>リファレンス</b><span>設定と API (英語)</span></a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/OPERATIONS.md"><b>運用</b><span>コレクターとワーカーのデプロイ (英語)</span></a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/SECURITY.md"><b>セキュリティモデル</b><span>境界、トークン、通信 (英語)</span></a></li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <a class="brand" href="/ja/"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#mark"/></svg><span>topophany</span></a>
+      <p class="etym"><b>τόπος</b> <i>場所</i> · <b>φαίνω</b> <i>明るみに出す</i></p>
+    </div>
+    <ul class="footer-links">
+      <li><a href="https://github.com/WhitenWhiten/topophany">GitHub</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/releases">リリース</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CHANGELOG.md">変更履歴</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CONTRIBUTING.md">コントリビュート</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/SECURITY.md">脆弱性を報告</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/LICENSE">MIT ライセンス</a></li>
+    </ul>
+    <p class="footer-fine">このサイトは Cookie を使わず、ほかの誰からも何も読み込みません。</p>
+  </div>
+</footer>
+
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <radialGradient id="mark-sea" cx=".34" cy=".3" r=".85"><stop offset="0" stop-color="#3a86a8"/><stop offset=".55" stop-color="#163a52"/><stop offset="1" stop-color="#0c1922"/></radialGradient>
+  </defs>
+  <symbol id="mark" viewBox="0 0 32 32">
+    <circle cx="16" cy="16" r="13" fill="url(#mark-sea)"/>
+    <circle cx="16" cy="16" r="13" fill="none" stroke="#7dd3fc" stroke-opacity=".55" stroke-width="1.2"/>
+    <ellipse cx="16" cy="16" rx="6" ry="13" fill="none" stroke="#7dd3fc" stroke-opacity=".35" stroke-width="1"/>
+    <path d="M3.6 12.4Q16 16.8 28.4 12.4M4.6 21.6Q16 25.4 27.4 21.6" fill="none" stroke="#7dd3fc" stroke-opacity=".35" stroke-width="1"/>
+    <circle cx="11.5" cy="10.5" r="2.6" fill="#fcd34d"/>
+    <circle cx="11.5" cy="10.5" r="5" fill="none" stroke="#fcd34d" stroke-opacity=".35" stroke-width="1"/>
+  </symbol>
+  <symbol id="gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+  <symbol id="copy" viewBox="0 0 16 16"><path fill="currentColor" d="M5.5 1h7A2.5 2.5 0 0 1 15 3.5v7a2.5 2.5 0 0 1-2.5 2.5H11v1.5A1.5 1.5 0 0 1 9.5 16h-7A1.5 1.5 0 0 1 1 14.5v-7A1.5 1.5 0 0 1 2.5 6H4V3.5A2.5 2.5 0 0 1 5.5 1zM4 7.5H2.5v7h7V13h-4A1.5 1.5 0 0 1 4 11.5zm1.5-5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1z"/></symbol>
+  <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
+  <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
+</svg>
+</body>
+</html>

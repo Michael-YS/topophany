@@ -3,7 +3,9 @@
 // blocks, braille and the status glyphs as geometry, so lines join without
 // gaps and dots stay round on every platform and at every size.
 
-const FONT = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "DejaVu Sans Mono", "Noto Sans Mono", monospace, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC", sans-serif';
+// The page's monospace stack (--mono), whose CJK fonts follow its language.
+const FONT = getComputedStyle(document.documentElement).getPropertyValue('--mono').trim()
+  || 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "DejaVu Sans Mono", "Noto Sans Mono", monospace, sans-serif';
 const TEXT = '#d5dee7';
 const CONT = '\u0001'; // the right half of a wide character
 

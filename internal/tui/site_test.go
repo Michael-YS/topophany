@@ -13,9 +13,10 @@ import (
 )
 
 // The homepage (site/public) replays the real TUI: `make site` drives a preview
-// model through the tour below and writes every frame as the cells that
-// changed since the one before, with the land mask the hero globe is drawn
-// from. Without TOPO_SITE the test is skipped.
+// model through the tour below, once in each language the preview is written
+// in, and writes every frame as the cells that changed since the one before
+// (tour.<language>.json), with the land mask the hero globe is drawn from.
+// Without TOPO_SITE the test is skipped.
 
 const tourW, tourH = 140, 42
 
@@ -34,6 +35,7 @@ type tour struct {
 	Size     [2]int        `json:"size"`
 	Styles   [][3]int      `json:"styles"` // fg (-1 default), bg, attributes
 	Tabs     [][2]int      `json:"tabs"`   // x, width of each tab on row 1
+	Names    []string      `json:"names"`  // the name of each tab
 	Chapters []tourChapter `json:"chapters"`
 }
 
@@ -47,16 +49,17 @@ type recorder struct {
 	prev    []cell
 }
 
-func newRecorder(t *testing.T) *recorder {
-	c, e := preview.Preset(preview.DefaultLanguage)
+func newRecorder(t *testing.T, lang string) *recorder {
+	c, e := preview.Preset(lang)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	sim := preview.New(c, now, preview.DefaultLanguage)
+	sim := preview.New(c, now, lang)
 	r := &recorder{t: t, sim: sim, styles: map[Style]int{}}
 	r.m = &Model{Now: now, Width: tourW, Height: tourH, Preview: sim, Server: "synthetic", Colors: colorTrue}
 	r.out.Size = [2]int{tourW, tourH}
+	r.out.Names = tabs
 	r.fetch()
 	r.m.say("Preview: synthetic evidence only · x switch scenario · D debug overlay", false)
 	return r
@@ -273,19 +276,21 @@ func TestSite(t *testing.T) {
 	local := time.Local
 	time.Local = time.UTC
 	defer func() { time.Local = local }()
-	r := newRecorder(t)
-	r.record()
-	b, e := json.Marshal(r.out)
-	if e != nil {
-		t.Fatal(e)
-	}
-	frames := 0
-	for _, c := range r.out.Chapters {
-		frames += len(c.Frames)
-	}
-	t.Logf("%d chapters, %d frames, %d styles, %d bytes", len(r.out.Chapters), frames, len(r.out.Styles), len(b))
-	if e := os.WriteFile(filepath.Join(dir, "tour.json"), b, 0o644); e != nil {
-		t.Fatal(e)
+	for _, lang := range preview.Languages() {
+		r := newRecorder(t, lang)
+		r.record()
+		b, e := json.Marshal(r.out)
+		if e != nil {
+			t.Fatal(e)
+		}
+		frames := 0
+		for _, c := range r.out.Chapters {
+			frames += len(c.Frames)
+		}
+		t.Logf("%s: %d chapters, %d frames, %d styles, %d bytes", lang, len(r.out.Chapters), frames, len(r.out.Styles), len(b))
+		if e := os.WriteFile(filepath.Join(dir, "tour."+lang+".json"), b, 0o644); e != nil {
+			t.Fatal(e)
+		}
 	}
 	if e := os.WriteFile(filepath.Join(dir, "land.bin"), landBits, 0o644); e != nil {
 		t.Fatal(e)

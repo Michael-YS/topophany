@@ -24,6 +24,16 @@ configuration authority in version 0.2.
 The homepage at topophany.com is the static site in `site/public/`, published
 as is by a Cloudflare Worker (`site/wrangler.jsonc`) with no build step, and
 redeployed by Workers Builds on every push to `main` that touches `site/`;
-`site/go.mod` keeps it out of the Go module. Its terminal replay
-(`site/public/data/tour.json`) is recorded from `topo preview` by the TUI's own
-renderer; run `make site` after changing the TUI to record it again.
+`site/go.mod` keeps it out of the Go module. Its pages are written, one per
+language, from the templates in `site/src/` with `{{key}}` where words go and
+the words of each language in `site/src/locales/<language>.json`; edit those,
+never the pages in `site/public/`. Its terminal replays
+(`site/public/data/tour.<language>.json`) are recorded from `topo preview` by
+the TUI's own renderer. Run `make site` after changing the TUI, the templates or
+the words to write them again; `scripts/test_site.py` fails while they are stale.
+
+Words a reader sees go in catalogs, never in code. The preview's built-in
+topology refers to its names, notes and places as `@key`, and each language's
+text for them and for the scenarios is in `internal/preview/locales/`. To add a
+language, add a catalog there and in `site/src/locales/`, a `README.<language>.md`,
+and run `make site`; the tests list what is still missing.

@@ -264,7 +264,9 @@ export class Globe {
       ctx.fill();
     }
     if (this.labels) {
-      ctx.font = `600 ${Math.round(12 * dpr)}px ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace`;
+      // The page's monospace stack, whose CJK fonts follow its language.
+      this.mono ??= getComputedStyle(document.documentElement).getPropertyValue('--mono').trim() || 'monospace';
+      ctx.font = `600 ${Math.round(12 * dpr)}px ${this.mono}`;
       ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round';
       ctx.lineWidth = 4 * dpr;
