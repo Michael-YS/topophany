@@ -240,7 +240,7 @@ func TestSecurityLargeMapsDegradeWithoutDiscardingTopology(t *testing.T) {
 				m := &Model{MapMode: mode}
 				nodes := make([]mapNode, n)
 				for i := range nodes {
-					nodes[i] = mapNode{ID: fmt.Sprintf("n%d", i), Name: "node", Located: true, Lat: float64(i%80), Lon: float64(i%170)}
+					nodes[i] = mapNode{ID: fmt.Sprintf("n%d", i), Name: "node", Located: true, Lat: float64(i % 80), Lon: float64(i % 170)}
 					m.Snapshot.Topology.Nodes = append(m.Snapshot.Topology.Nodes, model.Node{ID: nodes[i].ID, Name: "node", Location: &model.Location{Lat: nodes[i].Lat, Lon: nodes[i].Lon}})
 				}
 				before := slices.Clone(nodes)
