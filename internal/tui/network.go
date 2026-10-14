@@ -124,6 +124,10 @@ func packRows(ws, gaps []float64, lo, hi float64) {
 }
 
 func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, groups map[string]Color, f mapFocus) {
+	if !mapLayoutAllowed(w, h, len(nodes), len(edges)) {
+		drawLayoutLimit(cv, x, y, w, h, len(nodes), len(edges))
+		return
+	}
 	if len(nodes) == 0 {
 		msg := "No nodes in this topology"
 		switch {
@@ -291,59 +295,28 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		}
 	}
 	// In the gap after each column, the steps that leave one vertex share a
-	// vertical track; tracks are ordered so that wires cross as little as
-	// possible and never run together.
-	type bus struct {
-		src, ys, lo, hi int
-		targets         map[int]int // row -> vertex
-	}
-	gaps := make([]map[int]*bus, nl)
+	// vertical track. All candidate orders across all gaps share one budget.
+	gaps := make([]map[int]*networkBus, nl)
 	for _, c := range chainOf {
 		for k := 1; k < len(c); k++ {
 			u, v := c[k-1], c[k]
 			l := vlayer[u]
 			if gaps[l] == nil {
-				gaps[l] = map[int]*bus{}
+				gaps[l] = map[int]*networkBus{}
 			}
 			n := gaps[l][u]
 			if n == nil {
-				n = &bus{src: u, ys: row[u], lo: row[u], hi: row[u], targets: map[int]int{}}
+				n = &networkBus{src: u, ys: row[u], lo: row[u], hi: row[u], targets: map[int]int{}}
 				gaps[l][u] = n
 			}
 			n.targets[row[v]] = v
 			n.lo, n.hi = min(n.lo, row[v]), max(n.hi, row[v])
 		}
 	}
-	cost := func(order []*bus) int {
-		n := 0
-		for i, a := range order {
-			for j, b := range order {
-				meet := func(y, target int) {
-					switch v, ok := b.targets[y]; {
-					case y < b.lo || y > b.hi:
-					case ok && v == target:
-						// Into the same chip: the wires merge, as they should.
-					case ok || y == b.ys:
-						n += 4 // two wires would run together
-					default:
-						n++
-					}
-				}
-				switch {
-				case j < i:
-					meet(a.ys, -1) // a's run from its source passes b's track
-				case j > i:
-					for y, v := range a.targets {
-						meet(y, v) // a's runs to its targets pass b's track
-					}
-				}
-			}
-		}
-		return n
-	}
-	tracks := make([][]*bus, nl)
+	work := newLayoutWork()
+	tracks := make([][]*networkBus, nl)
 	for l, nets := range gaps {
-		list := []*bus{}
+		list := []*networkBus{}
 		for _, n := range nets {
 			if n.lo < n.hi {
 				list = append(list, n)
@@ -352,38 +325,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		if len(list) == 0 || l+1 >= nl {
 			continue
 		}
-		sort.Slice(list, func(i, j int) bool { return list[i].ys < list[j].ys })
-		best, bestCost := append([]*bus(nil), list...), cost(list)
-		if len(list) <= 6 {
-			var permute func(k int)
-			permute = func(k int) {
-				if k == len(list) {
-					if c := cost(list); c < bestCost {
-						best, bestCost = append(best[:0], list...), c
-					}
-					return
-				}
-				for i := k; i < len(list); i++ {
-					list[k], list[i] = list[i], list[k]
-					permute(k + 1)
-					list[k], list[i] = list[i], list[k]
-				}
-			}
-			permute(0)
-		} else {
-			for improved := true; improved; {
-				improved = false
-				for i := 0; i+1 < len(best); i++ {
-					best[i], best[i+1] = best[i+1], best[i]
-					if c := cost(best); c < bestCost {
-						bestCost, improved = c, true
-					} else {
-						best[i], best[i+1] = best[i+1], best[i]
-					}
-				}
-			}
-		}
-		tracks[l] = best
+		tracks[l] = orderNetworkBuses(list, work)
 	}
 	// Chips show the node name, or its (usually short) ID when the name does
 	// not fit. Each column is as wide as its widest chip, each gap as wide as
