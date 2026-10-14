@@ -272,7 +272,7 @@ func (m *Model) tabRows(tab int) []Row {
 		return entity("node", find(nodeStates, n.ID), nodeNames[n.ID], n.Group, details)
 	}
 	incident := func(i model.Incident) Row {
-		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: m.incidentTitle(i), Meta: i.Summary, Cols: []string{age(m.Now, i.Since), plural(len(i.Checks), "check")}, Details: incidentDetails(i)}
+		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: m.incidentTitle(i), Meta: i.Summary, Cols: []string{age(m.Now, i.Since), plural(len(i.Checks), "check")}, Details: incidentDetails(m.Now, i)}
 	}
 	switch tab {
 	case tabOverview:
@@ -478,7 +478,7 @@ func (m *Model) tabRows(tab int) []Row {
 			if e.Last != nil {
 				v := e.Last
 				took = fmt.Sprintf("%d ms", v.DurationMS)
-				details = append(details, "", "Last sample: "+v.SampledAt.Local().Format("2006-01-02 15:04:05 MST"), "Sample age: "+age(m.Now, v.SampledAt), "Collector received: "+v.ReceivedAt.Local().Format(time.RFC3339), "Outcome: "+v.Outcome, "Stage: "+v.Stage, "Code: "+v.Code, fmt.Sprintf("Elapsed: %d ms", v.DurationMS), "Path evidence: "+v.PathEvidence)
+				details = append(details, "", "Last sample: "+v.SampledAt.Local().Format(stampLayout), "Sample age: "+age(m.Now, v.SampledAt), "Collector received: "+v.ReceivedAt.Local().Format(stampLayout), "Outcome: "+v.Outcome, "Stage: "+v.Stage, "Code: "+v.Code, fmt.Sprintf("Elapsed: %d ms", v.DurationMS), "Path evidence: "+v.PathEvidence)
 				if edge := edgeAnswer(v.Facts); edge != "" {
 					details = append(details, "Answered by: "+edge+" (response headers, not verified routing)")
 				}
@@ -576,9 +576,22 @@ func aggregateHealth(hs []string) string {
 	}
 	return "unknown"
 }
-func incidentDetails(i model.Incident) []string {
-	return []string{"Scope: " + i.Scope, "Since: " + i.Since.Local().Format(time.RFC3339), "", i.Summary, "", "Failed checks:", strings.Join(i.Checks, ", "), "", "Other-observer response evidence:", strings.Join(i.CounterEvidence, ", "), "", "Hypothesis (not a finding):", i.Hypothesis, "", "No inference about all IP ports, untested UDP, physical power or GFW authority."}
+func incidentDetails(now time.Time, i model.Incident) []string {
+	return []string{"Scope: " + i.Scope, "Since: " + stamp(now, i.Since), "", i.Summary, "", "Failed checks:", strings.Join(i.Checks, ", "), "", "Other-observer response evidence:", strings.Join(i.CounterEvidence, ", "), "", "Hypothesis (not a finding):", i.Hypothesis, "", "No inference about all IP ports, untested UDP, physical power or GFW authority."}
 }
+
+// stampLayout writes the moments in evidence in local time, to the second.
+const stampLayout = "2006-01-02 15:04:05 MST"
+
+// stamp is a moment and how long ago it was: "2026-10-13 10:58:07 PDT ·
+// 2m ago".
+func stamp(now, t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return t.Local().Format(stampLayout) + " · " + age(now, t)
+}
+
 func age(now, t time.Time) string {
 	if t.IsZero() {
 		return "never"

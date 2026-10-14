@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The glints on the Overview's map run as smoothly as on the Topology
   tab, and About's globe, once its introduction has played, turns at ten
   frames a second rather than fourteen.
+- Times in the evidence read alike: an incident's start, a check's last
+  sample and when the collector received it are local time to the second
+  (`2026-10-13 10:58:07 PDT`), and an incident's start says how long ago
+  it was, rather than mixing in RFC 3339.
 
 ### Fixed
 
