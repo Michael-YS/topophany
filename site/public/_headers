@@ -1,5 +1,7 @@
 # Cloudflare static asset headers. The site loads nothing from anyone else,
-# so the policy can be strict.
+# so the policy can be strict. Pages go out as written: no-transform keeps
+# Cloudflare from injecting its analytics beacon (which the policy would
+# block anyway); data, styles and scripts drop it so they stay compressed.
 /*
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
@@ -7,12 +9,16 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin
   Strict-Transport-Security: max-age=31536000
+  Cache-Control: no-transform
 
 /data/*
+  ! Cache-Control
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 /css/*
+  ! Cache-Control
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 /js/*
+  ! Cache-Control
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
