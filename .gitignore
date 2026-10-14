@@ -22,6 +22,9 @@
 *.key
 *.env
 
+# Wrangler's local cache, written when deploying the homepage from site/
+.wrangler/
+
 # Go workspace
 go.work
 go.work.sum
