@@ -386,3 +386,75 @@ func TestSnapshotCarriesTheLedger(t *testing.T) {
 		t.Fatalf("cloud's view carries home's incident: %+v", s.Ledger)
 	}
 }
+
+// Snapshots say how each check fared over the last day, week and month,
+// and /v1/rollups lays its rollups out in slots, both under its public
+// contract only.
+func TestSnapshotsAndRollupsSayHowChecksFared(t *testing.T) {
+	srv, h, b := fixture(t)
+	c := srv.Config
+	now := srv.Now()
+	for start := uint64(1); start <= 120; start += 60 {
+		b.Observations = nil
+		for i := start; i < start+60; i++ {
+			outcome := "ok"
+			if i > 100 && i <= 110 {
+				outcome = "fail"
+			}
+			b.Observations = append(b.Observations, testkit.Observation(c, "home-http", i, now.Add(-time.Duration(120-i)*30*time.Second), outcome))
+		}
+		if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil)
+	var snap model.Snapshot
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &snap) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var day model.Availability
+	for _, cs := range snap.Checks {
+		switch {
+		case cs.ID == "home-http" && len(cs.Availability) == 3:
+			day = cs.Availability[0]
+		case cs.ID != "home-http" && cs.Availability != nil:
+			t.Fatal("a check never measured has availability", cs.ID)
+		}
+	}
+	// 59.5 minutes measured: 50 of them up, 5 down; the newest stands 0s.
+	if day.Window != "24h" || day.Up != 54*60+30 || day.Down != 5*60 || day.Samples != 120 || day.Seconds != 86400 {
+		t.Fatalf("a day of a check measured for its last hour: %+v", day)
+	}
+	w = request(h, "GET", "/v1/rollups?check=home-http&step=5m&span=2h", viewerToken, "", nil)
+	var got struct {
+		Contract string         `json:"contract"`
+		Step     int64          `json:"step_seconds"`
+		Total    model.Rollup   `json:"total"`
+		Slots    []model.Rollup `json:"slots"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if got.Contract != config.PublicContracts(c)["home-http"] {
+		t.Fatal("rollups name another contract", got.Contract)
+	}
+	up := int64(0)
+	for _, slot := range got.Slots {
+		up += slot.Up
+	}
+	// Each slot rounds its time to the second.
+	if got.Step != 300 || len(got.Slots) < 24 || got.Total.Up != day.Up || max(up-day.Up, day.Up-up) > int64(len(got.Slots)) || got.Total.Samples != 120 {
+		t.Fatalf("rollups: step %d, %d slots, total %+v, slots up %d", got.Step, len(got.Slots), got.Total, up)
+	}
+	for _, q := range []string{"check=home-http&step=10m", "check=home-http&span=0d", "check=home-http&span=900d", "check=home-http&step=5m&span=7d", "check=home-http&span=7w"} {
+		if w := request(h, "GET", "/v1/rollups?"+q, viewerToken, "", nil); w.Code != 400 {
+			t.Fatal(q, w.Code)
+		}
+	}
+	if w := request(h, "GET", "/v1/rollups?check=nope", viewerToken, "", nil); w.Code != 404 {
+		t.Fatal("unknown check", w.Code)
+	}
+	if w := request(h, "GET", "/v1/rollups?check=home-http", workerToken, "", nil); w.Code != 403 {
+		t.Fatal("a worker read rollups", w.Code)
+	}
+}

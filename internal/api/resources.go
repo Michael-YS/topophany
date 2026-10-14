@@ -68,6 +68,7 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	if s.snapshotCache == nil || s.Now().Sub(s.snapshotAt) >= time.Second {
 		s.snapshotRows, s.snapshotBeats = s.Store.StateView()
 		s.snapshotAt = s.Now()
+		s.snapshotAvailable = nil
 		s.snapshotCache = map[string][]byte{}
 		s.snapshotCacheBytes = 0
 		s.snapshotMisses = map[string]int{}
@@ -85,6 +86,16 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	snap := engine.Build(c, s.Instance, view, s.snapshotRows, s.snapshotBeats, s.snapshotAt)
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
+	}
+	if s.snapshotAvailable == nil {
+		// Every view of this moment shares one reading of the rollups.
+		s.snapshotAvailable = map[string][]model.Availability{}
+		for id, contract := range config.Contracts(c) {
+			s.snapshotAvailable[id] = s.Store.Availability(id, contract, s.snapshotAt)
+		}
+	}
+	for i := range snap.Checks {
+		snap.Checks[i].Availability = s.snapshotAvailable[snap.Checks[i].ID]
 	}
 	raw, err := summaryJSON(snap)
 	if err != nil {
@@ -145,7 +156,15 @@ func summaryJSON(s model.Snapshot) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Over budget, availability goes first, as rollups can be read on
+	// their own; then the last observations, as history can.
 	if len(raw) > model.MaxSnapshotBytes || secure.JSONBudget(raw) != nil {
+		for i := range s.Checks {
+			s.Checks[i].Availability = nil
+		}
+		raw, err = json.Marshal(s)
+	}
+	if err == nil && (len(raw) > model.MaxSnapshotBytes || secure.JSONBudget(raw) != nil) {
 		for i := range s.Checks {
 			s.Checks[i].Last = nil
 			s.Checks[i].Reason = "summary budget reached; consult check history"

@@ -21,6 +21,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/rollup"
 )
 
 //go:embed topology.json
@@ -94,12 +95,15 @@ type Sim struct {
 	ledger    *ledger.Ledger    // what a collector watching all along would remember
 	observed  time.Time         // when the ledger last judged the evidence
 	text      map[string]string // the catalog the scenarios are named from
+	rolled    *rollup.Store     // what its rollups would hold, as of rolledAt
+	rolledAt  time.Time
+	contracts map[string]string // of the checks; scenarios change none
 }
 
 // New simulates c from now on, naming the scenarios in lang (one of
 // Languages; any other names them in DefaultLanguage).
 func New(c model.Config, now time.Time, lang string) *Sim {
-	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, services: map[string]model.Service{}, obsNode: map[string]string{}, ledger: ledger.New()}
+	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, services: map[string]model.Service{}, obsNode: map[string]string{}, ledger: ledger.New(), contracts: config.Contracts(c)}
 	var e error
 	if s.text, e = catalog(lang); e != nil {
 		s.text, _ = catalog(DefaultLanguage)
@@ -221,6 +225,9 @@ func (s *Sim) SetScenario(i int, at time.Time) {
 		// The past the ledger judged is rewritten; it judges it again.
 		s.ledger, s.observed = ledger.New(), time.Time{}
 	}
+	if at.Before(s.rolledAt) {
+		s.rolled = nil
+	}
 	if len(s.timeline) > 64 {
 		s.timeline = s.timeline[len(s.timeline)-64:]
 	}
@@ -255,7 +262,126 @@ func (s *Sim) Snapshot(view string, now time.Time) (model.Snapshot, error) {
 		}
 	}
 	snap.Ledger = s.ledger.Recent(view, now)
+	r := s.rollups(now)
+	for i := range snap.Checks {
+		snap.Checks[i].Availability = r.Availability(snap.Checks[i].ID, now)
+	}
 	return snap, nil
+}
+
+// Rollups is what a collector would return for a check's rollups at now,
+// laid out in slots of step over span (see rollup.Store.Buckets), with
+// their total and the earliest moment they hold.
+func (s *Sim) Rollups(check string, step, span time.Duration, now time.Time) (model.Rollup, []model.Rollup, time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.at(now).Unreachable {
+		return model.Rollup{}, nil, time.Time{}, errors.New("preview: simulated collector outage (connection refused)")
+	}
+	if _, ok := config.Check(s.base, check); !ok {
+		return model.Rollup{}, nil, time.Time{}, fmt.Errorf("preview: no check %q", check)
+	}
+	r := s.rollups(now)
+	from := now.Add(-span).Truncate(step)
+	total, _ := r.Window(check, from, now, now)
+	return total, r.Buckets(check, from, now, step, now), r.Since(check), nil
+}
+
+// kept is how long before now the simulated collector has kept rollups:
+// all of the longest window.
+const kept = 31 * 24 * time.Hour
+
+// The rollups stand for a collector's, not for every sample it took: they
+// sample each check every five minutes for two days and hourly before
+// that, never more often than it runs, on a grid fixed in time, so that
+// simulators of one topology share every sample a scenario leaves alone.
+const (
+	recentEvery = 5 * time.Minute
+	olderEvery  = time.Hour
+)
+
+// rolls are what rollups were built from timelines: simulators of one
+// topology and one timeline, read in one minute, share them.
+var rolls = struct {
+	sync.Mutex
+	m map[string]*rollup.Store
+}{m: map[string]*rollup.Store{}}
+
+// rollups are what a collector watching all along would hold at now, as of
+// the minute; s.mu is held. Each sample stands until the next or until it
+// goes stale after its scenario ends, and the newest through the minute;
+// an observer offline and a check in maintenance take none.
+func (s *Sim) rollups(now time.Time) *rollup.Store {
+	at := now.Truncate(time.Minute)
+	if s.rolled != nil && s.rolledAt.Equal(at) {
+		return s.rolled
+	}
+	var key strings.Builder
+	key.WriteString(config.Revision(s.base))
+	for _, c := range s.timeline {
+		fmt.Fprintf(&key, ";%d@%d", c.sc, c.at.UnixNano())
+	}
+	fmt.Fprintf(&key, ";%d", at.UnixNano())
+	rolls.Lock()
+	r, ok := rolls.m[key.String()]
+	rolls.Unlock()
+	if !ok {
+		r = s.roll(at)
+		rolls.Lock()
+		if len(rolls.m) >= 16 {
+			clear(rolls.m)
+		}
+		rolls.m[key.String()] = r
+		rolls.Unlock()
+	}
+	s.rolled, s.rolledAt = r, at
+	return r
+}
+
+func (s *Sim) roll(at time.Time) *rollup.Store {
+	r := rollup.New(rollup.MaxLimit)
+	bounds := []time.Time{at.Add(-kept)}
+	for _, c := range s.timeline {
+		if c.at.After(bounds[0]) && c.at.Before(at) {
+			bounds = append(bounds, c.at)
+		}
+	}
+	bounds = append(bounds, at)
+	for _, x := range s.base.Checks {
+		every := time.Duration(x.IntervalSeconds) * time.Second
+		stale := time.Duration(x.StaleSeconds) * time.Second
+		offset := time.Duration(hash(x.ID)%uint32(x.IntervalSeconds*1000)) * time.Millisecond
+		step := func(t time.Time) time.Duration {
+			if at.Sub(t) < 2*24*time.Hour {
+				return max(every, recentEvery)
+			}
+			return max(every, olderEvery)
+		}
+		for k := 0; k+1 < len(bounds); k++ {
+			from, to := bounds[k], bounds[k+1]
+			sc := s.at(from)
+			c := s.configFor(sc)
+			y, _ := config.Check(c, x.ID)
+			if has(sc.Offline, x.Observer) || y.Disabled || y.Maintenance {
+				continue
+			}
+			t := from.Add(-offset).Truncate(step(from)).Add(offset)
+			if t.Before(from) {
+				t = t.Add(step(from))
+			}
+			for ; t.Before(to); t = t.Add(step(t)) {
+				stands := min(max(step(t), stale), to.Sub(t)+stale)
+				if to.Equal(at) && !t.Add(step(t)).Before(to) {
+					// The newest sample is current through the minute read.
+					stands = at.Add(time.Minute).Sub(t)
+				}
+				o := s.observe(c, y, t, sc)
+				r.Add(x.ID, t, o.Outcome, o.DurationMS, stands, at)
+			}
+		}
+	}
+	r.Settle(at)
+	return r
 }
 
 // replays are what ledgers concluded from timelines: simulators of one
@@ -518,7 +644,7 @@ func (s *Sim) rtt(x model.Check, reach []string, t time.Time) float64 {
 }
 
 func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) model.Observation {
-	o := model.Observation{ID: x.Observer + ".preview." + strconv.FormatInt(t.Unix(), 10), Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: x.Observer, Boot: "preview", Sequence: uint64(t.Unix()), SampledAt: t, ReceivedAt: t.Add(180 * time.Millisecond), Evidence: "measured", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
+	o := model.Observation{ID: x.Observer + ".preview." + strconv.FormatInt(t.Unix(), 10), Project: c.Project, Contract: s.contracts[x.ID], Check: x.ID, Observer: x.Observer, Boot: "preview", Sequence: uint64(t.Unix()), SampledAt: t, ReceivedAt: t.Add(180 * time.Millisecond), Evidence: "measured", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
 	if x.Maintenance || x.Disabled {
 		o.Outcome, o.Stage, o.Detail = "unknown", "setup", "check not executed"
 		return o

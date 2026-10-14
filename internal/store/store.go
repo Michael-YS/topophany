@@ -1,6 +1,9 @@
 // Package store implements a single-writer, checksummed, fsync-before-ack
 // journal and atomic checkpoints. It requires a local filesystem, never a
 // shared NFS/SMB volume. Collectors replicate observations, not database files.
+// Besides raw history, the store keeps rollups of every sample it accepts
+// (see package rollup), written with each checkpoint and rebuilt from the
+// journal after it, so they count each sample exactly once.
 package store
 
 import (
@@ -14,11 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
@@ -27,28 +33,46 @@ var ErrCapacity = errors.New("receipt capacity reached; collection paused instea
 
 // Options bound the store. Revision and Contracts, when set, are the
 // topology a collector counts samples under (see config.Counted): only
-// their samples keep state tails.
+// their samples keep state tails. Stale is how long each check's sample
+// stays current, which is as long as its outcome stands in the rollups.
+// Retention is also the ingestion window: a receipt is kept until no
+// sample it could match can be accepted, an hour after it.
 type Options struct {
 	Observers       []string
 	Revision        string
 	Contracts       map[string]string
+	Stale           map[string]time.Duration
 	MaxHistory      int
 	MaxReceipts     int
 	Retention       time.Duration
 	CheckpointBytes int64
 	MaxStateBytes   int64
+	RollupBytes     int64
 	Now             func() time.Time
 }
+
+// receiptGrace is how long a receipt outlives the ingestion window.
+const receiptGrace = time.Hour
+
+// floorBytes is what a boot's floor costs in its observer's quota.
+const floorBytes = 128
+
 type receipt struct {
 	Observer string    `json:"observer,omitempty"`
 	Hash     string    `json:"hash"`
 	At       time.Time `json:"at"`
 }
+
+// diskState is a checkpoint. Floors are, for each boot (observer.boot)
+// whose receipts expired, the highest sequence among them: an ID at or
+// below its boot's floor stays bound and is never accepted again.
 type diskState struct {
-	Schema int                        `json:"schema"`
-	Rows   []model.Observation        `json:"rows"`
-	Seen   map[string]receipt         `json:"seen"`
-	Beats  map[string]model.Heartbeat `json:"beats"`
+	Schema  int                        `json:"schema"`
+	Rows    []model.Observation        `json:"rows"`
+	Seen    map[string]receipt         `json:"seen"`
+	Beats   map[string]model.Heartbeat `json:"beats"`
+	Floors  map[string]uint64          `json:"floors,omitempty"`
+	Rollups *rollup.Store              `json:"rollups,omitempty"`
 }
 type envelope struct {
 	SHA256  string          `json:"sha256"`
@@ -73,6 +97,9 @@ type Store struct {
 	rowObservers  map[string]string
 	scopeBytes    map[string]int64
 	scopeReceipts map[string]int
+	floors        map[string]uint64
+	rollups       *rollup.Store
+	settled       time.Time // when the rollups last settled
 }
 
 func Open(dir string, o Options) (s *Store, err error) {
@@ -95,7 +122,10 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if o.MaxStateBytes == 0 {
 		o.MaxStateBytes = 128 << 20
 	}
-	if o.MaxHistory < 1 || o.MaxReceipts < 1 || o.Retention < time.Minute || o.CheckpointBytes < 1024 || o.CheckpointBytes > 128<<20 || o.MaxStateBytes < 1024 || o.MaxStateBytes > 128<<20 {
+	if o.RollupBytes == 0 {
+		o.RollupBytes = 32 << 20
+	}
+	if o.MaxHistory < 1 || o.MaxReceipts < 1 || o.Retention < time.Minute || o.CheckpointBytes < 1024 || o.CheckpointBytes > 128<<20 || o.MaxStateBytes < 1024 || o.MaxStateBytes > 128<<20 || o.RollupBytes < rollup.MinLimit || o.RollupBytes > rollup.MaxLimit {
 		return nil, errors.New("invalid storage limits")
 	}
 	if e := os.MkdirAll(dir, 0700); e != nil {
@@ -105,7 +135,8 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, rollups: rollup.New(o.RollupBytes)}
+	s.rollups.SetCurrent(s.currentKey)
 	opened := s
 	defer func() {
 		if err != nil {
@@ -123,17 +154,20 @@ func Open(dir string, o Options) (s *Store, err error) {
 		if e != nil {
 			return nil, fmt.Errorf("checkpoint corruption: %w", e)
 		}
-		var state diskState
+		state := diskState{Rollups: s.rollups}
 		if e = json.Unmarshal(payload, &state); e != nil || state.Schema != 1 || state.Seen == nil || state.Beats == nil {
 			return nil, errors.New("invalid checkpoint")
 		}
 		s.seen = state.Seen
 		s.beats = state.Beats
+		if state.Floors != nil {
+			s.floors = state.Floors
+		}
 		for _, v := range state.Rows {
 			s.addRow(v)
 			// State tails outlive receipts. Restore their receipts during replay
 			// so a crash after checkpoint replacement cannot add them twice.
-			if _, ok := s.seen[v.ID]; !ok {
+			if _, ok := s.seen[v.ID]; !ok && !s.expired(v.ID) {
 				s.seen[v.ID] = receipt{Hash: observationHash(v), At: v.ReceivedAt, Observer: v.Observer}
 			}
 		}
@@ -237,14 +271,62 @@ func (s *Store) current(v model.Observation) bool {
 	return config.Counted(v, s.options.Contracts, s.options.Revision)
 }
 
+// rollKey is the rollup series of a sample: its check under its contract.
+// A schema 1 sample counted under the topology the store is told of joins
+// its check's contract there; an uncounted one keeps its revision.
+func (s *Store) rollKey(v model.Observation) string {
+	if v.Contract == "" && v.Revision != "" && v.Revision == s.options.Revision {
+		if c := s.options.Contracts[v.Check]; c != "" {
+			return c + "/" + v.Check
+		}
+	}
+	return tailKey(v)
+}
+
+// currentKey reports whether a rollup series is counted under the
+// topology the store is told of. The rollups call it under s.mu.
+func (s *Store) currentKey(key string) bool {
+	if s.options.Revision == "" && s.options.Contracts == nil {
+		return true
+	}
+	contract, check, ok := strings.Cut(key, "/")
+	return ok && s.options.Contracts[check] == contract
+}
+
+// roll folds a newly accepted sample into its rollup series.
+func (s *Store) roll(v model.Observation) {
+	s.rollups.Add(s.rollKey(v), v.SampledAt, v.Outcome, v.DurationMS, s.options.Stale[v.Check], s.options.Now())
+}
+
+// bootOf splits an observation ID, observer.boot.sequence, into its boot
+// and its sequence.
+func bootOf(id string) (string, uint64, bool) {
+	i := strings.LastIndexByte(id, '.')
+	if i < 0 || strings.IndexByte(id[:i], '.') <= 0 {
+		return "", 0, false
+	}
+	seq, e := strconv.ParseUint(id[i+1:], 10, 64)
+	return id[:i], seq, e == nil
+}
+
+// expired reports whether id's receipt expired and its boot's floor binds
+// it: no sample with that ID is accepted again.
+func (s *Store) expired(id string) bool {
+	boot, seq, ok := bootOf(id)
+	floor, held := s.floors[boot]
+	return ok && held && seq <= floor
+}
+
 // SetCurrent tells the store the topology it now counts samples under, as
 // after a reload: tails of series no longer counted go, and those counted
-// again are rebuilt from the history still held.
-func (s *Store) SetCurrent(revision string, contracts map[string]string) {
+// again are rebuilt from the history still held. Rollups of series no
+// longer counted are kept, and shed first when the rollups are full.
+func (s *Store) SetCurrent(revision string, contracts map[string]string, stale map[string]time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.options.Revision = revision
 	s.options.Contracts = maps.Clone(contracts)
+	s.options.Stale = maps.Clone(stale)
 	rows := s.allRows()
 	s.tails = map[string][]model.Observation{}
 	for _, v := range rows {
@@ -297,8 +379,13 @@ func (s *Store) apply(b model.Batch, recovery bool) error {
 			}
 			continue
 		}
+		if s.expired(v.ID) {
+			// Recovery replays a record whose receipt has since expired.
+			continue
+		}
 		s.seen[v.ID] = receipt{Hash: h, At: v.ReceivedAt, Observer: v.Observer}
 		s.addRow(v)
+		s.roll(v)
 	}
 	if b.Heartbeat != nil {
 		h := *b.Heartbeat
@@ -362,6 +449,11 @@ func (s *Store) Put(b model.Batch) error {
 				return ErrConflict
 			}
 			continue
+		}
+		if s.expired(v.ID) {
+			// An expired receipt's sample is past the ingestion window, so
+			// this is its ID reused for something else.
+			return ErrConflict
 		}
 		pending[v.ID] = h
 		v.ReceivedAt = now
@@ -466,11 +558,21 @@ func (s *Store) prune() {
 			keep[v.ID] = true
 		}
 	}
-	// Receipts are durable ID-to-content tombstones until administrative archival.
-	// Ageing out history must never reopen an observation identity.
+	// A receipt binds an ID to its content for as long as a sample with
+	// that ID could still be accepted: the ingestion window and an hour.
+	// Then it goes, and its boot's floor keeps the ID bound for good, so
+	// ageing out never reopens an observation identity.
+	expiry := s.options.Now().Add(-s.options.Retention - receiptGrace)
 	s.scopeBytes = map[string]int64{}
 	s.scopeReceipts = map[string]int{}
 	for id, r := range s.seen {
+		if r.At.Before(expiry) {
+			if boot, seq, ok := bootOf(id); ok {
+				s.floors[boot] = max(s.floors[boot], seq)
+				delete(s.seen, id)
+				continue
+			}
+		}
 		if r.Observer == "" {
 			r.Observer = receiptObserver(id)
 			s.seen[id] = r
@@ -478,7 +580,10 @@ func (s *Store) prune() {
 		s.scopeBytes[r.Observer] += 512
 		s.scopeReceipts[r.Observer]++
 	}
-	s.stateBytes = 1024 + int64(len(s.seen))*512
+	for boot := range s.floors {
+		s.scopeBytes[receiptObserver(boot+".0")] += floorBytes
+	}
+	s.stateBytes = 1024 + int64(len(s.seen))*512 + int64(len(s.floors))*floorBytes
 	for id, size := range s.rowSizes {
 		if keep[id] {
 			s.stateBytes += size
@@ -492,6 +597,10 @@ func (s *Store) prune() {
 	for _, h := range s.beats {
 		raw, _ := json.Marshal(h)
 		s.stateBytes += int64(len(raw)) + 1024
+	}
+	if now := s.options.Now(); now.Sub(s.settled) >= time.Minute || now.Before(s.settled) {
+		s.rollups.Settle(now)
+		s.settled = now
 	}
 }
 func (s *Store) allRows() []model.Observation {
@@ -512,7 +621,9 @@ func (s *Store) allRows() []model.Observation {
 	return out
 }
 func (s *Store) checkpoint() error {
-	state := diskState{Schema: 1, Rows: s.allRows(), Seen: s.seen, Beats: s.beats}
+	s.settled = s.options.Now()
+	s.rollups.Settle(s.settled)
+	state := diskState{Schema: 1, Rows: s.allRows(), Seen: s.seen, Beats: s.beats, Floors: s.floors, Rollups: s.rollups}
 	b, e := wrap(state)
 	if e != nil {
 		return e
@@ -593,6 +704,23 @@ func (s *Store) History(check string, contracts map[string]string, revision stri
 	_ = json.Unmarshal(b, &out)
 	return out
 }
+
+// Availability is how check fared under contract over each of
+// rollup.Windows up to now, or nil when its rollups hold nothing. It does
+// not wait for the writer.
+func (s *Store) Availability(check, contract string, now time.Time) []model.Availability {
+	return s.rollups.Availability(contract+"/"+check, now)
+}
+
+// Rollups lays out check's rollups under contract from from until now in
+// slots step wide (see rollup.Store.Buckets), with their total and the
+// earliest moment they hold.
+func (s *Store) Rollups(check, contract string, from time.Time, step time.Duration, now time.Time) (model.Rollup, []model.Rollup, time.Time) {
+	key := contract + "/" + check
+	total, _ := s.rollups.Window(key, from, now, now)
+	return total, s.rollups.Buckets(key, from, now, step, now), s.rollups.Since(key)
+}
+
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

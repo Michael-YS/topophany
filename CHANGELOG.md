@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Long-term history. Collectors roll every sample they accept up into
+  per-check rollups that outlive the raw journal: each sample's outcome
+  stands until the next sample or until it goes stale, and the time it
+  stood is summed as up, degraded, down or inconclusive (the monitor could
+  not tell), with the samples by outcome and a histogram of what the
+  passing ones took. Time no current sample stood for is unmeasured,
+  never up or down, so availability reads as "95.7% up over 96%
+  measured". Rollups are kept five minutes wide for two days, hourly for
+  32 days and daily after that, written with each checkpoint and rebuilt
+  from the journal, so a crash counts no sample twice. `topo serve
+  --rollup-bytes` caps them (32 MiB by default); at the cap a collector
+  sheds the rollups of contracts it no longer counts, then the oldest
+  days, and never stops ingesting for them.
+- Snapshots carry each check's `availability` over the last 24 hours, 7
+  days and 30 days. A check's evidence shows them, such as `Last 24h:
+  99.2% up over 96% measured · down 11m`, and the Checks tab its last
+  day's share up as UP 24H.
+- `GET /v1/rollups?check=ID&step=1h&span=7d` lays a check's rollups out
+  in slots of five minutes, an hour or a day, and `topo history CHECK
+  --step 1h [--span 7d]` prints them, slot by slot with a total, or as
+  JSON. The preview keeps synthetic rollups as a collector watching all
+  along would, so scenarios show in them too.
 - A check's evidence opens with its recent samples, read from the
   collector's history: a strip of one slot per sample colored by outcome,
   with a grey dot for each interval in which none was taken, a bar for
@@ -85,6 +107,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Deduplication receipts expire an hour after the ingestion window
+  (`--retention`), when no sample they could match can be accepted any
+  more, and release their capacity. Each worker boot keeps the highest
+  expired sequence as a floor, so an expired observation ID stays bound
+  and is refused with `409 observation_id_conflict`, across restarts.
 - An incident starts as early as the ledger saw it fail, rather than at
   the oldest sample a collector still holds for its checks, and in a
   cached view its evidence reads CACHED rather than OPEN.
@@ -111,6 +138,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Collectors no longer stop accepting an observer's samples once it has
+  delivered its share of receipts. Receipts were kept until
+  administrative archival, so of two observers, one sampling once a
+  second in all was refused after about a day and a half, and the
+  busiest of the preview topology's five after about eight hours. A collector paused this
+  way resumes after upgrading, once its old receipts expire.
 - The About globe and the geographic map keep their shape on terminals
   whose character cells are not twice as tall as they are wide; on
   Windows Terminal with a tall line height the globe was an upright oval

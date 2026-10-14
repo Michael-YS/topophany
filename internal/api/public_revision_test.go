@@ -48,6 +48,7 @@ func TestViewerContractsDoNotExposePrivateExecutionIdentity(t *testing.T) {
 	}{
 		{"/v1/config", 1},
 		{"/v1/history?check=" + x.ID, 3},
+		{"/v1/rollups?check=" + x.ID, 2},
 		{"/v1/snapshot", 3},
 		{"/v1/snapshot?observer=home", 3},
 		{"/v1/snapshot", 3}, // Exercise cached bytes, not only a fresh build.

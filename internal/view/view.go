@@ -73,7 +73,7 @@ func Columns(tab int) []string {
 	case Paths:
 		return []string{"PATH", "OBSERVER", "DECLARED ROUTE"}
 	case Checks:
-		return []string{"CHECK", "OBSERVER", "KIND", "TIME", "FRESHNESS"}
+		return []string{"CHECK", "OBSERVER", "KIND", "TIME", "FRESHNESS", "UP 24H"}
 	case Incidents:
 		return []string{"SCOPE", "SINCE", "CHECKS"}
 	case Observers:

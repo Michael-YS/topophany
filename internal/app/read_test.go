@@ -11,12 +11,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/api"
+	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/preview"
@@ -303,17 +305,29 @@ func TestReadCommandsAgainstACollector(t *testing.T) {
 	if _, e = read("history", "no-such-check"); e == nil || exitCode(e) == ExitUnreachable {
 		t.Fatal("an unknown check is a refusal, not an outage:", e)
 	}
+	out, e = read("history", "home-http", "--step", "5m", "--span", "1h")
+	if e != nil || !strings.Contains(out, "Rollups: 5m slots from ") || !strings.Contains(out, "Total: 0.0% up over <1% measured · down ") || !strings.Contains(out, "FROM  ") {
+		t.Fatalf("history by five minutes: %v\n%s", e, out)
+	}
+	out, e = read("history", "home-http", "--span", "2h", "--json")
+	var rolled struct {
+		client.Rollups
+		Server string
+	}
+	if e != nil || json.Unmarshal([]byte(out), &rolled) != nil || rolled.Step != 3600 || rolled.Total.Samples != 3 || rolled.Total.Outcomes["fail"] != 3 || len(rolled.Slots) != 3 || rolled.Server != srv.URL {
+		t.Fatalf("history by the hour as JSON: %v\n%s", e, out)
+	}
 	if _, e = read("show", "checks", "no-such-check"); exitCode(e) != 1 {
 		t.Fatal("an unknown entry:", e)
 	}
-	for _, args := range [][]string{{"status", "extra"}, {"show"}, {"show", "nowhere"}, {"show", "map", "x"}, {"history"}, {"history", "home-http", "--limit", "0"}} {
+	for _, args := range [][]string{{"status", "extra"}, {"show"}, {"show", "nowhere"}, {"show", "map", "x"}, {"history"}, {"history", "home-http", "--limit", "0"}, {"history", "home-http", "--step", "10m"}, {"history", "home-http", "--step", "5m", "--span", "30d"}, {"history", "home-http", "--span", "a week"}} {
 		if _, e = read(args...); exitCode(e) != 1 {
 			t.Fatal("bad usage accepted:", args, e)
 		}
 	}
 	dead := httptest.NewServer(http.NotFoundHandler())
 	dead.Close()
-	for _, args := range [][]string{{"status"}, {"show", "checks"}, {"history", "home-http"}} {
+	for _, args := range [][]string{{"status"}, {"show", "checks"}, {"history", "home-http"}, {"history", "home-http", "--step", "1d"}} {
 		_, e = at(time.Now(), append(args, "--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", dead.URL, "--project", c.Project, "--credential", viewer)...)
 		if exitCode(e) != ExitUnreachable {
 			t.Fatal("no collector answered", args, ":", e)
@@ -424,5 +438,81 @@ func TestStatusAllClearExitsZero(t *testing.T) {
 	out, e := at(time.Now(), "status", "--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", srv.URL, "--project", c.Project, "--credential", viewer)
 	if e != nil || !strings.Contains(out, "● ALL CLEAR") || !strings.Contains(out, "✓ Nothing needs attention") || !strings.Contains(out, "Needs a look: nothing") {
 		t.Fatalf("exit %d, %v\n%s", exitCode(e), e, out)
+	}
+}
+
+// How a check fared reads the same in its evidence, on the Checks tab and
+// from its rollups: an outage of half an hour adds half an hour down to
+// the last day, and a worker gone quiet leaves its checks unmeasured
+// rather than up.
+func TestHowChecksFaredFromRollups(t *testing.T) {
+	c, e := preview.Preset(preview.DefaultLanguage)
+	if e != nil {
+		t.Fatal(e)
+	}
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	ids := preview.New(c, now, preview.DefaultLanguage).ScenarioIDs()
+	index := func(id string) int { return slices.Index(ids, id) }
+	const id = "w-dmit-443"
+	// The normal scenario fails a sample in a hundred or so, and so do the
+	// others besides what they break.
+	calm, e := preview.New(c, now, preview.DefaultLanguage).Snapshot("", now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var usual model.Availability
+	for _, cs := range calm.Checks {
+		if cs.ID == id && len(cs.Availability) == 3 {
+			usual = cs.Availability[0]
+		}
+	}
+	if usual.Unmeasured != 0 || usual.Down == 0 || usual.Down > 60*60 {
+		t.Fatalf("a normal day reads as %+v", usual.Rollup)
+	}
+	for _, sc := range []int{index("dmit-down"), index("home-offline")} {
+		sim := preview.New(c, now, preview.DefaultLanguage)
+		sim.SetScenario(sc, now.Add(-30*time.Minute))
+		snap, e := sim.Snapshot("", now)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var fared []model.Availability
+		for _, cs := range snap.Checks {
+			if cs.ID == id {
+				fared = cs.Availability
+			}
+		}
+		if len(fared) != 3 {
+			t.Fatalf("scenario %s: %s has no availability", ids[sc], id)
+		}
+		day := fared[0]
+		switch ids[sc] {
+		case "dmit-down":
+			if more := day.Down - usual.Down; more < 25*60 || more > 31*60 || day.Unmeasured != 0 || fared[2].Down < day.Down {
+				t.Fatalf("half an hour down reads as %+v", day.Rollup)
+			}
+		case "home-offline":
+			if day.Unmeasured < 25*60 || view.MeasuredShare(day.Rollup) != "98%" {
+				t.Fatalf("a quiet worker's checks read as measured: %+v", day.Rollup)
+			}
+		}
+		args := []string{"preview", "--lang", preview.DefaultLanguage, "--scenario", fmt.Sprint(sc)}
+		text, e := at(now, append(args, "show", "checks", id)...)
+		if e != nil || !strings.Contains(text, "Last 24h: "+view.AvailabilityLine(day)+"\n") || !strings.Contains(text, "Last 30d: "+view.AvailabilityLine(fared[2])+"\n") {
+			t.Fatalf("scenario %s: the evidence lacks how it fared: %v\n%s", ids[sc], e, text)
+		}
+		tab, e := at(now, append(args, "show", "checks")...)
+		if e != nil || !strings.Contains(tab, "UP 24H") || !strings.Contains(tab, " "+view.UpShare(day.Rollup)+"\n") {
+			t.Fatalf("scenario %s: the Checks tab lacks the day's share up: %v\n%s", ids[sc], e, tab)
+		}
+		out, e := at(now, append(args, "history", id, "--step", "1h", "--span", "6h", "--json")...)
+		var rolled client.Rollups
+		if e != nil || json.Unmarshal([]byte(out), &rolled) != nil || len(rolled.Slots) != 6 {
+			t.Fatalf("scenario %s: rollups by the hour: %v\n%s", ids[sc], e, out)
+		}
+		last := rolled.Slots[len(rolled.Slots)-1]
+		if rolled.Total.Unmeasured != day.Unmeasured || last.Down+last.Unmeasured < 25*60 {
+			t.Fatalf("scenario %s: the last hour does not hold the last half hour: %+v, %+v", ids[sc], last, day.Rollup)
+		}
 	}
 }

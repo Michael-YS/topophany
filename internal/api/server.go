@@ -21,6 +21,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
 )
@@ -98,6 +99,7 @@ type Server struct {
 	snapshotRows       []model.Observation
 	snapshotBeats      map[string]model.Heartbeat
 	snapshotCache      map[string][]byte
+	snapshotAvailable  map[string][]model.Availability // by check, as of snapshotAt
 	snapshotCacheBytes int
 	snapshotMisses     map[string]int
 	snapshotBuilds     int
@@ -142,7 +144,7 @@ func (s *Server) Reload(c model.Config, a Auth) {
 			ids = append(ids, o.ID)
 		}
 		s.Store.SetObservers(ids)
-		s.Store.SetCurrent(config.Revision(c), config.Contracts(c))
+		s.Store.SetCurrent(config.Revision(c), config.Contracts(c), config.Stale(c))
 	}
 	s.snapshotMu.Lock()
 	s.snapshotCache = nil
@@ -169,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/snapshot", s.authorize("viewer", s.snapshot))
 	mux.HandleFunc("GET /v1/config", s.authorize("viewer", s.topology))
 	mux.HandleFunc("GET /v1/history", s.authorize("viewer", s.history))
+	mux.HandleFunc("GET /v1/rollups", s.authorize("viewer", s.rollups))
 	mux.HandleFunc("POST /v1/observations", s.authorize("worker", s.ingest))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -314,6 +317,53 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 		Contract string              `json:"contract"`
 		Entries  []model.Observation `json:"entries"`
 	}{c.Project, config.PublicRevision(c), id, contract, entries})
+}
+
+// rollups lays a check's rollups under its current contract out in slots
+// of step (5m, 1h or 1d) over the span before now, with their total.
+func (s *Server) rollups(w http.ResponseWriter, r *http.Request, _ Principal) {
+	c, _ := s.current()
+	q := r.URL.Query()
+	id := q.Get("check")
+	x, ok := config.Check(c, id)
+	if !ok {
+		writeError(w, 404, "unknown_check")
+		return
+	}
+	name := q.Get("step")
+	if name == "" {
+		name = "1h"
+	}
+	step, ok := rollup.Steps[name]
+	if !ok {
+		writeError(w, 400, "invalid_step")
+		return
+	}
+	span := rollup.DefaultSpan(step)
+	if v := q.Get("span"); v != "" {
+		var e error
+		if span, e = rollup.ParseSpan(v); e != nil {
+			writeError(w, 400, "invalid_span")
+			return
+		}
+	}
+	if rollup.Layout(step, span) != nil {
+		writeError(w, 400, "invalid_span")
+		return
+	}
+	now := s.Now().UTC()
+	total, slots, since := s.Store.Rollups(id, config.Contract(c, x), now.Add(-span).Truncate(step), step, now)
+	writeJSON(w, 200, struct {
+		Project     string         `json:"project"`
+		Revision    string         `json:"revision"`
+		Check       string         `json:"check"`
+		Contract    string         `json:"contract"`
+		GeneratedAt time.Time      `json:"generated_at"`
+		Step        int64          `json:"step_seconds"`
+		Since       time.Time      `json:"since,omitzero"`
+		Total       model.Rollup   `json:"total"`
+		Slots       []model.Rollup `json:"slots"`
+	}{c.Project, config.PublicRevision(c), id, config.PublicContracts(c)[id], now, int64(step / time.Second), since, total, slots})
 }
 func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 	if ct, _, e := mime.ParseMediaType(r.Header.Get("Content-Type")); e != nil || ct != "application/json" {

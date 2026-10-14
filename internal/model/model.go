@@ -216,6 +216,54 @@ type CheckState struct {
 	Successes int          `json:"successes"`
 	Since     time.Time    `json:"since"`
 	Last      *Observation `json:"last,omitempty"`
+	// Availability is how the check fared over the last day, week and
+	// month, from the collector's rollups of its samples.
+	Availability []Availability `json:"availability,omitempty"`
+}
+
+// Rollup sums what a check's samples said over a span of time. Each
+// sample's outcome stands from when it was taken until the next sample or
+// until it goes stale, whichever is first: Up while it passed, Degraded
+// while it found a policy violated, Down while it failed, and Unknown
+// while the monitor could not tell (a monitor-side error). Unmeasured is
+// the rest of the span, when no current sample stood for it; it is never
+// up or down. Samples and Outcomes count the samples taken in the span,
+// and Latency is what the passing ones took.
+type Rollup struct {
+	Start      time.Time        `json:"start"`
+	Seconds    int64            `json:"seconds"`
+	Up         int64            `json:"up_seconds"`
+	Degraded   int64            `json:"degraded_seconds"`
+	Down       int64            `json:"down_seconds"`
+	Unknown    int64            `json:"unknown_seconds"`
+	Unmeasured int64            `json:"unmeasured_seconds"`
+	Samples    int64            `json:"samples"`
+	Outcomes   map[string]int64 `json:"outcomes,omitempty"`
+	Latency    *Latency         `json:"latency,omitempty"`
+}
+
+// Measured is how long a rollup's samples said whether the check passed:
+// its up, degraded and down time.
+func (r Rollup) Measured() int64 { return r.Up + r.Degraded + r.Down }
+
+// Latency is what passing samples took: the median and the 95th
+// percentile, estimated from a histogram whose bins are a quarter of a
+// doubling wide, and the slowest.
+type Latency struct {
+	Samples int64 `json:"samples"`
+	P50     int64 `json:"p50_ms"`
+	P95     int64 `json:"p95_ms"`
+	Max     int64 `json:"max_ms"`
+}
+
+// Availability is a check's rollup over a window ending when its snapshot
+// was generated: "24h", "7d" or "30d". Since is the earliest moment the
+// collector's rollups hold for the check, when that is inside the window;
+// the time before it counts as unmeasured.
+type Availability struct {
+	Window string `json:"window"`
+	Rollup
+	Since time.Time `json:"since,omitzero"`
 }
 type EntityState struct {
 	ID       string   `json:"id"`

@@ -386,3 +386,68 @@ func TestHistoryFailoverAndValidation(t *testing.T) {
 		t.Fatal("limit out of range accepted")
 	}
 }
+
+// Availability in a snapshot and rollups read on their own are checked
+// like the rest of what a collector sends: time adds up to its span, and
+// nothing counts below zero.
+func TestAvailabilityAndRollupsAreChecked(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	c := testkit.Config()
+	contract := config.PublicContracts(c)["home-http"]
+	day := model.Rollup{Start: now.Add(-24 * time.Hour), Seconds: 86400, Up: 80000, Down: 400, Unmeasured: 6000, Samples: 3, Outcomes: map[string]int64{"ok": 2, "fail": 1}, Latency: &model.Latency{Samples: 2, P50: 40, P95: 90, Max: 90}}
+	valid := snapshot()
+	valid.Checks = []model.CheckState{{ID: "home-http", Contract: contract, Observer: "home", Health: "up", Freshness: "fresh", Availability: []model.Availability{{Window: "24h", Rollup: day}}}}
+	if s, _, e := newClient(t, jsonServer(t, 200, valid).URL).Snapshot(context.Background(), ""); e != nil || s.Checks[0].Availability[0].Up != 80000 {
+		t.Fatal("valid availability refused:", e)
+	}
+	for name, mutate := range map[string]func(*model.Rollup){
+		"negative":     func(r *model.Rollup) { r.Down, r.Unmeasured = -1, 6401 },
+		"overrun":      func(r *model.Rollup) { r.Up = 86400 },
+		"miscounted":   func(r *model.Rollup) { r.Samples = 7 },
+		"percentiles":  func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 2, P50: 100, P95: 90, Max: 90} },
+		"more_passing": func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 4, P50: 1, P95: 2, Max: 3} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := snapshot()
+			r := day
+			mutate(&r)
+			s.Checks = []model.CheckState{{ID: "home-http", Contract: contract, Observer: "home", Health: "up", Freshness: "fresh", Availability: []model.Availability{{Window: "24h", Rollup: r}}}}
+			if _, _, e := newClient(t, jsonServer(t, 200, s).URL).Snapshot(context.Background(), ""); e == nil {
+				t.Fatal("invalid availability accepted")
+			}
+		})
+	}
+	hour := model.Rollup{Start: now.Add(-time.Hour), Seconds: 3600, Up: 3600, Samples: 1, Outcomes: map[string]int64{"ok": 1}}
+	later := hour
+	later.Start = now
+	good := Rollups{Project: "lab", Revision: config.PublicRevision(c), Check: "home-http", Contract: contract, GeneratedAt: now, Step: 3600, Total: day, Slots: []model.Rollup{hour, later}}
+	// A field of a later release, ignored; the first collector is busy.
+	type future struct {
+		Rollups
+		Charts []int `json:"charts"`
+	}
+	busy := jsonServer(t, 503, map[string]string{"error": "storage_unavailable"})
+	r, from, e := newClient(t, busy.URL, jsonServer(t, 200, future{good, []int{1}}).URL).Rollups(context.Background(), "home-http", "1h", "2h")
+	if e != nil || from == busy.URL || len(r.Slots) != 2 || r.Total.Up != 80000 {
+		t.Fatal("valid rollups refused:", e)
+	}
+	if _, _, e := newClient(t, jsonServer(t, 400, map[string]string{"error": "invalid_span"}).URL).Rollups(context.Background(), "home-http", "5m", "30d"); e == nil || !strings.Contains(e.Error(), "step or span") {
+		t.Fatal("a refused span not explained:", e)
+	}
+	for name, mutate := range map[string]func(*Rollups){
+		"project":  func(r *Rollups) { r.Project = "other" },
+		"check":    func(r *Rollups) { r.Check = "cloud-http" },
+		"overlap":  func(r *Rollups) { r.Slots[1].Start = now.Add(-30 * time.Minute) },
+		"overrun":  func(r *Rollups) { r.Slots[0].Unmeasured = 5 },
+		"contract": func(r *Rollups) { r.Contract = "short" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := good
+			bad.Slots = []model.Rollup{hour, later}
+			mutate(&bad)
+			if _, _, e := newClient(t, jsonServer(t, 200, bad).URL).Rollups(context.Background(), "home-http", "1h", "2h"); e == nil {
+				t.Fatal("invalid rollups accepted")
+			}
+		})
+	}
+}

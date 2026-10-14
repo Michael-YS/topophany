@@ -26,6 +26,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/outbox"
 	"github.com/WhitenWhiten/topophany/internal/preview"
 	"github.com/WhitenWhiten/topophany/internal/probe"
+	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/runner"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
@@ -53,6 +54,7 @@ Usage:
   topo status                       print the Overview: verdict, counts, what needs attention
   topo show TAB [ID]                print a tab, or the evidence behind one entry in it
   topo history CHECK                print a check's recent samples
+  topo history CHECK --step 1h      print how a check fared, hour by hour, from its rollups
   topo login                        save a verified remote connection
   topo serve                        run a collector (optional local checks)
   topo worker                       execute a reviewed topology from this location
@@ -201,6 +203,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	insecure := f.Bool("allow-insecure", false, "explicitly allow plaintext non-loopback HTTP (unsafe without a secure tunnel)")
 	retention := f.Duration("retention", 24*time.Hour, "raw history/receipt retention and maximum accepted sample age")
 	maxHistory := f.Int("max-history", 20000, "maximum retained raw history rows; per-check state tails retained separately")
+	rollupBytes := f.Int64("rollup-bytes", 32<<20, "hard cap on long-term rollups, in encoded bytes (64 KiB..64 MiB)")
 	if e := parsed(f, args); e != nil {
 		return e
 	}
@@ -221,6 +224,9 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if *retention < time.Minute || *retention > 30*24*time.Hour {
 		return errors.New("retention must be 1m..720h")
 	}
+	if *rollupBytes < rollup.MinLimit || *rollupBytes > rollup.MaxLimit {
+		return errors.New("rollup-bytes must be 64 KiB..64 MiB")
+	}
 	c, e := config.Load(*path)
 	if e != nil {
 		return e
@@ -233,7 +239,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
-	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory})
+	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory, RollupBytes: *rollupBytes})
 	if e != nil {
 		return e
 	}

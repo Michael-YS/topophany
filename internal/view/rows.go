@@ -318,7 +318,11 @@ func (v View) Rows(tab int) []Row {
 			}
 			meta := d.Observer + " · " + d.Kind + " · " + e.Freshness
 			took := ""
-			details := []string{"Check: " + e.ID, "Source: " + e.Observer, "Health: " + e.Health, "Freshness: " + e.Freshness, "Evidence: " + e.Evidence, "Contract: " + e.Contract[:min(12, len(e.Contract))], "", e.Reason, "", "Path: " + d.Path, "Target: " + d.Target, "Endpoint: " + d.Endpoint, "Service: " + d.Service, "Failure / recovery threshold: " + fmt.Sprint(d.FailureThreshold) + " / " + fmt.Sprint(d.RecoveryThreshold)}
+			details := []string{"Check: " + e.ID, "Source: " + e.Observer, "Health: " + e.Health, "Freshness: " + e.Freshness, "Evidence: " + e.Evidence, "Contract: " + e.Contract[:min(12, len(e.Contract))], "", e.Reason, ""}
+			if fared := AvailabilityDetails(e.Availability); fared != nil {
+				details = append(append(details, fared...), "")
+			}
+			details = append(details, "Path: "+d.Path, "Target: "+d.Target, "Endpoint: "+d.Endpoint, "Service: "+d.Service, "Failure / recovery threshold: "+fmt.Sprint(d.FailureThreshold)+" / "+fmt.Sprint(d.RecoveryThreshold))
 			if s.DetailsOmitted {
 				details = append(details, "", "Summary diagnostics; full evidence is available in check history.")
 			}
@@ -339,7 +343,7 @@ func (v View) Rows(tab int) []Row {
 					details = append(details, k+": "+o.Facts[k])
 				}
 			}
-			r := Row{Kind: "check", ID: e.ID, Title: title, Health: e.Health, Meta: meta, Cols: []string{observerNames[d.Observer], d.Kind, took, e.Freshness}, Details: details}
+			r := Row{Kind: "check", ID: e.ID, Title: title, Health: e.Health, Meta: meta, Cols: []string{observerNames[d.Observer], d.Kind, took, e.Freshness, Up24h(e.Availability)}, Details: details}
 			if e.Freshness == "paused" || e.Freshness == "maintenance" {
 				r.Note = e.Freshness
 			}

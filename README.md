@@ -68,7 +68,7 @@ topo --credentials ./demo/credentials.json
 ```
 
 - **Workers** run the checks in a reviewed local topology file and deliver observations to one or two collectors, buffering on disk when the network is down.
-- **Collectors** keep an append-only journal (fsync before acknowledging) and work out health, incidents and freshness. They remember each incident from opening to close, can post them to webhooks (ntfy, Slack, Discord or JSON), and can run checks of their own.
+- **Collectors** keep an append-only journal (fsync before acknowledging) and work out health, incidents and freshness. They remember each incident from opening to close and how each check fared for months, can post incidents to webhooks (ntfy, Slack, Discord or JSON), and can run checks of their own.
 - **Clients** are read-only. Closing the TUI does not stop monitoring, and nothing in Topophany changes routes, proxies or services.
 
 | Command | What it does |

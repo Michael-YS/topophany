@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"sort"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
@@ -48,6 +49,16 @@ func Contracts(c model.Config) map[string]string {
 	out := make(map[string]string, len(c.Checks))
 	for _, x := range c.Checks {
 		out[x.ID] = Contract(c, x)
+	}
+	return out
+}
+
+// Stale is how long a sample of each check in c stays current, by check
+// ID: its stale_seconds.
+func Stale(c model.Config) map[string]time.Duration {
+	out := make(map[string]time.Duration, len(c.Checks))
+	for _, x := range c.Checks {
+		out[x.ID] = time.Duration(x.StaleSeconds) * time.Second
 	}
 	return out
 }

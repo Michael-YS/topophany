@@ -319,6 +319,88 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 // A collector bounds history to 1 MiB of samples; the envelope adds little.
 const maxHistoryBytes = 2 << 20
 
+// Rollups are a check's rollups under its current contract, laid out in
+// slots of Step seconds, oldest first, with their Total. Since is the
+// earliest moment the collector's rollups hold for the check. Revision is
+// the topology's and Contract the check's, both public.
+type Rollups struct {
+	Project     string         `json:"project"`
+	Revision    string         `json:"revision"`
+	Check       string         `json:"check"`
+	Contract    string         `json:"contract"`
+	GeneratedAt time.Time      `json:"generated_at"`
+	Step        int64          `json:"step_seconds"`
+	Since       time.Time      `json:"since,omitzero"`
+	Total       model.Rollup   `json:"total"`
+	Slots       []model.Rollup `json:"slots"`
+}
+
+// Rollups reads a check's rollups in slots of step (5m, 1h or 1d) over the
+// span before now, failing over as History does.
+func (c *Client) Rollups(ctx context.Context, check, step, span string) (Rollups, string, error) {
+	var empty Rollups
+	if !config.ID(check) || len(step) > 8 || len(span) > 8 {
+		return empty, "", errors.New("rollups need a check ID, a step and a span")
+	}
+	for i, ep := range c.profile.Servers {
+		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/rollups", url.Values{"check": {check}, "step": {step}, "span": {span}}), nil)
+		if e != nil {
+			return empty, "", errors.New("invalid request")
+		}
+		if e = authorize(req, ep); e != nil {
+			return empty, "", e
+		}
+		resp, e := c.transports[i].Do(req)
+		if e != nil {
+			if ctx.Err() != nil {
+				return empty, "", ctx.Err()
+			}
+			continue
+		}
+		b, e := io.ReadAll(io.LimitReader(resp.Body, maxRollupBytes+1))
+		resp.Body.Close()
+		if e != nil {
+			continue
+		}
+		switch {
+		case resp.StatusCode == 401 || resp.StatusCode == 403:
+			return empty, "", errors.New("collector authentication/authorization rejected; not falling through silently")
+		case resp.StatusCode == 404:
+			return empty, "", fmt.Errorf("collector has no check %q", check)
+		case resp.StatusCode == 400:
+			return empty, "", errors.New("collector refused the step or span; steps are 5m, 1h and 1d, spans up to 800d and 999 steps")
+		case resp.StatusCode >= 500 || resp.StatusCode == 429:
+			continue
+		case resp.StatusCode != 200:
+			return empty, "", fmt.Errorf("collector rejected read (HTTP %d)", resp.StatusCode)
+		case len(b) > maxRollupBytes:
+			return empty, "", errors.New("rollups budget exceeded")
+		}
+		// Like a snapshot, and unlike history, rollups may gain fields in
+		// later releases; this client ignores those it does not know.
+		var r Rollups
+		if secure.JSONBudget(b) != nil || json.Unmarshal(b, &r) != nil {
+			return empty, "", errors.New("invalid collector rollups")
+		}
+		if r.Project != c.profile.Project {
+			return empty, "", errors.New("project identity mismatch; response rejected")
+		}
+		if len(r.Revision) != 64 || len(r.Contract) != 64 || r.Check != check || r.Step <= 0 || len(r.Slots) > 1000 || !validRollup(r.Total) {
+			return empty, "", errors.New("invalid collector rollups")
+		}
+		for i, slot := range r.Slots {
+			if !validRollup(slot) || i > 0 && slot.Start.Before(r.Slots[i-1].Start.Add(time.Duration(r.Slots[i-1].Seconds)*time.Second)) {
+				return empty, "", errors.New("invalid collector rollups")
+			}
+		}
+		return r, ep.URL, nil
+	}
+	return empty, "", fmt.Errorf("%w with the rollups of %s", ErrNoCollector, check)
+}
+
+// A response of a thousand slots stays well under this.
+const maxRollupBytes = 1 << 20
+
 type HTTPError struct {
 	Status int
 	Code   string

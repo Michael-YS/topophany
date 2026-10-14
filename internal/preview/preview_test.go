@@ -375,3 +375,43 @@ func TestPreviewRemembersIncidents(t *testing.T) {
 		}
 	}
 }
+
+// The preview keeps rollups as a collector watching all along would: a
+// normal month is measured throughout, a check put in maintenance or an
+// observer gone quiet leaves time unmeasured rather than up, and a
+// scenario changes how the checks it touches fared and no others.
+func TestPreviewKeepsRollups(t *testing.T) {
+	calm := settled(t, "normal")
+	for _, c := range calm.Checks {
+		if len(c.Availability) != 3 || c.Availability[2].Unmeasured != 0 || c.Availability[2].Seconds != 30*86400 {
+			t.Fatalf("%s: a normal month not measured throughout: %+v", c.ID, c.Availability)
+		}
+	}
+	for scenario, id := range map[string]string{"s2-maintenance": "w-s2-443", "home-offline": "w-tn-s1"} {
+		day := check(t, settled(t, scenario), id).Availability[0]
+		if day.Unmeasured < 25*60 || day.Unmeasured > 30*60 {
+			t.Fatalf("%s: %s's last half hour reads as measured: %+v", scenario, id, day.Rollup)
+		}
+	}
+	down := settled(t, "dmit-down")
+	for _, c := range calm.Checks {
+		if !strings.Contains(c.ID, "dmit") && !same(check(t, down, c.ID).Availability, c.Availability) {
+			t.Fatalf("dmit down changed how %s fared", c.ID)
+		}
+	}
+	if d := check(t, down, "w-dmit-443").Availability[0].Down - check(t, calm, "w-dmit-443").Availability[0].Down; d < 25*60 || d > 30*60 {
+		t.Fatalf("half an hour of dmit down adds %ds down", d)
+	}
+}
+
+func same(a, b []model.Availability) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Rollup.Up != b[i].Rollup.Up || a[i].Down != b[i].Down || a[i].Unmeasured != b[i].Unmeasured || a[i].Samples != b[i].Samples {
+			return false
+		}
+	}
+	return true
+}

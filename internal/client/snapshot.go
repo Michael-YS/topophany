@@ -64,6 +64,14 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 		if v := c.Last; v != nil && (v.Check != c.ID || v.Observer != c.Observer || v.Project != s.Project || v.Contract != c.Contract || v.Revision != "" || len(v.Facts) > 32 || len(v.Timings) > 16) {
 			return errors.New("invalid snapshot observation")
 		}
+		if len(c.Availability) > 8 {
+			return errors.New("invalid snapshot availability")
+		}
+		for _, a := range c.Availability {
+			if a.Window == "" || len(a.Window) > 16 || !validRollup(a.Rollup) {
+				return errors.New("invalid snapshot availability")
+			}
+		}
 	}
 	validate := func(states []model.EntityState, ids map[string]bool) error {
 		seen := map[string]bool{}
@@ -150,4 +158,32 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 		open[r.ID] = open[r.ID] || r.State != "closed"
 	}
 	return nil
+}
+
+// validRollup reports whether r is a rollup a collector could have sent:
+// no time or count below zero, and time that adds up to its span.
+func validRollup(r model.Rollup) bool {
+	if r.Seconds < 0 || r.Seconds > 1000*24*3600 || r.Samples < 0 || len(r.Outcomes) > 8 {
+		return false
+	}
+	for _, v := range []int64{r.Up, r.Degraded, r.Down, r.Unknown, r.Unmeasured} {
+		if v < 0 {
+			return false
+		}
+	}
+	if r.Up+r.Degraded+r.Down+r.Unknown+r.Unmeasured != r.Seconds {
+		return false
+	}
+	counted := int64(0)
+	for k, n := range r.Outcomes {
+		if len(k) > 16 || n < 0 {
+			return false
+		}
+		counted += n
+	}
+	if counted != r.Samples {
+		return false
+	}
+	l := r.Latency
+	return l == nil || l.Samples > 0 && l.Samples <= r.Samples && l.P50 >= 0 && l.P50 <= l.P95 && l.P95 <= l.Max
 }

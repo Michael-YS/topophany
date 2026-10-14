@@ -22,6 +22,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/preview"
+	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
@@ -51,6 +52,7 @@ func (e *ExitError) Unwrap() error { return e.Err }
 type reader struct {
 	snapshot func(ctx context.Context, observer string) (model.Snapshot, string, error)
 	history  func(ctx context.Context, check string, limit int) (client.History, string, error)
+	rollups  func(ctx context.Context, check, step, span string) (client.Rollups, string, error)
 }
 
 // unreachable gives a read that no collector answered its exit status.
@@ -70,6 +72,10 @@ func remote(c *client.Client) reader {
 		history: func(ctx context.Context, check string, limit int) (client.History, string, error) {
 			h, server, e := c.History(ctx, check, limit)
 			return h, server, unreachable(e)
+		},
+		rollups: func(ctx context.Context, check, step, span string) (client.Rollups, string, error) {
+			r, server, e := c.Rollups(ctx, check, step, span)
+			return r, server, unreachable(e)
 		},
 	}
 }
@@ -117,7 +123,40 @@ func (p *previewed) reader() reader {
 			}
 			return client.History{Project: p.config.Project, Revision: config.PublicRevision(p.config), Check: check, Contract: contract, Entries: entries}, server, nil
 		},
+		rollups: func(_ context.Context, check, step, span string) (client.Rollups, string, error) {
+			if _, ok := config.Check(p.config, check); !ok {
+				return client.Rollups{}, "", fmt.Errorf("no check %q", check)
+			}
+			width, length, e := layout(step, span)
+			if e != nil {
+				return client.Rollups{}, "", e
+			}
+			total, slots, since, e := p.sim.Rollups(check, width, length, p.now)
+			if e != nil {
+				return client.Rollups{}, "", &ExitError{ExitUnreachable, e}
+			}
+			return client.Rollups{Project: p.config.Project, Revision: config.PublicRevision(p.config), Check: check, Contract: config.PublicContracts(p.config)[check], GeneratedAt: p.now.UTC(), Step: int64(width / time.Second), Since: since, Total: total, Slots: slots}, server, nil
+		},
 	}
+}
+
+// layout reads a step and a span as a collector does for /v1/rollups.
+func layout(step, span string) (time.Duration, time.Duration, error) {
+	width, ok := rollup.Steps[step]
+	if !ok {
+		return 0, 0, errors.New("--step must be 5m, 1h or 1d")
+	}
+	length := rollup.DefaultSpan(width)
+	if span != "" {
+		var e error
+		if length, e = rollup.ParseSpan(span); e != nil {
+			return 0, 0, errors.New("--span " + e.Error())
+		}
+	}
+	if e := rollup.Layout(width, length); e != nil {
+		return 0, 0, e
+	}
+	return width, length, nil
 }
 
 // tabNames are the names show takes, in the TUI's order, then the map.
@@ -176,8 +215,11 @@ func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed
 	}
 	asJSON := f.Bool("json", jsonDefault, "print the view as JSON")
 	limit := new(int)
+	step, span := new(string), new(string)
 	if cmd == "history" {
 		limit = f.Int("limit", 20, "samples to read, newest first (1..500)")
+		step = f.String("step", "", "read rollups in slots of 5m, 1h or 1d instead of samples")
+		span = f.String("span", "", "how far back rollups reach, such as 24h, 7d or 90d (default a day of 5m, a week of 1h, 90 days of 1d)")
 	}
 	pos, e := parseMixed(f, args)
 	if e != nil {
@@ -198,8 +240,16 @@ func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed
 			return errors.New("usage: topo show TAB [ID] [--observer ID] [--json]; TAB is one of " + strings.Join(tabNames, ", ") + " (the map takes no ID)")
 		}
 	case "history":
+		if *span != "" && *step == "" {
+			*step = "1h"
+		}
 		if len(pos) != 1 || *limit < 1 || *limit > 500 {
-			return errors.New("usage: topo history CHECK [--limit 1..500] [--json]")
+			return errors.New("usage: topo history CHECK [--limit 1..500 | --step 5m|1h|1d [--span 7d]] [--json]")
+		}
+		if *step != "" {
+			if _, _, e := layout(*step, *span); e != nil {
+				return e
+			}
 		}
 	}
 	var r reader
@@ -216,6 +266,9 @@ func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed
 	now := a.now
 	if pv != nil {
 		now = func() time.Time { return pv.now }
+	}
+	if cmd == "history" && *step != "" {
+		return a.rollups(ctx, r, pos[0], *step, *span, *asJSON, now)
 	}
 	if cmd == "history" {
 		return a.history(ctx, r, pos[0], *limit, *asJSON, now)
@@ -586,6 +639,72 @@ func (a *App) history(ctx context.Context, r reader, check string, limit int, as
 	}
 	t.table(cells)
 	return t.err
+}
+
+// rollups prints how a check fared, slot by slot, from the collector's
+// rollups: the share of each slot measured and up, and what passing
+// samples took.
+func (a *App) rollups(ctx context.Context, r reader, check, step, span string, asJSON bool, now func() time.Time) error {
+	h, server, e := r.rollups(ctx, check, step, span)
+	if e != nil {
+		return e
+	}
+	if asJSON {
+		return printJSON(a.Out, struct {
+			client.Rollups
+			Server string `json:"server"`
+		}{h, server})
+	}
+	t := &text{w: a.Out}
+	t.kv("Project", h.Project)
+	t.kv("Collector", server)
+	t.kv("Check", check)
+	t.kv("Contract", short(h.Contract))
+	kept := "nothing yet"
+	if !h.Since.IsZero() {
+		kept = h.Since.Local().Format(view.SinceLayout) + " · " + view.Duration(now().Sub(h.Since)) + " ago"
+	}
+	t.kv("Kept since", kept)
+	aligned := ""
+	if h.Step%86400 == 0 {
+		aligned = "; days begin at 00:00 UTC"
+	}
+	t.kv("Rollups", fmt.Sprintf("%s slots from %s, oldest first%s", slotSpan(h.Step), h.Total.Start.Local().Format(view.SinceLayout), aligned))
+	t.kv("Total", view.RollupLine(h.Total))
+	t.line()
+	cells := [][]string{{"FROM", "FOR", "UP", "MEASURED", "DOWN", "DEGRADED", "INCONCLUSIVE", "SAMPLES", "P50", "P95"}}
+	for _, s := range h.Slots {
+		measured, p50, p95 := "", "", ""
+		if s.Measured() > 0 {
+			measured = view.MeasuredShare(s)
+		}
+		if s.Latency != nil {
+			p50, p95 = strconv.FormatInt(s.Latency.P50, 10)+" ms", strconv.FormatInt(s.Latency.P95, 10)+" ms"
+		}
+		cells = append(cells, []string{s.Start.Local().Format(view.SinceLayout), slotSpan(s.Seconds), view.UpShare(s), measured, quiet(s.Down), quiet(s.Degraded), quiet(s.Unknown), strconv.FormatInt(s.Samples, 10), p50, p95})
+	}
+	t.table(cells)
+	return t.err
+}
+
+// slotSpan is a slot's length as a step is named: "5m", "1h", "1d", or
+// for a slot cut short by now, "37m".
+func slotSpan(seconds int64) string {
+	switch {
+	case seconds > 0 && seconds%86400 == 0:
+		return strconv.FormatInt(seconds/86400, 10) + "d"
+	case seconds > 0 && seconds%3600 == 0:
+		return strconv.FormatInt(seconds/3600, 10) + "h"
+	}
+	return view.Duration(time.Duration(seconds) * time.Second)
+}
+
+// quiet is a length of time, left blank when there is none.
+func quiet(seconds int64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	return view.Duration(time.Duration(seconds) * time.Second)
 }
 
 // scenarios lists the preview's scenarios, the one in effect marked.

@@ -205,7 +205,7 @@ func TestReceiptCapacityAndHeartbeatMonotonicity(t *testing.T) {
 	}
 	now = now.Add(2 * time.Minute)
 	if e := s.Put(batch(c, testkit.Observation(c, "home-http", 3, now, "ok"))); !errors.Is(e, ErrCapacity) {
-		t.Fatal("durable tombstone capacity was released", e)
+		t.Fatal("receipt capacity released inside the ingestion window", e)
 	}
 }
 func TestStorageErrorsFailClosed(t *testing.T) {
@@ -310,11 +310,11 @@ func TestSetCurrentFollowsAReload(t *testing.T) {
 	}
 	edited := testkit.Config()
 	edited.Checks[0].HTTP.Status = []int{204}
-	s.SetCurrent(config.Revision(edited), config.Contracts(edited))
+	s.SetCurrent(config.Revision(edited), config.Contracts(edited), config.Stale(edited))
 	if len(s.tails) != 0 || len(s.History("home-http", config.Contracts(edited), config.Revision(edited), 10)) != 0 {
 		t.Fatal("a series no longer counted kept its tail or history", len(s.tails))
 	}
-	s.SetCurrent(config.Revision(c), config.Contracts(c))
+	s.SetCurrent(config.Revision(c), config.Contracts(c), config.Stale(c))
 	if n := len(s.tails[tailKey(v)]); n != 1 {
 		t.Fatal("undoing the edit did not bring the tail back", n)
 	}
