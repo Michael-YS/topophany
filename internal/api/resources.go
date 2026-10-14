@@ -66,7 +66,7 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	}
 	defer s.snapshotMu.Unlock()
 	if s.snapshotCache == nil || s.Now().Sub(s.snapshotAt) >= time.Second {
-		s.snapshotRows, s.snapshotBeats = s.Store.StateView()
+		s.snapshotRows, s.snapshotCarries, s.snapshotBeats = s.Store.StateView()
 		s.snapshotAt = s.Now()
 		s.snapshotAvailable = nil
 		s.snapshotCache = map[string][]byte{}
@@ -83,7 +83,7 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
 	c, _ := s.current()
-	snap := engine.Build(c, s.Instance, view, s.snapshotRows, s.snapshotBeats, s.snapshotAt)
+	snap := engine.BuildCarried(c, s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
 	}

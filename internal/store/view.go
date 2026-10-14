@@ -1,17 +1,26 @@
 package store
 
-import "github.com/WhitenWhiten/topophany/internal/model"
+import (
+	"github.com/WhitenWhiten/topophany/internal/engine"
+	"github.com/WhitenWhiten/topophany/internal/model"
+)
 
 // StateView copies evaluation scalars under lock, then detaches only the latest
 // diagnostics outside the writer lock. It neither sorts nor serializes global
-// history, and never visits receipts. Keeping the union of history and tails
-// preserves hysteresis even when intermittent failures span more than 40 rows.
-func (s *Store) StateView() ([]model.Observation, map[string]model.Heartbeat) {
+// history, and never visits receipts. The union of history and tails, with
+// what samples trimmed from the tails left in their carries, preserves
+// hysteresis however long ago the samples that confirmed a failure were
+// taken (see engine.BuildCarried).
+func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]model.Heartbeat) {
 	s.mu.Lock()
-	rows := make([]model.Observation, 0, len(s.rows)+len(s.tails)*40)
+	rows := make([]model.Observation, 0, len(s.rows)+len(s.tails)*tailLength)
 	rows = append(rows, s.rows...)
 	for _, tail := range s.tails {
 		rows = append(rows, tail...)
+	}
+	carries := make([]engine.Carry, 0, len(s.carries))
+	for _, k := range s.carries {
+		carries = append(carries, k)
 	}
 	beats := make(map[string]model.Heartbeat, len(s.beats))
 	for k, v := range s.beats {
@@ -44,5 +53,5 @@ func (s *Store) StateView() ([]model.Observation, map[string]model.Heartbeat) {
 			v.Detail = ""
 		}
 	}
-	return out, beats
+	return out, carries, beats
 }

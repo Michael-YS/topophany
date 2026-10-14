@@ -387,6 +387,50 @@ func TestSnapshotCarriesTheLedger(t *testing.T) {
 	}
 }
 
+// The ledger keeps an incident open while its check has not recovered,
+// however long ago the samples that confirmed it were taken and however
+// few of them the collector still holds.
+func TestLedgerKeepsAnIncidentWhoseSamplesAreGone(t *testing.T) {
+	c := testkit.Config()
+	c.Checks[0].FailureThreshold, c.Checks[0].RecoveryThreshold = 3, 2
+	now := time.Now().UTC()
+	clock := now
+	s, e := store.Open(t.TempDir(), store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), MaxHistory: 10, Now: func() time.Time { return clock }})
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { s.Close() })
+	srv := New(c, "test", s, Auth{Schema: 1, Tokens: []Principal{{secure.Hash(workerToken), "worker", "home"}}})
+	srv.Now = func() time.Time { return clock }
+	srv.Ledger = ledger.New()
+	h := srv.Handler()
+	start := now.Add(-20 * time.Minute)
+	for i := 0; i < 121; i++ {
+		outcome := "fail"
+		if i >= 3 && i%2 == 0 {
+			outcome = "ok"
+		}
+		clock = start.Add(time.Duration(i) * 10 * time.Second)
+		b := model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", uint64(i+1), clock, outcome)}}
+		if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		_, changes, e := srv.Observe(clock, true)
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, ch := range changes {
+			if ch.Kind == "closed" {
+				t.Fatalf("sample %d (%s) closed the incident: %+v", i+1, outcome, ch)
+			}
+		}
+	}
+	snap, _, _ := srv.Observe(clock, true)
+	if st := snap.Checks[0]; st.ID != "home-http" || st.Health != "degraded" {
+		t.Fatal("a check that never recovered reads", st)
+	}
+}
+
 // Snapshots say how each check fared over the last day, week and month,
 // and /v1/rollups lays its rollups out in slots, both under its public
 // contract only.

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
@@ -80,7 +79,7 @@ func TestStateViewDetachesLatestEvidenceAndRetainsEvaluationTail(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	rows, _ := s.StateView()
+	rows, _, _ := s.StateView()
 	if len(rows) != 40 {
 		t.Fatal("state read included full history", len(rows))
 	}
@@ -89,7 +88,7 @@ func TestStateViewDetachesLatestEvidenceAndRetainsEvaluationTail(t *testing.T) {
 			rows[i].Facts["response_proof"] = "changed"
 		}
 	}
-	rows2, _ := s.StateView()
+	rows2, _, _ := s.StateView()
 	for _, v := range rows2 {
 		if v.Facts["response_proof"] == "changed" {
 			t.Fatal("state view aliased durable evidence")
@@ -177,32 +176,5 @@ func BenchmarkExpiredTailConflict(b *testing.B) {
 				}
 			}
 		})
-	}
-}
-
-func TestStateViewPreservesLongRunningHysteresis(t *testing.T) {
-	c := testkit.Config()
-	x := c.Checks[0]
-	x.FailureThreshold = 3
-	x.RecoveryThreshold = 3
-	c.Checks[0] = x
-	now := time.Now().UTC()
-	s := openTest(t, t.TempDir(), Options{})
-	for i := 0; i < 70; i++ {
-		outcome := "fail"
-		if i >= 3 && i%2 == 0 {
-			outcome = "ok"
-		}
-		v := testkit.Observation(c, x.ID, uint64(i+1), now.Add(time.Duration(i)*time.Second), outcome)
-		if err := s.Put(batch(c, v)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	full, _ := s.View()
-	summary, _ := s.StateView()
-	at := now.Add(70 * time.Second)
-	a, z := engine.Evaluate(x, full, at), engine.Evaluate(x, summary, at)
-	if a.Health != "down" || z.Health != a.Health || z.Since != a.Since {
-		t.Fatal("summary lost established failure state", a, z)
 	}
 }

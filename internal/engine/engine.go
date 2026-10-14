@@ -16,6 +16,12 @@ import (
 )
 
 func Evaluate(x model.Check, rows []model.Observation, now time.Time) model.CheckState {
+	return EvaluateCarried(x, nil, rows, now)
+}
+
+// EvaluateCarried judges x from rows after those folded into carry, as
+// Evaluate would from all of them; rows that carry holds are passed over.
+func EvaluateCarried(x model.Check, carry *Carry, rows []model.Observation, now time.Time) model.CheckState {
 	s := model.CheckState{ID: x.ID, Observer: x.Observer, Health: "unknown", Freshness: "never", Evidence: "unknown", Reason: "not yet measured"}
 	if x.Disabled {
 		s.Freshness = "paused"
@@ -27,74 +33,46 @@ func Evaluate(x model.Check, rows []model.Observation, now time.Time) model.Chec
 		s.Reason = "maintenance; excluded from alerts"
 		return s
 	}
+	var k Carry
+	if carry != nil {
+		k = *carry
+	}
+	rows = slices.DeleteFunc(slices.Clone(rows), k.Holds)
 	if len(rows) == 0 {
 		return s
 	}
-	rows = append([]model.Observation(nil), rows...)
 	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].SampledAt.Equal(rows[j].SampledAt) {
-			if rows[i].Boot == rows[j].Boot {
-				return rows[i].Sequence < rows[j].Sequence
-			}
-			return rows[i].ID < rows[j].ID
-		}
-		return rows[i].SampledAt.Before(rows[j].SampledAt)
+		a := rows[i]
+		return earlier(a.SampledAt, a.Boot, a.Sequence, a.ID, rows[j])
 	})
-	confirmedDown := false
-	var previous time.Time
 	for _, v := range rows {
-		if !previous.IsZero() && v.SampledAt.Sub(previous) > time.Duration(x.StaleSeconds)*time.Second {
-			s.Failures = 0
-			s.Successes = 0
-			confirmedDown = false
-			s.Health = "unknown"
-		}
-		previous = v.SampledAt
-		last := v
-		s.Last = &last
-		s.Evidence = v.Evidence
-		s.Reason = v.Detail
-		switch v.Outcome {
-		case "ok":
-			s.Successes++
-			s.Failures = 0
-			if confirmedDown && s.Successes < x.RecoveryThreshold {
-				s.Health = "degraded"
-				s.Reason = "recovering; waiting for consecutive successes"
-			} else {
-				s.Health = "up"
-				confirmedDown = false
-			}
-			s.Since = v.SampledAt
-		case "fail":
-			if s.Failures == 0 {
-				s.Since = v.SampledAt
-			}
-			s.Failures++
-			s.Successes = 0
-			if s.Failures >= x.FailureThreshold || confirmedDown {
-				s.Health = "down"
-				confirmedDown = true
-			} else {
-				s.Health = "degraded"
-				s.Reason = "failure observed; confirmation threshold not reached"
-			}
-		case "policy":
-			s.Failures = 0
-			s.Successes = 0
+		k.Fold(v, time.Duration(x.StaleSeconds)*time.Second)
+	}
+	last := rows[len(rows)-1]
+	s.Last = &last
+	s.Evidence = last.Evidence
+	s.Reason = last.Detail
+	s.Failures, s.Successes, s.Since = k.Failures, k.Successes, k.Since
+	down := k.down(x.FailureThreshold, x.RecoveryThreshold)
+	switch last.Outcome {
+	case "ok":
+		s.Health = "up"
+		if down {
 			s.Health = "degraded"
-			s.Since = v.SampledAt
-			s.Reason = "policy violation: " + v.Code
-			confirmedDown = false
-		default:
-			s.Failures = 0
-			s.Successes = 0
-			s.Health = "unknown"
-			s.Since = v.SampledAt
-			confirmedDown = false
-			if v.Outcome == "error" {
-				s.Reason = "monitor-side error: " + v.Code
-			}
+			s.Reason = "recovering; waiting for consecutive successes"
+		}
+	case "fail":
+		s.Health = "down"
+		if !down {
+			s.Health = "degraded"
+			s.Reason = "failure observed; confirmation threshold not reached"
+		}
+	case "policy":
+		s.Health = "degraded"
+		s.Reason = "policy violation: " + last.Code
+	default:
+		if last.Outcome == "error" {
+			s.Reason = "monitor-side error: " + last.Code
 		}
 	}
 	s.Freshness = "fresh"
@@ -119,6 +97,13 @@ func Evaluate(x model.Check, rows []model.Observation, now time.Time) model.Chec
 // (or, from a schema 1 executor, c's revision). The snapshot shows only
 // public revisions and contracts.
 func Build(c model.Config, instance, view string, rows []model.Observation, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
+	return BuildCarried(c, instance, view, rows, nil, beats, now)
+}
+
+// BuildCarried is Build where carries hold what samples no longer stored
+// left behind: each check is judged from its carry under its contract in
+// c, if it has one, and the samples after it.
+func BuildCarried(c model.Config, instance, view string, rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
 	revision := config.Revision(c)
 	contracts, public := config.Contracts(c), config.PublicContracts(c)
 	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: config.PublicRevision(c), GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Public(c), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Endpoints: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
@@ -160,11 +145,17 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			lastSeen[v.Observer] = v.SampledAt
 		}
 	}
+	carried := map[string]*Carry{}
+	for i, k := range carries {
+		if k.Contract != "" && k.Contract == contracts[k.Check] {
+			carried[k.Check] = &carries[i]
+		}
+	}
 	allStates := map[string]model.CheckState{}
 	checks := map[string]model.Check{}
 	for _, x := range c.Checks {
 		checks[x.ID] = x
-		st := Evaluate(x, histories[x.ID], now)
+		st := EvaluateCarried(x, carried[x.ID], histories[x.ID], now)
 		st.Contract = public[x.ID]
 		if st.Last != nil {
 			last := *st.Last

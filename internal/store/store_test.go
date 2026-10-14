@@ -318,7 +318,7 @@ func TestSetCurrentFollowsAReload(t *testing.T) {
 	if n := len(s.tails[tailKey(v)]); n != 1 {
 		t.Fatal("undoing the edit did not bring the tail back", n)
 	}
-	if rows, _ := s.StateView(); len(rows) != 1 {
+	if rows, _, _ := s.StateView(); len(rows) != 1 {
 		t.Fatal("history lost across reloads", len(rows))
 	}
 }

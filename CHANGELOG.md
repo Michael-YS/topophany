@@ -138,6 +138,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A confirmed failure stays confirmed until its check recovers, however
+  long ago the samples that confirmed it were taken. A check was judged
+  from the samples a collector still held, so once those that confirmed
+  a failure left the history and the latest 40 samples, a check that had
+  flapped ever since, never passing twice in a row, read up, and the
+  incident ledger closed its incident as unconfirmed and told webhooks
+  so. One healthy backend of two behind round-robin does just that. The
+  samples a series lets go now leave what they established, kept for
+  every pair of thresholds and written with each checkpoint, so a check
+  is judged as though they were all still held, across restarts and
+  threshold edits.
 - The origin behind an edge is credited only with a passing response the
   edge says it fetched from it (`MISS`, `DYNAMIC`, `BYPASS`, `EXPIRED`,
   `REVALIDATED`, `REFRESHHIT` or `PASS`). Any status but a cache hit used

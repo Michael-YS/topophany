@@ -89,7 +89,7 @@ func TestRecoveredHeartbeatContract(t *testing.T) {
 		}
 		s.Close()
 		s = openTest(t, dir, Options{})
-		_, beats := s.StateView()
+		_, _, beats := s.StateView()
 		for _, change := range []string{"project", "revision", "legacy"} {
 			changed := c
 			switch change {
@@ -117,7 +117,7 @@ func TestRecoveredHeartbeatContract(t *testing.T) {
 		if err := s.Put(b); err != nil {
 			t.Fatal(err)
 		}
-		_, beats = s.StateView()
+		_, _, beats = s.StateView()
 		snap := engine.Build(c, "test", "home", nil, beats, now.Add(time.Second))
 		for _, o := range snap.Observers {
 			if o.ID == "home" && o.Health != "up" {

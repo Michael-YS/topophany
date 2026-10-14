@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -57,6 +58,9 @@ const receiptGrace = time.Hour
 // floorBytes is what a boot's floor costs in its observer's quota.
 const floorBytes = 128
 
+// carryBytes is what a series' carry costs in the state budget.
+const carryBytes = 512
+
 type receipt struct {
 	Observer string    `json:"observer,omitempty"`
 	Hash     string    `json:"hash"`
@@ -73,6 +77,7 @@ type diskState struct {
 	Beats   map[string]model.Heartbeat `json:"beats"`
 	Floors  map[string]uint64          `json:"floors,omitempty"`
 	Rollups *rollup.Store              `json:"rollups,omitempty"`
+	Carries map[string]engine.Carry    `json:"carries,omitempty"`
 }
 type envelope struct {
 	SHA256  string          `json:"sha256"`
@@ -86,6 +91,7 @@ type Store struct {
 	options       Options
 	rows          []model.Observation
 	tails         map[string][]model.Observation
+	carries       map[string]engine.Carry // what samples trimmed from each tail left
 	seen          map[string]receipt
 	beats         map[string]model.Heartbeat
 	bytes         int64
@@ -135,7 +141,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, rollups: rollup.New(o.RollupBytes)}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, rollups: rollup.New(o.RollupBytes)}
 	s.rollups.SetCurrent(s.currentKey)
 	opened := s
 	defer func() {
@@ -162,6 +168,11 @@ func Open(dir string, o Options) (s *Store, err error) {
 		s.beats = state.Beats
 		if state.Floors != nil {
 			s.floors = state.Floors
+		}
+		// Carries first, so the rows they already hold are not folded again
+		// as the tails are rebuilt.
+		if state.Carries != nil {
+			s.carries = state.Carries
 		}
 		for _, v := range state.Rows {
 			s.addRow(v)
@@ -336,8 +347,11 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 		}
 	}
 	for key, tail := range s.tails {
-		if len(tail) > 40 {
-			s.tails[key] = tail[len(tail)-40:]
+		s.tails[key] = s.trim(key, tail)
+	}
+	for key := range s.carries {
+		if _, ok := s.tails[key]; !ok {
+			delete(s.carries, key)
 		}
 	}
 	s.prune()
@@ -356,10 +370,29 @@ func (s *Store) addRow(v model.Observation) {
 	key := tailKey(v)
 	tail := append(s.tails[key], v)
 	sort.Slice(tail, func(i, j int) bool { return before(tail[i], tail[j]) })
-	if len(tail) > 40 {
-		tail = tail[len(tail)-40:]
+	s.tails[key] = s.trim(key, tail)
+}
+
+// tailLength is how many of its latest samples a series keeps for its state.
+const tailLength = 40
+
+// trim keeps the latest samples of a sorted tail and folds those it lets
+// go into the series' carry, so its state outlives them. A sample its
+// carry already holds, such as one arriving late, is not folded again.
+func (s *Store) trim(key string, tail []model.Observation) []model.Observation {
+	if len(tail) <= tailLength {
+		return tail
 	}
-	s.tails[key] = tail
+	k := s.carries[key]
+	for _, v := range tail[:len(tail)-tailLength] {
+		if v.Contract != "" && !k.Holds(v) {
+			k.Fold(v, s.options.Stale[v.Check])
+		}
+	}
+	if !k.At.IsZero() {
+		s.carries[key] = k
+	}
+	return tail[len(tail)-tailLength:]
 }
 func before(a, b model.Observation) bool {
 	if a.SampledAt.Equal(b.SampledAt) {
@@ -583,7 +616,7 @@ func (s *Store) prune() {
 	for boot := range s.floors {
 		s.scopeBytes[receiptObserver(boot+".0")] += floorBytes
 	}
-	s.stateBytes = 1024 + int64(len(s.seen))*512 + int64(len(s.floors))*floorBytes
+	s.stateBytes = 1024 + int64(len(s.seen))*512 + int64(len(s.floors))*floorBytes + int64(len(s.carries))*carryBytes
 	for id, size := range s.rowSizes {
 		if keep[id] {
 			s.stateBytes += size
@@ -623,7 +656,7 @@ func (s *Store) allRows() []model.Observation {
 func (s *Store) checkpoint() error {
 	s.settled = s.options.Now()
 	s.rollups.Settle(s.settled)
-	state := diskState{Schema: 1, Rows: s.allRows(), Seen: s.seen, Beats: s.beats, Floors: s.floors, Rollups: s.rollups}
+	state := diskState{Schema: 1, Rows: s.allRows(), Seen: s.seen, Beats: s.beats, Floors: s.floors, Rollups: s.rollups, Carries: s.carries}
 	b, e := wrap(state)
 	if e != nil {
 		return e

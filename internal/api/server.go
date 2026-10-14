@@ -97,6 +97,7 @@ type Server struct {
 	snapshotMu         sync.Mutex
 	snapshotAt         time.Time
 	snapshotRows       []model.Observation
+	snapshotCarries    []engine.Carry
 	snapshotBeats      map[string]model.Heartbeat
 	snapshotCache      map[string][]byte
 	snapshotAvailable  map[string][]model.Availability // by check, as of snapshotAt
@@ -156,8 +157,8 @@ func (s *Server) Reload(c model.Config, a Auth) {
 // and close (see ledger.Observe). It returns that snapshot too.
 func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.Change, error) {
 	c, _ := s.current()
-	rows, beats := s.Store.StateView()
-	snap := engine.Build(c, s.Instance, "", rows, beats, now)
+	rows, carries, beats := s.Store.StateView()
+	snap := engine.BuildCarried(c, s.Instance, "", rows, carries, beats, now)
 	if s.Ledger == nil {
 		return snap, nil, nil
 	}
