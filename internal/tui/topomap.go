@@ -15,7 +15,7 @@ type mapNode struct {
 }
 type mapEdge struct {
 	ID, From, To, Health, Label string
-	Kind                        int    // edgeLink, edgePath, edgeContain
+	Kind                        int    // edgeLink, edgePath, edgeContain, edgeVia
 	Signal                      string // what the map may claim; see linkSignal
 	Observer                    string // for path-implied edges: whose path
 }
@@ -24,6 +24,7 @@ const (
 	edgeLink = iota
 	edgePath
 	edgeContain
+	edgeVia // an edge or proxy in front of an endpoint's node
 )
 
 // Signals are what a map element may honestly claim:
@@ -180,6 +181,49 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 		edges = append(edges, mapEdge{ID: l.ID, From: l.From, To: l.To, Health: h, Label: l.Transport, Kind: edgeLink, Signal: sig})
 		seen[[2]string{l.From, l.To}] = true
 		seen[[2]string{l.To, l.From}] = true
+	}
+	// An endpoint reached through edges or proxies implies hops from each
+	// to the next and on to its node, unless a link already declares them.
+	// The checks on the endpoint color them: carried when one passes,
+	// affected when one fails and none pass.
+	target := map[string]string{}
+	for _, x := range s.Topology.Checks {
+		target[x.ID] = x.Endpoint
+	}
+	checkHealth := map[string][]string{}
+	for _, cs := range s.Checks {
+		if ep := target[cs.ID]; ep != "" && !cached {
+			checkHealth[ep] = append(checkHealth[ep], cs.Health)
+		}
+	}
+	viaEdges := map[[2]string]int{}
+	for _, ep := range s.Topology.Endpoints {
+		hops := append(append([]string{}, ep.Via...), ep.Node)
+		sig := "unknown"
+		for _, h := range checkHealth[ep.ID] {
+			switch {
+			case h == "up":
+				sig = "carried"
+			case (h == "down" || h == "degraded") && sig == "unknown":
+				sig = "affected"
+			}
+		}
+		for i := 1; i < len(hops) && len(ep.Via) > 0; i++ {
+			a, b := hops[i-1], hops[i]
+			_, okA := index[a]
+			_, okB := index[b]
+			if k, ok := viaEdges[[2]string{a, b}]; ok {
+				// Endpoints sharing a hop: keep what needs attention.
+				edges[k].Signal = worseSignal(edges[k].Signal, sig)
+				continue
+			}
+			if !okA || !okB || seen[[2]string{a, b}] {
+				continue
+			}
+			seen[[2]string{a, b}], seen[[2]string{b, a}] = true, true
+			viaEdges[[2]string{a, b}] = len(edges)
+			edges = append(edges, mapEdge{ID: "via:" + ep.ID, From: a, To: b, Health: "unknown", Label: "in front of " + ep.ID, Kind: edgeVia, Signal: sig})
+		}
 	}
 	for _, p := range s.Topology.Paths {
 		h, _ := health(pathStates, p.ID)
@@ -366,6 +410,12 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 		item('━', cWarn, "affected")
 		item('━', cDown, "failed")
 		item('┄', Mix(cUnknown, cInk, .35), "no evidence")
+		for _, e := range edges {
+			if e.Kind == edgeVia {
+				item('┈', Mix(cUp, cInk, .45), "via edge")
+				break
+			}
+		}
 		if m.mapMode() == "network" {
 			item('┊', cFaint, "hosted in")
 			cx += 2
@@ -403,6 +453,8 @@ func edgeStyle(e mapEdge, f mapFocus) (Color, int8, int) {
 		if e.Signal == "unknown" || e.Signal == "carried" {
 			c, pri = Mix(c, cInk, .3), pri-1
 		}
+	case edgeVia:
+		dash = 1
 	case edgeContain:
 		c, pri, dash = Mix(cFaint, cInk, .2), 2, 1
 	}

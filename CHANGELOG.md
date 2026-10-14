@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Edges and platforms: nodes of kind `edge` (Cloudflare, Vercel) and
+  `platform` (Supabase) with a `provider`, services with a `runtime`
+  (`workers`, `pages`, `functions`, …), and endpoints that name the edges in
+  front of them in `via`. Evidence is attributed along `via`: an edge's
+  answer, even a 521, proves the edge; the origin counts only a passing
+  response not served from the edge's cache.
+- HTTP probes record which edge answered, from where and whether from its
+  cache (`edge_provider`, `edge_pop`, `edge_region`, `edge_cache`).
+- The preview topology puts Cloudflare in front of the main site, with a
+  Worker, a Pages site and a Vercel app on Supabase, and gains two
+  scenarios: the origin down behind Cloudflare, and the edge unreachable
+  from the mainland.
+
 ### Changed
 
 - The About globe reads as a sphere instead of a flat disc: a shaded ocean
@@ -14,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toward the limb, with a graticule that curves with the surface. Truecolor
   terminals shade under the dots; 256-colour terminals keep a dotted ocean.
   The README banner is redrawn from the same art.
+- The homelab example models its CDN as an edge in front of the DMIT
+  origin.
+
+### Fixed
+
+- A service reached over several failing paths no longer repeats "access
+  path unavailable" once per path in its reason.
 
 ### Security
 

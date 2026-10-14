@@ -191,3 +191,62 @@ func TestSerializedStylesMatchTheCanvas(t *testing.T) {
 		}
 	}
 }
+
+// Services deployed on or reached through an edge say so where they are
+// listed, a check answered by an edge says which and from where, and an
+// endpoint behind an edge implies a hop on the maps when no link does.
+func TestEdgesShowWhereServicesRunAndWhoAnswered(t *testing.T) {
+	m := previewModel(t)
+	cols := func(tab int, id string) []string {
+		m.setTab(tab)
+		for _, r := range m.Rows() {
+			if r.ID == id {
+				return r.Cols
+			}
+		}
+		t.Fatal("missing row", id)
+		return nil
+	}
+	if c := cols(tabServices, "blog"); !strings.HasPrefix(c[0], "Cloudflare ⇢ S1") {
+		t.Fatal("the way into the blog does not start at the edge", c)
+	}
+	if c := cols(tabServices, "shortlink"); c[0] != "Cloudflare · workers" {
+		t.Fatal("a Worker should say where and how it runs", c)
+	}
+	if c := cols(tabServices, "webapp"); c[0] != "Vercel · functions" {
+		t.Fatal(c)
+	}
+	if c := cols(tabTopology, "s1-web"); c[0] != "public · via cf" {
+		t.Fatal("endpoint behind the edge", c)
+	}
+	if c := cols(tabTopology, "cf"); c[1] != "edge · Cloudflare" {
+		t.Fatal("edge node kind and provider", c)
+	}
+	m.setTab(tabChecks)
+	for _, r := range m.Rows() {
+		if r.ID == "j-blog" && !strings.Contains(strings.Join(r.Details, "\n"), "Answered by: Cloudflare NRT · cache DYNAMIC") {
+			t.Fatal("check evidence does not name the edge that answered", r.Details)
+		}
+	}
+
+	links := m.Snapshot.Topology.Links[:0]
+	for _, l := range m.Snapshot.Topology.Links {
+		if l.ID != "cf-s1" {
+			links = append(links, l)
+		}
+	}
+	m.Snapshot.Topology.Links = links
+	_, edges, _ := m.graph()
+	pairs := 0
+	for _, e := range edges {
+		if e.From == "cf" && e.To == "s1" {
+			pairs++
+			if e.Kind != edgeVia || e.Signal != "carried" {
+				t.Fatal("implied hop behind the edge", e)
+			}
+		}
+	}
+	if pairs != 1 {
+		t.Fatal("the hop behind the edge is drawn", pairs, "times")
+	}
+}

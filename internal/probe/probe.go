@@ -254,6 +254,9 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if resp.TLS != nil {
 		o.Facts["response_proof"] = "verified_https"
 	}
+	for k, v := range EdgeFacts(resp.Header) {
+		o.Facts[k] = v
+	}
 	limit := x.HTTP.MaxBodyBytes
 	if limit <= 0 {
 		limit = 65536

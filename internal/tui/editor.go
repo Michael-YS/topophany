@@ -613,7 +613,7 @@ func (m *Model) openForm(kind, id string) {
 		}
 		idField(n.ID)
 		f.add("Name", n.Name, fText, "Display name")
-		f.add("Kind", n.Kind, fChoice, "←/→ to choose", "", "host", "vm", "container", "router", "external")
+		f.add("Kind", n.Kind, fChoice, "←/→ to choose; edge: an anycast network in front of origins (Cloudflare, Vercel); platform: managed hosting (Supabase)", "", "host", "vm", "container", "router", "edge", "platform", "external")
 		f.add("Group", n.Group, fText, "Free-form grouping, e.g. Home, Domestic, Overseas")
 		others := []string{}
 		for _, x := range nodes {
@@ -636,10 +636,11 @@ func (m *Model) openForm(kind, id string) {
 		}
 		f.add("Lat", lat, fFloat, "Latitude −90…90 (declared placement for the geo map)")
 		f.add("Lon", lon, fFloat, "Longitude −180…180")
+		f.add("Provider", n.Provider, fText, "Who runs it, e.g. cloudflare, vercel, supabase, or a VPS vendor")
 		f.add("Notes", n.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
 			pf.blur(f)
-			n.ID, n.Name, n.Kind, n.Group, n.Parent, n.Notes = f.val("ID"), f.val("Name"), f.val("Kind"), f.val("Group"), f.val("Parent"), f.val("Notes")
+			n.ID, n.Name, n.Kind, n.Group, n.Provider, n.Parent, n.Notes = f.val("ID"), f.val("Name"), f.val("Kind"), f.val("Group"), f.val("Provider"), f.val("Parent"), f.val("Notes")
 			n.Location = nil
 			if f.val("Lat") != "" || f.val("Lon") != "" {
 				la, e1 := strconv.ParseFloat(f.val("Lat"), 64)
@@ -685,9 +686,10 @@ func (m *Model) openForm(kind, id string) {
 		f.add("Address", ep.Address, fText, "host:port or http(s):// URL")
 		f.add("Network", ep.Network, fChoice, "loopback needs an observer scope", "public", "lan", "tailnet", "loopback", "external")
 		f.add("Observer", ep.Observer, fChoice, "Only this observer may probe it", optional(observers)...)
+		f.add("Via", strings.Join(ep.Via, ", "), fList, "Edge or proxy node IDs that answer first, client side first, e.g. a CDN in front")
 		f.add("Notes", ep.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
-			ep.ID, ep.Node, ep.Address, ep.Network, ep.Observer, ep.Notes = f.val("ID"), f.val("Node"), f.val("Address"), f.val("Network"), f.val("Observer"), f.val("Notes")
+			ep.ID, ep.Node, ep.Address, ep.Network, ep.Observer, ep.Via, ep.Notes = f.val("ID"), f.val("Node"), f.val("Address"), f.val("Network"), f.val("Observer"), f.list("Via"), f.val("Notes")
 			var err error
 			c.Endpoints, err = upsert(c.Endpoints, id, ep, func(n model.Endpoint) string { return n.ID })
 			return err
@@ -702,12 +704,13 @@ func (m *Model) openForm(kind, id string) {
 		idField(s.ID)
 		f.add("Name", s.Name, fText, "")
 		f.add("Node", s.Node, fChoice, "Hosting node", nodes...)
+		f.add("Runtime", s.Runtime, fText, "How it runs there, e.g. workers, pages, functions, container")
 		f.add("Endpoints", strings.Join(s.Endpoints, ", "), fList, "Comma-separated endpoint IDs")
 		f.add("Depends on", strings.Join(s.DependsOn, ", "), fList, "Comma-separated service IDs")
 		f.add("Runbook", s.Runbook, fText, "Shown to operators; never executed")
 		f.add("Notes", s.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
-			s.ID, s.Name, s.Node, s.Endpoints, s.DependsOn, s.Runbook, s.Notes = f.val("ID"), f.val("Name"), f.val("Node"), f.list("Endpoints"), f.list("Depends on"), f.val("Runbook"), f.val("Notes")
+			s.ID, s.Name, s.Node, s.Runtime, s.Endpoints, s.DependsOn, s.Runbook, s.Notes = f.val("ID"), f.val("Name"), f.val("Node"), f.val("Runtime"), f.list("Endpoints"), f.list("Depends on"), f.val("Runbook"), f.val("Notes")
 			var err error
 			c.Services, err = upsert(c.Services, id, s, func(n model.Service) string { return n.ID })
 			return err

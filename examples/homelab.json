@@ -99,9 +99,10 @@
     },
     {
       "id": "cdn",
-      "name": "CDN opaque transport",
+      "name": "CDN edge",
       "group": "External",
-      "kind": "external"
+      "kind": "edge",
+      "notes": "Anycast edge in front of the DMIT origin. It answers first, so an answer from it alone, even an error page, proves only the edge."
     },
     {
       "id": "airport",
@@ -249,9 +250,12 @@
     },
     {
       "id": "cdn-health",
-      "node": "cdn",
+      "node": "dmit",
       "address": "https://edge.example.invalid/healthz",
-      "network": "external"
+      "network": "public",
+      "via": [
+        "cdn"
+      ]
     },
     {
       "id": "dns-bootstrap",

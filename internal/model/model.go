@@ -23,9 +23,10 @@ type Config struct {
 type Node struct {
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`
-	Kind     string    `json:"kind,omitempty"`
+	Kind     string    `json:"kind,omitempty"` // host, vm, container, router, edge, platform, external
 	Parent   string    `json:"parent,omitempty"`
 	Group    string    `json:"group,omitempty"`
+	Provider string    `json:"provider,omitempty"` // who runs it: a cloud or VPS vendor, an edge or platform
 	Location *Location `json:"location,omitempty"` // declared placement for maps; never inferred from IP
 	Notes    string    `json:"notes,omitempty"`
 }
@@ -35,17 +36,19 @@ type Location struct {
 	Lon   float64 `json:"lon"`
 }
 type Endpoint struct {
-	ID       string `json:"id"`
-	Node     string `json:"node"`
-	Address  string `json:"address"`
-	Network  string `json:"network"`            // public, lan, tailnet, loopback, external
-	Observer string `json:"observer,omitempty"` // mandatory execution scope for loopback
-	Notes    string `json:"notes,omitempty"`
+	ID       string   `json:"id"`
+	Node     string   `json:"node"`
+	Address  string   `json:"address"`
+	Network  string   `json:"network"`            // public, lan, tailnet, loopback, external
+	Observer string   `json:"observer,omitempty"` // mandatory execution scope for loopback
+	Via      []string `json:"via,omitempty"`      // edge or proxy nodes that answer first, client side first
+	Notes    string   `json:"notes,omitempty"`
 }
 type Service struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
 	Node      string   `json:"node"`
+	Runtime   string   `json:"runtime,omitempty"` // how it is deployed: workers, pages, functions, container, …
 	Endpoints []string `json:"endpoints,omitempty"`
 	DependsOn []string `json:"depends_on,omitempty"`
 	Runbook   string   `json:"runbook,omitempty"`

@@ -24,7 +24,8 @@ import (
 var preset []byte
 
 // Preset returns the built-in complex topology (Changsha home, Hangzhou
-// relay, LA line + residential exits, Hawaii exit, New York, Tokyo, Frankfurt).
+// relay, LA line + residential exits, Hawaii exit, New York, Tokyo, Frankfurt,
+// and Cloudflare, Vercel and Supabase at the edge).
 func Preset() (model.Config, error) { return config.Decode(bytes.NewReader(preset)) }
 
 // PresetJSON is the reviewed source of Preset, for `topo preview --print-topology`.
@@ -57,6 +58,8 @@ var scenarios = []Scenario{
 	{Name: "杭州中继宕机", Detail: "阿里云杭州整机不可用：DERP 中继、反向代理和杭州观测点同时消失。", Down: []string{"hz"}, Offline: []string{"obs-hz"}},
 	{Name: "S2 维护窗口", Detail: "S2 相关检查进入维护（不告警）；备用线路与私有服务暂停判定。", Maintenance: []string{"s2"}},
 	{Name: "东京 worker 时钟超前", Detail: "东京执行器时钟快 40 秒；其样本不被当作当前结果。", Skew: map[string]time.Duration{"obs-jp": 40 * time.Second}},
+	{Name: "S1 源站宕机（经 Cloudflare）", Detail: "S1 整机无响应：访客经 Cloudflare 收到 521，边缘仍在应答 → 主站与 API 失败，但 Cloudflare 有应答证据、S1 只记为受影响；纽约观测点随之离线。", Down: []string{"s1"}, Offline: []string{"obs-s1"}},
+	{Name: "Cloudflare 边缘不可达（仅国内）", Detail: "国内观测点连不上 Cloudflare 边缘（超时、没有任何应答）；东京经 NRT 照常 → 故障在边缘之前，不归咎于源站。", Blocked: []string{"cf"}},
 	{Name: "随机混沌", Detail: "每个检查以 30 秒为窗口随机中断（约 15%），延迟随机尖峰。", Chaos: true},
 	{Name: "Collector 不可达", Detail: "TUI 拿不到新快照：保留缓存但全部显示为 unknown / CACHED。", Unreachable: true},
 }
@@ -76,11 +79,12 @@ type Sim struct {
 	nodes     map[string]model.Node
 	ends      map[string]model.Endpoint
 	paths     map[string]model.Path
+	services  map[string]model.Service
 	obsNode   map[string]string
 }
 
 func New(c model.Config, now time.Time) *Sim {
-	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, obsNode: map[string]string{}}
+	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, services: map[string]model.Service{}, obsNode: map[string]string{}}
 	for _, n := range c.Nodes {
 		s.nodes[n.ID] = n
 	}
@@ -100,6 +104,9 @@ func New(c model.Config, now time.Time) *Sim {
 	}
 	for _, p := range c.Paths {
 		s.paths[p.ID] = p
+	}
+	for _, v := range c.Services {
+		s.services[v.ID] = v
 	}
 	observers := map[string]bool{}
 	for _, o := range c.Observers {
@@ -261,15 +268,66 @@ func (s *Sim) reach(x model.Check) []string {
 		}
 	case "mihomo":
 	default:
+		for _, v := range s.ends[x.Endpoint].Via {
+			add(v)
+		}
 		add(s.ends[x.Endpoint].Node)
 	}
 	return r
 }
 
+// pops are a few points of presence per edge network. An observer lands on
+// the nearest, except that mainland observers on plans without a China
+// network are carried abroad.
+type pop struct {
+	code     string
+	lat, lon float64
+}
+
+var pops = map[string][]pop{
+	"cloudflare": {{"NRT", 35.77, 140.39}, {"HKG", 22.31, 113.92}, {"SIN", 1.36, 103.99}, {"LAX", 33.94, -118.41}, {"HNL", 21.32, -157.92}, {"EWR", 40.69, -74.17}, {"FRA", 50.04, 8.56}},
+	"vercel":     {{"hnd1", 35.55, 139.78}, {"hkg1", 22.31, 113.92}, {"sin1", 1.36, 103.99}, {"sfo1", 37.62, -122.38}, {"iad1", 38.95, -77.45}, {"fra1", 50.04, 8.56}},
+}
+var mainlandPop = map[string]string{"cloudflare": "LAX", "vercel": "hkg1"}
+
+// edgePop is where an observer's requests to an edge network land.
+func (s *Sim) edgePop(provider, observer string) (string, *model.Location) {
+	list := pops[provider]
+	if len(list) == 0 {
+		return "", nil
+	}
+	best := list[0]
+	if code := mainlandPop[provider]; code != "" && s.china(s.obsNode[observer]) {
+		for _, p := range list {
+			if p.code == code {
+				best = p
+			}
+		}
+	} else if from := s.where[s.obsNode[observer]]; from != nil {
+		far := math.Inf(1)
+		for _, p := range list {
+			if d := distance(*from, model.Location{Lat: p.lat, Lon: p.lon}); d < far {
+				best, far = p, d
+			}
+		}
+	}
+	return best.code, &model.Location{Label: best.code, Lat: best.lat, Lon: best.lon}
+}
+
+// loc is where traffic to a node goes: its declared place, or for an edge
+// with no single place the point of presence the observer lands on.
+func (s *Sim) loc(node, observer string) *model.Location {
+	if l := s.where[node]; l != nil || s.nodes[node].Kind != "edge" {
+		return l
+	}
+	_, l := s.edgePop(s.nodes[node].Provider, observer)
+	return l
+}
+
 // china is a coarse mainland bounding box (excluding Taiwan, Hong Kong and
 // Korea); it only decides which simulated samples count as cross-border.
-func (s *Sim) china(node string) bool {
-	l := s.where[node]
+func (s *Sim) china(node string) bool { return mainland(s.where[node]) }
+func mainland(l *model.Location) bool {
 	if l == nil || l.Lat < 18 || l.Lat > 54 || l.Lon < 73 || l.Lon > 135 {
 		return false
 	}
@@ -286,7 +344,7 @@ func (s *Sim) rtt(x model.Check, reach []string, t time.Time) float64 {
 	km := 0.0
 	prev := s.where[from]
 	for _, n := range reach {
-		if l := s.where[n]; l != nil {
+		if l := s.loc(n, x.Observer); l != nil {
 			if prev != nil {
 				km += distance(*prev, *l)
 			}
@@ -314,7 +372,8 @@ func (s *Sim) observe(c model.Config, rev string, x model.Check, t time.Time, sc
 	cn := s.china(s.obsNode[x.Observer])
 	cross := false
 	for _, n := range reach {
-		cross = cross || (cn && s.where[n] != nil && !s.china(n))
+		l := s.loc(n, x.Observer)
+		cross = cross || (cn && l != nil && !mainland(l))
 	}
 	ms := s.rtt(x, reach, t)
 	if cross && sc.Slow > 0 {
@@ -331,17 +390,25 @@ func (s *Sim) observe(c model.Config, rev string, x model.Check, t time.Time, sc
 		}
 	}
 
-	// Which hop breaks first decides how the failure looks to the probe.
-	broken, beyond := "", false
+	// Which hop breaks first decides how the failure looks to the probe. An
+	// edge in front answers for whatever breaks behind it.
+	broken, beyond, fronted := "", false, false
 	endpointNode := s.ends[x.Endpoint].Node
-	passed := false
+	edge := endpointNode
+	if via := s.ends[x.Endpoint].Via; len(via) > 0 {
+		edge = via[0]
+	}
+	passed, atEdge := false, false
 	for _, n := range reach {
 		down := has(sc.Down, n) || (has(sc.Blocked, n) && cn && s.ends[x.Endpoint].Network != "tailnet" && x.Kind != "icmp" && x.Kind != "tailscale")
 		if down && broken == "" {
-			broken, beyond = n, passed
+			broken, beyond, fronted = n, passed, atEdge && x.Kind == "http"
 		}
 		if n == endpointNode {
 			passed = true
+		}
+		if n == edge && n != endpointNode && !down {
+			atEdge = true
 		}
 	}
 	noise := unit(x.ID, t.Unix(), 2)
@@ -395,7 +462,7 @@ func (s *Sim) observe(c model.Config, rev string, x model.Check, t time.Time, sc
 	}
 
 	o.Facts["connection_semantics"] = "new_client_stream; upstream_core_multiplexing_unknown"
-	if broken != "" && !beyond {
+	if broken != "" && !beyond && !fronted {
 		o.Outcome, o.Connectivity = "fail", false
 		o.Stage, o.Code = "connect", "timeout"
 		if len(s.paths[x.Path].Proxies) > 0 && s.nodes[broken].ID != "" {
@@ -458,8 +525,26 @@ func (s *Sim) observe(c model.Config, rev string, x model.Check, t time.Time, sc
 		if https {
 			o.Facts["response_proof"] = "verified_https"
 		}
+		provider := s.nodes[edge].Provider
+		if s.nodes[edge].Kind == "edge" && pops[provider] != nil {
+			o.Facts["edge_provider"] = provider
+			o.Facts["edge_pop"], _ = s.edgePop(provider, x.Observer)
+			switch {
+			case s.services[x.Service].Runtime == "pages":
+				o.Facts["edge_cache"] = "HIT"
+			case provider == "vercel":
+				o.Facts["edge_cache"] = "MISS"
+				o.Facts["edge_region"] = "hnd1"
+			case edge != endpointNode:
+				o.Facts["edge_cache"] = "DYNAMIC"
+			}
+		}
 		o.Stage, o.Detail = "http_assert", "HTTP assertions passed; result applies only to this request"
-		if beyond {
+		if fronted {
+			// Cloudflare's own page for an origin that refuses connections.
+			o.Outcome, o.Code, o.Detail = "fail", "unexpected_status", "http_assert: unexpected_status"
+			o.Facts["http_status"] = map[bool]string{true: "521", false: "502"}[provider == "cloudflare"]
+		} else if beyond {
 			o.Outcome = "fail"
 			o.Facts["http_status"] = "502"
 			o.Code = "unexpected_status"

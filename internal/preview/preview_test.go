@@ -265,3 +265,61 @@ func contains(list []string, v string) bool {
 	}
 	return false
 }
+
+func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
+	ok := settled(t, "全部正常")
+	if f := check(t, ok, "h-s1-web").Last.Facts; f["edge_provider"] != "cloudflare" || f["edge_pop"] != "LAX" || f["edge_cache"] != "DYNAMIC" {
+		t.Fatal("mainland visitors should land on a US edge", f)
+	}
+	if f := check(t, ok, "j-blog").Last.Facts; f["edge_pop"] != "NRT" {
+		t.Fatal("Tokyo visitors should land in Tokyo", f)
+	}
+	if f := check(t, ok, "j-docs").Last.Facts; f["edge_cache"] != "HIT" {
+		t.Fatal("Pages are served from the edge cache", f)
+	}
+	if f := check(t, ok, "j-webapp").Last.Facts; f["edge_provider"] != "vercel" || f["edge_region"] != "hnd1" {
+		t.Fatal("Vercel evidence", f)
+	}
+	for _, id := range []string{"cf", "s1", "vercel", "supabase"} {
+		if n := entity(t, ok.Nodes, id); n.Health != "up" {
+			t.Fatal("healthy edge or origin without evidence", n)
+		}
+	}
+
+	down := settled(t, "S1 源站宕机（经 Cloudflare）")
+	blog := check(t, down, "j-blog")
+	if blog.Health != "down" || blog.Last.Facts["http_status"] != "521" || !blog.Last.Connectivity {
+		t.Fatal("the edge should answer for a dead origin", blog.Health, blog.Last)
+	}
+	if cf := entity(t, down.Nodes, "cf"); cf.Health != "up" || cf.Affected {
+		t.Fatal("the edge answered and is not at fault", cf)
+	}
+	if s1 := entity(t, down.Nodes, "s1"); s1.Health == "up" || !s1.Affected {
+		t.Fatal("an edge error page counted as the origin answering", s1)
+	}
+	if check(t, down, "j-worker").Health != "up" || check(t, down, "j-webapp").Health != "up" {
+		t.Fatal("what runs on the edge does not depend on S1")
+	}
+	explained := false
+	for _, inc := range down.Incidents {
+		if contains(inc.Checks, "j-blog") {
+			explained = strings.Contains(inc.Hypothesis, "edge in front answered with HTTP 521")
+		}
+	}
+	if !explained {
+		t.Fatal("no bounded diagnosis behind the edge", down.Incidents)
+	}
+
+	blocked := settled(t, "Cloudflare 边缘不可达（仅国内）")
+	if h := check(t, blocked, "h-worker"); h.Health != "down" || h.Last.Connectivity {
+		t.Fatal("mainland requests should get no answer at all", h.Health, h.Last)
+	}
+	if check(t, blocked, "j-worker").Health != "up" || check(t, blocked, "j-blog").Health != "up" {
+		t.Fatal("the edge still answers elsewhere")
+	}
+	for _, inc := range blocked.Incidents {
+		if contains(inc.Checks, "h-worker") && !contains(inc.CounterEvidence, "j-worker") {
+			t.Fatal("Tokyo's answers are counter-evidence", inc)
+		}
+	}
+}

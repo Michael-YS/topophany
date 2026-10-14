@@ -51,6 +51,17 @@ func TestConfigRejectsBrokenTopology(t *testing.T) {
 			c.Paths[0].Proxies = []model.Proxy{{Kind: "socks5", Address: "127.0.0.1:9", Node: "missing"}}
 		},
 		"unsupported protocol not faked": func(c *model.Config) { c.Checks[0].Kind = "reality" },
+		"via an unknown node":            func(c *model.Config) { c.Endpoints[0].Via = []string{"missing"} },
+		"via its own node":               func(c *model.Config) { c.Endpoints[0].Via = []string{"dmit"} },
+		"via the same edge twice":        func(c *model.Config) { c.Endpoints[0].Via = []string{"external", "external"} },
+		"via too many hops": func(c *model.Config) {
+			c.Endpoints[0].Via = []string{"home", "wsl", "aliyun", "s2", "aaitr", "external", "edge1", "edge2", "edge3"}
+			for _, id := range []string{"edge1", "edge2", "edge3"} {
+				c.Nodes = append(c.Nodes, model.Node{ID: id, Name: id, Kind: "edge"})
+			}
+		},
+		"provider with control characters": func(c *model.Config) { c.Nodes[0].Provider = "cloud\x1b[2Jflare" },
+		"runtime beyond a label":           func(c *model.Config) { c.Services[0].Runtime = strings.Repeat("w", 33) },
 		"UDP over TCP chain refused": func(c *model.Config) {
 			c.Paths[0].Proxies = []model.Proxy{{Kind: "socks5", Address: "127.0.0.1:9"}}
 			c.Checks[0].Kind = "udp-echo"
@@ -133,4 +144,25 @@ func FuzzDecodeTopology(f *testing.F) {
 		}
 		_, _ = config.Decode(strings.NewReader(string(b)))
 	})
+}
+
+// Edges, providers and runtimes are optional: a topology that declares
+// them validates, and one that does not keeps its JSON, so its revision.
+func TestEdgeFieldsValidateAndStayOptional(t *testing.T) {
+	c := testkit.Config()
+	plain, _ := json.Marshal(c)
+	for _, key := range []string{`"via"`, `"provider"`, `"runtime"`} {
+		if strings.Contains(string(plain), key) {
+			t.Fatal("empty field serialized", key)
+		}
+	}
+	c.Nodes = append(c.Nodes, model.Node{ID: "cf", Name: "Cloudflare", Kind: "edge", Provider: "cloudflare"})
+	c.Endpoints[0].Via = []string{"cf", "aliyun"}
+	c.Services[0].Runtime = "workers"
+	if e := config.Validate(c); e != nil {
+		t.Fatal(e)
+	}
+	if config.Revision(c) == config.Revision(testkit.Config()) {
+		t.Fatal("declaring an edge did not change the revision")
+	}
 }

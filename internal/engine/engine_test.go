@@ -246,3 +246,71 @@ func TestRuntimeSelectionAndTCPAcceptNeverProvePathRecovery(t *testing.T) {
 		})
 	}
 }
+
+// An address reached through an edge is answered by the edge first: its
+// answer, even an error page, proves the edge; the origin behind it counts
+// only a passing response that the edge did not serve from its cache.
+func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
+	edged := func() model.Config {
+		c := testkit.Config()
+		c.Nodes = append(c.Nodes, model.Node{ID: "edge", Name: "Edge", Kind: "edge", Provider: "cloudflare"})
+		for i := range c.Endpoints {
+			if c.Endpoints[i].ID == "dmit-http" {
+				c.Endpoints[i].Via = []string{"edge"}
+			}
+		}
+		return c
+	}
+	through := func(c model.Config, id string, seq uint64, at time.Time, outcome, status, cache string, answered bool) model.Observation {
+		v := testkit.Observation(c, id, seq, at, outcome)
+		v.Connectivity = answered
+		v.Facts = map[string]string{}
+		if answered {
+			v.Facts = map[string]string{"response_proof": "verified_https", "http_status": status, "edge_provider": "cloudflare", "edge_pop": "NRT", "edge_cache": cache}
+		}
+		return v
+	}
+	now := time.Now()
+	c := edged()
+	rows := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		rows = append(rows, through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", "521", "DYNAMIC", true))
+	}
+	s := Build(c, "a", "home", rows, nil, now)
+	if e := findEntity(t, s.Nodes, "edge"); e.Health != "up" || e.Affected {
+		t.Fatal("the edge answered and was not at fault", e)
+	}
+	if o := findEntity(t, s.Nodes, "dmit"); o.Health == "up" || !o.Affected {
+		t.Fatal("an edge error page counted as the origin answering", o)
+	}
+	if len(s.Incidents) != 1 || !strings.Contains(s.Incidents[0].Hypothesis, "edge in front answered with HTTP 521") || !strings.Contains(s.Incidents[0].Hypothesis, "not established") {
+		t.Fatal("no bounded diagnosis behind the edge", s.Incidents)
+	}
+
+	for _, tt := range []struct {
+		cache  string
+		origin string
+	}{{"DYNAMIC", "up"}, {"MISS", "up"}, {"", "up"}, {"HIT", "unknown"}, {"STALE", "unknown"}} {
+		v := through(c, "cloud-http", 1, now.Add(-time.Second), "ok", "200", tt.cache, true)
+		s := Build(c, "a", "cloud", []model.Observation{v}, nil, now)
+		if e := findEntity(t, s.Nodes, "edge"); e.Health != "up" {
+			t.Fatal("edge answer not counted", tt.cache, e)
+		}
+		if o := findEntity(t, s.Nodes, "dmit"); o.Health != tt.origin {
+			t.Fatalf("cache %q: origin %s, want %s", tt.cache, o.Health, tt.origin)
+		}
+	}
+
+	// Nothing answered: the fault may be at the edge or anywhere behind it.
+	rows = rows[:0]
+	for i := 0; i < 3; i++ {
+		rows = append(rows, through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", "", "", false))
+	}
+	s = Build(c, "a", "home", rows, nil, now)
+	if e, o := findEntity(t, s.Nodes, "edge"), findEntity(t, s.Nodes, "dmit"); e.Health == "up" || !e.Affected || !o.Affected {
+		t.Fatal("unanswered requests cleared a hop", e, o)
+	}
+	if strings.Contains(s.Incidents[0].Hypothesis, "edge in front answered") {
+		t.Fatal("claimed an answer that never came", s.Incidents[0])
+	}
+}

@@ -147,7 +147,7 @@ topo preview --json                  # Emits a synthetic snapshot JSON without e
 topo preview --print-topology        # Dumps the built-in topology JSON to stdout for customization via topo edit
 ```
 
-In the built-in preview topology: local workstations connect across primary transit gateways to regional egress nodes for external verification; a backup transit gateway serves as failover; Tailscale connects nodes across locations; and a central cloud relay provides DERP relaying and reverse proxying. Press `x` to switch scenarios (transit filtering, host downtime, egress IP drift, local uplink failure, maintenance, clock skew, collector unreachable, etc.). CLI-specified scenarios initialize in an established state; switching scenarios inside the TUI begins at the current time, applying confirmation thresholds and expiration rules in real time. Evidence is derived from simulated observations through the state engine rather than hardcoded UI colors. Press `D` to toggle debug overlays (frame render duration, redraw bytes, map node count). The topology in preview mode is read-only.
+In the built-in preview topology: local workstations connect across primary transit gateways to regional egress nodes for external verification; a backup transit gateway serves as failover; Tailscale connects nodes across locations; a central cloud relay provides DERP relaying and reverse proxying; and Cloudflare fronts the main site while running a Worker and a Pages site, beside a Vercel app that depends on Supabase. Press `x` to switch scenarios (transit filtering, host downtime, egress IP drift, local uplink failure, maintenance, clock skew, an origin down behind Cloudflare, the edge unreachable from the mainland, collector unreachable, etc.). CLI-specified scenarios initialize in an established state; switching scenarios inside the TUI begins at the current time, applying confirmation thresholds and expiration rules in real time. Evidence is derived from simulated observations through the state engine rather than hardcoded UI colors. Press `D` to toggle debug overlays (frame render duration, redraw bytes, map node count). The topology in preview mode is read-only.
 
 When collectors are unreachable, cached data is retained but items transition to `unknown` and are marked CACHED. Switching to a backup collector never silently changes the observer vantage point. The TUI queries the HTTP API every 3 seconds (preview mode regenerates synthetic snapshots every second); SSE and browser-based frontends are not implemented.
 
@@ -163,6 +163,7 @@ When collectors are unreachable, cached data is retained but items transition to
 | Executor stops reporting | That observer perspective gradually transitions to stale / unknown; does not mark all remote assets down |
 | Registered but unmonitored service | Marked "registered, not monitored"; does not default to green |
 | Primary path fails while candidate path succeeds | Candidate reported available, redundancy degraded; does not automatically assert production traffic has switched |
+| Request through Cloudflare gets HTTP 521 from the edge | The edge answered and stays up; the origin is not credited with the edge's answer; the incident places the fault behind the edge without establishing the origin's own state |
 
 Health outcomes, evidence sources, and freshness are distinct fields. The Services tab displays configured access check results, not unmeasured process internals. Dependency propagation flags affected scope without fabricating downstream downtime evidence. Incident analysis does not make inferences about upstream middlebox enforcement, broad IP blocking, untested UDP ports, or physical server power status.
 
@@ -177,6 +178,21 @@ Layered proxy protocols (such as Reality, XHTTP, or VLESS) are hosted by externa
 The Mihomo adapter reads only `/configs`, `/proxies`, and `/providers/proxies`, recursively expands `dialer-proxy` chains, and records mode, TUN status, selected nodes, provider names/order, and test URLs. It is forbidden from invoking latency measurement endpoints that could influence routing decisions, and never queries full client connection tables. Parameter consistency cannot be verified solely by node name, and sequential API reads do not form an atomic snapshot.
 
 Tailscale status is queried via local `tailscale status --json`; WireGuard reads handshakes and byte counters via `wg show <interface> dump` while stripping private keys. Both serve as auxiliary telemetry and do not substitute for end-to-end service checks; idle states or older handshakes do not immediately declare outages. Missing host executables report monitor-side errors.
+
+## Edges and Platforms
+
+Sites behind Cloudflare and apps on Cloudflare Workers or Pages, Vercel or Supabase are modeled directly. An edge network is a node of kind `edge` with a `provider`; a managed platform is a node of kind `platform` (which may carry its region as a location). A service deployed there names it as its node and says how it runs in `runtime`; an address served through an edge lists the edge in `via`:
+
+```json
+"nodes":     [{"id": "cf", "name": "Cloudflare", "kind": "edge", "provider": "cloudflare"},
+              {"id": "db", "name": "Supabase", "kind": "platform", "provider": "supabase",
+               "location": {"label": "Tokyo", "lat": 35.68, "lon": 139.77}}],
+"endpoints": [{"id": "blog-web", "node": "origin", "address": "https://www.example.invalid/", "network": "public", "via": ["cf"]},
+              {"id": "short", "node": "cf", "address": "https://go.example.invalid/healthz", "network": "public"}],
+"services":  [{"id": "shortlinks", "name": "Short links", "node": "cf", "runtime": "workers", "endpoints": ["short"]}]
+```
+
+The edge answers first, and the evidence says so. Any answer from it, even an error page, proves the edge; the origin behind it counts only a passing response that the edge did not serve from its cache. HTTP probes record which edge answered and from where (`CF-Ray`, `X-Vercel-Id`, `X-Amz-Cf-Pop`, `X-Served-By`) and whether its cache served the response, so a check's evidence reads, for example, *answered by Cloudflare NRT · cache DYNAMIC*. In the TUI, services list the way in (`Cloudflare ⇢ S1`) or where they run (`Cloudflare · workers`), and the maps draw an implied hop from an edge to the node behind it when no link declares one.
 
 ## Multi-Location and Dual Collector Deployment
 

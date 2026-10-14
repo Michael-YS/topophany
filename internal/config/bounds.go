@@ -28,6 +28,9 @@ func PresentationBounds(c model.Config) error {
 	for _, s := range c.Services {
 		references += len(s.Endpoints) + len(s.DependsOn)
 	}
+	for _, e := range c.Endpoints {
+		references += len(e.Via)
+	}
 	if references > 8192 {
 		return errors.New("topology exceeds 8192 graph references")
 	}

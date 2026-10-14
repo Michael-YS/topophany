@@ -267,3 +267,52 @@ func TestDisabledAndUnsupportedAreNotInventedMeasurements(t *testing.T) {
 		t.Fatal("missing contract revision")
 	}
 }
+
+// An edge in front of an origin answers for it, even when the origin is
+// gone: the probe keeps which edge, where and whether from its cache.
+func TestHTTPRecordsTheEdgeThatAnswered(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cf-Ray", "8f2c1b2a3d4e5f60-NRT")
+		w.Header().Set("Cf-Cache-Status", "dynamic")
+		w.WriteHeader(521)
+		_, _ = io.WriteString(w, "web server is down")
+	}))
+	defer s.Close()
+	o := (Runner{}).Run(context.Background(), testkit.Config(), httpCheck(s.URL))
+	if o.Outcome != "fail" || o.Code != "unexpected_status" || !o.Connectivity || o.Facts["http_status"] != "521" {
+		t.Fatalf("edge error page: %+v", o)
+	}
+	if o.Facts["edge_provider"] != "cloudflare" || o.Facts["edge_pop"] != "NRT" || o.Facts["edge_cache"] != "DYNAMIC" {
+		t.Fatal("edge facts", o.Facts)
+	}
+}
+
+func TestEdgeFactsFromEachNetworkAndUntrustedValues(t *testing.T) {
+	header := func(kv ...string) http.Header {
+		h := http.Header{}
+		for i := 0; i+1 < len(kv); i += 2 {
+			h.Add(kv[i], kv[i+1])
+		}
+		return h
+	}
+	for _, tt := range []struct {
+		h                             http.Header
+		provider, pop, region, cached string
+	}{
+		{header("Cf-Ray", "8f2c1b2a3d4e5f60-LAX", "Cf-Cache-Status", "HIT"), "cloudflare", "LAX", "", "HIT"},
+		{header("X-Vercel-Id", "hnd1::iad1::abcd-1700000000000-0123456789ab", "X-Vercel-Cache", "MISS"), "vercel", "hnd1", "iad1", "MISS"},
+		{header("X-Vercel-Id", "sin1::abcd-1700000000000"), "vercel", "sin1", "", ""},
+		{header("X-Amz-Cf-Pop", "NRT57-P1", "X-Cache", "Hit from cloudfront"), "cloudfront", "NRT57-P1", "", "HIT"},
+		{header("X-Served-By", "cache-iad-kiad7000025-IAD, cache-nrt-rjtf7700040-NRT", "X-Cache", "MISS, HIT"), "fastly", "NRT", "", "HIT"},
+		{header("Server", "Netlify", "Cache-Status", `"Netlify Durable"; fwd=bypass, "Netlify Edge"; hit`), "netlify", "", "", "HIT"},
+		{header("Server", "nginx"), "", "", "", ""},
+		// Header values are untrusted: kept short and free of anything
+		// that is not a label character.
+		{header("Cf-Ray", "x-NRT\x1b[2J"+strings.Repeat("A", 64), "Cf-Cache-Status", "hit\r\n"), "cloudflare", "NRT2J" + strings.Repeat("A", 19), "", "HIT"},
+	} {
+		f := EdgeFacts(tt.h)
+		if f["edge_provider"] != tt.provider || f["edge_pop"] != tt.pop || f["edge_region"] != tt.region || f["edge_cache"] != tt.cached {
+			t.Fatalf("%v: %v", tt.h, f)
+		}
+	}
+}

@@ -299,20 +299,31 @@ func (m *Model) tabRows(tab int) []Row {
 			seen[n.ID] = true
 			e := find(nodeStates, n.ID)
 			place := "Location: not declared"
-			if l := n.Location; l != nil {
+			switch l := n.Location; {
+			case l != nil:
 				place = fmt.Sprintf("Location: %s (%.2f, %.2f) — declared, not inferred from IP", l.Label, l.Lat, l.Lon)
+			case n.Kind == "edge":
+				place = "Location: anycast edge — answers from many places"
 			}
-			details := []string{"", "Node identity: " + n.ID, "Group: " + n.Group, "Kind: " + n.Kind, "Parent: " + n.Parent, place, "", n.Notes, "", "Access endpoints:"}
+			details := []string{"", "Node identity: " + n.ID, "Group: " + n.Group, "Kind: " + n.Kind, "Provider: " + providerName(n.Provider), "Parent: " + n.Parent, place, "", n.Notes, "", "Access endpoints:"}
 			eps := []model.Endpoint{}
+			fronts := []string{}
 			for _, ep := range s.Topology.Endpoints {
 				if ep.Node == n.ID {
-					details = append(details, ep.ID+" ["+ep.Network+"] "+ep.Address)
+					details = append(details, ep.ID+" ["+ep.Network+"] "+ep.Address+via(ep))
 					eps = append(eps, ep)
 				}
+				if contains(ep.Via, n.ID) {
+					fronts = append(fronts, ep.ID+" → "+nodeNames[ep.Node])
+				}
+			}
+			if len(fronts) > 0 {
+				details = append(details, "", "Answers first for:")
+				details = append(details, fronts...)
 			}
 			r := entity("node", e, nodeNames[n.ID], n.Group, details)
 			r.Tree = guide + branch
-			r.Cols = []string{n.Group, n.Kind}
+			r.Cols = []string{n.Group, kindLabel(n)}
 			rows = append(rows, r)
 			next := guide
 			switch branch {
@@ -328,7 +339,16 @@ func (m *Model) tabRows(tab int) []Row {
 					b = "└ "
 				}
 				h := aggregateHealth(checkHealth[ep.ID])
-				rows = append(rows, Row{Kind: "endpoint", ID: ep.ID, Health: h, Title: ep.ID, Meta: ep.Network, Tree: next + b, Cols: []string{ep.Network, ep.Address}, Details: []string{"Endpoint: " + ep.ID, "Node: " + ep.Node, "Address: " + ep.Address, "Network: " + ep.Network, "Execution scope: " + ep.Observer, "", "Health aggregates checks that target this endpoint.", "", ep.Notes}})
+				details := []string{"Endpoint: " + ep.ID, "Node: " + ep.Node, "Address: " + ep.Address, "Network: " + ep.Network, "Execution scope: " + ep.Observer}
+				if len(ep.Via) > 0 {
+					hops := []string{}
+					for _, v := range ep.Via {
+						hops = append(hops, nodeNames[v])
+					}
+					details = append(details, "Reached via: "+strings.Join(append(hops, nodeNames[ep.Node]), " → "), "", "An edge in front answers first: its answer proves the edge; the node behind it counts only a passing response not served from the edge's cache.")
+				}
+				details = append(details, "", "Health aggregates checks that target this endpoint.", "", ep.Notes)
+				rows = append(rows, Row{Kind: "endpoint", ID: ep.ID, Health: h, Title: ep.ID, Meta: ep.Network, Tree: next + b, Cols: []string{ep.Network + via(ep), ep.Address}, Details: details})
 			}
 			for i, k := range kids {
 				b := "├ "
@@ -361,8 +381,18 @@ func (m *Model) tabRows(tab int) []Row {
 				if d.ID == e.ID {
 					title = d.Name
 					meta = nodeNames[d.Node]
-					cols = []string{nodeNames[d.Node], strings.Join(d.Endpoints, ", ")}
-					details = []string{"", "Hosted on: " + d.Node, "Endpoints: " + strings.Join(d.Endpoints, ", "), "Depends on: " + strings.Join(d.DependsOn, ", "), "Runbook (not auto-executed): " + d.Runbook, "", d.Notes}
+					// The host column reads as the way in: the edges in
+					// front, then the host and how the service runs there.
+					host := nodeNames[d.Node]
+					if d.Runtime != "" {
+						host += " · " + d.Runtime
+					}
+					front := viaNames(s.Topology, d.Endpoints, nodeNames)
+					if len(front) > 0 {
+						host = strings.Join(front, " ⇢ ") + " ⇢ " + host
+					}
+					cols = []string{host, strings.Join(d.Endpoints, ", ")}
+					details = []string{"", "Hosted on: " + d.Node, "Runtime: " + d.Runtime, "Endpoints: " + strings.Join(d.Endpoints, ", "), "Reached via: " + strings.Join(front, " → "), "Depends on: " + strings.Join(d.DependsOn, ", "), "Runbook (not auto-executed): " + d.Runbook, "", d.Notes}
 					break
 				}
 			}
@@ -419,7 +449,11 @@ func (m *Model) tabRows(tab int) []Row {
 			if e.Last != nil {
 				v := e.Last
 				took = fmt.Sprintf("%d ms", v.DurationMS)
-				details = append(details, "", "Last sample: "+v.SampledAt.Local().Format("2006-01-02 15:04:05 MST"), "Sample age: "+age(m.Now, v.SampledAt), "Collector received: "+v.ReceivedAt.Local().Format(time.RFC3339), "Outcome: "+v.Outcome, "Stage: "+v.Stage, "Code: "+v.Code, fmt.Sprintf("Elapsed: %d ms", v.DurationMS), "Path evidence: "+v.PathEvidence, "", v.Detail)
+				details = append(details, "", "Last sample: "+v.SampledAt.Local().Format("2006-01-02 15:04:05 MST"), "Sample age: "+age(m.Now, v.SampledAt), "Collector received: "+v.ReceivedAt.Local().Format(time.RFC3339), "Outcome: "+v.Outcome, "Stage: "+v.Stage, "Code: "+v.Code, fmt.Sprintf("Elapsed: %d ms", v.DurationMS), "Path evidence: "+v.PathEvidence)
+				if edge := edgeAnswer(v.Facts); edge != "" {
+					details = append(details, "Answered by: "+edge+" (response headers, not verified routing)")
+				}
+				details = append(details, "", v.Detail)
 				keys := []string{}
 				for k := range v.Facts {
 					keys = append(keys, k)
@@ -478,6 +512,14 @@ func (m *Model) tabColumns() []string {
 		return []string{"OBSERVER", "HOST", "LAST SEEN"}
 	}
 	return nil
+}
+
+// via is the " · via …" suffix of an endpoint reached through edges.
+func via(ep model.Endpoint) string {
+	if len(ep.Via) == 0 {
+		return ""
+	}
+	return " · via " + strings.Join(ep.Via, " → ")
 }
 
 func aggregateHealth(hs []string) string {

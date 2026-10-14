@@ -46,7 +46,7 @@ func detailHeading(l string) bool {
 	return strings.HasSuffix(l, ":") && !strings.Contains(strings.TrimSuffix(l, ":"), ": ")
 }
 
-var caveats = []string{"No inference", "A declared path", "Directed initiation", "Health aggregates", "Each "}
+var caveats = []string{"No inference", "A declared path", "Directed initiation", "Health aggregates", "Each ", "An edge in front"}
 
 // valueStyle colors values whose words carry state.
 func valueStyle(key, v string) (string, Style) {

@@ -148,6 +148,35 @@
       "notes": "Forgejo + 备份仓库"
     },
     {
+      "id": "cf",
+      "name": "Cloudflare",
+      "kind": "edge",
+      "group": "边缘平台",
+      "provider": "cloudflare",
+      "notes": "橙云代理主站与 API（Full (strict) 回源 S1）；另跑短链 Worker 和文档站 Pages"
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "kind": "edge",
+      "group": "边缘平台",
+      "provider": "vercel",
+      "notes": "个人主页 Next.js；静态资源在边缘，函数区域 hnd1"
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "kind": "platform",
+      "group": "边缘平台",
+      "provider": "supabase",
+      "location": {
+        "label": "Tokyo",
+        "lat": 35.68,
+        "lon": 139.77
+      },
+      "notes": "托管 Postgres + Auth，项目区域 ap-northeast-1（东京）"
+    },
+    {
       "id": "internet",
       "name": "互联网 (出口校验目标)",
       "kind": "external",
@@ -296,13 +325,19 @@
       "id": "s1-web",
       "node": "s1",
       "address": "https://www.example.invalid/",
-      "network": "public"
+      "network": "public",
+      "via": [
+        "cf"
+      ]
     },
     {
       "id": "s1-api",
       "node": "s1",
       "address": "https://api.example.invalid/healthz",
-      "network": "public"
+      "network": "public",
+      "via": [
+        "cf"
+      ]
     },
     {
       "id": "s1-web-local",
@@ -378,6 +413,31 @@
       "node": "de",
       "address": "http://100.64.0.80:8000/",
       "network": "tailnet"
+    },
+    {
+      "id": "cf-worker",
+      "node": "cf",
+      "address": "https://go.example.invalid/healthz",
+      "network": "public"
+    },
+    {
+      "id": "cf-pages",
+      "node": "cf",
+      "address": "https://docs.example.invalid/",
+      "network": "public"
+    },
+    {
+      "id": "vercel-app",
+      "node": "vercel",
+      "address": "https://app.example.invalid/api/health",
+      "network": "public"
+    },
+    {
+      "id": "supabase-rest",
+      "node": "supabase",
+      "address": "https://db.example.invalid/rest/v1/",
+      "network": "public",
+      "notes": "REST 网关健康；不是 SQL 查询"
     },
     {
       "id": "exit-check",
@@ -543,6 +603,45 @@
         "postgres"
       ],
       "notes": "仅登记；没有真实回执检查时不伪造心跳"
+    },
+    {
+      "id": "shortlink",
+      "name": "短链 (Worker)",
+      "node": "cf",
+      "runtime": "workers",
+      "endpoints": [
+        "cf-worker"
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "文档站 (Pages)",
+      "node": "cf",
+      "runtime": "pages",
+      "endpoints": [
+        "cf-pages"
+      ]
+    },
+    {
+      "id": "webapp",
+      "name": "个人主页 (Next.js)",
+      "node": "vercel",
+      "runtime": "functions",
+      "endpoints": [
+        "vercel-app"
+      ],
+      "depends_on": [
+        "supabase-db"
+      ]
+    },
+    {
+      "id": "supabase-db",
+      "name": "Supabase Postgres",
+      "node": "supabase",
+      "runtime": "postgres",
+      "endpoints": [
+        "supabase-rest"
+      ]
     }
   ],
   "links": [
@@ -631,10 +730,16 @@
       "transport": "HTTPS 反代入口"
     },
     {
-      "id": "visitors-s1",
+      "id": "visitors-cf",
       "from": "visitors",
+      "to": "cf",
+      "transport": "HTTPS · 橙云代理"
+    },
+    {
+      "id": "cf-s1",
+      "from": "cf",
       "to": "s1",
-      "transport": "HTTPS 主站"
+      "transport": "回源 HTTPS · Full (strict)"
     },
     {
       "id": "visitors-jp",
@@ -647,6 +752,18 @@
       "from": "visitors",
       "to": "de",
       "transport": "HTTPS git"
+    },
+    {
+      "id": "visitors-vercel",
+      "from": "visitors",
+      "to": "vercel",
+      "transport": "HTTPS"
+    },
+    {
+      "id": "vercel-supabase",
+      "from": "vercel",
+      "to": "supabase",
+      "transport": "supabase-js · HTTPS"
     },
     {
       "id": "s1-de",
@@ -985,6 +1102,7 @@
       "observer": "obs-hz",
       "nodes": [
         "hz",
+        "cf",
         "s1"
       ]
     },
@@ -1033,6 +1151,7 @@
       "observer": "obs-jp",
       "nodes": [
         "jp",
+        "cf",
         "s1"
       ]
     },
@@ -1892,6 +2011,96 @@
       "recovery_threshold": 2,
       "path": "j-dmit",
       "target": "192.0.2.10"
+    },
+    {
+      "id": "j-worker",
+      "name": "短链 Worker",
+      "observer": "obs-jp",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 5,
+      "stale_seconds": 50,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "endpoint": "cf-worker",
+      "service": "shortlink",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "h-worker",
+      "name": "国内访问短链 Worker",
+      "observer": "obs-hz",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 5,
+      "stale_seconds": 50,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "endpoint": "cf-worker",
+      "service": "shortlink",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "j-docs",
+      "name": "文档站 Pages",
+      "observer": "obs-jp",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 5,
+      "stale_seconds": 50,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "endpoint": "cf-pages",
+      "service": "docs",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "j-webapp",
+      "name": "个人主页 (Vercel)",
+      "observer": "obs-jp",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 5,
+      "stale_seconds": 50,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "endpoint": "vercel-app",
+      "service": "webapp",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "s-supabase",
+      "name": "Supabase REST",
+      "observer": "obs-s1",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 5,
+      "stale_seconds": 50,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "endpoint": "supabase-rest",
+      "service": "supabase-db",
+      "http": {
+        "status": [
+          200
+        ]
+      }
     }
   ]
 }

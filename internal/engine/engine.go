@@ -4,6 +4,7 @@ package engine
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -169,7 +170,12 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 		endpoints[e.ID] = e
 	}
 	for _, n := range c.Nodes {
-		states := group(func(x model.Check) bool { return endpoints[x.Endpoint].Node == n.ID && x.Endpoint != "" })
+		// A node's evidence comes from checks on its own endpoints and on
+		// endpoints reached through it as an edge or proxy.
+		states := group(func(x model.Check) bool {
+			ep, ok := endpoints[x.Endpoint]
+			return ok && (ep.Node == n.ID || slices.Contains(ep.Via, n.ID))
+		})
 		s := model.EntityState{ID: n.ID, Health: "unknown", Evidence: "unknown", Reason: "no fresh remote-response evidence"}
 		failures := 0
 		proof := []string{}
@@ -178,11 +184,12 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			if cs.Freshness != "fresh" || cs.Last == nil {
 				continue
 			}
-			v := cs.Last
-			if v.Evidence == "measured" && v.Connectivity && v.Facts["response_proof"] != "" && v.Facts["response_proof"] != "none" {
+			x := checks[cs.ID]
+			ep := endpoints[x.Endpoint]
+			if answered(ep, n.ID, x.Kind, cs.Last) {
 				proof = append(proof, cs.ID)
 			}
-			if cs.Health == "down" {
+			if cs.Health == "down" && implicated(ep, n.ID, cs.Last) {
 				failures++
 			}
 		}
@@ -296,12 +303,11 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			}
 		}
 		for _, x := range c.Checks {
-			if x.Service == id && x.Path != "" && relevant(x) {
-				p := evalPath(x.Path)
-				if p.Health == "down" {
-					s.Affected = true
-					s.Reason += "; access path unavailable, intrinsic service state not established"
+			if x.Service == id && x.Path != "" && relevant(x) && evalPath(x.Path).Health == "down" {
+				if !strings.HasSuffix(s.Reason, unavailable) {
+					s.Reason += unavailable
 				}
+				s.Affected = true
 			}
 		}
 		serviceStates[id] = s
@@ -349,14 +355,19 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			inc.Since = s.Since
 		}
 		if !policy && x.Endpoint != "" {
-			node := endpoints[x.Endpoint].Node
+			ep := endpoints[x.Endpoint]
 			for _, other := range c.Checks {
 				cs := allStates[other.ID]
-				if other.Observer != x.Observer && other.Endpoint != "" && endpoints[other.Endpoint].Node == node && cs.Freshness == "fresh" && cs.Last != nil && cs.Last.Evidence == "measured" && cs.Last.Connectivity && cs.Last.Facts["response_proof"] != "" && cs.Last.Facts["response_proof"] != "none" {
+				oe, ok := endpoints[other.Endpoint]
+				if other.Observer != x.Observer && ok && (oe.Node == ep.Node || slices.Contains(oe.Via, ep.Node)) && cs.Freshness == "fresh" && cs.Last != nil && answered(oe, ep.Node, other.Kind, cs.Last) {
 					inc.CounterEvidence = boundedChecks(inc.CounterEvidence, []string{other.ID})
 				}
 			}
-			if len(inc.CounterEvidence) > 0 {
+			switch {
+			case len(ep.Via) > 0 && s.Last.Connectivity:
+				// The edge in front answered; whatever failed is behind it.
+				inc.Hypothesis = "the edge in front answered" + withStatus(s.Last) + "; the fault lies behind it, at the origin or on the edge's leg to it, and the origin's own state is not established"
+			case len(inc.CounterEvidence) > 0:
 				inc.Hypothesis = "source/path-specific interference, filtering or routing fault is possible; blocking authority and untested protocols are not established"
 			}
 		}
@@ -370,6 +381,47 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 	sort.Slice(out.Incidents, func(i, j int) bool { return out.Incidents[i].ID < out.Incidents[j].ID })
 	return out
 }
+
+const unavailable = "; access path unavailable, intrinsic service state not established"
+
+// answered reports whether v is remote-response evidence for node: the
+// endpoint's own node, or an edge or proxy in its via chain. The first hop
+// answers whatever happens behind it, even with an error page, so any
+// response proves it; the nodes behind it count only a passing HTTP
+// response that the edge did not serve from its cache.
+func answered(ep model.Endpoint, node, kind string, v *model.Observation) bool {
+	if v.Evidence != "measured" || !v.Connectivity || v.Facts["response_proof"] == "" || v.Facts["response_proof"] == "none" {
+		return false
+	}
+	if len(ep.Via) == 0 || ep.Via[0] == node {
+		return true
+	}
+	return kind == "http" && v.Outcome == "ok" && !edgeCached(v.Facts["edge_cache"])
+}
+
+// implicated reports whether a confirmed failure of a check on ep may lie at
+// node: anywhere along the chain, except at a first hop that answered.
+func implicated(ep model.Endpoint, node string, v *model.Observation) bool {
+	return len(ep.Via) == 0 || ep.Via[0] != node || !v.Connectivity
+}
+
+// edgeCached reports whether an edge cache status says the edge answered
+// from its cache, without asking the origin.
+func edgeCached(status string) bool {
+	switch status {
+	case "HIT", "STALE", "UPDATING", "PRERENDER":
+		return true
+	}
+	return false
+}
+
+func withStatus(v *model.Observation) string {
+	if code := v.Facts["http_status"]; code != "" {
+		return " with HTTP " + code
+	}
+	return ""
+}
+
 func dedup(s []string) []string {
 	out := s[:0]
 	for _, v := range s {

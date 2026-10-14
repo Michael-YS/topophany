@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -127,6 +128,9 @@ func Validate(c model.Config) error {
 		if !nodes[s.Node] {
 			return fmt.Errorf("service %s: missing node", s.ID)
 		}
+		if len(s.Runtime) > 32 || secure.Text(s.Runtime) != s.Runtime {
+			return fmt.Errorf("service %s: runtime must be a short label", s.ID)
+		}
 	}
 	for _, o := range c.Observers {
 		if e := unique(obs, o.ID, "observer"); e != nil {
@@ -148,6 +152,9 @@ func Validate(c model.Config) error {
 				return fmt.Errorf("node %s: location needs lat -90..90, lon -180..180 and a short label", n.ID)
 			}
 		}
+		if len(n.Provider) > 64 || secure.Text(n.Provider) != n.Provider {
+			return fmt.Errorf("node %s: provider must be a short label", n.ID)
+		}
 	}
 	for _, ep := range c.Endpoints {
 		if !ID(ep.ID) || ends[ep.ID].ID != "" || !nodes[ep.Node] || ep.Address == "" {
@@ -164,6 +171,16 @@ func Validate(c model.Config) error {
 		}
 		if ep.Observer != "" && !obs[ep.Observer] {
 			return fmt.Errorf("endpoint %s: unknown observer", ep.ID)
+		}
+		// via lists the edges and proxies a client reaches before the
+		// endpoint's own node, in order; none may repeat or be that node.
+		if len(ep.Via) > 8 {
+			return fmt.Errorf("endpoint %s: at most 8 via hops", ep.ID)
+		}
+		for i, v := range ep.Via {
+			if !nodes[v] || v == ep.Node || slices.Contains(ep.Via[:i], v) {
+				return fmt.Errorf("endpoint %s: via needs distinct known nodes other than its own", ep.ID)
+			}
 		}
 		ends[ep.ID] = ep
 	}
