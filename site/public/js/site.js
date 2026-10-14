@@ -1,0 +1,445 @@
+import { Screen } from './term.js';
+import { Globe, Wordmark, loadLand, bayer8 } from './globe.js';
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+
+// ---------------------------------------------------------------- nav
+
+const nav = $('.nav');
+const onScroll = () => nav.classList.toggle('scrolled', scrollY > 24);
+addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+// ---------------------------------------------------------------- hero
+
+// The About tab's reference places; links carry the map's evidence colours.
+const PLACES = [
+  { name: 'Shanghai', lat: 31.2, lon: 121.5 }, { name: 'Tokyo', lat: 35.7, lon: 139.7 },
+  { name: 'Singapore', lat: 1.35, lon: 103.8 }, { name: 'Frankfurt', lat: 50.1, lon: 8.7 },
+  { name: 'London', lat: 51.5, lon: -0.1 }, { name: 'Ashburn', lat: 39.0, lon: -77.5 },
+  { name: 'Los Angeles', lat: 34.05, lon: -118.25 }, { name: 'São Paulo', lat: -23.5, lon: -46.6 },
+  { name: 'Sydney', lat: -33.9, lon: 151.2 }, { name: 'Mumbai', lat: 19.1, lon: 72.9 },
+];
+const at = (name) => { const p = PLACES.find((q) => q.name === name); return [p.lat, p.lon]; };
+const LINKS = [
+  ['Shanghai', 'Tokyo', 'up'], ['Shanghai', 'Los Angeles', 'down'], ['Tokyo', 'Los Angeles', 'up'],
+  ['Singapore', 'Sydney', 'up'], ['Singapore', 'Mumbai', 'up'], ['Mumbai', 'Frankfurt', 'warn'],
+  ['Frankfurt', 'London', 'up'], ['London', 'Ashburn', 'up'], ['Ashburn', 'São Paulo', 'unknown'],
+  ['Los Angeles', 'Ashburn', 'up'], ['Shanghai', 'Singapore', 'up'],
+].map(([a, b, state]) => ({ from: at(a), to: at(b), state }));
+
+function hero() {
+  const heroEl = $('.hero');
+  const sky = $('.sky');
+  const sctx = sky.getContext('2d');
+  const wordmark = new Wordmark($('.wordmark'));
+  const globeEl = $('.globe');
+  const globe = new Globe(globeEl, { places: PLACES, links: LINKS, lon: 121.5 });
+  let stars = [];
+  let landReady = false;
+
+  const layout = () => {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const r = heroEl.getBoundingClientRect();
+    sky.width = Math.round(r.width * dpr);
+    sky.height = Math.round(r.height * dpr);
+    // Sparse stars, fixed per layout, each with its own twinkle.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const n = Math.round((r.width * r.height) / 5200);
+    stars = Array.from({ length: n }, () => ({
+      x: rnd() * sky.width, y: rnd() * sky.height, r: (0.5 + rnd() * 0.9) * dpr,
+      b: 0.15 + rnd() * 0.5, s: 0.4 + rnd() * 1.4, p: rnd() * 6.28,
+    }));
+    wordmark.resize($('.hero-copy').clientWidth);
+    const size = globeEl.clientWidth || 480;
+    globe.resize(size, Math.max(3.4, Math.min(5.2, size / 116)));
+  };
+
+  const drawSky = (t) => {
+    sctx.clearRect(0, 0, sky.width, sky.height);
+    for (const s of stars) {
+      const tw = 0.5 + 0.5 * Math.sin(t * s.s + s.p);
+      sctx.fillStyle = `rgba(131,147,163,${(s.b * (0.35 + 0.65 * tw)).toFixed(3)})`;
+      sctx.beginPath();
+      sctx.arc(s.x, s.y, s.r, 0, 6.283);
+      sctx.fill();
+    }
+  };
+
+  // Drag turns the world, and lets go with a little momentum.
+  let dragging = false, lastX = 0, vel = 0;
+  globeEl.addEventListener('pointerdown', (e) => {
+    dragging = true; lastX = e.clientX; vel = 0;
+    globeEl.setPointerCapture(e.pointerId);
+    globeEl.classList.add('dragging');
+  });
+  globeEl.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    lastX = e.clientX;
+    vel = dx * 0.006;
+    globe.drag += vel;
+    if (reduced) globe.draw(0);
+  });
+  const release = () => { dragging = false; globeEl.classList.remove('dragging'); };
+  globeEl.addEventListener('pointerup', release);
+  globeEl.addEventListener('pointercancel', release);
+
+  layout();
+  let resizeTimer;
+  new ResizeObserver(() => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { layout(); if (reduced) still(); }, 60);
+  }).observe(heroEl);
+
+  const still = () => {
+    drawSky(0);
+    wordmark.draw(6);
+    if (landReady) globe.draw(0);
+  };
+
+  loadLand('/data/land.bin').then(() => {
+    landReady = true;
+    globeEl.classList.add('ready');
+    if (reduced) still();
+  });
+
+  if (reduced) { still(); return; }
+
+  let visible = true, start = performance.now(), last = 0;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible) requestAnimationFrame(frame); }).observe(heroEl);
+  function frame(now) {
+    if (!visible || document.hidden) return;
+    requestAnimationFrame(frame);
+    if (now - last < 33) return; // 30 fps is plenty for a slow world
+    last = now;
+    const t = (now - start) / 1000;
+    if (!dragging && Math.abs(vel) > 0.0002) { globe.drag += vel; vel *= 0.94; }
+    drawSky(t);
+    wordmark.draw(t);
+    if (landReady) globe.draw(t);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) requestAnimationFrame(frame); });
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- tour
+
+class Player {
+  constructor(root, data) {
+    this.root = root;
+    this.data = data;
+    this.canvas = $('#term-canvas', root);
+    this.screen = new Screen(this.canvas, data.size[0], data.size[1], data.styles);
+    this.buttons = $$('#chapters button');
+    this.chapters = data.chapters.map((c) => ({ ...c, total: c.frames.reduce((s, f) => s + f.d, 0) }));
+    this.index = new Map(this.chapters.map((c, i) => [c.id, i]));
+    this.ci = 0;
+    this.fi = 0;
+    this.acc = 0;
+    this.played = 0;
+    this.playing = !reduced;
+    this.visible = false;
+    this.last = 0;
+    this.title = $('#cap-title');
+    this.text = $('#cap-text');
+    this.toastEl = null;
+
+    this.buttons.forEach((b) => b.addEventListener('click', () => {
+      const i = this.index.get(b.dataset.chapter);
+      if (i !== undefined) this.seek(i, true);
+    }));
+    $('.term-play', root).addEventListener('click', () => this.toggle());
+    this.canvas.addEventListener('keydown', (e) => this.key(e));
+    this.canvas.addEventListener('click', (e) => this.click(e));
+    new ResizeObserver(() => { if (this.screen.resize()) this.screen.paint(); }).observe(this.canvas.parentElement);
+    new IntersectionObserver(([e]) => {
+      this.visible = e.isIntersecting;
+      if (this.visible) this.kick();
+    }, { threshold: 0.2 }).observe(root);
+    document.addEventListener('visibilitychange', () => this.kick());
+
+    root.classList.add('loaded');
+    if (reduced) {
+      // A still: the outage, settled.
+      this.seek(0);
+      const ch = this.chapters[0];
+      for (let i = 1; i < ch.frames.length; i++) this.screen.apply(ch.frames[i].ops);
+      this.fi = ch.frames.length - 1;
+      this.screen.paint();
+      this.setPlaying(false);
+    } else {
+      this.seek(0);
+    }
+  }
+
+  seek(i, user = false) {
+    this.ci = (i + this.chapters.length) % this.chapters.length;
+    this.fi = 0;
+    this.acc = 0;
+    this.played = 0;
+    const ch = this.chapters[this.ci];
+    this.screen.apply(ch.frames[0].ops);
+    this.screen.paint();
+    this.buttons.forEach((b, k) => {
+      const on = b.dataset.chapter === ch.id;
+      if (on) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+      b.parentElement.classList.toggle('done', k < this.ci);
+      $('.ch-bar i', b).style.width = '';
+      if (on) {
+        this.title.textContent = b.dataset.title;
+        this.text.textContent = b.dataset.text;
+        this.canvas.setAttribute('aria-label', `Recording of the Topophany terminal UI: ${b.dataset.title}. ${b.dataset.text}`);
+        const strip = b.closest('.chapters');
+        if (strip.scrollWidth > strip.clientWidth) strip.scrollTo({ left: b.parentElement.offsetLeft - 8, behavior: reduced ? 'auto' : 'smooth' });
+      }
+    });
+    if (user && !this.playing && !reduced) this.setPlaying(true);
+    this.progress();
+  }
+
+  progress() {
+    const ch = this.chapters[this.ci];
+    const b = this.buttons.find((x) => x.dataset.chapter === ch.id);
+    if (b) $('.ch-bar i', b).style.width = `${Math.min(100, ((this.played + this.acc) / ch.total) * 100).toFixed(2)}%`;
+  }
+
+  step() {
+    const ch = this.chapters[this.ci];
+    this.played += ch.frames[this.fi].d;
+    this.fi++;
+    if (this.fi >= ch.frames.length) return this.seek(this.ci + 1);
+    this.screen.apply(ch.frames[this.fi].ops);
+  }
+
+  kick() {
+    if (this.playing && this.visible && !document.hidden && !this.raf) {
+      this.last = performance.now();
+      this.raf = requestAnimationFrame((t) => this.tick(t));
+    }
+  }
+
+  tick(now) {
+    this.raf = 0;
+    if (!this.playing || !this.visible || document.hidden) return;
+    this.acc += Math.min(250, now - this.last);
+    this.last = now;
+    let moved = false;
+    for (let guard = 0; guard < 40; guard++) {
+      const d = this.chapters[this.ci].frames[this.fi].d;
+      if (this.acc < d) break;
+      this.acc -= d;
+      this.step();
+      moved = true;
+    }
+    if (moved) this.screen.paint();
+    this.progress();
+    this.kick();
+  }
+
+  setPlaying(on) {
+    this.playing = on;
+    this.root.classList.toggle('paused', !on);
+    const btn = $('.term-play', this.root);
+    btn.setAttribute('aria-label', on ? 'Pause the replay' : 'Play the replay');
+    btn.setAttribute('aria-pressed', String(!on));
+    $('.term-state', this.root).textContent = on ? 'replay' : 'paused';
+    this.kick();
+  }
+
+  toggle() { this.setPlaying(!this.playing); }
+
+  // Numbers pick a chapter; the TUI's own keys pick the chapter that shows them.
+  key(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const id = this.chapters[this.ci].id;
+    const maps = ['virtual', 'geo', 'network'];
+    const go = (name) => { this.seek(this.index.get(name), true); e.preventDefault(); };
+    const k = e.key;
+    if (k >= '1' && k <= '9' && +k <= this.chapters.length) return go(this.chapters[+k - 1].id);
+    switch (k) {
+      case ' ': this.toggle(); e.preventDefault(); return;
+      case 'm': return go(maps[(maps.indexOf(id) + 1) % maps.length]);
+      case 'v': return go('vantage');
+      case 'x': return go('outage');
+      case 'Enter': return go(id === 'incidents' ? 'incidents' : 'route');
+      case '?': return go('about');
+      case 'ArrowRight': return go(this.chapters[(this.ci + 1) % this.chapters.length].id);
+      case 'ArrowLeft': return go(this.chapters[(this.ci - 1 + this.chapters.length) % this.chapters.length].id);
+    }
+  }
+
+  click(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const [cols, rows] = this.data.size;
+    const x = Math.floor(((e.clientX - r.left) / r.width) * cols);
+    const y = Math.floor(((e.clientY - r.top) / r.height) * rows);
+    if (y !== 1) return;
+    const tab = this.data.tabs.findIndex(([tx, tw]) => x >= tx && x < tx + tw);
+    if (tab < 0) return;
+    const i = this.chapters.findIndex((c) => c.tab === tab);
+    if (i >= 0) this.seek(i, true); else this.toast(tab);
+  }
+
+  toast(tab) {
+    const names = ['Overview', 'Topology', 'Servers', 'Services', 'Paths', 'Checks', 'Incidents', 'Observers', 'About'];
+    if (!this.toastEl) {
+      this.toastEl = document.createElement('div');
+      this.toastEl.className = 'term-toast';
+      this.toastEl.setAttribute('role', 'status');
+      $('.term-screen', this.root).append(this.toastEl);
+    }
+    this.toastEl.innerHTML = '';
+    const b = document.createElement('b');
+    b.textContent = names[tab];
+    const code = document.createElement('code');
+    code.textContent = 'topo preview';
+    this.toastEl.append(b, ' is not in this recording. Run ', code, ' to see it.');
+    this.toastEl.classList.add('on');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.toastEl.classList.remove('on'), 2600);
+  }
+}
+
+function tour() {
+  const root = $('#term');
+  let started = false;
+  const start = async () => {
+    if (started) return;
+    started = true;
+    try {
+      const res = await fetch('/data/tour.json');
+      const data = await res.json();
+      new Player(root, data);
+    } catch (err) {
+      $('.term-loading', root).lastChild.textContent = 'the recording could not be loaded';
+      console.error(err);
+    }
+  };
+  new IntersectionObserver(([e], io) => {
+    if (e.isIntersecting) { io.disconnect(); start(); }
+  }, { rootMargin: '900px 0px' }).observe(root);
+}
+
+// ---------------------------------------------------------------- dot numerals
+
+const DIGITS = {
+  0: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+  1: ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
+  2: ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
+  3: ['#####', '...#.', '..#..', '...#.', '....#', '#...#', '.###.'],
+  4: ['...#.', '..##.', '.#.#.', '#..#.', '#####', '...#.', '...#.'],
+  5: ['#####', '#....', '####.', '....#', '....#', '#...#', '.###.'],
+  6: ['..##.', '.#...', '#....', '####.', '#...#', '#...#', '.###.'],
+  7: ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
+  8: ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
+  9: ['.###.', '#...#', '#...#', '.####', '....#', '...#.', '.##..'],
+};
+const RAMP = ['#f0fdfa', '#a7f3e4', '#5eead4', '#2db3a3', '#1f7f78'];
+
+function dotNumerals() {
+  for (const el of $$('[data-dots]')) {
+    const s = el.dataset.dots;
+    const sub = 2; // two dots to a pixel of the face
+    const w = (s.length * 6 - 1) * sub, h = 7 * sub;
+    let out = '';
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const fx = Math.floor(x / sub), fy = Math.floor(y / sub);
+        if (fx % 6 === 5) continue;
+        const g = DIGITS[s[Math.floor(fx / 6)]];
+        const on = g && g[fy][fx % 6] === '#';
+        if (on) {
+          const v = (y / (h - 1)) * (RAMP.length - 1) + bayer8[y & 7][x & 7] - 0.5;
+          const c = RAMP[Math.max(0, Math.min(RAMP.length - 1, Math.round(v)))];
+          out += `<circle cx="${x * 4 + 2}" cy="${y * 4 + 2}" r="1.45" fill="${c}"/>`;
+        } else {
+          out += `<circle cx="${x * 4 + 2}" cy="${y * 4 + 2}" r=".7" fill="#1a2631"/>`;
+        }
+      }
+    }
+    el.innerHTML = `<svg viewBox="0 0 ${w * 4} ${h * 4}" aria-hidden="true">${out}</svg>`;
+  }
+}
+
+// ---------------------------------------------------------------- small things
+
+function copyButtons() {
+  for (const box of $$('[data-copy]')) {
+    const btn = $('.copy', box);
+    if (!btn) continue;
+    const icon = $('use', btn);
+    btn.addEventListener('click', async () => {
+      const text = box.dataset.copy;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents($('code', box));
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return;
+      }
+      btn.classList.add('done');
+      icon.setAttribute('href', '#check');
+      btn.setAttribute('aria-label', 'Copied');
+      setTimeout(() => {
+        btn.classList.remove('done');
+        icon.setAttribute('href', '#copy');
+        btn.setAttribute('aria-label', 'Copy');
+      }, 1600);
+    });
+  }
+}
+
+function tabs() {
+  for (const box of $$('[data-tabs]')) {
+    const list = $$('[role="tab"]', box);
+    const select = (tab, focus) => {
+      for (const t of list) {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+      }
+      if (focus) tab.focus();
+    };
+    list.forEach((t, i) => {
+      t.addEventListener('click', () => select(t));
+      t.addEventListener('keydown', (e) => {
+        const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+        if (d) { select(list[(i + d + list.length) % list.length], true); e.preventDefault(); }
+        if (e.key === 'Home') { select(list[0], true); e.preventDefault(); }
+        if (e.key === 'End') { select(list[list.length - 1], true); e.preventDefault(); }
+      });
+    });
+  }
+}
+
+function reveal() {
+  if (reduced) return;
+  const els = $$('.section .head, .panel, .claims, .stats, .arch, .notes > div, .probe-group, .install-grid > *, .docs');
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    }
+  }, { rootMargin: '0px 0px -8% 0px' });
+  for (const el of els) {
+    if (el.getBoundingClientRect().top < innerHeight) continue;
+    el.classList.add('reveal');
+    io.observe(el);
+  }
+}
+
+hero();
+tour();
+dotNumerals();
+copyButtons();
+tabs();
+reveal();

@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topophany — the appearance of a place</title>
+<meta name="description" content="Self-hosted network topology and service availability monitoring in one Go binary. From where, via which path, reaching what — and on what evidence.">
+<meta name="theme-color" content="#0a1016">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://topophany.com/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://topophany.com/">
+<meta property="og:title" content="Topophany — the appearance of a place">
+<meta property="og:description" content="From where, via which path, reaching what — and on what evidence. Self-hosted network monitoring with a terminal UI, in one Go binary.">
+<meta property="og:image" content="https://topophany.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="preload" href="/data/land.bin" as="fetch" type="application/octet-stream" crossorigin>
+<script type="module" src="/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#demo">Skip to the demo</a>
+
+<nav class="nav" aria-label="Main">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Topophany home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#mark"/></svg>
+      <span>topophany</span>
+    </a>
+    <div class="nav-links">
+      <a href="#demo">Demo</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#install">Install</a>
+      <a class="nav-gh" href="https://github.com/WhitenWhiten/topophany">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg><span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <canvas class="sky" aria-hidden="true"></canvas>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="pill"><span class="pill-dot"></span>v0.2.0 · MIT · self-hosted</p>
+      <h1 class="wordmark-h1">
+        <span class="sr-only">Topophany — the appearance of a place</span>
+        <canvas class="wordmark" aria-hidden="true"></canvas>
+      </h1>
+      <p class="lede">From where, via which path, reaching&nbsp;what — and on what evidence.</p>
+      <p class="sub">Self-hosted monitoring of network topology and service availability, read in the terminal. One Go binary with no dependencies is the client, the collector and the observer. It tells you what was measured, from where and how recently. It never shows a check as green that hasn't passed.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#install">Install</a>
+        <a class="btn" href="https://github.com/WhitenWhiten/topophany">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>Source on GitHub
+        </a>
+      </div>
+      <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest">
+        <span class="cmd-prompt" aria-hidden="true">$</span>
+        <code>go install github.com/WhitenWhiten/topophany/cmd/topo@latest</code>
+        <button class="copy" type="button" aria-label="Copy the install command"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button>
+      </div>
+    </div>
+    <div class="hero-globe">
+      <canvas class="globe" aria-label="A dotted globe turning slowly. Lit places are joined by paths: healthy paths faint with pulses running along them, one failing path red and dashed." role="img"></canvas>
+      <p class="globe-note" aria-hidden="true">drag to turn the world</p>
+    </div>
+  </div>
+  <a class="scroll-cue" href="#demo" aria-label="Scroll to the demo"><span></span></a>
+</header>
+
+<main>
+<section class="section demo" id="demo">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>01</span> The terminal UI</p>
+      <h2>Is anything wrong, and&nbsp;where?</h2>
+      <p class="lead">The Overview answers before you read a word: a verdict, a map of every place and path, and the short list of what needs attention. Below is <code>topo preview</code> recorded frame by frame from the TUI's own renderer. The evidence is synthetic, but it goes through the real state engine.</p>
+    </div>
+
+    <figure class="term" id="term">
+      <div class="term-bar">
+        <span class="term-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="term-title"><span class="term-prompt">~</span> topo preview</span>
+        <span class="term-meta"><span class="rec" aria-hidden="true"></span><span class="term-state">replay</span> · 140×42</span>
+        <button class="term-play" type="button" aria-label="Pause the replay" aria-pressed="false">
+          <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3" width="3" height="10" rx="1"/><rect x="9.5" y="3" width="3" height="10" rx="1"/></svg>
+          <svg class="i-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z"/></svg>
+        </button>
+      </div>
+      <div class="term-screen">
+        <canvas id="term-canvas" tabindex="0" role="img" aria-label="Recording of the Topophany terminal UI"></canvas>
+        <div class="term-loading" aria-hidden="true"><span></span>loading the recording</div>
+      </div>
+      <figcaption class="sr-only">A recording of the Topophany terminal UI in preview mode, in chapters that can be chosen below.</figcaption>
+    </figure>
+
+    <ol class="chapters" id="chapters" aria-label="Chapters">
+      <li><button type="button" data-chapter="outage" data-title="An outage arrives" data-text="All is well until x switches the preview to a scenario where the DMIT line is blocked from mainland China. Checks fail one sample at a time, and only confirmed failures turn red. Shown as a time-lapse."><span class="ch-bar"><i></i></span><span class="ch-n">1</span><span class="ch-t">Outage</span></button></li>
+      <li><button type="button" data-chapter="route" data-title="Follow the route" data-text="Select something that needs attention and its whole route lights up on the map. Enter opens the evidence behind it."><span class="ch-bar"><i></i></span><span class="ch-n">2</span><span class="ch-t">Route</span></button></li>
+      <li><button type="button" data-chapter="vantage" data-title="Two vantage points" data-text="The same moment, viewed from two observers. From the MacBook in Changsha the line is down. From the server in New York every check passes. Each observer reports only what it can see from where it is."><span class="ch-bar"><i></i></span><span class="ch-n">3</span><span class="ch-t">Vantage</span></button></li>
+      <li><button type="button" data-chapter="virtual" data-title="Virtual geo" data-text="A schematic of the world that keeps its order but not its distances. A crowded city gets as much room as a lone island, and a glint runs along each wire whose traffic gets through."><span class="ch-bar"><i></i></span><span class="ch-n">4</span><span class="ch-t">Virtual geo</span></button></li>
+      <li><button type="button" data-chapter="geo" data-title="Geo" data-text="A braille dot-matrix world map from Natural Earth. Nodes sit where you declared them, never where an IP lookup guesses."><span class="ch-bar"><i></i></span><span class="ch-n">5</span><span class="ch-t">Geo</span></button></li>
+      <li><button type="button" data-chapter="network" data-title="Network" data-text="A layered schematic with sources on the left and each link one column further. Crossings are bridged, and hosted-in relations are dotted."><span class="ch-bar"><i></i></span><span class="ch-n">6</span><span class="ch-t">Network</span></button></li>
+      <li><button type="button" data-chapter="servers" data-title="Servers" data-text="A card for every server: its services and the edge in front of each, its addresses by network, the containers and VMs it hosts, and your notes as a memo at the foot."><span class="ch-bar"><i></i></span><span class="ch-n">7</span><span class="ch-t">Servers</span></button></li>
+      <li><button type="button" data-chapter="incidents" data-title="Incidents" data-text="Each incident lists the checks that failed and what other observers still see. A guess is labeled as a hypothesis, not a finding."><span class="ch-bar"><i></i></span><span class="ch-n">8</span><span class="ch-t">Incidents</span></button></li>
+      <li><button type="button" data-chapter="about" data-title="About" data-text="τόπος, place, and φαίνω, to bring to light. A globe on which the places you declared are the only lights."><span class="ch-bar"><i></i></span><span class="ch-n">9</span><span class="ch-t">About</span></button></li>
+    </ol>
+
+    <div class="caption">
+      <div class="caption-text" aria-live="polite">
+        <h3 id="cap-title">An outage arrives</h3>
+        <p id="cap-text">All is well until x switches the preview to a scenario where the DMIT line is blocked from mainland China.</p>
+      </div>
+      <p class="keys"><kbd>1</kbd>–<kbd>9</kbd> chapters <kbd>m</kbd> map <kbd>v</kbd> view <kbd>x</kbd> scenario <kbd>space</kbd> pause, or click the tabs inside the terminal. Run <code>topo preview</code> to try the real thing.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="evidence">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>02</span> Semantics</p>
+      <h2>Evidence, not colors</h2>
+      <p class="lead">Health, the source of the evidence and its freshness are separate fields. Nothing turns green without a passing check, a service nobody monitors stays <em class="unknown">unknown</em>, and a cached view says so.</p>
+    </div>
+
+    <div class="grid-2">
+      <article class="panel">
+        <h3 class="panel-title">Nothing is green by default</h3>
+        <div class="tui-table" role="table" aria-label="Three services and their evidence">
+          <div class="tr th" role="row"><span role="columnheader">service</span><span role="columnheader">evidence</span><span role="columnheader">state</span></div>
+          <div class="tr" role="row"><span role="cell"><b class="ok">●</b>Main site<i>Cloudflare ⇢ S1</i></span><span role="cell">http 200 · 4s ago<i>answered by Cloudflare NRT · cache DYNAMIC</i></span><span role="cell"></span></div>
+          <div class="tr" role="row"><span role="cell"><b class="unk">○</b>Home panel<i>notes only</i></span><span role="cell">registered, not monitored<i>no check configured</i></span><span role="cell" class="unk">unknown</span></div>
+          <div class="tr" role="row"><span role="cell"><b class="bad">✖</b>VLESS+Reality entry<i>DMIT · Los Angeles</i></span><span role="cell">tcp timeout · 6s ago<i>from 长沙 MacBook · 3 of 3 samples</i></span><span role="cell" class="bad">DOWN</span></div>
+        </div>
+        <p>The state column stays empty for healthy rows, so problems are the only words lit. A service that is registered but has no check is not up. It is <em>registered, not monitored</em>.</p>
+      </article>
+
+      <article class="panel">
+        <h3 class="panel-title">Vantage points are explicit</h3>
+        <svg class="vantage" viewBox="0 0 520 214" role="img" aria-label="From Changsha the path to the server in Los Angeles times out; from New York it answers with HTTP 200. Verdict: a fault on Changsha's path, not a server outage.">
+          <defs>
+            <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L8 4L0 8z" fill="#4ade80"/></marker>
+          </defs>
+          <g class="v-node"><rect x="6" y="20" width="148" height="46" rx="6"/><text x="20" y="40" class="v-place">Changsha</text><text x="20" y="56" class="v-name">worker · MacBook</text></g>
+          <g class="v-node"><rect x="6" y="122" width="148" height="46" rx="6"/><text x="20" y="142" class="v-place">New York</text><text x="20" y="158" class="v-name">worker · S1</text></g>
+          <g class="v-node v-target"><rect x="364" y="71" width="150" height="46" rx="6"/><text x="378" y="91" class="v-place">Los Angeles</text><text x="378" y="107" class="v-name">DMIT entry</text></g>
+          <path class="v-wire v-bad" d="M154 43 H236 Q248 43 256 51 L282 77"/>
+          <g class="v-x" transform="translate(290 85)"><circle r="9"/><path d="M-3.6 -3.6L3.6 3.6M3.6 -3.6L-3.6 3.6"/></g>
+          <path class="v-wire v-ok" d="M154 145 H250 Q262 145 270 133 L296 105 Q304 94 318 94 H362" marker-end="url(#arr-ok)"/>
+          <path class="v-flow" d="M154 145 H250 Q262 145 270 133 L296 105 Q304 94 318 94 H362"/>
+          <text x="172" y="33" class="v-ev bad">tcp timeout ×3</text>
+          <text x="172" y="166" class="v-ev ok">http 200 · 182 ms</text>
+          <line x1="6" x2="514" y1="190" y2="190" class="v-rule"/>
+          <text x="6" y="208" class="v-verdict"><tspan class="v-k">verdict</tspan>  fault on the path from Changsha · server up</text>
+        </svg>
+        <p>Each observer measures from where it actually is. A failure seen from home is a fault on that path, not a server outage, and the incident shows which observers still get through.</p>
+      </article>
+
+      <article class="panel">
+        <h3 class="panel-title">The edge answered</h3>
+        <div class="edge">
+          <div class="edge-row">
+            <span class="chip">visitors</span><span class="wire ok"></span>
+            <span class="chip chip-edge">Cloudflare <small>NRT</small></span><span class="wire bad"></span>
+            <span class="chip">S1 origin</span>
+          </div>
+          <div class="edge-row edge-ev">
+            <span></span><span></span>
+            <span class="ok">● HTTP 521 · edge up</span><span></span>
+            <span class="warn">▲ affected</span>
+          </div>
+        </div>
+        <p>Behind Cloudflare, Vercel or another CDN, any answer from the edge, even an error page, proves the edge. The origin counts only a passing response the edge did not serve from cache. The probe records which edge answered and from where.</p>
+      </article>
+
+      <article class="panel">
+        <h3 class="panel-title">A guess is labeled a guess</h3>
+        <pre class="incident" aria-label="An incident's evidence"><span class="i-h">FAILED CHECKS</span>
+m-exit-dmit-aaitr
+
+<span class="i-h">OTHER-OBSERVER RESPONSE EVIDENCE</span>
+w-exit-s2-aaitr, w-exit-s2-qqpr
+
+<span class="i-h">HYPOTHESIS (NOT A FINDING)</span>
+source/path-specific interference, filtering or
+routing fault is possible; blocking authority and
+untested protocols are not established
+<span class="i-n">No inference about all IP ports, untested UDP,
+physical power or GFW authority.</span></pre>
+        <p>Incidents carry the failed checks and what other observers still see. Nothing is inferred about ports or protocols that nobody tested.</p>
+      </article>
+    </div>
+
+    <div class="claims">
+      <h3 class="claims-title">What it will not claim</h3>
+      <dl>
+        <div><dt>A TCP connection is accepted</dt><dd>Only that a connection was established. Not the application protocol, not proxy authentication, not the whole path.</dd></div>
+        <div><dt>A request succeeds, but the egress IP is outside policy</dt><dd>A <code>policy</code> outcome. Reachability and egress policy are judged separately.</dd></div>
+        <div><dt>An observer stops reporting</dt><dd>Its view goes stale, then unknown. Remote assets are not marked down.</dd></div>
+        <div><dt>The primary path fails, a candidate succeeds</dt><dd>The candidate is available and redundancy is degraded. It does not claim production traffic has switched.</dd></div>
+        <div><dt>The collector is unreachable</dt><dd>The cached view is kept, marked CACHED, and every item turns unknown.</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="architecture">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>03</span> Architecture</p>
+      <h2>One binary, three roles</h2>
+      <p class="lead">No CGO, no database daemon, no Node.js, and zero external Go modules. <code>topo</code> is the terminal client, the collector and the observer, and closing the client does not stop monitoring.</p>
+    </div>
+
+    <ul class="stats">
+      <li><span class="dots" data-dots="1"></span><span class="stat-l">binary<small>client, collector and worker</small></span></li>
+      <li><span class="dots" data-dots="0"></span><span class="stat-l">external Go modules<small>the standard library, nothing else</small></span></li>
+      <li><span class="dots" data-dots="6"></span><span class="stat-l">release builds<small>Linux, macOS, Windows · amd64, arm64</small></span></li>
+      <li><span class="dots" data-dots="9"></span><span class="stat-l">tabs<small>at 30×10 and up, mouse included</small></span></li>
+    </ul>
+
+    <div class="arch" role="img" aria-label="Workers at each vantage point send observations to two independent collectors, which the read-only TUI clients query.">
+      <p class="arch-h">observers</p>
+      <p class="arch-h">collectors</p>
+      <p class="arch-h">clients</p>
+      <div class="arch-col">
+        <div class="node"><code>topo worker</code><span>a laptop at home</span></div>
+        <div class="node"><code>topo worker</code><span>a server in Tokyo</span></div>
+        <div class="node"><code>topo serve --observer</code><span>the collector's own baseline</span></div>
+      </div>
+      <div class="arch-link" aria-hidden="true"><span class="flow"></span><small>observations, buffered through partitions</small></div>
+      <div class="arch-col">
+        <div class="node node-c"><code>topo serve</code><span>journal A · fsync before ACK</span></div>
+        <div class="node node-c"><code>topo serve</code><span>journal B · independent</span></div>
+      </div>
+      <div class="arch-link" aria-hidden="true"><span class="flow"></span><small>read-only snapshots</small></div>
+      <div class="arch-col">
+        <div class="node"><code>topo</code><span>the TUI, with failover</span></div>
+        <div class="node"><code>topo --json</code><span>a snapshot for scripts</span></div>
+      </div>
+    </div>
+
+    <div class="grid-3 notes">
+      <div>
+        <h3>Two collectors, no consensus theatre</h3>
+        <p>Workers deliver to both collectors on their own and buffer in a bounded outbox. Duplicates are dropped by observation ID, and records from a mismatched configuration revision are quarantined.</p>
+      </div>
+      <div>
+        <h3>Read-only by design</h3>
+        <p>There is no remote configuration API, no remote shell and no automated remediation. Topology lives in reviewed local JSON, edited with <code>topo edit</code> and checked with <code>topo validate</code>.</p>
+      </div>
+      <div>
+        <h3>Bounded, and says so</h3>
+        <p>By default it keeps 24 hours or 20,000 raw records and gives the worker outbox 32 MiB. When a quota fills, probing stops with an error rather than dropping evidence.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="probes">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>04</span> Probes</p>
+      <h2>What it measures</h2>
+      <p class="lead">Native probes and explicit proxy chains, plus read-only adapters for the tools already on your hosts.</p>
+    </div>
+    <div class="probes">
+      <div class="probe-group">
+        <h3>Native probes</h3>
+        <ul class="chips"><li>HTTP · status, body, headers, egress IP</li><li>TCP</li><li>TLS · certificate validation</li><li>SSH banner</li><li>DNS A/AAAA</li><li>UDP echo · random nonce</li><li>ICMP · IPv4</li></ul>
+      </div>
+      <div class="probe-group">
+        <h3>Proxy chains</h3>
+        <ul class="chips"><li>HTTP CONNECT</li><li>HTTPS CONNECT</li><li>SOCKS5 · remote DNS</li><li>OpenSSH <code>-W</code> · verified hosts</li></ul>
+      </div>
+      <div class="probe-group">
+        <h3>Read-only adapters</h3>
+        <ul class="chips"><li>Mihomo</li><li>Tailscale</li><li>WireGuard</li></ul>
+      </div>
+      <div class="probe-group">
+        <h3>Edges and platforms</h3>
+        <ul class="chips"><li>Cloudflare · Workers, Pages</li><li>Vercel</li><li>Supabase</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section install" id="install">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>05</span> Install</p>
+      <h2>Up in a minute</h2>
+      <p class="lead">Prebuilt archives for Linux, macOS and Windows, or one <code>go install</code>. The demo probes only its own loopback API and generates fresh credentials each time it runs.</p>
+    </div>
+
+    <div class="install-grid">
+      <div class="install-side">
+      <div class="panel tabs" data-tabs>
+        <div class="tablist" role="tablist" aria-label="Ways to install">
+          <button role="tab" type="button" id="t-go" aria-controls="p-go" aria-selected="true">go install</button>
+          <button role="tab" type="button" id="t-rel" aria-controls="p-rel" aria-selected="false" tabindex="-1">Release</button>
+          <button role="tab" type="button" id="t-src" aria-controls="p-src" aria-selected="false" tabindex="-1">Source</button>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="p-go" aria-labelledby="t-go">
+          <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest"><span class="cmd-prompt" aria-hidden="true">$</span><code>go install github.com/WhitenWhiten/topophany/cmd/topo@latest</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+          <p class="fine">Needs Go 1.26.9 or newer. Building downloads no modules.</p>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="p-rel" aria-labelledby="t-rel" hidden>
+          <p>Archives for Linux, macOS and Windows on amd64 and arm64, each with <code>SHA256SUMS.txt</code>.</p>
+          <a class="btn btn-primary" href="https://github.com/WhitenWhiten/topophany/releases/latest">Latest release</a>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="p-src" aria-labelledby="t-src" hidden>
+          <div class="cmd cmd-multi" data-copy="git clone https://github.com/WhitenWhiten/topophany&#10;cd topophany&#10;go build -trimpath -o topo ./cmd/topo"><code><span class="cmd-prompt" aria-hidden="true">$ </span>git clone https://github.com/WhitenWhiten/topophany
+<span class="cmd-prompt" aria-hidden="true">$ </span>cd topophany
+<span class="cmd-prompt" aria-hidden="true">$ </span>go build -trimpath -o topo ./cmd/topo</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </div>
+      </div>
+        <div class="panel runs">
+          <h3 class="panel-title">Runs on</h3>
+          <dl class="kv">
+            <div><dt>systems</dt><dd>Linux, macOS, Windows · amd64, arm64</dd></div>
+            <div><dt>terminal</dt><dd>100×28 or more recommended, 30×10 at least</dd></div>
+            <div><dt>color</dt><dd>truecolor, xterm-256, or none under <code>NO_COLOR</code></dd></div>
+            <div><dt>services</dt><dd>systemd units for the collector and the worker</dd></div>
+            <div><dt>storage</dt><dd>a local append-only journal, no database</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <h3>Look around</h3>
+          <p>The full TUI on a built-in topology with synthetic evidence. Press <kbd>x</kbd> to break something.</p>
+          <div class="cmd" data-copy="topo preview"><span class="cmd-prompt" aria-hidden="true">$</span><code>topo preview</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </li>
+        <li>
+          <h3>Start a collector</h3>
+          <p>Writes a demo topology and fresh credentials, then serves on <code>127.0.0.1:7447</code>.</p>
+          <div class="cmd cmd-multi" data-copy="topo init --dir ./demo&#10;topo serve --config ./demo/topology.json --auth ./demo/auth.json --data ./demo/collector-data --observer demo"><code><span class="cmd-prompt" aria-hidden="true">$ </span>topo init --dir ./demo
+<span class="cmd-prompt" aria-hidden="true">$ </span>topo serve --config ./demo/topology.json \
+    --auth ./demo/auth.json --data ./demo/collector-data \
+    --observer demo</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </li>
+        <li>
+          <h3>Open the TUI</h3>
+          <p>In another terminal. Later, <code>topo login</code> saves a remote profile, and then plain <code>topo</code> is enough.</p>
+          <div class="cmd" data-copy="topo --credentials ./demo/credentials.json"><span class="cmd-prompt" aria-hidden="true">$</span><code>topo --credentials ./demo/credentials.json</code><button class="copy" type="button" aria-label="Copy"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        </li>
+      </ol>
+    </div>
+
+    <ul class="docs">
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/GUIDE.md"><b>User guide</b><span>The TUI, editing, deployment</span></a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/REFERENCE.md"><b>Reference</b><span>Configuration and API</span></a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/OPERATIONS.md"><b>Operations</b><span>Deploying collectors and workers</span></a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/SECURITY.md"><b>Security model</b><span>Boundaries, tokens, transport</span></a></li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <a class="brand" href="/"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#mark"/></svg><span>topophany</span></a>
+      <p class="etym"><b>τόπος</b> <i>place</i> · <b>φαίνω</b> <i>to bring to light</i></p>
+    </div>
+    <ul class="footer-links">
+      <li><a href="https://github.com/WhitenWhiten/topophany">GitHub</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/releases">Releases</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CHANGELOG.md">Changelog</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CONTRIBUTING.md">Contributing</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/SECURITY.md">Report a vulnerability</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/LICENSE">MIT License</a></li>
+    </ul>
+    <p class="footer-fine">This site sets no cookies and loads nothing from anyone else.</p>
+  </div>
+</footer>
+
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <radialGradient id="mark-sea" cx=".34" cy=".3" r=".85"><stop offset="0" stop-color="#3a86a8"/><stop offset=".55" stop-color="#163a52"/><stop offset="1" stop-color="#0c1922"/></radialGradient>
+  </defs>
+  <symbol id="mark" viewBox="0 0 32 32">
+    <circle cx="16" cy="16" r="13" fill="url(#mark-sea)"/>
+    <circle cx="16" cy="16" r="13" fill="none" stroke="#7dd3fc" stroke-opacity=".55" stroke-width="1.2"/>
+    <ellipse cx="16" cy="16" rx="6" ry="13" fill="none" stroke="#7dd3fc" stroke-opacity=".35" stroke-width="1"/>
+    <path d="M3.6 12.4Q16 16.8 28.4 12.4M4.6 21.6Q16 25.4 27.4 21.6" fill="none" stroke="#7dd3fc" stroke-opacity=".35" stroke-width="1"/>
+    <circle cx="11.5" cy="10.5" r="2.6" fill="#fcd34d"/>
+    <circle cx="11.5" cy="10.5" r="5" fill="none" stroke="#fcd34d" stroke-opacity=".35" stroke-width="1"/>
+  </symbol>
+  <symbol id="gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+  <symbol id="copy" viewBox="0 0 16 16"><path fill="currentColor" d="M5.5 1h7A2.5 2.5 0 0 1 15 3.5v7a2.5 2.5 0 0 1-2.5 2.5H11v1.5A1.5 1.5 0 0 1 9.5 16h-7A1.5 1.5 0 0 1 1 14.5v-7A1.5 1.5 0 0 1 2.5 6H4V3.5A2.5 2.5 0 0 1 5.5 1zM4 7.5H2.5v7h7V13h-4A1.5 1.5 0 0 1 4 11.5zm1.5-5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1z"/></symbol>
+  <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
+</svg>
+</body>
+</html>

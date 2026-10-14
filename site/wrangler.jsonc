@@ -1,0 +1,16 @@
+{
+  // The homepage at topophany.com: static files only, no Worker code.
+  "name": "topophany",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  },
+  // topophany.com is canonical; www is 301'd to it by a zone redirect rule.
+  "routes": [
+    { "pattern": "topophany.com", "custom_domain": true },
+    { "pattern": "www.topophany.com", "custom_domain": true }
+  ],
+  "workers_dev": false,
+  "preview_urls": false
+}

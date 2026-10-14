@@ -21,10 +21,19 @@ func (m *Model) Frame() string {
 }
 
 func (m *Model) Render() []string {
+	cv := m.draw()
+	if cv == nil {
+		return []string{fit("Topophany: resize terminal (30x10 minimum)", max(m.Width, 1))}
+	}
+	return cv.Lines(m.profile())
+}
+
+// draw paints one frame, or returns nil when the terminal is too small.
+func (m *Model) draw() *Canvas {
 	w, h := m.Width, m.Height
 	m.hits = m.hits[:0]
 	if w < 30 || h < 10 {
-		return []string{fit("Topophany: resize terminal (30x10 minimum)", max(w, 1))}
+		return nil
 	}
 	cv := NewCanvas(w, h)
 	if !m.Transparent {
@@ -64,7 +73,7 @@ func (m *Model) Render() []string {
 		m.drawModal(cv)
 		m.drawingModal = false
 	}
-	return cv.Lines(m.profile())
+	return cv
 }
 
 func (m *Model) body(cv *Canvas, x, y, w, h int) {
