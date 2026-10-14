@@ -89,6 +89,7 @@ The TUI is built to answer one question before anything is read: *is anything wr
 
 - **Overview** — a verdict headline with a big failure count, a map of every node and link, the list of what needs attention (incidents, failing paths and services, silent observers), a service matrix, and how fresh each observer is. Selecting an item lights its whole route on the map. On wide terminals the map sits beside the cards; smaller terminals stack them.
 - **Topology** — the node → endpoint → link hierarchy beside the map, with the evidence for the selected entity underneath.
+- **Servers** — a wall of cards, one per server: its state, kind, provider and place; the services it runs (and the edge in front of each); its addresses by network; the containers and VMs it hosts; the observers on it and its links; and your notes as a memo at the foot. Edges and platforms get cards too, listing what runs there, what they stand in front of, and the points of presence they answered from. `/` searches the memos as well; clicking a service, address or link opens it.
 - **Services, Paths, Checks, Incidents, Observers** — aligned tables. The state column stays empty for healthy rows, so problems are the only lit words; `Enter` expands the evidence behind a row.
 - **About** — a lit globe: a shaded ocean, dotted land and a graticule that curves with the surface, on which the places you declared are the only lights. The mouse wheel spins it.
 
@@ -110,7 +111,7 @@ Press `m` to switch the map between two modes:
 
 | Keys | |
 |---|---|
-| `1`–`8`, `Tab` / `Shift-Tab`, `h` / `l` | switch tabs (`?` toggles About) |
+| `1`–`9`, `Tab` / `Shift-Tab`, `h` / `l` | switch tabs (`?` toggles About) |
 | `j` / `k`, arrows, `PgUp` / `PgDn`, `g` / `G` | move through the list |
 | `Enter` | expand evidence for the selected row |
 | `/` | filter rows |
@@ -232,7 +233,7 @@ internal/engine    Freshness tracking, evidence aggregation, and dependency stat
 internal/api       Collector HTTP API and scoped token authorization
 internal/client    Credentials, project identity validation, and read-only failover
 internal/outbox    Durable dual-dispatch queue, backoff retries, and quarantine handling
-internal/tui       Native terminal handling, keyboard/mouse input, 8 tabs, dot-matrix canvas,
+internal/tui       Native terminal handling, keyboard/mouse input, 9 tabs, dot-matrix canvas,
                    geo/network topology maps, About globe animation, and local editor
 internal/preview    Built-in rich topology and synthetic scenarios for offline TUI preview
 internal/app        CLI subcommand dispatch and wiring

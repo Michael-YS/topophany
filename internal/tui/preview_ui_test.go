@@ -250,3 +250,66 @@ func TestEdgesShowWhereServicesRunAndWhoAnswered(t *testing.T) {
 		t.Fatal("the hop behind the edge is drawn", pairs, "times")
 	}
 }
+
+// The Servers tab is a card per server: containers sit on their host's
+// card and external parties have none. A card carries the services and the
+// edge in front of them, what it hosts and the notes as a memo, and leads
+// to what it lists; edge cards say what runs there and where they answered.
+func TestServersTabCardsAndMemo(t *testing.T) {
+	m := previewModel(t)
+	m.Colors = colorTrue
+	m.Key("3")
+	if m.Tab != tabServers {
+		t.Fatal("3 does not open Servers", m.Tab)
+	}
+	ids := []string{}
+	for _, r := range m.Rows() {
+		if r.Kind != "node" {
+			t.Fatal("a card that is not a node", r)
+		}
+		ids = append(ids, r.ID)
+	}
+	for _, id := range []string{"win", "s1", "de", "cf", "vercel", "supabase"} {
+		if !contains(ids, id) {
+			t.Fatal("no card for", id, ids)
+		}
+	}
+	for _, id := range []string{"internet", "visitors", "s1-db", "jp-openlist"} {
+		if contains(ids, id) {
+			t.Fatal("card for an external party or a container", id)
+		}
+	}
+	m.Key("select:node:s1")
+	out := visible(m)
+	for _, want := range []string{"S1 主站", "SERVICES", "via Cloudflare", "not monitored", "HOSTS", "PostgreSQL 容器", "✎ 主要建站服务器"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("S1's card lacks %q", want)
+		}
+	}
+	clicked := false
+	for _, h := range m.hits {
+		if h.key == "goto:service:blog" {
+			m.Key("mouse:0:" + itoa(h.x+2) + ":" + itoa(h.y+1) + ":M")
+			clicked = true
+			break
+		}
+	}
+	if r, ok := m.selectedRow(); !clicked || m.Tab != tabServices || !ok || r.ID != "blog" {
+		t.Fatal("a service on a card does not open it", clicked, m.Tab)
+	}
+	m.setTab(tabServers)
+	m.Key("select:node:cf")
+	out = visible(m)
+	for _, want := range []string{"Cloudflare", "edge · Cloudflare", "RUNS HERE", "workers", "IN FRONT OF", "www.example.invalid", "ANSWERED FROM", "LAX · NRT"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the edge's card lacks %q", want)
+		}
+	}
+	if got := memoLines("line one\nline two that wraps", 12); len(got) != 3 || got[0] != "line one" {
+		t.Fatal("memo line breaks", got)
+	}
+	m.Search = "备份仓库"
+	if rows := m.Rows(); len(rows) != 1 || rows[0].ID != "de" {
+		t.Fatal("memos are not searchable", rows)
+	}
+}

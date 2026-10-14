@@ -63,19 +63,28 @@ func kindLabel(n model.Node) string {
 	return n.Kind + " · " + providerName(n.Provider)
 }
 
-// viaNames names the edges and proxies in front of the given endpoints, in
+// viaNodes lists the edges and proxies in front of the given endpoints, in
 // order and once each.
-func viaNames(t model.Config, endpoints []string, names map[string]string) []string {
+func viaNodes(t model.Config, endpoints []string) []string {
 	out := []string{}
 	for _, ep := range t.Endpoints {
 		if !contains(endpoints, ep.ID) {
 			continue
 		}
 		for _, v := range ep.Via {
-			if n := names[v]; !contains(out, n) {
-				out = append(out, n)
+			if !contains(out, v) {
+				out = append(out, v)
 			}
 		}
+	}
+	return out
+}
+
+// viaNames is viaNodes by name.
+func viaNames(t model.Config, endpoints []string, names map[string]string) []string {
+	out := viaNodes(t, endpoints)
+	for i, id := range out {
+		out[i] = names[id]
 	}
 	return out
 }

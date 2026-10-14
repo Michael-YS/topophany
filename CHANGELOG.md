@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A Servers tab (`3`): a card for each server with its state, kind,
+  provider and place, the services it runs and the edges in front of them,
+  its addresses by network, what it hosts, who observes from it, its links,
+  and its notes as a memo. Edge and platform cards list what runs there,
+  what they stand in front of and where they answered from. Later tabs move
+  up one: Services is `4` and About is `9`.
 - Edges and platforms: nodes of kind `edge` (Cloudflare, Vercel) and
   `platform` (Supabase) with a `provider`, services with a `runtime`
   (`workers`, `pages`, `functions`, …), and endpoints that name the edges in

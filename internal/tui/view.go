@@ -141,6 +141,10 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 	case m.Tab == tabOverview:
 		m.overview(cv, x, y, w, h, rows, sel, tag)
 		return
+	case m.Tab == tabServers:
+		ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, tag, true)
+		m.drawServers(cv, ix, iy, iw, ih, rows)
+		return
 	}
 	if w >= 100 {
 		lw := w / 2

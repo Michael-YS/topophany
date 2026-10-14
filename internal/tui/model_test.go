@@ -163,7 +163,7 @@ func TestTerminalEscapesAndWideText(t *testing.T) {
 }
 func TestPathCandidatesAndNotesAreNotFabricatedHops(t *testing.T) {
 	m := fixtureModel()
-	m.Tab = 3
+	m.Tab = tabPaths
 	found := false
 	for _, r := range m.Rows() {
 		if r.ID == "residential" {
@@ -176,7 +176,7 @@ func TestPathCandidatesAndNotesAreNotFabricatedHops(t *testing.T) {
 	if !found {
 		t.Fatal("path missing")
 	}
-	m.Tab = 2
+	m.Tab = tabServices
 	for _, r := range m.Rows() {
 		if r.ID == "notes" && r.Health != "unknown" {
 			t.Fatal("notes service marked up")

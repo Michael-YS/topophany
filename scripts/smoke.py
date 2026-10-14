@@ -143,8 +143,8 @@ def main():
                 raise AssertionError('TUI did not render expected state')
             drain_until(b'collector-0')
             assert b'\x1b[?1049h' in captured and b'TOPOPHANY' in captured
-            for key, text in [('2', b'[2 Topology]'), ('3', b'[3 Services]'), ('4', b'[4 Paths]'),
-                              ('5', b'[5 Checks]'), ('6', b'[6 Incidents]'), ('7', b'[7 Observers]'), ('8', b'[8 About]'), ('1', b'[1 Overview]')]:
+            for key, text in [('2', b'[2 Topology]'), ('3', b'[3 Servers]'), ('4', b'[4 Services]'), ('5', b'[5 Paths]'),
+                              ('6', b'[6 Checks]'), ('7', b'[7 Incidents]'), ('8', b'[8 Observers]'), ('9', b'[9 About]'), ('1', b'[1 Overview]')]:
                 os.write(master, key.encode()); drain_until(text, 3)
             os.write(master, b'?'); drain_until(b'appearance of a place', 5)
             os.write(master, b'3e'); drain_until(b'topo edit --config', 3)
@@ -153,7 +153,7 @@ def main():
             os.write(master, b'v'); drain_until(b'view: demo', 4)
             os.write(master, b'\x1b[200~qrv\x1b[201~'); time.sleep(.2)
             assert tty.poll() is None
-            passed('real PTY: alternate screen, all eight tabs, About, read-only edit hint, mouse, observer switching, safe paste')
+            passed('real PTY: alternate screen, all nine tabs, About, read-only edit hint, mouse, observer switching, safe paste')
             stop(collectors[0])
             os.write(master, b'r'); drain_until(b'collector-1', 8)
             assert json.loads(run('--json').stdout)['instance'] == 'collector-1'

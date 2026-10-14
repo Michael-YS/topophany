@@ -58,7 +58,7 @@ Usage:
   topo token                        generate a random bearer token and its hash
   topo version                      show version
 
-Use 'topo COMMAND --help' for command options. TUI: 1–8 tabs (8/? About),
+Use 'topo COMMAND --help' for command options. TUI: 1–9 tabs (9/? About),
 v observer, ↑↓/jk navigation, Enter details, / filter, r refresh, m geo/network
 map, z zoom, mouse clicks and wheel, q quit. In 'topo edit': a add, e edit,
 d delete, u undo, Ctrl-S save. In 'topo preview': x scenario, D debug overlay;

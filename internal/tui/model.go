@@ -16,11 +16,12 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
-var tabs = []string{"Overview", "Topology", "Services", "Paths", "Checks", "Incidents", "Observers", "About"}
+var tabs = []string{"Overview", "Topology", "Servers", "Services", "Paths", "Checks", "Incidents", "Observers", "About"}
 
 const (
 	tabOverview = iota
 	tabTopology
+	tabServers
 	tabServices
 	tabPaths
 	tabChecks
@@ -242,6 +243,32 @@ func (m *Model) tabRows(tab int) []Row {
 		}
 		return model.EntityState{ID: id, Health: "unknown", Evidence: "unknown", Reason: "no state in this view"}
 	}
+	// node is a node's row with the evidence for it: what and where it is,
+	// its notes, how it is reached and what it answers for.
+	node := func(n model.Node) Row {
+		place := "Location: not declared"
+		switch l := n.Location; {
+		case l != nil:
+			place = fmt.Sprintf("Location: %s (%.2f, %.2f) — declared, not inferred from IP", l.Label, l.Lat, l.Lon)
+		case n.Kind == "edge":
+			place = "Location: anycast edge — answers from many places"
+		}
+		details := []string{"", "Node identity: " + n.ID, "Group: " + n.Group, "Kind: " + n.Kind, "Provider: " + providerName(n.Provider), "Parent: " + n.Parent, place, "", n.Notes, "", "Access endpoints:"}
+		fronts := []string{}
+		for _, ep := range s.Topology.Endpoints {
+			if ep.Node == n.ID {
+				details = append(details, ep.ID+" ["+ep.Network+"] "+ep.Address+via(ep))
+			}
+			if contains(ep.Via, n.ID) {
+				fronts = append(fronts, ep.ID+" → "+nodeNames[ep.Node])
+			}
+		}
+		if len(fronts) > 0 {
+			details = append(details, "", "Answers first for:")
+			details = append(details, fronts...)
+		}
+		return entity("node", find(nodeStates, n.ID), nodeNames[n.ID], n.Group, details)
+	}
 	incident := func(i model.Incident) Row {
 		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: m.incidentTitle(i), Meta: i.Summary, Cols: []string{age(m.Now, i.Since), plural(len(i.Checks), "check")}, Details: incidentDetails(i)}
 	}
@@ -297,31 +324,13 @@ func (m *Model) tabRows(tab int) []Row {
 				return
 			}
 			seen[n.ID] = true
-			e := find(nodeStates, n.ID)
-			place := "Location: not declared"
-			switch l := n.Location; {
-			case l != nil:
-				place = fmt.Sprintf("Location: %s (%.2f, %.2f) — declared, not inferred from IP", l.Label, l.Lat, l.Lon)
-			case n.Kind == "edge":
-				place = "Location: anycast edge — answers from many places"
-			}
-			details := []string{"", "Node identity: " + n.ID, "Group: " + n.Group, "Kind: " + n.Kind, "Provider: " + providerName(n.Provider), "Parent: " + n.Parent, place, "", n.Notes, "", "Access endpoints:"}
 			eps := []model.Endpoint{}
-			fronts := []string{}
 			for _, ep := range s.Topology.Endpoints {
 				if ep.Node == n.ID {
-					details = append(details, ep.ID+" ["+ep.Network+"] "+ep.Address+via(ep))
 					eps = append(eps, ep)
 				}
-				if contains(ep.Via, n.ID) {
-					fronts = append(fronts, ep.ID+" → "+nodeNames[ep.Node])
-				}
 			}
-			if len(fronts) > 0 {
-				details = append(details, "", "Answers first for:")
-				details = append(details, fronts...)
-			}
-			r := entity("node", e, nodeNames[n.ID], n.Group, details)
+			r := node(n)
 			r.Tree = guide + branch
 			r.Cols = []string{n.Group, kindLabel(n)}
 			rows = append(rows, r)
@@ -369,6 +378,24 @@ func (m *Model) tabRows(tab int) []Row {
 			r := entity("link", l, nodeNames[def.From]+" → "+nodeNames[def.To], def.Transport, []string{def.Notes, "Directed initiation, not proven packet-loss direction."})
 			r.Tree = "⇢ "
 			r.Cols = []string{def.Transport, ""}
+			rows = append(rows, r)
+		}
+	case tabServers:
+		known := map[string]bool{}
+		for _, n := range s.Topology.Nodes {
+			known[n.ID] = true
+		}
+		for _, n := range s.Topology.Nodes {
+			if !serverNode(n, known) {
+				continue
+			}
+			r := node(n)
+			place := ""
+			if n.Location != nil {
+				place = n.Location.Label
+			}
+			// Not drawn as a table; they make a card's words searchable.
+			r.Cols = []string{n.Group, kindLabel(n), place, n.Notes}
 			rows = append(rows, r)
 		}
 	case tabServices:
@@ -500,6 +527,8 @@ func (m *Model) tabColumns() []string {
 		return []string{"ITEM", "KIND"}
 	case tabTopology:
 		return []string{"NODE · ENDPOINT · LINK", "GROUP · NETWORK", "KIND · ADDRESS"}
+	case tabServers:
+		return []string{"SERVER", "GROUP", "KIND", "PLACE", "MEMO"}
 	case tabServices:
 		return []string{"SERVICE", "HOST", "ENDPOINTS"}
 	case tabPaths:
