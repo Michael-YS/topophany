@@ -67,7 +67,7 @@
       <div class="cta">
         <a class="btn btn-primary" href="#install">インストール</a>
         <a class="btn" href="https://github.com/WhitenWhiten/topophany">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>GitHub でソースを見る
+          <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>GitHub
         </a>
       </div>
       <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest">
@@ -295,6 +295,7 @@ untested protocols are not established</pre>
     </div>
 
     <div class="install-grid">
+      <div class="install-side">
       <div class="panel tabs" data-tabs>
         <div class="tablist" role="tablist" aria-label="インストール方法">
           <button role="tab" type="button" id="t-go" aria-controls="p-go" aria-selected="true">go install</button>
@@ -314,6 +315,16 @@ untested protocols are not established</pre>
 <span class="cmd-prompt" aria-hidden="true">$ </span>cd topophany
 <span class="cmd-prompt" aria-hidden="true">$ </span>go build -trimpath -o topo ./cmd/topo</code><button class="copy" type="button" aria-label="コピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
         </div>
+      </div>
+      <nav class="panel docs" aria-label="ドキュメント">
+        <h3 class="panel-title">ドキュメント</h3>
+        <ul>
+          <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/GUIDE.md"><b>ユーザーガイド</b><span>TUI、編集、デプロイ (英語)</span></a></li>
+          <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/REFERENCE.md"><b>リファレンス</b><span>設定と API (英語)</span></a></li>
+          <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/OPERATIONS.md"><b>運用</b><span>コレクターとワーカーのデプロイ (英語)</span></a></li>
+          <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/SECURITY.md"><b>セキュリティモデル</b><span>境界、トークン、通信 (英語)</span></a></li>
+        </ul>
+      </nav>
       </div>
 
       <ol class="steps">
@@ -338,13 +349,6 @@ untested protocols are not established</pre>
         </li>
       </ol>
     </div>
-
-    <ul class="docs">
-      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/GUIDE.md"><b>ユーザーガイド</b><span>TUI、編集、デプロイ (英語)</span></a></li>
-      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/REFERENCE.md"><b>リファレンス</b><span>設定と API (英語)</span></a></li>
-      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/OPERATIONS.md"><b>運用</b><span>コレクターとワーカーのデプロイ (英語)</span></a></li>
-      <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/docs/SECURITY.md"><b>セキュリティモデル</b><span>境界、トークン、通信 (英語)</span></a></li>
-    </ul>
   </div>
 </section>
 </main>
