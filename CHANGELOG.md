@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tabs count what in them needs a look (failing services, paths and
   checks, open incidents, silent observers), red when anything is down and
   amber otherwise; on narrow terminals the tab's number takes the color.
+- The terminal window is named after the verdict, such as
+  `✖ 2 incidents · homelab · Topophany` (`✎ topology.json ●` in the
+  editor), and its own title is put back on exit.
 
 ### Changed
 

@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
+
+	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
 func (m *Model) profile() int {
@@ -18,6 +21,29 @@ func (m *Model) Frame() string {
 		return "\x1b[H" + lines[0] + "\x1b[J"
 	}
 	return "\x1b[H" + strings.Join(lines, "\r\n")
+}
+
+// title names the terminal window after the verdict, so a tab bar or a
+// taskbar says whether anything is wrong while the UI is out of sight.
+func (m *Model) title() string {
+	t := ""
+	if m.Edit != nil {
+		t = "✎ " + filepath.Base(m.Edit.Path)
+		if m.Edit.Dirty {
+			t += " ●"
+		}
+	} else {
+		word, _ := m.verdict()
+		glyph, rest, _ := strings.Cut(word, " ")
+		if m.Loading != "" {
+			glyph = "◌" // the spinner turns too fast for a title
+		}
+		t = glyph + " " + strings.ToLower(rest)
+		if p := m.Snapshot.Project; p != "" {
+			t += " · " + p
+		}
+	}
+	return ellipsis(secure.Text(t), 100) + " · Topophany"
 }
 
 func (m *Model) Render() []string {

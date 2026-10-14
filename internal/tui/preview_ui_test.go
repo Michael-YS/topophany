@@ -362,3 +362,31 @@ func TestTabsCountWhatNeedsALook(t *testing.T) {
 		t.Fatal("cached view counts incidents")
 	}
 }
+
+// The window is named after the verdict, and nothing from the collector can
+// smuggle a control sequence into the title.
+func TestWindowTitleIsTheVerdict(t *testing.T) {
+	m := previewModel(t)
+	if got := m.title(); got != "● all clear · preview-homelab · Topophany" {
+		t.Fatalf("healthy title %q", got)
+	}
+	sim := m.Preview.(*preview.Sim)
+	sim.SetScenario(1, m.Now.Add(-30*time.Minute))
+	m.Snapshot, _ = sim.Snapshot("", m.Now)
+	if got := m.title(); !strings.HasPrefix(got, "✖ "+itoa(len(m.Snapshot.Incidents))+" incidents · ") {
+		t.Fatalf("outage title %q", got)
+	}
+	m.Loading = "loading all observers"
+	if got := m.title(); !strings.HasPrefix(got, "◌ loading · ") {
+		t.Fatalf("loading title %q", got)
+	}
+	m.Loading = ""
+	m.Snapshot.Project = "lab\x1b]2;owned\x07\u009d"
+	if got := m.title(); strings.ContainsAny(got, "\x1b\x07\u009d") {
+		t.Fatalf("title carries control characters: %q", got)
+	}
+	ed := &Model{Edit: &Editor{Path: "/srv/topo/topology.json", Dirty: true}}
+	if got := ed.title(); got != "✎ topology.json ● · Topophany" {
+		t.Fatalf("editor title %q", got)
+	}
+}

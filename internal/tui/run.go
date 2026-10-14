@@ -69,15 +69,24 @@ func hyperlinks() bool {
 		return true
 	}
 	t := os.Getenv("TERM")
-	return t != "linux" && t != "dumb" && (!strings.HasPrefix(t, "screen") || os.Getenv("TMUX") != "")
+	return osc() && (!strings.HasPrefix(t, "screen") || os.Getenv("TMUX") != "")
+}
+
+// osc reports whether the terminal takes operating system commands, such
+// as a window title, rather than printing them as the Linux console does.
+func osc() bool {
+	t := os.Getenv("TERM")
+	return t != "linux" && t != "dumb"
 }
 
 // screen repaints only the cells that changed since the previous frame,
 // inside a synchronized-update block so animation does not tear.
 type screen struct {
-	w, h  int
-	prev  *Canvas
-	small string // the line shown while the terminal is too small
+	w, h   int
+	prev   *Canvas
+	small  string // the line shown while the terminal is too small
+	titles bool   // name the window after the verdict
+	title  string
 }
 
 // frame is what moves the terminal from the previous frame to cv, or to
@@ -113,6 +122,10 @@ func (s *screen) paint(out *os.File, m *Model) (int, error) {
 		notice = m.Render()[0]
 	}
 	f := s.frame(cv, notice, m.profile(), m.Width, m.Height)
+	if t := m.title(); s.titles && t != s.title {
+		f += "\x1b]2;" + t + "\x07"
+		s.title = t
+	}
 	if f == "" {
 		return 0, nil
 	}
@@ -132,6 +145,12 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 		return e
 	}
 	defer fmt.Fprint(out, "\x1b[0m\x1b[?1006l\x1b[?1000l\x1b[?2004l\x1b[?25h\x1b[?1049l")
+	titles := osc()
+	if titles {
+		// Keep the window's title to put back on the way out.
+		fmt.Fprint(out, "\x1b[22;0t")
+		defer fmt.Fprint(out, "\x1b[23;0t")
+	}
 	if !m.NoColor {
 		m.Colors = ColorProfile()
 	}
@@ -167,7 +186,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 	refresh := time.NewTicker(every)
 	defer refresh.Stop()
 	decoder := Decoder{}
-	scr := &screen{}
+	scr := &screen{titles: titles}
 	last := time.Time{}
 	draw := func() error {
 		m.Now = time.Now()

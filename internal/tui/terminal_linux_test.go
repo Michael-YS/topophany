@@ -114,6 +114,7 @@ func TestActualLinuxTerminalReadSizeAndRestore(t *testing.T) {
 	}
 }
 func TestRunWithFetchSourceSwitchFailureRecoveryAndQuit(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
 	master, slave := ptyFixture(t)
 	cap, stop := consumePTY(master)
 	defer stop()
@@ -168,6 +169,10 @@ func TestRunWithFetchSourceSwitchFailureRecoveryAndQuit(t *testing.T) {
 		t.Fatal("TUI did not quit")
 	}
 	testkit.Wait(t, time.Second, func() bool { return strings.Contains(cap.text(), "\x1b[?1049l") })
+	// The window was named after the verdict, and its own title restored.
+	if out := cap.text(); !strings.Contains(out, "\x1b[22;0t") || !strings.Contains(out, " · Topophany\x07") || !strings.Contains(out, "\x1b[23;0t") {
+		t.Fatal("window title not set and restored")
+	}
 }
 func TestReadSecretActualNoEchoPasteBackspaceCancel(t *testing.T) {
 	for _, tc := range []struct {
