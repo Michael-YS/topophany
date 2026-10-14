@@ -469,16 +469,21 @@ func (s *Store) apply(b model.Batch, recovery bool) error {
 		s.addRow(v)
 		s.roll(v)
 	}
-	if b.Heartbeat != nil {
+	if b.Heartbeat != nil && s.advances(*b.Heartbeat, b.Project, b.Revision) {
 		h := *b.Heartbeat
 		h.Project, h.Revision = b.Project, b.Revision
-		old, ok := s.beats[h.Observer]
-		if !ok || h.Project != old.Project || h.Revision != old.Revision || h.SampledAt.After(old.SampledAt) {
-			s.beats[h.Observer] = h
-		}
+		s.beats[h.Observer] = h
 	}
 	_ = recovery
 	return nil
+}
+
+// advances reports whether heartbeat h, sent under project and revision,
+// replaces the one its observer has: it is the first, it comes under
+// another project or revision, or it was taken later.
+func (s *Store) advances(h model.Heartbeat, project, revision string) bool {
+	old, ok := s.beats[h.Observer]
+	return !ok || project != old.Project || revision != old.Revision || h.SampledAt.After(old.SampledAt)
 }
 
 // Put validates all duplicate IDs before writing one atomic journal transaction.
@@ -506,6 +511,12 @@ func (s *Store) Put(b model.Batch) error {
 		return e
 	}
 	b = copyBatch
+	// A heartbeat that would change nothing, such as one sent again, is
+	// not written: it would cost a journal write and an fsync, under the
+	// lock every observer's ingestion waits on, for nothing apply keeps.
+	if b.Heartbeat != nil && !s.advances(*b.Heartbeat, b.Project, b.Revision) {
+		b.Heartbeat = nil
+	}
 	pending := map[string]string{}
 	now := s.options.Now().UTC()
 	kept := make([]model.Observation, 0, len(b.Observations))

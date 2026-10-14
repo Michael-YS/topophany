@@ -267,6 +267,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tab and its server's card, and one with a confirmed failure while its
   other checks have no current evidence reads unknown rather than degraded.
 
+### Security
+
+- A worker token can no longer make a collector write and fsync its
+  journal at will. A heartbeat was written before the store compared it
+  with the one it held, so one sent again, or an older one, cost a
+  journal write and an fsync under the lock every observer's ingestion
+  waits on, 30 times a second per token, while changing nothing. A
+  heartbeat that would change nothing is now acknowledged without being
+  written.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

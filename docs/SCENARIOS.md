@@ -90,6 +90,7 @@ This document lists the finite, verifiable scenario contracts for version 0.3.0,
 | Terminal-safe machine-readable remote JSON | `TestJSONOutputEscapesAllBidiControlsLosslessly`, `TestRemoteJSONEscapesBidiControls` |
 | Verification commit/tree binding | `test_old_revision_evidence_is_rejected`, `test_mutation_during_verification_is_rejected` |
 | Release tag-to-build binding | `test_publish_resolves_lightweight_and_nested_annotated_tags` (matching, moved, missing, nested and cyclic tag fixtures) |
+| A heartbeat that changes nothing, such as one sent again, is acknowledged without a journal write or fsync; a newer one, or one under another revision, is written and recovered | `TestHeartbeatThatChangesNothingIsNotWritten` |
 
 ## Boundaries Beyond Automated Suite Claims
 

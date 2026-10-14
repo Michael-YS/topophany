@@ -208,6 +208,66 @@ func TestReceiptCapacityAndHeartbeatMonotonicity(t *testing.T) {
 		t.Fatal("receipt capacity released inside the ingestion window", e)
 	}
 }
+
+// A heartbeat that changes nothing costs no journal write or fsync, so a
+// worker sending one again and again cannot hold up every other observer;
+// a newer one, or one under another revision, is still written.
+func TestHeartbeatThatChangesNothingIsNotWritten(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	dir := t.TempDir()
+	s := openTest(t, dir, Options{Now: func() time.Time { return now }})
+	journal := func() int64 {
+		st, e := os.Stat(filepath.Join(dir, "journal.jsonl"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		return st.Size()
+	}
+	beat := func(at time.Time, revision string) model.Batch {
+		b := batch(c)
+		b.Revision = revision
+		b.Heartbeat = &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: at}
+		return b
+	}
+	revision := config.Revision(c)
+	if e := s.Put(beat(now, revision)); e != nil {
+		t.Fatal(e)
+	}
+	size := journal()
+	for _, b := range []model.Batch{beat(now, revision), beat(now, revision), beat(now.Add(-time.Second), revision)} {
+		if e := s.Put(b); e != nil {
+			t.Fatal(e)
+		}
+		if journal() != size {
+			t.Fatal("a heartbeat that changes nothing was written")
+		}
+	}
+	// With an observation, the batch is written without the heartbeat.
+	b := beat(now, revision)
+	b.Observations = []model.Observation{testkit.Observation(c, "home-http", 1, now, "ok")}
+	if e := s.Put(b); e != nil {
+		t.Fatal(e)
+	}
+	if journal() == size {
+		t.Fatal("observation not written")
+	}
+	size = journal()
+	for i, b := range []model.Batch{beat(now.Add(time.Second), revision), beat(now.Add(time.Second), "f"+revision[1:])} {
+		if e := s.Put(b); e != nil {
+			t.Fatal(e)
+		}
+		if journal() == size {
+			t.Fatal(i, "a heartbeat that changes something was not written")
+		}
+		size = journal()
+	}
+	s.Close()
+	s = openTest(t, dir, Options{Now: func() time.Time { return now }})
+	if _, beats := s.View(); !beats["home"].SampledAt.Equal(now.Add(time.Second)) || beats["home"].Revision != "f"+revision[1:] {
+		t.Fatal("heartbeat not recovered", beats["home"])
+	}
+}
 func TestStorageErrorsFailClosed(t *testing.T) {
 	s := openTest(t, t.TempDir(), Options{})
 	s.file.Close()
