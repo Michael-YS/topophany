@@ -149,6 +149,8 @@ func TestLargeValidDiagnosticsFitOfficialSnapshotClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cl.Close()
+	// Snapshot freshness must not depend on fixture construction under -race.
+	cl.Now = func() time.Time { return now }
 	received, _, err := cl.Snapshot(context.Background(), "")
 	if err != nil || len(received.Checks) != len(c.Checks) || !received.DetailsOmitted {
 		t.Fatal("official client lost valid project summary", err)
