@@ -16,12 +16,12 @@ type Preview interface {
 	SetScenario(i int, at time.Time)
 }
 
-// RunPreview runs the ordinary viewer against a synthetic source. fetch must
-// never touch the network.
-func RunPreview(parent context.Context, p Preview, fetch Fetch, observer string, noColor bool, in, out *os.File) error {
+// RunPreview runs the ordinary viewer against a synthetic source. fetch and
+// history must never touch the network.
+func RunPreview(parent context.Context, p Preview, fetch Fetch, history History, observer string, noColor bool, in, out *os.File) error {
 	m := &Model{Observer: observer, NoColor: noColor, Preview: p}
 	m.say("Preview: synthetic evidence only · x switch scenario · D debug overlay", false)
-	return loop(parent, m, fetch, in, out)
+	return loop(parent, m, fetch, history, in, out)
 }
 
 const scenarioKeys = "1234567890abcdefghilnoprstuvwy"

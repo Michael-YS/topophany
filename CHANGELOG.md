@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A check's evidence opens with its recent samples, read from the
+  collector's history: a strip of one slot per sample colored by outcome,
+  with a grey dot for each interval in which none was taken, a bar for
+  what each passing sample took, and their median and 95th-percentile
+  times with the median DNS, connect, TLS and first-byte times.
+  `topo show checks ID` prints the same strip, and its JSON carries it
+  slot by slot as `samples`.
 - Everything the TUI shows can be read from the command line. `topo status`
   prints the Overview (verdict, check and tab counts, what needs attention,
   services and observers) and says it in its exit status: 0 all clear,

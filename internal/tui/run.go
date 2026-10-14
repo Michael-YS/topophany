@@ -22,10 +22,16 @@ type fetched struct {
 }
 
 func Run(ctx context.Context, c *client.Client, observer string, noColor bool, in, out *os.File) error {
-	return RunWithFetch(ctx, c.Snapshot, observer, noColor, in, out)
+	history := func(ctx context.Context, check string, limit int) ([]model.Observation, error) {
+		h, _, e := c.History(ctx, check, limit)
+		return h.Entries, e
+	}
+	return loop(ctx, &Model{Observer: observer, NoColor: noColor}, c.Snapshot, history, in, out)
 }
+
+// RunWithFetch runs the viewer on fetch alone, without reading history.
 func RunWithFetch(parent context.Context, fetch Fetch, observer string, noColor bool, in, out *os.File) error {
-	return loop(parent, &Model{Observer: observer, NoColor: noColor}, fetch, in, out)
+	return loop(parent, &Model{Observer: observer, NoColor: noColor}, fetch, nil, in, out)
 }
 
 // RunEditor opens the editor on a local topology. It never contacts a
@@ -37,7 +43,7 @@ func RunEditor(parent context.Context, path string, c model.Config, noColor bool
 		m.setTab(tabTopology)
 		m.say("New topology — press a to add your first node", false)
 	}
-	return loop(parent, m, nil, in, out)
+	return loop(parent, m, nil, nil, in, out)
 }
 
 // ColorProfile picks truecolor where the terminal advertises it, otherwise
@@ -132,7 +138,7 @@ func (s *screen) paint(out *os.File, m *Model) (int, error) {
 	return fmt.Fprint(out, f)
 }
 
-func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error {
+func loop(parent context.Context, m *Model, fetch Fetch, history History, in, out *os.File) error {
 	term, e := openTerminal(in, out)
 	if e != nil {
 		return e
@@ -175,6 +181,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 			}
 		}()
 	}
+	samples := &sampler{read: history, results: make(chan fetchedSamples, 1)}
 	m.Loading = "connecting to the collector"
 	request()
 	keys := time.NewTicker(30 * time.Millisecond)
@@ -218,6 +225,14 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 				m.Server = msg.server
 				m.Error = ""
 			}
+			samples.request(ctx, m, true)
+			if e = draw(); e != nil {
+				return e
+			}
+		case got := <-samples.results:
+			samples.busy = false
+			m.KeepSamples(got.check, got.entries, got.err)
+			samples.request(ctx, m, false)
 			if e = draw(); e != nil {
 				return e
 			}
@@ -236,6 +251,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 					return nil
 				case "refresh":
 					request()
+					samples.request(ctx, m, true)
 				case "view":
 					m.NextObserver()
 					topology := m.Snapshot.Topology
@@ -248,6 +264,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 					request()
 				}
 			}
+			samples.request(ctx, m, false)
 			if len(ks) > 0 || now.Sub(last) >= m.Animating() {
 				if e = draw(); e != nil {
 					return e

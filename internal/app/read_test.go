@@ -173,6 +173,74 @@ func TestShowEntryTextCarriesTheEvidence(t *testing.T) {
 	}
 }
 
+// A check shown on its own carries its recent samples as its evidence
+// panel has them: the strip topo show prints is the newest part of the one
+// the TUI draws, from the same samples, and its text says the same.
+func TestShowCheckCarriesItsRecentSamples(t *testing.T) {
+	c, e := preview.Preset()
+	if e != nil {
+		t.Fatal(e)
+	}
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	const id = "w-dmit-443"
+	// All clear, a lossy border, then a worker gone quiet.
+	for _, sc := range []int{0, 5, 6} {
+		sim := preview.New(c, now)
+		if sc != 0 {
+			sim.SetScenario(sc, now.Add(-30*time.Minute))
+		}
+		snap, e := sim.Snapshot("", now)
+		if e != nil {
+			t.Fatal(e)
+		}
+		entries, e := sim.History(id, view.StripSamples, now)
+		if e != nil {
+			t.Fatal(e)
+		}
+		x, _ := config.Check(c, id)
+		want := view.NewStrip(x, entries, now, textSlots)
+		out, e := at(now, "preview", "--scenario", fmt.Sprint(sc), "show", "checks", id, "--json")
+		if e != nil {
+			t.Fatal(e)
+		}
+		var shown struct{ Rows []shown }
+		if err := json.Unmarshal([]byte(out), &shown); err != nil || len(shown.Rows) != 1 || shown.Rows[0].Samples == nil {
+			t.Fatalf("scenario %d: show carries no samples: %v\n%s", sc, err, out)
+		}
+		if got := *shown.Rows[0].Samples; !reflect.DeepEqual(roundTrip(t, got), roundTrip(t, want)) || got.Samples == 0 && sc != 6 {
+			t.Fatalf("scenario %d: show's strip %q, want %q", sc, view.Glyphs(got.Slots), view.Glyphs(want.Slots))
+		}
+		m := &tui.Model{Snapshot: snap, Now: now, Server: "synthetic", Width: 211, Height: 43, NoColor: true, Tab: view.Checks, Detail: true}
+		for i, r := range m.Rows() {
+			if r.ID == id {
+				m.Selected = i
+			}
+		}
+		m.KeepSamples(id, entries, nil)
+		frame := escapes.ReplaceAllString(strings.Join(m.Render(), "\n"), "")
+		if !strings.Contains(frame, view.Glyphs(want.Slots)) {
+			t.Fatalf("scenario %d: the TUI's strip does not end as show's %q:\n%s", sc, view.Glyphs(want.Slots), frame)
+		}
+		text, e := at(now, "preview", "--scenario", fmt.Sprint(sc), "show", "checks", id)
+		if e != nil || !strings.Contains(text, "RECENT SAMPLES · "+want.Span(now)+" · "+want.Every()+"\n"+view.Glyphs(want.Slots)+"\n") || !strings.Contains(text, want.Latency.String()) {
+			t.Fatalf("scenario %d: show's text lacks the strip: %v\n%s", sc, e, text)
+		}
+	}
+}
+
+func roundTrip(t *testing.T, s view.Strip) any {
+	t.Helper()
+	b, e := json.Marshal(s)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var out any
+	if e = json.Unmarshal(b, &out); e != nil {
+		t.Fatal(e)
+	}
+	return out
+}
+
 // The read commands against a real collector: status exits by what it
 // finds, show and history read it, flags may follow the arguments, and a
 // collector that does not answer is told apart from a refusal.
@@ -215,10 +283,13 @@ func TestReadCommandsAgainstACollector(t *testing.T) {
 	out, e = read("show", "checks", "home-http", "--json")
 	var shown struct {
 		Server string
-		Rows   []view.Row
+		Rows   []shown
 	}
 	if e != nil || json.Unmarshal([]byte(out), &shown) != nil || len(shown.Rows) != 1 || shown.Rows[0].Health != "down" || shown.Server != srv.URL {
 		t.Fatalf("show a check: %v\n%s", e, out)
+	}
+	if s := shown.Rows[0].Samples; s == nil || s.Samples != 3 || view.Glyphs(s.Slots) != "✖✖✖" {
+		t.Fatalf("show a check without its recent samples:\n%s", out)
 	}
 	out, e = read("history", "home-http", "--limit", "2")
 	if e != nil || strings.Count(out, " fail ") != 2 || !strings.Contains(out, "Samples: 2, newest first") {
@@ -256,7 +327,8 @@ func TestTextOutputDropsControlSequences(t *testing.T) {
 	w := &text{w: &b}
 	w.kv("Name", "evil\x1b[31mred\x1b]2;title\x07\u202e")
 	w.table([][]string{{"A", "B"}, {"x\x1b[2J", "multi\nline"}})
-	w.entry(view.Row{Kind: "node", ID: "n", Title: "\x1b[1mbold", Details: []string{"Notes: \u009b31m"}})
+	w.entry(view.Row{Kind: "node", ID: "n", Title: "\x1b[1mbold", Details: []string{"Notes: \u009b31m"}}, func() {})
+	w.samples(nil, "refused\x1b[2J", time.Now())
 	if strings.ContainsAny(b.String(), "\x1b\x07\u009b\u202e") {
 		t.Fatalf("%q", b.String())
 	}

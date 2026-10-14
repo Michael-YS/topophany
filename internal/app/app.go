@@ -594,6 +594,8 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	return tui.RunPreview(ctx, sim, func(_ context.Context, view string) (model.Snapshot, string, error) {
 		snap, e := sim.Snapshot(view, time.Now())
 		return snap, "synthetic", e
+	}, func(_ context.Context, check string, limit int) ([]model.Observation, error) {
+		return sim.History(check, limit, time.Now())
 	}, *observer, *noColor, a.TerminalIn, a.TerminalOut)
 }
 func (a *App) login(ctx context.Context, args []string) error {

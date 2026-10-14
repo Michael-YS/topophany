@@ -60,6 +60,7 @@ type Model struct {
 	aboutAt               time.Time
 	aboutSpin             float64 // extra globe rotation from the mouse wheel
 	vcache                vCache  // the virtual map's wires, kept while its layout holds
+	samples               samples // the selected check's recent samples, as last read
 	hits                  []hit
 	drawingModal          bool
 }

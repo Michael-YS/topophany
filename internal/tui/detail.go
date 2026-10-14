@@ -200,7 +200,7 @@ func (m *Model) drawDetail(cv *Canvas, x, y, w, h int, r Row, scroll bool) {
 		}
 		top = 3
 	}
-	lines := m.detailBody(r, w)
+	lines := append(m.sampleLines(r, w), m.detailBody(r, w)...)
 	bh := h - top
 	off := 0
 	if scroll {

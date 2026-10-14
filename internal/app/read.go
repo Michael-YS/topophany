@@ -236,7 +236,7 @@ func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed
 	case tab == mapTab:
 		return a.showMap(v, h, *asJSON)
 	case len(pos) == 2:
-		return a.showEntry(v, h, tab, pos[1], *asJSON)
+		return a.showEntry(ctx, r, v, h, tab, pos[1], *asJSON)
 	}
 	return a.showTab(v, h, tab, *asJSON)
 }
@@ -384,10 +384,14 @@ func (a *App) status(v view.View, h header, asJSON bool) error {
 	return done(t.err)
 }
 
-// shown is a row as show prints it: a server's carries its card.
+// shown is a row as show prints it: a server's carries its card, and a
+// check shown on its own its recent samples, as its evidence panel has
+// them, or why they could not be read.
 type shown struct {
 	view.Row
-	Card *view.Card `json:"card,omitempty"`
+	Card         *view.Card  `json:"card,omitempty"`
+	Samples      *view.Strip `json:"samples,omitempty"`
+	SamplesError string      `json:"samples_error,omitempty"`
 }
 
 func withCards(v view.View, tab int, rows []view.Row) []shown {
@@ -429,7 +433,7 @@ func (a *App) showTab(v view.View, h header, tab int, asJSON bool) error {
 // showEntry prints the evidence behind the entries of a tab with an ID,
 // given bare or as KIND:ID. IDs are unique only within a kind, so on the
 // Overview and Topology tabs a bare ID can name several.
-func (a *App) showEntry(v view.View, h header, tab int, id string, asJSON bool) error {
+func (a *App) showEntry(ctx context.Context, r reader, v view.View, h header, tab int, id string, asJSON bool) error {
 	kind := ""
 	if k, rest, ok := strings.Cut(id, ":"); ok {
 		kind, id = k, rest
@@ -444,6 +448,20 @@ func (a *App) showEntry(v view.View, h header, tab int, id string, asJSON bool) 
 		return fmt.Errorf("%s has no entry %q; topo show %s lists them", tabNames[tab], secure.Text(id), tabNames[tab])
 	}
 	entries := withCards(v, tab, rows)
+	for i := range entries {
+		e := &entries[i]
+		if e.Kind != "check" {
+			continue
+		}
+		x, _ := config.Check(v.Snapshot.Topology, e.ID)
+		samples, _, err := r.history(ctx, e.ID, view.StripSamples)
+		if err != nil {
+			e.SamplesError = err.Error()
+			continue
+		}
+		strip := view.NewStrip(x, samples.Entries, v.Now, textSlots)
+		e.Samples = &strip
+	}
 	if asJSON {
 		return printJSON(a.Out, tabJSON{h, tabNames[tab], view.Columns(tab), entries})
 	}
@@ -451,12 +469,40 @@ func (a *App) showEntry(v view.View, h header, tab int, id string, asJSON bool) 
 	h.print(t, v.Now)
 	for _, e := range entries {
 		t.line()
-		t.entry(e.Row)
+		t.entry(e.Row, func() {
+			if e.Samples != nil || e.SamplesError != "" {
+				t.samples(e.Samples, e.SamplesError, v.Now)
+			}
+		})
 		if e.Card != nil {
 			t.card(*e.Card, v.Now)
 		}
 	}
 	return t.err
+}
+
+// textSlots is how many of a check's newest slots text shows.
+const textSlots = 60
+
+// samples writes a check's recent samples as its evidence panel shows them.
+func (t *text) samples(s *view.Strip, failed string, now time.Time) {
+	switch {
+	case s == nil:
+		t.line("RECENT SAMPLES")
+		t.line(clean("unavailable: " + failed))
+	case len(s.Slots) == 0:
+		t.line("RECENT SAMPLES")
+		t.line("none in the collector's history")
+	default:
+		t.line("RECENT SAMPLES · " + s.Span(now) + " · " + s.Every())
+		t.line(view.Glyphs(s.Slots))
+		if s.Latency.Samples > 0 {
+			t.line(view.Bars(s.Slots))
+		}
+		t.line(s.Latency.String())
+		t.line(view.StripLegend)
+	}
+	t.line()
 }
 
 func (a *App) showMap(v view.View, h header, asJSON bool) error {
@@ -647,11 +693,13 @@ func (t *text) rows(title string, tab int, rows []view.Row) {
 }
 
 // entry writes the evidence behind a row as the TUI's evidence panel has
-// it: the title, kind, ID and state, then the detail lines.
-func (t *text) entry(r view.Row) {
+// it: the title, kind, ID and state, what before writes, then the detail
+// lines.
+func (t *text) entry(r view.Row, before func()) {
 	t.line(clean(r.Title))
 	t.line(clean(r.Kind + " · " + r.ID + " · " + view.Pill(r)))
 	t.line()
+	before()
 	blank := true
 	for _, l := range r.Details {
 		l = strings.TrimRight(clean(l), " ")
