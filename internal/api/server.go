@@ -125,6 +125,12 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		// Health, unknown routes, bad methods, authentication failures and
+		// pre-auth rejections must not retain HTTP/1 listener slots. Only a
+		// successfully authorized request opts back into connection reuse.
+		if r.ProtoMajor == 1 {
+			w.Header().Set("Connection", "close")
+		}
 		select {
 		case s.preauthSlots <- struct{}{}:
 		default:
@@ -172,6 +178,7 @@ func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Req
 			writeError(w, 403, "role_forbidden")
 			return
 		}
+		w.Header().Del("Connection")
 		if release, ok := r.Context().Value(admissionKey{}).(func()); ok {
 			release()
 		}
@@ -224,7 +231,7 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request, _ Principal) {
 		Project  string       `json:"project"`
 		Revision string       `json:"revision"`
 		Topology model.Config `json:"topology"`
-	}{s.Config.Project, config.Revision(s.Config), config.Public(s.Config)})
+	}{s.Config.Project, config.PublicRevision(s.Config), config.Public(s.Config)})
 }
 func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 	id := r.URL.Query().Get("check")
@@ -241,11 +248,16 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 		}
 		n = v
 	}
+	revision := config.PublicRevision(s.Config)
+	entries := s.Store.History(id, config.Revision(s.Config), n)
+	for i := range entries {
+		entries[i].Revision = revision
+	}
 	writeJSON(w, 200, struct {
 		Project  string              `json:"project"`
 		Revision string              `json:"revision"`
 		Entries  []model.Observation `json:"entries"`
-	}{s.Config.Project, config.Revision(s.Config), s.Store.History(id, config.Revision(s.Config), n)})
+	}{s.Config.Project, revision, entries})
 }
 func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 	if ct, _, e := mime.ParseMediaType(r.Header.Get("Content-Type")); e != nil || ct != "application/json" {

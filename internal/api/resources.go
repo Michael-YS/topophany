@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -99,6 +101,11 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 var errSnapshotBudget = errors.New("snapshot budget exceeded")
 
 func summaryJSON(s model.Snapshot) ([]byte, error) {
+	// Redact before deriving the viewer's identity, including nested last
+	// observations. Keep the execution snapshot and stored evidence unchanged.
+	s.Topology = config.Public(s.Topology)
+	s.Revision = config.Revision(s.Topology)
+	s.Checks = slices.Clone(s.Checks)
 	// History remains the source of full diagnostic evidence.
 	s.DetailsOmitted = true
 	for i := range s.Checks {
@@ -106,6 +113,7 @@ func summaryJSON(s model.Snapshot) ([]byte, error) {
 		c.Reason = model.SummaryText(c.Reason)
 		if c.Last != nil {
 			v := model.SummaryObservation(*c.Last)
+			v.Revision = s.Revision
 			c.Last = &v
 		}
 	}

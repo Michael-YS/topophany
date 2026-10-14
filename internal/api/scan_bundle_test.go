@@ -41,7 +41,8 @@ func TestConnectionLimitCoversPartialHeadersAndReleases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bounded := LimitListener(ln, 2).(*limitedListener)
+	// Exercise the global cap independently; source quotas have separate tests.
+	bounded := newLimitedListener(ln, 2, 2, maxConnectionLifetime)
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }), ReadHeaderTimeout: 100 * time.Millisecond}
 	defer server.Close()
 	go server.Serve(bounded)

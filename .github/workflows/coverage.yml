@@ -1,0 +1,76 @@
+name: Coverage
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare reports and formatting diagnostics
+        run: |
+          mkdir -p "$RUNNER_TEMP/coverage"
+          printf 'COVERAGE_DIR=%s/coverage\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          gofmt -d . | tee "$RUNNER_TEMP/coverage/formatting.diff"
+      - name: Current statement coverage
+        run: |
+          go test -count=1 -covermode=atomic -coverprofile="$COVERAGE_DIR/current.out" ./... | tee "$COVERAGE_DIR/current-packages.txt"
+          go tool cover -func="$COVERAGE_DIR/current.out" > "$COVERAGE_DIR/current-functions.txt"
+      - name: Baseline statement coverage
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/coverage-base" "$BASE_SHA"
+          cd "$RUNNER_TEMP/coverage-base"
+          go test -count=1 -covermode=atomic -coverprofile="$COVERAGE_DIR/base.out" ./... | tee "$COVERAGE_DIR/base-packages.txt"
+          go tool cover -func="$COVERAGE_DIR/base.out" > "$COVERAGE_DIR/base-functions.txt"
+      - name: Coverage comparison
+        run: |
+          {
+            echo '## Coverage comparison'
+            printf '\nBaseline commit: `%s`\n\n' "$BASE_SHA"
+            echo '### Baseline'
+            grep '^total:' "$COVERAGE_DIR/base-functions.txt"
+            echo '### Current'
+            grep '^total:' "$COVERAGE_DIR/current-functions.txt"
+            echo '### Security-sensitive functions (current)'
+            grep -E '/(listener|public_revision|layout_budget)\.go:' "$COVERAGE_DIR/current-functions.txt"
+            echo
+            echo 'Full package and function reports are retained in the coverage artifact.'
+          } | tee "$COVERAGE_DIR/comparison.md"
+          cat "$COVERAGE_DIR/comparison.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Repeated shuffled security regressions with race detection
+        run: |
+          go test -race -count=10 -shuffle=on -run 'Test(Security|ConnectionSource|SourceQuota|GlobalAndSource|ConnectionLifetime|InvalidConnection|HTTPConnection|ViewerRevisions|SummaryDoesNotMutate|PublicRevision)' ./internal/api ./internal/config ./internal/tui | tee "$COVERAGE_DIR/repeated-security.txt"
+      - name: Bounded private-field fuzzing
+        run: |
+          go test -run '^$' -fuzz '^FuzzPublicRevisionPrivateHeaders$' -fuzztime=10s -parallel=2 ./internal/config | tee "$COVERAGE_DIR/fuzz.txt"
+      - name: Security layout benchmarks
+        run: |
+          go test -run '^$' -bench '^BenchmarkSecurity' -benchtime=1x -count=3 -benchmem ./internal/tui | tee "$COVERAGE_DIR/benchmarks.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/coverage/
+          retention-days: 7
