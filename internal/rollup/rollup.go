@@ -107,11 +107,15 @@ func (b *bucket) merge(o bucket) {
 // size bounds a bucket's encoded size, in bytes.
 func (b *bucket) size() int64 { return 160 + 12*int64(len(b.lat.bins)) }
 
-// A series is a check's samples under one contract. first is the earliest
-// moment it holds, updated when a sample was last added by the collector's
-// clock, and open its newest sample, whose time still runs.
+// A series is a check's samples under one contract, all taken by owner,
+// the check's observer. first is the earliest moment it holds, updated
+// when a sample was last added by the collector's clock, open its newest
+// sample, whose time still runs, and size what it costs, its buckets
+// included.
 type series struct {
+	owner          string
 	first, updated int64
+	size           int64
 	open           *open
 	buckets        []bucket // ascending, never overlapping
 }
@@ -147,13 +151,14 @@ func (r *Store) SetCurrent(current func(key string) bool) {
 	r.current = current
 }
 
-// Add folds in a sample of the series key: taken at at, saying outcome,
-// taking elapsed milliseconds, current for stale. The newest sample before
+// Add folds in a sample of the series key, taken by the observer owner:
+// taken at at, saying outcome, taking elapsed milliseconds, current for
+// stale. The newest sample before
 // it stands until at or until it went stale, whichever came first. A
 // sample no newer than the newest is counted, but the time it would stand
 // for is already accounted for. now, the collector's clock, decides how
 // wide a new bucket is.
-func (r *Store) Add(key string, at time.Time, outcome string, elapsed int64, stale time.Duration, now time.Time) {
+func (r *Store) Add(key, owner string, at time.Time, outcome string, elapsed int64, stale time.Duration, now time.Time) {
 	t, n := at.UnixMilli(), now.UnixMilli()
 	if t <= 0 {
 		return
@@ -164,8 +169,9 @@ func (r *Store) Add(key string, at time.Time, outcome string, elapsed int64, sta
 	if s == nil {
 		s = &series{}
 		r.series[key] = s
-		r.size += seriesSize(key)
+		r.grow(s, seriesSize(key))
 	}
+	s.owner = owner
 	s.updated = n
 	if s.first == 0 || t < s.first {
 		s.first = t
@@ -189,8 +195,14 @@ func (r *Store) Add(key string, at time.Time, outcome string, elapsed int64, sta
 	if outcome == "ok" {
 		b.lat.add(elapsed)
 	}
-	r.size += b.size() - before
+	r.grow(s, b.size()-before)
 	r.shed()
+}
+
+// grow counts n more bytes to s and the store.
+func (r *Store) grow(s *series, n int64) {
+	s.size += n
+	r.size += n
 }
 
 // spend credits [from, to) to class.
@@ -222,10 +234,10 @@ func (r *Store) bucket(s *series, t, now int64) int {
 	}
 	for _, old := range s.buckets[k:j] {
 		nb.merge(old)
-		r.size -= old.size()
+		r.grow(s, -old.size())
 	}
 	s.buckets = slices.Replace(s.buckets, k, j, nb)
-	r.size += nb.size()
+	r.grow(s, nb.size())
 	return k
 }
 
@@ -254,10 +266,11 @@ func (r *Store) Settle(now time.Time) {
 	r.size = 0
 	for key, s := range r.series {
 		s.buckets = compact(s.buckets, n)
-		r.size += seriesSize(key)
+		s.size = seriesSize(key)
 		for i := range s.buckets {
-			r.size += s.buckets[i].size()
+			s.size += s.buckets[i].size()
 		}
+		r.size += s.size
 	}
 	r.shed()
 }
@@ -283,7 +296,10 @@ func compact(bs []bucket, now int64) []bucket {
 }
 
 // shed drops what the cap cannot hold: series no longer counted, those
-// least recently added to first, then the oldest bucket of any series.
+// least recently added to first, then the oldest bucket of the observer
+// whose series cost the most. An observer loses rollups only while none
+// holds more, so one that sends all it may cannot shorten the history of
+// another that holds no more than its share of the cap.
 func (r *Store) shed() {
 	for r.size > r.limit {
 		key, oldest := "", int64(math.MaxInt64)
@@ -298,8 +314,19 @@ func (r *Store) shed() {
 			r.drop(key)
 			continue
 		}
+		cost, held := map[string]int64{}, map[string]bool{}
+		for _, s := range r.series {
+			cost[s.owner] += s.size
+			held[s.owner] = held[s.owner] || len(s.buckets) > 0
+		}
+		owner, most := "", int64(-1)
+		for o, n := range cost {
+			if held[o] && (n > most || n == most && o < owner) {
+				owner, most = o, n
+			}
+		}
 		for k, s := range r.series {
-			if len(s.buckets) > 0 && (s.buckets[0].start < oldest || s.buckets[0].start == oldest && k < key) {
+			if s.owner == owner && len(s.buckets) > 0 && (s.buckets[0].start < oldest || s.buckets[0].start == oldest && k < key) {
 				key, oldest = k, s.buckets[0].start
 			}
 		}
@@ -307,7 +334,7 @@ func (r *Store) shed() {
 			return
 		}
 		s := r.series[key]
-		r.size -= s.buckets[0].size()
+		r.grow(s, -s.buckets[0].size())
 		s.buckets = slices.Delete(s.buckets, 0, 1)
 		switch {
 		case len(s.buckets) > 0:
@@ -321,11 +348,7 @@ func (r *Store) shed() {
 }
 
 func (r *Store) drop(key string) {
-	s := r.series[key]
-	r.size -= seriesSize(key)
-	for i := range s.buckets {
-		r.size -= s.buckets[i].size()
-	}
+	r.size -= r.series[key].size
 	delete(r.series, key)
 }
 
@@ -672,9 +695,9 @@ func (h *histogram) quantile(q float64) int64 {
 	return h.max
 }
 
-// What a store looks like on disk: each series by key, with its earliest
-// moment, when it was last added to and its open sample (at, stale, class)
-// in Unix milliseconds, and its buckets with start and width in seconds,
+// What a store looks like on disk: each series by key, with its owner,
+// its earliest moment, when it was last added to and its open sample
+// (at, stale, class) in Unix milliseconds, and its buckets with start and width in seconds,
 // the time of each class in milliseconds, the samples by outcome, and
 // their latency as count, sum, slowest and then pairs of bin and count.
 type disk struct {
@@ -684,6 +707,7 @@ type disk struct {
 
 type diskSeries struct {
 	Key     string       `json:"k"`
+	Owner   string       `json:"w,omitempty"`
 	First   int64        `json:"f"`
 	Updated int64        `json:"u"`
 	Open    []int64      `json:"o,omitempty"`
@@ -704,7 +728,7 @@ func (r *Store) MarshalJSON() ([]byte, error) {
 	defer r.mu.Unlock()
 	d := disk{Schema: 1, Series: make([]diskSeries, 0, len(r.series))}
 	for key, s := range r.series {
-		ds := diskSeries{Key: key, First: s.first, Updated: s.updated, Buckets: make([]diskBucket, 0, len(s.buckets))}
+		ds := diskSeries{Key: key, Owner: s.owner, First: s.first, Updated: s.updated, Buckets: make([]diskBucket, 0, len(s.buckets))}
 		if s.open != nil {
 			ds.Open = []int64{s.open.at, s.open.stale, int64(s.open.class)}
 		}
@@ -747,10 +771,10 @@ func (r *Store) UnmarshalJSON(raw []byte) error {
 	held := map[string]*series{}
 	size := int64(0)
 	for _, ds := range d.Series {
-		if ds.Key == "" || len(ds.Key) > 512 || held[ds.Key] != nil || ds.First < 0 || ds.Updated < 0 {
+		if ds.Key == "" || len(ds.Key) > 512 || len(ds.Owner) > 512 || held[ds.Key] != nil || ds.First < 0 || ds.Updated < 0 {
 			return errInvalid
 		}
-		s := &series{first: ds.First, updated: ds.Updated}
+		s := &series{owner: ds.Owner, first: ds.First, updated: ds.Updated, size: seriesSize(ds.Key)}
 		if ds.Open != nil {
 			if len(ds.Open) != 3 || ds.Open[0] <= 0 || ds.Open[1] <= 0 || ds.Open[2] < 0 || ds.Open[2] >= classes {
 				return errInvalid
@@ -788,10 +812,10 @@ func (r *Store) UnmarshalJSON(raw []byte) error {
 				}
 			}
 			s.buckets = append(s.buckets, b)
-			size += b.size()
+			s.size += b.size()
 		}
 		held[ds.Key] = s
-		size += seriesSize(ds.Key)
+		size += s.size
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

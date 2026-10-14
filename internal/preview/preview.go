@@ -376,7 +376,7 @@ func (s *Sim) roll(at time.Time) *rollup.Store {
 					stands = at.Add(time.Minute).Sub(t)
 				}
 				o := s.observe(c, y, t, sc)
-				r.Add(x.ID, t, o.Outcome, o.DurationMS, stands, at)
+				r.Add(x.ID, x.Observer, t, o.Outcome, o.DurationMS, stands, at)
 			}
 		}
 	}

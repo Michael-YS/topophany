@@ -2,6 +2,7 @@ package rollup
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -21,7 +22,7 @@ func feed(r *Store, key string, from, to time.Time, every, stale time.Duration, 
 			if arrived.IsZero() {
 				arrived = at
 			}
-			r.Add(key, at, o, 100, stale, arrived)
+			r.Add(key, "", at, o, 100, stale, arrived)
 		}
 	}
 }
@@ -78,9 +79,9 @@ func TestTimeStandsForTheNewestCurrentSample(t *testing.T) {
 func TestLateSamplesCountWithoutTime(t *testing.T) {
 	r := New(MaxLimit)
 	now := t0.Add(10 * time.Minute)
-	r.Add("c", t0, "ok", 10, time.Minute, now)
-	r.Add("c", t0.Add(5*time.Minute), "ok", 10, time.Minute, now)
-	r.Add("c", t0.Add(2*time.Minute), "fail", 10, time.Minute, now)
+	r.Add("c", "", t0, "ok", 10, time.Minute, now)
+	r.Add("c", "", t0.Add(5*time.Minute), "ok", 10, time.Minute, now)
+	r.Add("c", "", t0.Add(2*time.Minute), "fail", 10, time.Minute, now)
 	got, _ := r.Window("c", t0, now, now)
 	if got.Up != 120 || got.Down != 0 || got.Samples != 3 || got.Outcomes["fail"] != 1 {
 		t.Fatalf("late sample changed the time: %+v", got)
@@ -124,7 +125,7 @@ func TestBucketsWidenWithAgeWithoutChangingTotals(t *testing.T) {
 		t.Fatalf("days hold what hours held:\n%+v\n%+v", before, again)
 	}
 	// A late sample lands in whatever bucket now holds its moment.
-	r.Add("c", t0.Add(time.Hour+time.Second), "ok", 5, 3*time.Minute, later)
+	r.Add("c", "", t0.Add(time.Hour+time.Second), "ok", 5, 3*time.Minute, later)
 	if w := widths(); w[86400] != 3 || len(r.series["c"].buckets) != 3 {
 		t.Fatal("late sample made a bucket", w)
 	}
@@ -194,7 +195,7 @@ func TestStoreShedsUnderItsCap(t *testing.T) {
 	for _, key := range []string{"old/a", "cur/b", "cur/c"} {
 		feed(r, key, t0, now, time.Minute, 3*time.Minute, always("ok"), now)
 	}
-	r.Add("old/a", now, "ok", 1, time.Minute, now.Add(-time.Hour))
+	r.Add("old/a", "", now, "ok", 1, time.Minute, now.Add(-time.Hour))
 	r.Settle(now)
 	full := r.Size()
 	r.SetCurrent(func(key string) bool { return strings.HasPrefix(key, "cur/") })
@@ -214,6 +215,50 @@ func TestStoreShedsUnderItsCap(t *testing.T) {
 	got, since := r.Window("cur/b", t0, now, now)
 	if !since.Equal(t0.Add(5*time.Minute)) || got.Unmeasured != 300 {
 		t.Fatalf("shed time reads as unmeasured: %+v", got)
+	}
+}
+
+// An observer whose samples fill the cap sheds its own oldest rollups,
+// not the older ones of another observer that holds less, and so it is
+// after the store is written and read back.
+func TestOneObserverCannotShedAnother(t *testing.T) {
+	r := New(MaxLimit)
+	now := t0.Add(5 * 24 * time.Hour)
+	add := func(key, owner string, from time.Time) {
+		for at := from; at.Before(now); at = at.Add(time.Minute) {
+			r.Add(key, owner, at, "ok", 100, 3*time.Minute, now)
+		}
+	}
+	add("c/quiet", "quiet", t0)
+	for i := range 4 {
+		add(fmt.Sprintf("c/busy-%d", i), "busy", t0.Add(time.Hour))
+	}
+	r.Settle(now)
+	r.limit = r.Size() - 40*160
+	r.Settle(now)
+	if !r.Since("c/quiet").Equal(t0) {
+		t.Fatal("the quiet observer's rollups were shed", r.Since("c/quiet"))
+	}
+	if !r.Since("c/busy-0").After(t0.Add(time.Hour)) || r.Size() > r.limit {
+		t.Fatal("the busy observer's rollups were not shed", r.Since("c/busy-0"), r.Size(), r.limit)
+	}
+	raw, e := json.Marshal(r)
+	if e != nil {
+		t.Fatal(e)
+	}
+	back := New(r.limit - 40*160)
+	if e = json.Unmarshal(raw, back); e != nil {
+		t.Fatal(e)
+	}
+	back.Settle(now)
+	if !back.Since("c/quiet").Equal(t0) || !back.Since("c/busy-0").After(r.Since("c/busy-0")) {
+		t.Fatal("owners not kept through a write", back.Since("c/quiet"), back.Since("c/busy-0"))
+	}
+	// Once it holds more than the rest, the quiet observer sheds too.
+	back.limit = 4 * 160 * 30
+	back.Settle(now)
+	if back.Since("c/quiet").Equal(t0) || back.Size() > back.limit {
+		t.Fatal("an observer holding the most was not shed", back.Since("c/quiet"), back.Size())
 	}
 }
 

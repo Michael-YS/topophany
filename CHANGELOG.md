@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the journal, so a crash counts no sample twice. `topo serve
   --rollup-bytes` caps them (32 MiB by default); at the cap a collector
   sheds the rollups of contracts it no longer counts, then the oldest
-  days, and never stops ingesting for them.
+  days of the observer whose rollups take the most room, and never stops
+  ingesting for them.
 - Snapshots carry each check's `availability` over the last 24 hours, 7
   days and 30 days. A check's evidence shows them, such as `Last 24h:
   99.2% up over 96% measured · down 11m`, and the Checks tab its last
@@ -295,6 +296,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `undeclared` for the rest, no `test_url`, and `peer_text:
   withheld_secret_request`. Every check's `edge_cache` is now one of the
   statuses edges report, or absent.
+- One worker token can no longer shorten another observer's long-term
+  history. Rollups past the cap were shed oldest bucket first across
+  every check, so an observer sending all it may could push out the
+  oldest rollups of observers that held far less. A collector now sheds
+  the oldest buckets of the observer whose rollups take the most room;
+  each series records its observer, and keeps it through checkpoints.
 
 ## [0.3.0] - 2026-10-14
 

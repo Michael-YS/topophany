@@ -350,9 +350,10 @@ func (s *Store) currentKey(key string) bool {
 	return ok && s.options.Contracts[check] == contract
 }
 
-// roll folds a newly accepted sample into its rollup series.
+// roll folds a newly accepted sample into its rollup series, which its
+// observer owns.
 func (s *Store) roll(v model.Observation) {
-	s.rollups.Add(s.rollKey(v), v.SampledAt, v.Outcome, v.DurationMS, s.options.Stale[v.Check], s.options.Now())
+	s.rollups.Add(s.rollKey(v), v.Observer, v.SampledAt, v.Outcome, v.DurationMS, s.options.Stale[v.Check], s.options.Now())
 }
 
 // bootOf splits an observation ID, observer.boot.sequence, into its boot
