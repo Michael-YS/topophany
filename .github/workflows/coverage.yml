@@ -18,8 +18,8 @@ jobs:
       run:
         shell: bash
     env:
-      COVERAGE_DIR: ${{ runner.temp }}/coverage
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,9 +29,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Prepare reports and formatting diagnostics
+        run: |
+          mkdir -p "$RUNNER_TEMP/coverage"
+          printf 'COVERAGE_DIR=%s/coverage\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          gofmt -d . | tee "$RUNNER_TEMP/coverage/formatting.diff"
       - name: Current statement coverage
         run: |
-          mkdir -p "$COVERAGE_DIR"
           go test -count=1 -covermode=atomic -coverprofile="$COVERAGE_DIR/current.out" ./... | tee "$COVERAGE_DIR/current-packages.txt"
           go tool cover -func="$COVERAGE_DIR/current.out" > "$COVERAGE_DIR/current-functions.txt"
       - name: Baseline statement coverage
