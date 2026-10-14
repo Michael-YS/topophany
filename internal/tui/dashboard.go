@@ -67,9 +67,9 @@ func (m *Model) verdict() (string, Color) {
 	case m.Edit != nil:
 		return "◇ LOCAL DRAFT", cEdit
 	case m.Loading != "" && m.Snapshot.GeneratedAt.IsZero() && len(m.Snapshot.Topology.Nodes) == 0:
-		return "◌ CONNECTING", cAccent2
+		return m.spinner() + " CONNECTING", cAccent2
 	case m.Loading != "":
-		return "◌ LOADING", cAccent2
+		return m.spinner() + " LOADING", cAccent2
 	case m.Cached():
 		return "◌ CACHED", cWarn
 	case up+down+warn+unk == 0:
@@ -313,7 +313,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		case m.Edit != nil:
 			msg, sub, c = "◇ Local draft", "The editor has no live evidence; preview it with topo preview --config.", cEdit
 		case m.Loading != "":
-			msg, sub, c = "◌ Waiting for evidence", "Nothing current is known yet; this fills in as soon as a snapshot arrives.", cAccent2
+			msg, sub, c = m.spinner()+" Waiting for evidence", "Nothing current is known yet; this fills in as soon as a snapshot arrives.", cAccent2
 		case m.Cached():
 			msg, sub, c = "◌ Status not established", "Showing the last snapshot; nothing current is known.", cWarn
 		case len(m.Snapshot.Checks) == 0:

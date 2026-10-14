@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The TUI writes only the cells that changed since the last frame, not
   every line with a change, so animation on the maps sends a few hundred
   bytes a step instead of tens of kilobytes.
+- While connecting or loading a view, the header, the status row, the
+  Overview's verdict and the empty map show a turning spinner rather than
+  a still `◌`, so a slow collector reads as busy, not stuck.
 
 ## [0.2.0] - 2026-10-13
 

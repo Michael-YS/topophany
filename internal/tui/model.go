@@ -611,6 +611,8 @@ func (m *Model) Animating() time.Duration {
 	switch {
 	case m.Tab == tabAbout:
 		return 70 * time.Millisecond
+	case m.Loading != "":
+		return 90 * time.Millisecond // the spinner turns
 	case m.Tab == tabTopology && !m.Detail:
 		return 140 * time.Millisecond
 	}

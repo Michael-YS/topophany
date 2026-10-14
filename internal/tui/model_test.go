@@ -300,3 +300,26 @@ func TestOversizedFragmentedPasteNeverExecutesCommands(t *testing.T) {
 		t.Fatal("parser failed to resume after paste")
 	}
 }
+
+// While something loads the UI says so with a spinner that turns, and
+// repaints often enough for it to turn.
+func TestLoadingSpins(t *testing.T) {
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	m := &Model{Now: now, Width: 120, Height: 36, Server: "https://monitor.example.invalid:7447", Loading: "connecting to the collector"}
+	a := visible(m)
+	if !strings.Contains(a, "CONNECTING") || !strings.Contains(a, "connecting to the collector…") || !strings.Contains(a, "Waiting for the topology") {
+		t.Fatal("loading frame does not say what it waits for", a)
+	}
+	m.Now = now.Add(90 * time.Millisecond)
+	if visible(m) == a {
+		t.Fatal("spinner does not turn")
+	}
+	if m.Animating() > 100*time.Millisecond {
+		t.Fatal("loading frames are not repainted often enough to spin")
+	}
+	m.Loading = ""
+	m.Snapshot.GeneratedAt = now
+	if m.Animating() < 100*time.Millisecond {
+		t.Fatal("still spinning after loading")
+	}
+}

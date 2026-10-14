@@ -58,7 +58,7 @@ func (m *Model) header(cv *Canvas) {
 		add("   "+age(m.Now, m.Snapshot.GeneratedAt)+"  ", cFaint)
 		switch {
 		case m.Loading != "":
-			add("◌ LOADING", cAccent2)
+			add(m.spinner()+" LOADING", cAccent2)
 		case m.Cached():
 			add("◌ CACHED", cWarn)
 		default:
@@ -136,6 +136,14 @@ func (m *Model) badge(tab int) (int, Color) {
 		return n, cDown
 	}
 	return n, cWarn
+}
+
+// spinner is the busy indicator as it stands at the moment drawn; the run
+// loop repaints often enough to turn it while something is loading.
+func (m *Model) spinner() string {
+	frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+	n := int64(len(frames))
+	return string(frames[(m.Now.UnixMilli()/90%n+n)%n])
 }
 
 // tabBar draws numbered tabs, each with the badge of what in it needs a
@@ -320,7 +328,7 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 		return
 	}
 	if m.Loading != "" {
-		cv.Text(x, y, "◌ "+m.Loading+"…", fg(cAccent2), cv.W-2)
+		cv.Text(x, y, m.spinner()+" "+m.Loading+"…", fg(cAccent2), cv.W-2)
 		return
 	}
 	if m.Edit != nil {

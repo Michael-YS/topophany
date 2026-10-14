@@ -130,7 +130,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		case m.Edit != nil:
 			msg = "Empty topology — press a to add a node"
 		case m.Loading != "":
-			msg = "Waiting for the topology…"
+			msg = m.spinner() + " Waiting for the topology…"
 		}
 		cv.Text(x+max(0, (w-width(msg))/2), y+h/2, msg, fg(cMuted).italic(), w)
 		return
