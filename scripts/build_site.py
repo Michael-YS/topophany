@@ -6,6 +6,7 @@ site/src/locales/<code>.json the words of one language. The language named
 "default" in site/src/site.json is served at /, every other at /<code>/, and
 each page links to all of them. The pages are written into site/public, which
 is published as is, so they are committed; --check only says which are stale.
+The sitemap and robots.txt are written with them, from the same languages.
 
 A key ending in .html holds markup and goes in as written; any other is text
 and is escaped. Words may name {{site.*}} values (versions, the origin) so a
@@ -57,11 +58,13 @@ def path_of(site: dict, code: str) -> str:
 def page_values(site: dict, catalogs: dict, code: str) -> dict[str, str]:
     words = catalogs[code]
     here = path_of(site, code)
-    links, items, offers = [], [], []
+    links, items, offers, locales = [], [], [], []
     for other in languages(site, catalogs):
         theirs, where = catalogs[other], path_of(site, other)
         tag = escape(theirs["lang.tag"])
         links.append(f'<link rel="alternate" hreflang="{tag}" href="{escape(site["origin"] + where)}">')
+        if other != code and "lang.locale" in theirs:
+            locales.append(f'<meta property="og:locale:alternate" content="{escape(theirs["lang.locale"])}">')
         current = ' aria-current="page"' if other == code else ""
         items.append(f'<li><a href="{where}" hreflang="{tag}" lang="{tag}"{current}>{escape(theirs["lang.name"])}</a></li>')
         offers.append({"tag": theirs["lang.tag"], "href": where, "name": theirs["lang.name"],
@@ -79,7 +82,39 @@ def page_values(site: dict, catalogs: dict, code: str) -> dict[str, str]:
         "page.alternates.html": "\n".join(links),
         "page.languages.html": "".join(items),
         "page.strings.html": f'<script type="application/json" id="strings">{data}</script>',
+        "page.locales.html": "\n".join(locales),
+        "page.jsonld.html": jsonld(site, catalogs, code),
     }
+
+
+def jsonld(site: dict, catalogs: dict, code: str) -> str:
+    """What the page is about, for search engines: the site, and the
+    software it is the homepage of, in the page's language."""
+    words, origin = catalogs[code], site["origin"]
+    repo = "https://github.com/WhitenWhiten/topophany"
+    software = {
+        "@type": "SoftwareApplication", "@id": f"{origin}/#software", "name": "Topophany",
+        "url": origin + path_of(site, code), "inLanguage": words["lang.tag"],
+        "applicationCategory": "DeveloperApplication", "applicationSubCategory": "Network monitoring",
+        "operatingSystem": "Linux, macOS, Windows",
+        "license": f"{repo}/blob/main/LICENSE", "downloadUrl": f"{repo}/releases/latest",
+        "image": f"{origin}/og.png", "sameAs": [repo],
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+    }
+    if "meta.description" in words:
+        software["description"] = expand(words["meta.description"], site, {})
+    if "version" in site:
+        software["softwareVersion"] = site["version"].lstrip("v")
+    data = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {"@type": "WebSite", "@id": f"{origin}/#website", "url": f"{origin}/", "name": "Topophany",
+             "inLanguage": [catalogs[c]["lang.tag"] for c in languages(site, catalogs)]},
+            software,
+        ],
+    }
+    text = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    return f'<script type="application/ld+json">{text}</script>'
 
 
 def expand(value: str, site: dict, page: dict[str, str]) -> str:
@@ -121,8 +156,27 @@ def escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
+def sitemap(site: dict, catalogs: dict) -> str:
+    """Every language's page, each naming all of them as its alternates."""
+    alternates = [(catalogs[c]["lang.tag"], site["origin"] + path_of(site, c)) for c in languages(site, catalogs)]
+    alternates.append(("x-default", site["origin"] + "/"))
+    links = "".join(f'\n    <xhtml:link rel="alternate" hreflang="{escape(tag)}" href="{escape(href)}"/>'
+                    for tag, href in alternates)
+    urls = "".join(f"\n  <url>\n    <loc>{escape(href)}</loc>{links}\n  </url>" for tag, href in alternates[:-1])
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">'
+            f"{urls}\n</urlset>\n")
+
+
+def robots(site: dict) -> str:
+    """Everything may be crawled, the scripts' data included, since a page
+    is judged as it renders."""
+    return f"User-agent: *\nAllow: /\n\nSitemap: {site['origin']}/sitemap.xml\n"
+
+
 def build(src: Path = SRC, out: Path = OUT) -> dict[Path, str]:
-    """Every page in every language, by the path it is published from."""
+    """Every page in every language, by the path it is published from, with
+    the sitemap and robots.txt."""
     site, catalogs = load(src)
     templates = {name: (src / name).read_text(encoding="utf-8") for name in PAGES}
     pages, used = {}, set()
@@ -134,6 +188,8 @@ def build(src: Path = SRC, out: Path = OUT) -> dict[Path, str]:
                     if key not in used and not key.startswith(("js.", "lang.")))
     if unused:
         raise SiteError(f"words no page uses: {unused}")
+    pages[out / "sitemap.xml"] = sitemap(site, catalogs)
+    pages[out / "robots.txt"] = robots(site)
     return pages
 
 

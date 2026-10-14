@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{meta.title}}</title>
 <meta name="description" content="{{meta.description}}">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#0a1016">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="{{page.url}}">
@@ -12,18 +13,23 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Topophany">
 <meta property="og:url" content="{{page.url}}">
 <meta property="og:locale" content="{{lang.locale}}">
+{{page.locales.html}}
 <meta property="og:title" content="{{meta.title}}">
 <meta property="og:description" content="{{meta.og-description}}">
 <meta property="og:image" content="{{page.origin}}/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{{meta.image-alt}}">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image:alt" content="{{meta.image-alt}}">
 <link rel="stylesheet" href="/css/site.css">
 <link rel="preload" href="/data/land.bin" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.js"></script>
 {{page.strings.html}}
+{{page.jsonld.html}}
 </head>
 <body>
 <a class="skip" href="#demo">{{nav.skip}}</a>
@@ -146,7 +152,7 @@
         </div>
         <div class="samples" aria-hidden="true">
           <p class="samples-h"><b>RECENT SAMPLES</b> 20 min · every 30s</p>
-          <svg class="strip" data-strip="ooooooooooooooooooo.oooooooooooooooooxxx"></svg>
+          <svg class="strip" viewBox="0 0 480 46" data-strip="ooooooooooooooooooo.oooooooooooooooooxxx"></svg>
           <p class="samples-l"></p>
         </div>
         <p>{{green.text.html}}</p>

@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 SPEC = importlib.util.spec_from_file_location("build_site", Path(__file__).with_name("build_site.py"))
 build_site = importlib.util.module_from_spec(SPEC)
@@ -41,6 +42,27 @@ class SiteTests(unittest.TestCase):
                 href = site["origin"] + build_site.path_of(site, other)
                 self.assertIn(f'hreflang="{catalogs[other]["lang.tag"]}" href="{href}"', page)
             self.assertNotRegex(page, r"\{\{|\}\}")
+
+    def test_search_engines_find_every_language(self):
+        site, catalogs = build_site.load()
+        pages = build_site.build()
+        sitemap = ET.fromstring(pages[build_site.OUT / "sitemap.xml"])
+        ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9", "x": "http://www.w3.org/1999/xhtml"}
+        hrefs = {code: site["origin"] + build_site.path_of(site, code) for code in catalogs}
+        self.assertEqual([u.findtext("s:loc", namespaces=ns) for u in sitemap.findall("s:url", ns)],
+                         [hrefs[code] for code in build_site.languages(site, catalogs)])
+        for url in sitemap.findall("s:url", ns):
+            alternates = {a.get("hreflang"): a.get("href") for a in url.findall("x:link", ns)}
+            self.assertEqual(alternates, {**{catalogs[c]["lang.tag"]: h for c, h in hrefs.items()},
+                                          "x-default": site["origin"] + "/"})
+        self.assertIn(f"Sitemap: {site['origin']}/sitemap.xml", pages[build_site.OUT / "robots.txt"])
+        for code in catalogs:
+            page = pages[build_site.OUT / build_site.path_of(site, code).strip("/") / "index.html"]
+            data = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', page).group(1))
+            software = next(n for n in data["@graph"] if n["@type"] == "SoftwareApplication")
+            self.assertEqual((software["url"], software["inLanguage"]), (hrefs[code], catalogs[code]["lang.tag"]))
+            others = {catalogs[c]["lang.locale"] for c in catalogs if c != code}
+            self.assertEqual(set(re.findall(r'og:locale:alternate" content="([^"]+)"', page)), others)
 
     def test_scripts_ask_only_for_words_the_pages_carry(self):
         site, catalogs = build_site.load()

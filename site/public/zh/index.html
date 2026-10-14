@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Topophany — 场所的显现</title>
-<meta name="description" content="用一个 Go 二进制文件自托管监控网络拓扑与服务可用性。从哪里出发、经由哪条路径、抵达了什么——依据又是什么。">
+<title>Topophany — 在终端中查看的自托管网络监控</title>
+<meta name="description" content="自托管的网络拓扑与可用性监控，带终端界面。一个 Go 二进制文件，告诉你测了什么、从哪里测、测得有多新。">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#0a1016">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="https://topophany.com/zh/">
@@ -15,18 +16,24 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Topophany">
 <meta property="og:url" content="https://topophany.com/zh/">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:title" content="Topophany — 场所的显现">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="ja_JP">
+<meta property="og:title" content="Topophany — 在终端中查看的自托管网络监控">
 <meta property="og:description" content="从哪里出发、经由哪条路径、抵达了什么——依据又是什么。在终端界面中查看的自托管网络监控，只有一个 Go 二进制文件。">
 <meta property="og:image" content="https://topophany.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Topophany 字标，旁边是点阵地球，上海、东京、新加坡、孟买和悉尼亮起并由路径相连。">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image:alt" content="Topophany 字标，旁边是点阵地球，上海、东京、新加坡、孟买和悉尼亮起并由路径相连。">
 <link rel="stylesheet" href="/css/site.css">
 <link rel="preload" href="/data/land.bin" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.js"></script>
 <script type="application/json" id="strings">{"replay":"回放","paused":"已暂停","pause":"暂停回放","play":"播放回放","recording":"Topophany 终端界面的录像：{title}。{text}","missing":"这段录像里没有 {tab}。运行 {cmd} 即可查看。","failed":"无法加载录像","copy":"复制","copied":"已复制","place.shanghai":"上海","place.tokyo":"东京","place.singapore":"新加坡","place.frankfurt":"法兰克福","place.london":"伦敦","place.ashburn":"阿什本","place.los-angeles":"洛杉矶","place.sao-paulo":"圣保罗","place.sydney":"悉尼","place.mumbai":"孟买","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/zh/","inLanguage":"zh-Hans","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"自托管的网络拓扑与可用性监控，带终端界面。一个 Go 二进制文件，告诉你测了什么、从哪里测、测得有多新。","softwareVersion":"0.3.0"}]}</script>
 </head>
 <body>
 <a class="skip" href="#demo">跳到演示</a>
@@ -59,7 +66,7 @@
     <div class="hero-copy">
       <p class="release">v0.3.0 · MIT · 自托管</p>
       <h1 class="wordmark-h1">
-        <span class="sr-only">Topophany — 场所的显现</span>
+        <span class="sr-only">Topophany — 在终端中查看的自托管网络监控</span>
         <canvas class="wordmark" aria-hidden="true"></canvas>
       </h1>
       <p class="lede">从哪里出发，经由哪条路径，抵达了什么——依据又是什么。</p>
@@ -149,7 +156,7 @@
         </div>
         <div class="samples" aria-hidden="true">
           <p class="samples-h"><b>RECENT SAMPLES</b> 20 min · every 30s</p>
-          <svg class="strip" data-strip="ooooooooooooooooooo.oooooooooooooooooxxx"></svg>
+          <svg class="strip" viewBox="0 0 480 46" data-strip="ooooooooooooooooooo.oooooooooooooooooxxx"></svg>
           <p class="samples-l"></p>
         </div>
         <p>健康的行保持安静。没有检查就是 <em>unknown</em>，而不是在线。</p>

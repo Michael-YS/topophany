@@ -183,7 +183,7 @@ img, svg, canvas { display: block; }
 .hero-copy { position: relative; z-index: 2; }
 .release { font: 13px/1 var(--mono); color: var(--muted); margin-bottom: 28px; }
 .wordmark-h1 { margin: 0 0 30px; line-height: 0; }
-.wordmark { width: 100%; max-width: 746px; height: auto; }
+.wordmark { width: min(100%, 745px); height: auto; aspect-ratio: 162 / 38; }
 .lede {
   font: 500 clamp(22px, 2.3vw, 28px)/1.35 var(--sans);
   letter-spacing: calc(var(--track, 1) * -.012em);

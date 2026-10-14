@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Topophany — 場所の顕現</title>
-<meta name="description" content="ネットワークトポロジーとサービスの可用性を、Go のバイナリ 1 つでセルフホスト監視。どこから、どの経路で、何に届いたのか — そして、何を根拠に。">
+<title>Topophany — ターミナルで読むセルフホスト型ネットワーク監視</title>
+<meta name="description" content="ネットワークトポロジーと稼働状況をセルフホストで監視し、ターミナル UI で読む。Go のバイナリ 1 つで、何を、どこから、いつ測ったかを示します。">
+<meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#0a1016">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="https://topophany.com/ja/">
@@ -15,18 +16,24 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Topophany">
 <meta property="og:url" content="https://topophany.com/ja/">
 <meta property="og:locale" content="ja_JP">
-<meta property="og:title" content="Topophany — 場所の顕現">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:title" content="Topophany — ターミナルで読むセルフホスト型ネットワーク監視">
 <meta property="og:description" content="どこから、どの経路で、何に届いたのか — そして、何を根拠に。ターミナル UI で読む、Go のバイナリ 1 つのセルフホスト型ネットワーク監視。">
 <meta property="og:image" content="https://topophany.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
 <link rel="stylesheet" href="/css/site.css">
 <link rel="preload" href="/data/land.bin" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.js"></script>
 <script type="application/json" id="strings">{"replay":"再生中","paused":"一時停止","pause":"再生を一時停止","play":"再生する","recording":"Topophany ターミナル UI の録画：{title}。{text}","missing":"{tab} はこの録画に含まれていません。{cmd} を実行すると見られます。","failed":"録画を読み込めませんでした","copy":"コピー","copied":"コピーしました","place.shanghai":"上海","place.tokyo":"東京","place.singapore":"シンガポール","place.frankfurt":"フランクフルト","place.london":"ロンドン","place.ashburn":"アッシュバーン","place.los-angeles":"ロサンゼルス","place.sao-paulo":"サンパウロ","place.sydney":"シドニー","place.mumbai":"ムンバイ","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/ja/","inLanguage":"ja","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"ネットワークトポロジーと稼働状況をセルフホストで監視し、ターミナル UI で読む。Go のバイナリ 1 つで、何を、どこから、いつ測ったかを示します。","softwareVersion":"0.3.0"}]}</script>
 </head>
 <body>
 <a class="skip" href="#demo">デモへスキップ</a>
@@ -59,7 +66,7 @@
     <div class="hero-copy">
       <p class="release">v0.3.0 · MIT · セルフホスト</p>
       <h1 class="wordmark-h1">
-        <span class="sr-only">Topophany — 場所の顕現</span>
+        <span class="sr-only">Topophany — ターミナルで読むセルフホスト型ネットワーク監視</span>
         <canvas class="wordmark" aria-hidden="true"></canvas>
       </h1>
       <p class="lede">どこから、どの経路で、何に届いたのか — そして、何を根拠に。</p>
@@ -149,7 +156,7 @@
         </div>
         <div class="samples" aria-hidden="true">
           <p class="samples-h"><b>RECENT SAMPLES</b> 20 min · every 30s</p>
-          <svg class="strip" data-strip="ooooooooooooooooooo.oooooooooooooooooxxx"></svg>
+          <svg class="strip" viewBox="0 0 480 46" data-strip="ooooooooooooooooooo.oooooooooooooooooxxx"></svg>
           <p class="samples-l"></p>
         </div>
         <p>正常な行は静かなまま。チェックがなければ稼働中ではなく <em>unknown</em> です。</p>
