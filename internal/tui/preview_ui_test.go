@@ -390,3 +390,29 @@ func TestWindowTitleIsTheVerdict(t *testing.T) {
 		t.Fatalf("editor title %q", got)
 	}
 }
+
+// At 80x24 the Overview still gives the verdict its big number and puts the
+// rest of the room to use: observers beside it, then the service matrix
+// when nothing needs attention, or the attention list when something does.
+func TestSmallOverviewUsesItsRoom(t *testing.T) {
+	m := previewModel(t)
+	m.Width, m.Height = 80, 24
+	out := visible(m)
+	for _, want := range []string{"ALL CLEAR", "checks passing", "OBSERVERS", "长沙 Windows", "Nothing needs attention", "SERVICES", "Clash Verge"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("healthy 80x24 overview lacks %q\n%s", want, out)
+		}
+	}
+	sim := m.Preview.(*preview.Sim)
+	sim.SetScenario(1, m.Now.Add(-30*time.Minute))
+	m.Snapshot, _ = sim.Snapshot("", m.Now)
+	out = visible(m)
+	for _, want := range []string{"checks failing", "NEEDS ATTENTION", "长沙 MacBook → 主链 DMIT → AAITR 家宽"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("80x24 overview of an outage lacks %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "SERVICES") {
+		t.Fatal("an outage's attention list gives its room to the services")
+	}
+}

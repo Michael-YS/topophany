@@ -127,6 +127,9 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 		}
 		bw := m.bigText(cv, x, row+1, big, fg(nc).bold())
 		lx := x + bw + 3
+		if label == "checks without current evidence" && width(label) > x+w-lx {
+			label = "checks not current"
+		}
 		cv.Text(lx, row+1, label, fg(cText), x+w-lx)
 		cv.Text(lx, row+2, sub, fg(cMuted), x+w-lx)
 		row += 5
@@ -406,9 +409,30 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 			m.servicesCard(cv, ix, iy, iw, ih)
 		}
 	default:
+		// Small: the status card with its big number when there is room,
+		// the observers beside it when there is width, and what needs
+		// attention under them; when nothing does, a short all-clear and
+		// the service matrix.
 		sh := min(6, h/2)
-		ix, iy, iw, ih := m.panel(cv, x, y, w, sh, "STATUS", "", false)
+		if h >= 20 {
+			sh = 11
+		}
+		sw := w
+		if sh == 11 && w >= 76 && nObservers > 0 && m.Edit == nil {
+			sw = min(max(w*55/100, 44), 64)
+		}
+		ix, iy, iw, ih := m.panel(cv, x, y, sw, sh, "STATUS", "", false)
 		m.statusCard(cv, ix, iy, iw, ih)
+		if sw < w {
+			ix, iy, iw, ih = m.panel(cv, x+sw, y, w-sw, sh, "OBSERVERS", "", false)
+			m.observersCard(cv, ix, iy, iw, ih)
+		}
+		if left := h - sh; len(rows) == 0 && m.Search == "" && left >= 9 {
+			attention(x, y+sh, w, 4, true)
+			ix, iy, iw, ih = m.panel(cv, x, y+sh+4, w, left-4, "SERVICES", "· "+itoa(nServices), false)
+			m.servicesCard(cv, ix, iy, iw, ih)
+			return
+		}
 		attention(x, y+sh, w, h-sh, true)
 	}
 }

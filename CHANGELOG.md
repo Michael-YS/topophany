@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Overview's verdict and the empty map show a turning spinner rather than
   a still `◌`, so a slow collector reads as busy, not stuck.
 - Menus, forms and confirmations cast a soft shadow onto the dimmed view.
+- On small terminals such as 80x24 the Overview keeps the verdict's big
+  number, puts the observers beside it, and when nothing needs attention
+  gives the room under a short all-clear to the service matrix.
 
 ### Fixed
 
