@@ -276,3 +276,48 @@ func TestPostAcknowledgementMustMatchExactBatch(t *testing.T) {
 		}
 	}
 }
+
+// History fails over as a snapshot read does, past collectors that are
+// down or busy and never past a rejection, and refuses samples that are
+// not the check's, the project's or the history's own revision.
+func TestHistoryFailoverAndValidation(t *testing.T) {
+	c := testkit.Config()
+	rev := config.Revision(c)
+	history := func() History {
+		v := testkit.Observation(c, "home-http", 1, time.Now().UTC(), "fail")
+		return History{Project: c.Project, Revision: rev, Entries: []model.Observation{v}}
+	}
+	good := jsonServer(t, 200, history())
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	busy := jsonServer(t, 503, map[string]string{"error": "down"})
+	h, url, e := newClient(t, dead.URL, busy.URL, good.URL).History(context.Background(), "home-http", 5)
+	if e != nil || url != good.URL || len(h.Entries) != 1 || h.Entries[0].Outcome != "fail" {
+		t.Fatal(h, url, e)
+	}
+	for _, tc := range []struct {
+		name   string
+		status int
+		mutate func(*History)
+	}{{"auth", 401, nil}, {"unknown_check", 404, nil}, {"bad_request", 400, nil}, {"project", 200, func(h *History) { h.Project = "foreign" }}, {"check", 200, func(h *History) { h.Entries[0].Check = "home-ssh" }}, {"revision", 200, func(h *History) { h.Entries[0].Revision = strings.Repeat("0", 64) }}, {"too_many", 200, func(h *History) { h.Entries = append(h.Entries, h.Entries[0], h.Entries[0]) }}} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := history()
+			if tc.mutate != nil {
+				tc.mutate(&v)
+			}
+			bad := jsonServer(t, tc.status, v)
+			if _, _, e := newClient(t, bad.URL, good.URL).History(context.Background(), "home-http", 2); e == nil || errors.Is(e, ErrNoCollector) {
+				t.Fatal("rejection fell through:", e)
+			}
+		})
+	}
+	if _, _, e := newClient(t, dead.URL, busy.URL).History(context.Background(), "home-http", 5); !errors.Is(e, ErrNoCollector) {
+		t.Fatal("no collector answered, but:", e)
+	}
+	if _, _, e := newClient(t, dead.URL, busy.URL).Snapshot(context.Background(), ""); !errors.Is(e, ErrNoCollector) {
+		t.Fatal("no collector answered a snapshot, but:", e)
+	}
+	if _, _, e := newClient(t, good.URL).History(context.Background(), "home-http", 501); e == nil {
+		t.Fatal("limit out of range accepted")
+	}
+}

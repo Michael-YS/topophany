@@ -34,10 +34,11 @@ type App struct {
 	In                      io.Reader
 	Out, Err                io.Writer
 	TerminalIn, TerminalOut *os.File
+	Now                     func() time.Time // the clock the read commands judge freshness by
 }
 
 func New() *App {
-	return &App{In: os.Stdin, Out: os.Stdout, Err: os.Stderr, TerminalIn: os.Stdin, TerminalOut: os.Stdout}
+	return &App{In: os.Stdin, Out: os.Stdout, Err: os.Stderr, TerminalIn: os.Stdin, TerminalOut: os.Stdout, Now: time.Now}
 }
 
 const help = `Topophany — network evidence, topology and service monitoring
@@ -46,6 +47,9 @@ Usage:
   topo                              connect using saved credentials; open TUI
   topo --credential TOKEN           override the saved bearer token for this run
   topo --json                       print one authenticated remote snapshot
+  topo status                       print the Overview: verdict, counts, what needs attention
+  topo show TAB [ID]                print a tab, or the evidence behind one entry in it
+  topo history CHECK                print a check's recent samples
   topo login                        save a verified remote connection
   topo serve                        run a collector (optional local checks)
   topo worker                       execute a reviewed topology from this location
@@ -57,6 +61,13 @@ Usage:
   topo export                       export a redacted topology
   topo token                        generate a random bearer token and its hash
   topo version                      show version
+
+status, show and history print what the TUI shows, as text or with --json;
+TAB is overview, topology, servers, services, paths, checks, incidents,
+observers or map. topo status exits 0 when all is clear, 2 when something
+needs attention, 3 when nothing current is known and 4 when no collector
+answers. 'topo preview [--scenario N] status' (or show, history) reads the
+synthetic evidence instead; 'topo preview scenarios' lists the scenarios.
 
 Use 'topo COMMAND --help' for command options. TUI: 1–9 tabs (9/? About),
 v observer, ↑↓/jk navigation, Enter details, / filter, r refresh, m map
@@ -95,6 +106,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.edit(ctx, args[1:])
 	case "preview":
 		return a.preview(ctx, args[1:])
+	case "status", "show", "history":
+		return a.read(ctx, args[0], args[1:], nil)
 	case "validate", "export", "once":
 		return a.topologyCommand(ctx, args[0], args[1:])
 	case "token":
@@ -356,56 +369,65 @@ func (a *App) worker(parent context.Context, args []string) error {
 		}
 	}
 }
-func (a *App) view(ctx context.Context, args []string) error {
-	f := a.flags("topo")
-	defaultPath, e := client.DefaultPath()
-	if e != nil {
-		return e
-	}
+
+// connection registers the flags that choose a collector and returns how
+// to connect with them once they are parsed.
+func (a *App) connection(f *flag.FlagSet) func() (*client.Client, error) {
+	defaultPath, pathErr := client.DefaultPath()
 	path := f.String("credentials", defaultPath, "saved client credentials")
 	profile := f.String("profile", "", "saved profile (default active)")
 	token := f.String("credential", "", "explicit temporary bearer-token override (prefer saved credentials)")
 	server := f.String("server", "", "temporary collector URL override")
 	project := f.String("project", "", "expected project ID; required without saved credentials")
+	insecure := f.Bool("allow-insecure", false, "explicit consent for plaintext non-loopback URL")
+	ca := f.String("ca-file", "", "custom trusted CA for an explicit server override")
+	return func() (*client.Client, error) {
+		if *path == "" && pathErr != nil {
+			return nil, pathErr
+		}
+		var p client.Profile
+		creds, e := client.Load(*path)
+		if e == nil {
+			name := *profile
+			if name == "" {
+				name = creds.Active
+			}
+			var ok bool
+			p, ok = creds.Profiles[name]
+			if !ok {
+				return nil, errors.New("credential profile not found")
+			}
+		} else if *server == "" || *project == "" || *token == "" {
+			return nil, fmt.Errorf("credentials unavailable; run topo login first (%w)", e)
+		}
+		if *project != "" {
+			p.Project = *project
+		}
+		if *server != "" {
+			p.Servers = []client.Endpoint{{URL: *server, Token: *token, CAFile: *ca, AllowInsecure: *insecure}}
+		}
+		if *token != "" {
+			if len(p.Servers) != 1 {
+				return nil, errors.New("--credential requires --server for a multi-server profile")
+			}
+			for i := range p.Servers {
+				p.Servers[i].Token = *token
+				p.Servers[i].TokenEnv = ""
+			}
+		}
+		return client.New(p)
+	}
+}
+func (a *App) view(ctx context.Context, args []string) error {
+	f := a.flags("topo")
+	connect := a.connection(f)
 	observer := f.String("observer", "", "observer view (default all)")
 	jsonOut := f.Bool("json", false, "print one snapshot without terminal control")
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
-	insecure := f.Bool("allow-insecure", false, "explicit consent for plaintext non-loopback URL")
-	ca := f.String("ca-file", "", "custom trusted CA for an explicit server override")
 	if e := parsed(f, args); e != nil {
 		return e
 	}
-	var p client.Profile
-	creds, e := client.Load(*path)
-	if e == nil {
-		name := *profile
-		if name == "" {
-			name = creds.Active
-		}
-		var ok bool
-		p, ok = creds.Profiles[name]
-		if !ok {
-			return errors.New("credential profile not found")
-		}
-	} else if *server == "" || *project == "" || *token == "" {
-		return fmt.Errorf("credentials unavailable; run topo login first (%w)", e)
-	}
-	if *project != "" {
-		p.Project = *project
-	}
-	if *server != "" {
-		p.Servers = []client.Endpoint{{URL: *server, Token: *token, CAFile: *ca, AllowInsecure: *insecure}}
-	}
-	if *token != "" {
-		if len(p.Servers) != 1 {
-			return errors.New("--credential requires --server for a multi-server profile")
-		}
-		for i := range p.Servers {
-			p.Servers[i].Token = *token
-			p.Servers[i].TokenEnv = ""
-		}
-	}
-	c, e := client.New(p)
+	c, e := connect()
 	if e != nil {
 		return e
 	}
@@ -461,10 +483,13 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	printTopo := f.Bool("print-topology", false, "write the built-in topology JSON to stdout and exit")
 	dump := f.Bool("json", false, "print one synthetic snapshot and exit")
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
-	if e := parsed(f, args); e != nil {
+	if e := f.Parse(args); e != nil {
 		return e
 	}
 	if *printTopo {
+		if f.NArg() > 0 {
+			return errors.New("--print-topology takes no command")
+		}
 		_, e := a.Out.Write(preview.PresetJSON())
 		return e
 	}
@@ -478,7 +503,7 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
-	now := time.Now()
+	now := a.now()
 	sim := preview.New(c, now)
 	names := sim.Scenarios()
 	if *scenario < 0 || *scenario >= len(names) {
@@ -486,6 +511,16 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	}
 	if *scenario != 0 {
 		sim.SetScenario(*scenario, now.Add(-30*time.Minute))
+	}
+	if f.NArg() > 0 {
+		switch cmd, rest := f.Arg(0), f.Args()[1:]; cmd {
+		case "status", "show", "history":
+			return a.read(ctx, cmd, rest, &previewed{config: c, sim: sim, now: now, observer: *observer, json: *dump})
+		case "scenarios":
+			return a.scenarios(rest, names, sim.Scenario(), *dump)
+		default:
+			return fmt.Errorf("unknown preview command %q; use status, show, history or scenarios", secure.Text(cmd))
+		}
 	}
 	if *dump {
 		snap, e := sim.Snapshot(*observer, now)

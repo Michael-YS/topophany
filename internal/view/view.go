@@ -267,6 +267,20 @@ func (v View) Verdict() Verdict {
 	return Verdict{"clear", "●", "ALL CLEAR"}
 }
 
+// Calm is what the Overview says when nothing needs attention, and why:
+// a state (draft, cached, no-checks or clear), a headline and a line more.
+func (v View) Calm() (state, headline, more string) {
+	switch {
+	case v.Draft:
+		return "draft", "◇ Local draft", "The editor has no live evidence; preview it with topo preview --config."
+	case v.Cached:
+		return "cached", "◌ Status not established", "Showing the last snapshot; nothing current is known."
+	case len(v.Snapshot.Checks) == 0:
+		return "no-checks", "○ No checks in this view", "Nothing is measured from here yet."
+	}
+	return "clear", "✓ Nothing needs attention", "Every check in this view passes; no incidents."
+}
+
 // Badge is what a tab counts beside its name: the entries in it that need
 // a look, and whether any of them is down. A cached view or a draft claims
 // nothing.

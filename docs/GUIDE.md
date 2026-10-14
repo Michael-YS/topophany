@@ -32,6 +32,9 @@ topo login --server https://monitor.example.invalid:7447 \
 topo                            # Connects to remote collector using saved credentials and opens TUI
 topo --observer observer-local  # Explicitly select observation vantage point
 topo --json                     # Emits a structured snapshot from the API without opening the terminal UI
+topo status                     # The Overview as text: verdict, counts, what needs attention; the exit status says it too
+topo show checks                # Any tab as a table; topo show checks ID gives the evidence behind one entry
+topo history home-http          # A check's recent samples, newest first
 topo --credential TOKEN         # Single-server profiles only; use --server with failover profiles. Explicit, transient credential override (visible in local process table)
 ```
 
@@ -109,7 +112,34 @@ topo preview --print-topology        # Dumps the built-in topology JSON to stdou
 
 In the built-in preview topology: local workstations connect across primary transit gateways to regional egress nodes for external verification; a backup transit gateway serves as failover; Tailscale connects nodes across locations; a central cloud relay provides DERP relaying and reverse proxying; and Cloudflare fronts the main site while running a Worker and a Pages site, beside a Vercel app that depends on Supabase. Press `x` to switch scenarios (transit filtering, host downtime, egress IP drift, local uplink failure, maintenance, clock skew, an origin down behind Cloudflare, the edge unreachable from the mainland, collector unreachable, etc.). CLI-specified scenarios initialize in an established state; switching scenarios inside the TUI begins at the current time, applying confirmation thresholds and expiration rules in real time. Evidence is derived from simulated observations through the state engine rather than hardcoded UI colors. Press `D` to toggle debug overlays (frame render duration, redraw bytes, map node count). The topology in preview mode is read-only.
 
-When collectors are unreachable, cached data is retained but items transition to `unknown` and are marked CACHED. Switching to a backup collector never silently changes the observer vantage point. The TUI queries the HTTP API every 3 seconds (preview mode regenerates synthetic snapshots every second); SSE and browser-based frontends are not implemented.
+When collectors are unreachable, cached data is retained but items transition to `unknown` and are marked CACHED; `topo status`, which keeps no cache, exits 4 instead. Switching to a backup collector never silently changes the observer vantage point. The TUI queries the HTTP API every 3 seconds (preview mode regenerates synthetic snapshots every second); SSE and browser-based frontends are not implemented.
+
+## Reading from Scripts and Agents
+
+Everything the TUI shows can be read from the command line, for a script, a cron job or an AI agent. The TUI and these commands draw on one derivation of the snapshot (`internal/view`), so they cannot disagree, and a test holds them to it across every preview scenario.
+
+```sh
+topo status                          # The Overview: verdict, check counts, tab counts, what needs attention, services, observers
+topo show TAB                        # A tab as a table: overview, topology, servers, services, paths, checks, incidents, observers
+topo show TAB ID                     # The evidence behind one entry, as the TUI's evidence panel has it; a server adds its card
+topo show topology node:home         # IDs are unique within a kind; KIND:ID picks one where a tab mixes kinds
+topo show map                        # The map's nodes and edges, with what each may claim (up, carried, affected, ...)
+topo history CHECK --limit 50        # A check's raw samples for the current revision, newest first (1..500)
+```
+
+Each takes `--json` for the same view as data (rows keep their state, columns and every evidence line; servers carry their cards), `--observer ID` for one vantage point, and the connection flags of `topo` itself (`--credentials`, `--profile`, `--server`, ...). Flags may come before or after the arguments. Text is plain: no color, one entry per line, with `Key: value` lines and aligned tables; control characters from the evidence are dropped.
+
+`topo status` answers in its exit status as well, so a script need not read the text:
+
+| Exit | Meaning |
+|---|---|
+| 0 | All clear: every check in the view passes and nothing needs attention |
+| 1 | The command failed (bad arguments, credentials, a collector's refusal) |
+| 2 | Something needs attention: an incident, a failing or degraded check, a service on a failing path, a silent observer |
+| 3 | Nothing current is known: no checks in the view, no current evidence, or only an expired snapshot |
+| 4 | No collector answered (also for `show` and `history`) |
+
+The same commands read the preview's synthetic evidence, which makes a safe rehearsal for an agent: `topo preview scenarios` lists the scenarios, and `topo preview --scenario 10 status` (or `show`, `history`) reads one in its settled state without a collector.
 
 ## Core Semantics
 

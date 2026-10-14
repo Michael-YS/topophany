@@ -114,7 +114,7 @@ Specify either `token` or `token_env`, with up to 8 server addresses. Worker cre
 | `GET /healthz` | Unauthenticated | Indicates collector HTTP daemon is running; does not indicate observation freshness |
 | `GET /v1/snapshot?observer=observer-local-01` | `viewer` | Returns current topology, evidence states, observer heartbeats, and incidents; `observer` query param is optional |
 | `GET /v1/config` | `viewer` | Returns deep-copied sanitized topology and revision hash |
-| `GET /v1/history?check=ID&limit=100` | `viewer` | Returns raw observation samples for the current revision (limit: 1..500) |
+| `GET /v1/history?check=ID&limit=100` | `viewer` | Returns raw observation samples for the current revision, newest first (limit: 1..500); `topo history` reads it |
 | `POST /v1/observations` | Scoped `worker` | Ingests observation batches and optional heartbeats (up to 100 observations / 1 MiB per batch) |
 
 Authentication requires the `Authorization: Bearer <token>` header. Batch writes require `Content-Type: application/json` (optional parameters such as `charset=utf-8` are permitted). Observation IDs follow `<observer>.<boot>.<sequence>`, where `sequence` is non-zero and `boot` is a valid identifier without dots to prevent cross-scope ID collision. `SampledAt` specifies local sample timestamp; `ReceivedAt` must be omitted or zero, and is populated by the collector. `revision` must match the SHA-256 hash of the normalized topology.

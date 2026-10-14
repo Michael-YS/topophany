@@ -3,6 +3,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -227,8 +228,83 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 		}
 		return snap, ep.URL, nil
 	}
-	return empty, "", errors.New("no configured collector returned a current, matching snapshot")
+	return empty, "", fmt.Errorf("%w with a current, matching snapshot", ErrNoCollector)
 }
+
+// ErrNoCollector is a read that no configured collector answered: each was
+// unreachable, failing or, for a snapshot, stale.
+var ErrNoCollector = errors.New("no configured collector answered")
+
+// History is a check's raw samples for the collector's current revision,
+// newest first.
+type History struct {
+	Project  string              `json:"project"`
+	Revision string              `json:"revision"`
+	Entries  []model.Observation `json:"entries"`
+}
+
+// History reads up to limit (1..500) of a check's samples, failing over as
+// Snapshot does: past unreachable or failing collectors, never past a
+// rejection.
+func (c *Client) History(ctx context.Context, check string, limit int) (History, string, error) {
+	var empty History
+	if !config.ID(check) || limit < 1 || limit > 500 {
+		return empty, "", errors.New("history needs a check ID and a limit of 1..500")
+	}
+	for i, ep := range c.profile.Servers {
+		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/history", url.Values{"check": {check}, "limit": {fmt.Sprint(limit)}}), nil)
+		if e != nil {
+			return empty, "", errors.New("invalid request")
+		}
+		if e = authorize(req, ep); e != nil {
+			return empty, "", e
+		}
+		resp, e := c.transports[i].Do(req)
+		if e != nil {
+			if ctx.Err() != nil {
+				return empty, "", ctx.Err()
+			}
+			continue
+		}
+		b, e := io.ReadAll(io.LimitReader(resp.Body, maxHistoryBytes+1))
+		resp.Body.Close()
+		if e != nil {
+			continue
+		}
+		switch {
+		case resp.StatusCode == 401 || resp.StatusCode == 403:
+			return empty, "", errors.New("collector authentication/authorization rejected; not falling through silently")
+		case resp.StatusCode == 404:
+			return empty, "", fmt.Errorf("collector has no check %q", check)
+		case resp.StatusCode >= 500 || resp.StatusCode == 429:
+			continue
+		case resp.StatusCode != 200:
+			return empty, "", fmt.Errorf("collector rejected read (HTTP %d)", resp.StatusCode)
+		case len(b) > maxHistoryBytes:
+			return empty, "", errors.New("history budget exceeded")
+		}
+		var h History
+		if e = secure.Decode(bytes.NewReader(b), &h, maxHistoryBytes); e != nil {
+			return empty, "", errors.New("invalid collector history")
+		}
+		if h.Project != c.profile.Project {
+			return empty, "", errors.New("project identity mismatch; response rejected")
+		}
+		if len(h.Revision) != 64 || len(h.Entries) > limit {
+			return empty, "", errors.New("invalid collector history")
+		}
+		for _, v := range h.Entries {
+			if v.Check != check || v.Project != h.Project || v.Revision != h.Revision || len(v.Facts) > 32 || len(v.Timings) > 16 {
+				return empty, "", errors.New("invalid collector history")
+			}
+		}
+		return h, ep.URL, nil
+	}
+	return empty, "", fmt.Errorf("%w with the history of %s", ErrNoCollector, check)
+}
+
+// A collector bounds history to 1 MiB of samples; the envelope adds little.
+const maxHistoryBytes = 2 << 20
 
 type HTTPError struct {
 	Status int

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	_ "embed"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"math"
 	"strconv"
@@ -229,6 +230,41 @@ func (s *Sim) Snapshot(view string, now time.Time) (model.Snapshot, error) {
 		}
 	}
 	return engine.Build(c, "preview", view, rows, beats, now), nil
+}
+
+// History is what a collector would return for a check's history at now:
+// up to limit samples, newest first, as the scenarios in effect produced
+// them.
+func (s *Sim) History(check string, limit int, now time.Time) ([]model.Observation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur := s.at(now)
+	if cur.Unreachable {
+		return nil, errors.New("preview: simulated collector outage (connection refused)")
+	}
+	c := s.configFor(cur)
+	rev := config.Revision(c)
+	x, ok := config.Check(c, check)
+	if !ok {
+		return nil, fmt.Errorf("preview: no check %q", check)
+	}
+	every := time.Duration(x.IntervalSeconds) * time.Second
+	offset := time.Duration(hash(x.ID)%uint32(x.IntervalSeconds*1000)) * time.Millisecond
+	latest := now.Add(-offset).Truncate(every).Add(offset)
+	out := []model.Observation{}
+	for k := 0; len(out) < limit && k < 24*3600/x.IntervalSeconds; k++ {
+		t := latest.Add(-time.Duration(k) * every)
+		sc := s.at(t)
+		if has(sc.Offline, x.Observer) {
+			continue
+		}
+		o := s.observe(c, rev, x, t, sc)
+		if d := sc.Skew[x.Observer]; d != 0 {
+			o.SampledAt = o.SampledAt.Add(d)
+		}
+		out = append(out, o)
+	}
+	return out, nil
 }
 
 func (s *Sim) configFor(sc Scenario) model.Config {

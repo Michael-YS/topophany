@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Everything the TUI shows can be read from the command line. `topo status`
+  prints the Overview (verdict, check and tab counts, what needs attention,
+  services and observers) and says it in its exit status: 0 all clear,
+  2 something needs attention, 3 nothing current is known, 4 no collector
+  answered. `topo show TAB [ID]` prints any tab, or the evidence behind
+  one entry as the evidence panel has it, a server with its card;
+  `topo show map` lists the map's nodes and edges with what each may
+  claim. `topo history CHECK` reads a check's recent samples. Each takes
+  `--json`, `--observer` and the connection flags of `topo`.
+- `topo preview [--scenario N] status` (or `show`, `history`) reads the
+  synthetic evidence, and `topo preview scenarios` lists the scenarios, so
+  scripts and agents can be rehearsed on a simulated outage.
+
+### Changed
+
+- What the TUI shows is derived in one place, `internal/view`, which the
+  TUI draws and the CLI prints; a test holds the two to the same rows,
+  evidence, verdict and counts across every preview scenario.
+
 ### Fixed
 
 - Endpoints are judged by the same rule as services and nodes. One whose

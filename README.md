@@ -62,7 +62,7 @@ topo --credentials ./demo/credentials.json
   measure from where they are      keep the evidence           read it
 
   topo worker   (home laptop)  ─┬─▶  topo serve  (A)  ─┬─▶  topo          the TUI
-  topo worker   (Tokyo server) ─┴─▶  topo serve  (B)  ─┴─▶  topo --json   for scripts
+  topo worker   (Tokyo server) ─┴─▶  topo serve  (B)  ─┴─▶  topo status   for scripts and agents
 ```
 
 - **Workers** run the checks in a reviewed local topology file and deliver observations to one or two collectors, buffering on disk when the network is down.
@@ -72,6 +72,7 @@ topo --credentials ./demo/credentials.json
 | Command | What it does |
 |---|---|
 | `topo` | Open the TUI on a remote collector, using saved credentials |
+| `topo status` / `topo show TAB [ID]` | Print what the TUI shows, as text or `--json`; `status` answers in its exit status too |
 | `topo login` | Save and verify a connection to a collector |
 | `topo serve` | Run a collector, optionally with checks of its own |
 | `topo worker` | Run checks from this machine and report them |
@@ -111,7 +112,7 @@ Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and net
 | `m` / `z` | cycle the map / zoom it |
 | `q` | quit |
 
-The mouse works too. Colors adapt to truecolor, 256-color and `NO_COLOR` terminals. The [user guide](docs/GUIDE.md) describes every tab and map.
+The mouse works too. Colors adapt to truecolor, 256-color and `NO_COLOR` terminals. The [user guide](docs/GUIDE.md) describes every tab and map, and how to read all of it from scripts and agents with `topo status`, `topo show` and `topo history`.
 
 ## Documentation
 

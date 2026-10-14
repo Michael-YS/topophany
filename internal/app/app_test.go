@@ -72,7 +72,7 @@ func TestCLIDispatchAndHelp(t *testing.T) {
 	if e != nil || !strings.Contains(out, "Topophany "+model.Version) {
 		t.Fatal(e, out)
 	}
-	for _, cmd := range []string{"serve", "worker", "login", "init", "validate", "export", "once", "token", "edit", "preview"} {
+	for _, cmd := range []string{"serve", "worker", "login", "init", "validate", "export", "once", "token", "edit", "preview", "status", "show", "history"} {
 		_, stderr, e := invoke("", cmd, "--help")
 		if !errors.Is(e, flag.ErrHelp) || !strings.Contains(stderr, "Usage of") {
 			t.Fatal(cmd, e, stderr)

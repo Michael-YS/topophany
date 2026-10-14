@@ -290,16 +290,10 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 			m.drawList(cv, ix, iy, iw, ih, rows)
 			return
 		}
-		msg, sub, c := "✓ Nothing needs attention", "Every check in this view passes; no incidents.", cUp
-		switch {
-		case m.Edit != nil:
-			msg, sub, c = "◇ Local draft", "The editor has no live evidence; preview it with topo preview --config.", cEdit
-		case m.Loading != "":
+		state, msg, sub := m.view().Calm()
+		c := map[string]Color{"draft": cEdit, "cached": cWarn, "no-checks": cUnknown, "clear": cUp}[state]
+		if m.Edit == nil && m.Loading != "" {
 			msg, sub, c = m.spinner()+" Waiting for evidence", "Nothing current is known yet; this fills in as soon as a snapshot arrives.", cAccent2
-		case m.Cached():
-			msg, sub, c = "◌ Status not established", "Showing the last snapshot; nothing current is known.", cWarn
-		case len(m.Snapshot.Checks) == 0:
-			msg, sub, c = "○ No checks in this view", "Nothing is measured from here yet.", cUnknown
 		}
 		cv.Text(ix, iy, msg, fg(c).bold(), iw)
 		for i, l := range wrap(sub, iw) {
