@@ -219,7 +219,7 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			return s
 		}
 		p := pathDefs[id]
-		s := aggregate(id, pathEvidenceStates(group(func(x model.Check) bool { return x.Path == id })), "no endpoint-to-endpoint check; segment health unknown")
+		s := Aggregate(id, pathEvidenceStates(group(func(x model.Check) bool { return x.Path == id })), "no endpoint-to-endpoint check; segment health unknown")
 		if len(p.Candidates) > 0 {
 			up, down, unknown := 0, 0, 0
 			for _, q := range p.Candidates {
@@ -266,7 +266,7 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 		}
 	}
 	for _, l := range c.Links {
-		s := aggregate(l.ID, pathEvidenceStates(group(func(x model.Check) bool { return x.Link == l.ID })), "segment not independently measured")
+		s := Aggregate(l.ID, pathEvidenceStates(group(func(x model.Check) bool { return x.Link == l.ID })), "segment not independently measured")
 		for _, p := range c.Paths {
 			if !relevant(model.Check{Observer: p.Observer}) {
 				continue
@@ -294,7 +294,7 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			return s
 		}
 		def := serviceDefs[id]
-		s := aggregate(id, group(func(x model.Check) bool { return x.Service == id }), "registered, not monitored")
+		s := Aggregate(id, group(func(x model.Check) bool { return x.Service == id }), "registered, not monitored")
 		for _, dep := range def.DependsOn {
 			v := evalService(dep)
 			if v.Health == "down" || v.Affected {
@@ -431,7 +431,12 @@ func dedup(s []string) []string {
 	}
 	return out
 }
-func aggregate(id string, states []model.CheckState, empty string) model.EntityState {
+
+// Aggregate is the state of an entity from the checks that measure it:
+// up when all pass, down when all confirm failure, degraded when some
+// pass or any is degraded, otherwise unknown. Checks without current
+// evidence count as unknown; empty is the reason when none measures it.
+func Aggregate(id string, states []model.CheckState, empty string) model.EntityState {
 	s := model.EntityState{ID: id, Health: "unknown", Evidence: "unknown", Reason: empty}
 	if len(states) == 0 {
 		return s

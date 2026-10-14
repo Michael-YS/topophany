@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
@@ -108,10 +109,10 @@ func (v View) Rows(tab int) []Row {
 		}
 		sort.SliceStable(rows, func(i, j int) bool { return AttentionRank(rows[i]) < AttentionRank(rows[j]) })
 	case Topology:
-		checkHealth := map[string][]string{}
+		checkStates := map[string][]model.CheckState{}
 		for _, cs := range s.Checks {
 			if d, ok := checkDefs[cs.ID]; ok && d.Endpoint != "" {
-				checkHealth[d.Endpoint] = append(checkHealth[d.Endpoint], cs.Health)
+				checkStates[d.Endpoint] = append(checkStates[d.Endpoint], cs)
 			}
 		}
 		known := map[string]bool{}
@@ -158,7 +159,7 @@ func (v View) Rows(tab int) []Row {
 				if i == len(eps)-1 && len(kids) == 0 {
 					b = "└ "
 				}
-				h := aggregateHealth(checkHealth[ep.ID])
+				h := engine.Aggregate(ep.ID, checkStates[ep.ID], "").Health
 				details := []string{"Endpoint: " + ep.ID, "Node: " + ep.Node, "Address: " + ep.Address, "Network: " + ep.Network, "Execution scope: " + ep.Observer}
 				if len(ep.Via) > 0 {
 					hops := []string{}
@@ -402,30 +403,6 @@ func via(ep model.Endpoint) string {
 		return ""
 	}
 	return " · via " + strings.Join(ep.Via, " → ")
-}
-
-func aggregateHealth(hs []string) string {
-	if len(hs) == 0 {
-		return "unknown"
-	}
-	up, down := 0, 0
-	for _, h := range hs {
-		switch h {
-		case "up":
-			up++
-		case "down":
-			down++
-		}
-	}
-	switch {
-	case up == len(hs):
-		return "up"
-	case down == len(hs):
-		return "down"
-	case up+down > 0:
-		return "degraded"
-	}
-	return "unknown"
 }
 
 // StampLayout writes the moments in evidence in local time, to the second.

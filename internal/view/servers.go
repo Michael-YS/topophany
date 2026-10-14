@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
@@ -156,13 +157,13 @@ func (v View) Fleet() *Fleet {
 	for _, x := range t.Checks {
 		target[x.ID] = x.Endpoint
 	}
-	health := map[string][]string{}
+	states := map[string][]model.CheckState{}
 	for _, cs := range s.Checks {
 		ep, ok := endpoints[target[cs.ID]]
 		if !ok {
 			continue
 		}
-		health[ep.ID] = append(health[ep.ID], cs.Health)
+		states[ep.ID] = append(states[ep.ID], cs)
 		// Where an edge said it answered from, freshly.
 		if cs.Freshness != "fresh" || cs.Last == nil || v.Cached {
 			continue
@@ -175,8 +176,8 @@ func (v View) Fleet() *Fleet {
 			f.pops[at] = append(f.pops[at], pop)
 		}
 	}
-	for id, hs := range health {
-		f.epHealth[id] = aggregateHealth(hs)
+	for id, list := range states {
+		f.epHealth[id] = engine.Aggregate(id, list, "").Health
 		if v.Cached {
 			f.epHealth[id] = "unknown"
 		}

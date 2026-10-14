@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Endpoints are judged by the same rule as services and nodes. One whose
+  checks are degraded reads degraded rather than unknown on the Topology
+  tab and its server's card, and one with a confirmed failure while its
+  other checks have no current evidence reads unknown rather than degraded.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added
