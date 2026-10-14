@@ -11,7 +11,7 @@ const (
 	maxLayoutWidth  = 512
 	maxLayoutHeight = 256
 	maxLayoutCells  = 32768
-	maxLayoutWork   = 200000
+	maxLayoutWork   = 2000000
 )
 
 // Structural limits are deliberately separate from configuration acceptance:
