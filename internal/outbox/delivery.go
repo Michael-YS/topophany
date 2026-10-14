@@ -14,6 +14,8 @@ import (
 )
 
 type destination struct {
+	// endpoint and http are immutable after construction. Read them by index
+	// or pointer: copying the whole destination also reads Tick's retry state.
 	endpoint  client.Endpoint
 	http      *http.Client
 	next      time.Time
@@ -49,14 +51,14 @@ func NewDelivery(p client.Profile, revision string) (*Delivery, error) {
 }
 func (d *Delivery) Recipients() []string {
 	r := []string{}
-	for _, v := range d.destinations {
-		r = append(r, Recipient(v.endpoint.URL))
+	for i := range d.destinations {
+		r = append(r, Recipient(d.destinations[i].endpoint.URL))
 	}
 	return r
 }
 func (d *Delivery) Close() {
-	for _, v := range d.destinations {
-		v.http.CloseIdleConnections()
+	for i := range d.destinations {
+		d.destinations[i].http.CloseIdleConnections()
 	}
 }
 
