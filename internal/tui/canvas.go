@@ -225,6 +225,27 @@ func (c *Canvas) url(p *cell) string {
 	return c.links[p.link-1]
 }
 
+// Tint applies f to the style of every cell in the rectangle, once, and to
+// both halves of a wide rune that overlaps it, so a rune keeps one style.
+func (c *Canvas) Tint(x, y, w, h int, f func(Style) Style) {
+	x0, x1 := max(x, 0), min(x+w, c.W)
+	for j := max(y, 0); j < min(y+h, c.H); j++ {
+		for i := x0; i < x1; i++ {
+			k := i
+			if c.at(i, j).cont {
+				if i > x0 || i == 0 {
+					continue // tinted with its left half
+				}
+				k = i - 1
+			}
+			c.at(k, j).st = f(c.at(k, j).st)
+			if k+1 < c.W && c.at(k+1, j).cont {
+				c.at(k+1, j).st = f(c.at(k+1, j).st)
+			}
+		}
+	}
+}
+
 // Each applies f to the style of every cell, e.g. to dim a modal background.
 func (c *Canvas) Each(f func(Style) Style) {
 	for i := range c.cells {
@@ -392,8 +413,8 @@ const diffGap = 12
 // Diff serializes what changed since prev: each run of changed cells after
 // a cursor move to where it starts, so a glint moving along a wire costs a
 // few bytes rather than its whole line. The right half of a wide rune
-// carries its style, so it changes only with the rune and a run never
-// splits one. Without a previous canvas of the same size and base, every
+// carries its style, so it changes with the rune; should it change alone,
+// the run starts at the rune. Without a previous canvas of the same size and base, every
 // line is written.
 func (c *Canvas) Diff(prev *Canvas, profile int) string {
 	var b strings.Builder
@@ -414,6 +435,9 @@ func (c *Canvas) Diff(prev *Canvas, profile int) string {
 				if !c.same(prev, x, y) {
 					e = x + 1
 				}
+			}
+			if a > 0 && c.at(a, y).cont {
+				a-- // never start on the right half of a rune
 			}
 			b.WriteString("\x1b[" + strconv.Itoa(y+1) + ";" + strconv.Itoa(a+1) + "H")
 			c.span(&b, y, a, e, profile)

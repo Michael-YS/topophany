@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - While connecting or loading a view, the header, the status row, the
   Overview's verdict and the empty map show a turning spinner rather than
   a still `◌`, so a slow collector reads as busy, not stuck.
+- Menus, forms and confirmations cast a soft shadow onto the dimmed view.
 
 ### Fixed
 

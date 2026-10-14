@@ -190,3 +190,18 @@ func TestScreenRepaintsOnlyWhatChanged(t *testing.T) {
 	tm = newTerm(140, 40)
 	step("restored")
 }
+
+// A tint keeps a wide rune in one style even when the rectangle cuts it,
+// and tints nothing twice.
+func TestTintKeepsWideRunesWhole(t *testing.T) {
+	cv := NewCanvas(10, 1)
+	cv.Text(0, 0, "长沙ab長", fg(cText), -1) // 长 0-1, 沙 2-3, a 4, b 5, 長 6-7
+	dim := func(s Style) Style { s.FG = Mix(s.FG, Hex(0), .5); return s }
+	cv.Tint(3, 0, 4, 1, dim) // from the right half of 沙 to the left half of 長
+	once := Mix(cText, Hex(0), .5)
+	for x, want := range []Color{cText, cText, once, once, once, once, once, once, cText, cText} {
+		if p := cv.at(x, 0); p.ch != " " && p.st.FG != want {
+			t.Fatalf("cell %d %q: %v, want %v", x, p.ch, p.st.FG, want)
+		}
+	}
+}

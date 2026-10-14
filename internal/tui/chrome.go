@@ -539,6 +539,22 @@ func (m *Model) modalBox(cv *Canvas, w, h int, title string) (int, int, int, int
 	h = min(h, cv.H-2)
 	x := (cv.W - w) / 2
 	y := max(1, (cv.H-h)/2)
+	if !m.Transparent && !m.NoColor {
+		// A shadow, two columns to the right and one row below, lifts
+		// the panel off the dimmed view.
+		shade := func(s Style) Style {
+			if s.BG == 0 {
+				s.BG = cv.Base
+			}
+			if s.FG == 0 {
+				s.FG = cText
+			}
+			s.BG, s.FG = Mix(s.BG, Hex(0), .55), Mix(s.FG, Hex(0), .55)
+			return s
+		}
+		cv.Tint(x+w, y+1, 2, h-1, shade)
+		cv.Tint(x+2, y+h, w, 1, shade)
+	}
 	bg := Style{BG: cPanelBG}
 	cv.Fill(x, y, w, h, bg)
 	cv.Box(x, y, w, h, fg(Mix(cLine, cAccent, .6)).Bg(cPanelBG))
