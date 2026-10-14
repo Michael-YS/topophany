@@ -80,8 +80,47 @@ func (v View) Rows(tab int) []Row {
 		}
 		return entity("node", find(nodeStates, n.ID), nodeNames[n.ID], n.Group, details)
 	}
+	// The ledger's record of an open incident, and of those it remembers.
+	opened := map[string]*model.IncidentRecord{}
+	current := map[string]bool{}
+	for _, i := range s.Incidents {
+		current[i.ID] = true
+	}
+	for k, r := range s.Ledger {
+		if r.State == "open" {
+			opened[r.ID] = &s.Ledger[k]
+		}
+	}
 	incident := func(i model.Incident) Row {
-		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: v.IncidentTitle(i), Meta: i.Summary, Cols: []string{Age(v.Now, i.Since), Plural(len(i.Checks), "check")}, Details: IncidentDetails(v.Now, i)}
+		if r := opened[i.ID]; r != nil && r.Since.Before(i.Since) {
+			i.Since = r.Since
+		}
+		return Row{Kind: "incident", ID: i.ID, Health: "down", Title: v.IncidentTitle(i), Meta: i.Summary, Cols: []string{Age(v.Now, i.Since), Plural(len(i.Checks), "check")}, Details: IncidentDetails(v.Now, i, opened[i.ID])}
+	}
+	// remembered lists the incidents that are recovering and, unless only
+	// those are wanted, those that closed, newest first. A closed record's
+	// ID counts its occurrences, as ID#3 for the third.
+	remembered := func(recovering bool) []Row {
+		out := []Row{}
+		for _, r := range s.Ledger {
+			row := Row{Kind: "incident", ID: r.ID, Title: v.IncidentTitle(model.Incident{Scope: r.Scope}), Meta: r.Summary, Cols: []string{Age(v.Now, r.Since), Plural(len(r.Checks), "check")}, Details: RecordDetails(v.Now, r)}
+			switch {
+			case r.State == "recovering":
+				row.Health, row.Note = "degraded", "recovering"
+			case r.State == "closed" && !recovering:
+				row.ID += "#" + itoa(r.Previous+1)
+				row.Health, row.Note = "unknown", "closed"
+				if r.Ended == "recovered" {
+					row.Health = "up"
+				}
+				row.Meta = "closed · " + r.Ended
+				row.Cols[0] = "ended " + Age(v.Now, r.Closed)
+			default:
+				continue
+			}
+			out = append(out, row)
+		}
+		return out
 	}
 	switch tab {
 	case Overview:
@@ -90,6 +129,10 @@ func (v View) Rows(tab int) []Row {
 		// failing path. Nothing here means nothing needs attention.
 		for _, i := range s.Incidents {
 			r := incident(i)
+			r.Cols = []string{"incident"}
+			rows = append(rows, r)
+		}
+		for _, r := range remembered(true) {
 			r.Cols = []string{"incident"}
 			rows = append(rows, r)
 		}
@@ -306,6 +349,7 @@ func (v View) Rows(tab int) []Row {
 		for _, i := range s.Incidents {
 			rows = append(rows, incident(i))
 		}
+		rows = append(rows, remembered(false)...)
 	case Observers:
 		for _, e := range s.Observers {
 			title := e.ID
@@ -391,9 +435,48 @@ func (v View) IncidentTitle(i model.Incident) string {
 	return title
 }
 
-// IncidentDetails is the evidence behind an incident.
-func IncidentDetails(now time.Time, i model.Incident) []string {
-	return []string{"Scope: " + i.Scope, "Since: " + Stamp(now, i.Since), "", i.Summary, "", "Failed checks:", strings.Join(i.Checks, ", "), "", "Other-observer response evidence:", strings.Join(i.CounterEvidence, ", "), "", "Hypothesis (not a finding):", i.Hypothesis, "", "No inference about all IP ports, untested UDP, physical power or GFW authority."}
+// IncidentDetails is the evidence behind an incident, with what the
+// collector's ledger remembers of it when r is its record. A collector
+// keeps a bounded tail of each check's samples, so the start of a long
+// incident is the earliest the ledger saw, not what the tail still shows.
+func IncidentDetails(now time.Time, i model.Incident, r *model.IncidentRecord) []string {
+	out := []string{"Scope: " + i.Scope, "Since: " + Stamp(now, i.Since)}
+	if r != nil {
+		out = append(out, "Opened: "+Stamp(now, r.Opened), "Seen before: "+before(r.Previous))
+	}
+	return append(out, "", i.Summary, "", "Failed checks:", strings.Join(i.Checks, ", "), "", "Other-observer response evidence:", strings.Join(i.CounterEvidence, ", "), "", "Hypothesis (not a finding):", i.Hypothesis, "", "No inference about all IP ports, untested UDP, physical power or GFW authority.")
+}
+
+// endings say what each way a record closed means.
+var endings = map[string]string{
+	"recovered":   "every check that failed passes again",
+	"unconfirmed": "its evidence lapsed or no longer confirms the failure; whether it recovered is not established",
+	"paused":      "its checks were paused or put in maintenance",
+	"changed":     "what its checks measure changed, or they were removed",
+}
+
+// RecordDetails is what the collector's ledger remembers of an incident
+// that is recovering or closed.
+func RecordDetails(now time.Time, r model.IncidentRecord) []string {
+	out := []string{"Scope: " + r.Scope, "Since: " + Stamp(now, r.Since), "Opened: " + Stamp(now, r.Opened)}
+	switch r.State {
+	case "recovering":
+		out = append(out, "Recovering: the checks that failed pass again, short of their recovery threshold")
+	case "closed":
+		out = append(out, "Closed: "+Stamp(now, r.Closed), "Lasted: "+Duration(r.Closed.Sub(r.Since)), "Ended: "+r.Ended+" — "+endings[r.Ended])
+	}
+	return append(out, "Seen before: "+before(r.Previous), "", r.Summary, "", "Failed checks:", strings.Join(r.Checks, ", "), "", "Remembered by the collector's ledger, not current evidence.")
+}
+
+// before says how often an incident was seen before: "never", "once", "3 times".
+func before(n int) string {
+	switch n {
+	case 0:
+		return "never"
+	case 1:
+		return "once"
+	}
+	return itoa(n) + " times"
 }
 
 // via is the " · via …" suffix of an endpoint reached through edges.

@@ -28,6 +28,10 @@ func statePill(r Row) (string, Style) {
 		glyph, c = "◌", cWarn
 	case "AFFECTED", "OUTDATED":
 		c = cWarn
+	case "RECOVERING":
+		glyph, c = "▲", cWarn
+	case "CLOSED":
+		glyph, c = "⚐", cMuted
 	}
 	return " " + glyph + " " + word + " ", fg(c).Bg(Mix(c, cInk, .82)).bold()
 }
@@ -192,7 +196,11 @@ func (m *Model) drawDetail(cv *Canvas, x, y, w, h int, r Row, scroll bool) {
 		cv.Text(x+w-pw, y, label, st, -1)
 		sub := r.Kind + "  ·  " + r.ID
 		if _, scope, ok := strings.Cut(r.ID, "/"); ok && r.Kind == "incident" {
+			scope, n, again := strings.Cut(scope, "#")
 			sub = "incident  ·  " + scope
+			if again {
+				sub += "  ·  occurrence " + n
+			}
 		}
 		cv.Text(x, y+1, sub, fg(cFaint), w)
 		for i := 0; i < w; i++ {

@@ -138,6 +138,7 @@ func (m *Model) focus(sel Row) mapFocus {
 		}
 	case "incident":
 		if _, scope, ok := strings.Cut(sel.ID, "/"); ok {
+			scope, _, _ = strings.Cut(scope, "#")
 			parts := strings.Split(scope, "/")
 			if len(parts) >= 3 && parts[1] == "path" {
 				route(parts[2])

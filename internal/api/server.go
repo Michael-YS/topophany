@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/engine"
+	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
@@ -81,6 +83,7 @@ type Server struct {
 	Config             model.Config
 	Instance           string
 	Store              *store.Store
+	Ledger             *ledger.Ledger // what snapshots carry of past incidents; nil for none
 	Auth               Auth
 	configMu           sync.RWMutex
 	MaxSampleAge       time.Duration
@@ -144,6 +147,20 @@ func (s *Server) Reload(c model.Config, a Auth) {
 	s.snapshotMu.Lock()
 	s.snapshotCache = nil
 	s.snapshotMu.Unlock()
+}
+
+// Observe judges the evidence of all observers at now, as a snapshot of
+// them would, and records in the ledger the incidents that open, recover
+// and close (see ledger.Observe). It returns that snapshot too.
+func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.Change, error) {
+	c, _ := s.current()
+	rows, beats := s.Store.StateView()
+	snap := engine.Build(c, s.Instance, "", rows, beats, now)
+	if s.Ledger == nil {
+		return snap, nil, nil
+	}
+	changes, e := s.Ledger.Observe(snap, now, settled)
+	return snap, changes, e
 }
 
 func (s *Server) Handler() http.Handler {

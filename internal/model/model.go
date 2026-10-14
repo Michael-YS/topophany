@@ -235,6 +235,27 @@ type Incident struct {
 	Since           time.Time `json:"since"`
 }
 
+// IncidentRecord is an incident as a collector's ledger remembers it: when
+// its evidence began failing (Since), when the collector first counted it
+// (Opened) and, once it is closed, when and how it ended. State is open,
+// recovering (its failed checks pass again, short of their recovery
+// threshold) or closed; Ended is recovered, unconfirmed (its evidence
+// lapsed or no longer confirms it), paused or changed (what its checks
+// measure changed, or they were removed). Previous counts the earlier
+// records of the same incident that the ledger holds.
+type IncidentRecord struct {
+	ID       string    `json:"id"`
+	Scope    string    `json:"scope"`
+	Summary  string    `json:"summary"`
+	Checks   []string  `json:"checks"`
+	State    string    `json:"state"`
+	Since    time.Time `json:"since"`
+	Opened   time.Time `json:"opened"`
+	Closed   time.Time `json:"closed,omitzero"`
+	Ended    string    `json:"ended,omitempty"`
+	Previous int       `json:"previous"`
+}
+
 // ObserverState is an executor's liveness. Contracts says whether it last
 // reported measuring what the collector counts: current, outdated (its
 // samples of changed checks are refused until it reloads), or "" when it
@@ -264,4 +285,7 @@ type Snapshot struct {
 	Links          []EntityState   `json:"links"`
 	Observers      []ObserverState `json:"observers"`
 	Incidents      []Incident      `json:"incidents"`
+	// Ledger is what the collector remembers of the incidents in the view:
+	// those open, then those closed in the last day, newest first.
+	Ledger []IncidentRecord `json:"ledger,omitempty"`
 }

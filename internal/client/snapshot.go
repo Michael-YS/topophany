@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -131,6 +133,21 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 				return errors.New("invalid incident reference")
 			}
 		}
+	}
+	// A record may name checks the topology no longer has: they are what
+	// failed then. Each incident has at most one record open.
+	if len(s.Ledger) > ledger.MaxRecent+2*len(checks)+16 {
+		return errors.New("snapshot ledger budget exceeded")
+	}
+	seen = map[string]bool{}
+	open := map[string]bool{}
+	for _, r := range s.Ledger {
+		key := r.ID + "@" + r.Opened.String()
+		if ledger.Valid(r) != nil || seen[key] || r.State != "closed" && open[r.ID] || s.ViewObserver != "" && !strings.HasPrefix(r.Scope, s.ViewObserver+"/") {
+			return errors.New("invalid snapshot incident record")
+		}
+		seen[key] = true
+		open[r.ID] = open[r.ID] || r.State != "closed"
 	}
 	return nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/api"
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/outbox"
 	"github.com/WhitenWhiten/topophany/internal/preview"
@@ -229,12 +230,22 @@ func (a *App) serve(parent context.Context, args []string) error {
 		return e
 	}
 	defer st.Close()
+	book, e := ledger.Open(filepath.Join(*dir, "incidents.json"))
+	if e != nil {
+		return e
+	}
 	ctx, cancel := context.WithCancel(parent)
 	var wg sync.WaitGroup
 	defer func() { cancel(); wg.Wait() }()
 	failures := make(chan error, 2)
 	backend := api.New(c, *instance, st, auth)
 	backend.MaxSampleAge = *retention
+	backend.Ledger = book
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		a.watch(ctx, backend, ledger.Settle(c))
+	}()
 	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	// Local checks, if any, under a topology; reloads replace them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
@@ -325,6 +336,34 @@ wait:
 		_ = srv.Close()
 	}
 	return result
+}
+
+// watch keeps a collector's incident ledger until ctx ends, judging the
+// evidence every two seconds and logging what opens and closes. For settle
+// after it starts, a record whose evidence lapsed stays open.
+func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Duration) {
+	started := time.Now()
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	failing := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-tick.C:
+			_, changes, e := backend.Observe(now.UTC(), now.Sub(started) >= settle)
+			for _, ch := range changes {
+				fmt.Fprintln(a.Err, ch.Line())
+			}
+			switch {
+			case e != nil && !failing:
+				fmt.Fprintf(a.Err, "incident ledger not written; keeping it in memory: %v\n", e)
+			case e == nil && failing:
+				fmt.Fprintln(a.Err, "incident ledger written again")
+			}
+			failing = e != nil
+		}
+	}
 }
 func (a *App) worker(parent context.Context, args []string) error {
 	f := a.flags("worker")

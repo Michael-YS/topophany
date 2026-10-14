@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
@@ -344,5 +345,44 @@ func TestReloadSwapsTopologyAndTokens(t *testing.T) {
 	w := request(h, "GET", "/v1/snapshot", newViewer, "", nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Renamed") {
 		t.Fatal("the new token or the new topology is not served", w.Code)
+	}
+}
+
+// A collector keeps its ledger from the evidence of all observers, and a
+// snapshot carries what it remembers of the incidents in its view.
+func TestSnapshotCarriesTheLedger(t *testing.T) {
+	srv, h, b := fixture(t)
+	srv.Ledger = ledger.New()
+	c := srv.Config
+	now := srv.Now()
+	b.Observations = nil
+	for i := uint64(1); i <= 3; i++ {
+		b.Observations = append(b.Observations, testkit.Observation(c, "home-http", i, now.Add(-time.Duration(4-i)*time.Second), "fail"))
+	}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	snap, changes, e := srv.Observe(now, true)
+	if e != nil || len(changes) != 1 || changes[0].Kind != "opened" || len(snap.Incidents) != 1 {
+		t.Fatalf("observed %+v: %v", changes, e)
+	}
+	read := func(view string) model.Snapshot {
+		t.Helper()
+		srv.Now = func() time.Time { return now.Add(time.Duration(len(view)+1) * time.Second) }
+		w := request(h, "GET", "/v1/snapshot?observer="+view, viewerToken, "", nil)
+		var s model.Snapshot
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &s) != nil {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		return s
+	}
+	if s := read(""); len(s.Ledger) != 1 || s.Ledger[0].ID != snap.Incidents[0].ID || s.Ledger[0].State != "open" {
+		t.Fatalf("snapshot ledger %+v", s.Ledger)
+	}
+	if s := read("home"); len(s.Ledger) != 1 {
+		t.Fatalf("home's view lacks its incident: %+v", s.Ledger)
+	}
+	if s := read("cloud"); len(s.Ledger) != 0 {
+		t.Fatalf("cloud's view carries home's incident: %+v", s.Ledger)
 	}
 }

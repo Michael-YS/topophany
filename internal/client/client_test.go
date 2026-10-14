@@ -92,6 +92,47 @@ func TestReadFailClosedSecurityBoundaries(t *testing.T) {
 	}
 }
 
+// What a snapshot carries of the ledger is checked like the rest: records
+// a ledger could have written, each incident open at most once, and in a
+// view of one observer only the records of its scopes.
+func TestLedgerRecordsAreChecked(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	open := model.IncidentRecord{ID: "0123456789ab/home/path/direct", Scope: "home/path/direct", Summary: "confirmed failure", Checks: []string{"home-http"}, State: "open", Since: now, Opened: now}
+	closed := open
+	closed.State, closed.Closed, closed.Ended, closed.Opened = "closed", now, "recovered", now.Add(-time.Hour)
+	gone := closed
+	gone.Checks, gone.Opened = []string{"removed-check"}, now.Add(-2*time.Hour)
+	valid := snapshot()
+	valid.Ledger = []model.IncidentRecord{open, closed, gone}
+	srv := jsonServer(t, 200, valid)
+	if s, _, e := newClient(t, srv.URL).Snapshot(context.Background(), ""); e != nil || len(s.Ledger) != 3 {
+		t.Fatal("a valid ledger refused:", e)
+	}
+	for name, mutate := range map[string]func(*model.Snapshot){
+		"state":        func(s *model.Snapshot) { s.Ledger[0].State = "lost" },
+		"unended":      func(s *model.Snapshot) { s.Ledger[1].Ended = "" },
+		"ending":       func(s *model.Snapshot) { s.Ledger[1].Ended = "forgotten" },
+		"open_closed":  func(s *model.Snapshot) { s.Ledger[0].Closed = now },
+		"twice_open":   func(s *model.Snapshot) { s.Ledger[1] = s.Ledger[0] },
+		"repeated":     func(s *model.Snapshot) { s.Ledger[2] = s.Ledger[1] },
+		"check":        func(s *model.Snapshot) { s.Ledger[0].Checks = []string{"bad id!"} },
+		"unopened":     func(s *model.Snapshot) { s.Ledger[0].Opened = time.Time{} },
+		"other_scope":  func(s *model.Snapshot) { s.ViewObserver = "cloud" },
+		"over_budget":  func(s *model.Snapshot) { s.Ledger = append(s.Ledger, make([]model.IncidentRecord, 100)...) },
+		"long_summary": func(s *model.Snapshot) { s.Ledger[0].Summary = strings.Repeat("x", 600) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := snapshot()
+			s.Ledger = []model.IncidentRecord{open, closed, gone}
+			mutate(&s)
+			srv := jsonServer(t, 200, s)
+			if _, _, e := newClient(t, srv.URL).Snapshot(context.Background(), ""); e == nil {
+				t.Fatal("an invalid ledger accepted")
+			}
+		})
+	}
+}
+
 // A collector of another release is passed over, as during a rolling
 // upgrade, not taken for an attack; with none of this release the client
 // says why. Fields a later schema 2 release adds are ignored.

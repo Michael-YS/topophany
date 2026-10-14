@@ -22,7 +22,7 @@ func TestEvidenceTimesAreReadable(t *testing.T) {
 	if Stamp(now, time.Time{}) != "never" {
 		t.Fatal("a zero time is not never")
 	}
-	details := strings.Join(IncidentDetails(now, model.Incident{Scope: "home/path/p", Since: since}), "\n")
+	details := strings.Join(IncidentDetails(now, model.Incident{Scope: "home/path/p", Since: since}, nil), "\n")
 	if !strings.Contains(details, "Since: "+Stamp(now, since)) || strings.Contains(details, "T"+since.Local().Format("15:04:05")) {
 		t.Fatalf("incident start is not readable:\n%s", details)
 	}
@@ -104,5 +104,67 @@ func TestOutdatedObserverNeedsAttention(t *testing.T) {
 	}
 	if live, _ := v.Live(); live != 1 {
 		t.Fatal("an outdated observer is still live", live)
+	}
+}
+
+// The Incidents tab lists the incidents open, then those the collector's
+// ledger remembers: recovering ones, which still need attention, and those
+// closed, each occurrence with an ID of its own and how it ended. An open
+// incident's evidence says when it opened and how often it happened
+// before, and starts as early as the ledger saw it fail.
+func TestIncidentsTabRemembersWhatTheLedgerHolds(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	rows := []model.Observation{}
+	for i := uint64(1); i <= 3; i++ {
+		rows = append(rows, testkit.Observation(c, "home-http", i, now.Add(-time.Duration(4-i)*time.Second), "fail"))
+	}
+	snap := engine.Build(c, "primary", "", rows, nil, now)
+	open := snap.Incidents[0]
+	early := now.Add(-2 * time.Hour)
+	snap.Ledger = []model.IncidentRecord{
+		{ID: open.ID, Scope: open.Scope, Summary: open.Summary, Checks: open.Checks, State: "open", Since: early, Opened: early.Add(time.Minute), Previous: 2},
+		{ID: "aaaaaaaaaaaa/cloud/path/contrast", Scope: "cloud/path/contrast", Summary: "confirmed failure", Checks: []string{"cloud-http"}, State: "recovering", Since: now.Add(-time.Hour), Opened: now.Add(-time.Hour)},
+		{ID: open.ID, Scope: open.Scope, Summary: open.Summary, Checks: open.Checks, State: "closed", Since: now.Add(-5 * time.Hour), Opened: now.Add(-5 * time.Hour), Closed: now.Add(-4 * time.Hour), Ended: "recovered", Previous: 1},
+		{ID: "bbbbbbbbbbbb/home/home-ssh", Scope: "home/home-ssh", Summary: "confirmed failure", Checks: []string{"home-ssh"}, State: "closed", Since: now.Add(-3 * time.Hour), Opened: now.Add(-3 * time.Hour), Closed: now.Add(-150 * time.Minute), Ended: "unconfirmed"},
+	}
+	v := View{Snapshot: snap, Now: now}
+	got := v.List(Incidents, "")
+	if len(got) != 4 {
+		t.Fatalf("%d incidents listed", len(got))
+	}
+	want := []struct{ id, state, pill string }{{open.ID, "DOWN", "OPEN"}, {"aaaaaaaaaaaa/cloud/path/contrast", "recovering", "RECOVERING"}, {open.ID + "#2", "closed", "CLOSED"}, {"bbbbbbbbbbbb/home/home-ssh#1", "closed", "CLOSED"}}
+	for i, w := range want {
+		if got[i].ID != w.id || State(got[i]) != w.state || Pill(got[i]) != w.pill {
+			t.Fatalf("row %d: %s %s %s, want %+v", i, got[i].ID, State(got[i]), Pill(got[i]), w)
+		}
+	}
+	details := strings.Join(got[0].Details, "\n")
+	if !strings.Contains(details, "Since: "+Stamp(now, early)) || !strings.Contains(details, "Opened: "+Stamp(now, early.Add(time.Minute))) || !strings.Contains(details, "Seen before: 2 times") || got[0].Cols[0] != "2h 0m ago" {
+		t.Fatalf("open incident's evidence:\n%s", details)
+	}
+	closed := strings.Join(got[3].Details, "\n")
+	if got[3].Health != "unknown" || got[2].Health != "up" || !strings.Contains(closed, "Lasted: 30m") || !strings.Contains(closed, "Ended: unconfirmed — its evidence lapsed") || got[3].Cols[0] != "ended 2h 30m ago" {
+		t.Fatalf("closed incident:\n%s", closed)
+	}
+	attention := v.List(Overview, "")
+	ids := []string{}
+	for _, r := range attention {
+		if r.Kind == "incident" {
+			ids = append(ids, r.ID)
+		}
+	}
+	if strings.Join(ids, " ") != open.ID+" aaaaaaaaaaaa/cloud/path/contrast" {
+		t.Fatalf("the Overview's incidents: %v", ids)
+	}
+	if n, down := v.Badge(Incidents); n != 2 || !down {
+		t.Fatalf("Incidents counts %d", n)
+	}
+	if v.Verdict().Text != "1 INCIDENT" {
+		t.Fatalf("verdict %s", v.Verdict().Text)
+	}
+	v.Cached = true
+	if Pill(v.List(Incidents, "")[2]) != "CACHED" {
+		t.Fatal("a cached view claims an incident's state")
 	}
 }

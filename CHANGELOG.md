@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   times with the median DNS, connect, TLS and first-byte times.
   `topo show checks ID` prints the same strip, and its JSON carries it
   slot by slot as `samples`.
+- Collectors keep an incident ledger, `incidents.json` in their data
+  directory, judged every two seconds from the evidence of all observers
+  whether anyone is looking: an incident opens when it is confirmed,
+  recovers while its failed checks pass again short of their recovery
+  threshold (a failure then is a relapse, not a new incident), and closes
+  as recovered, unconfirmed, paused or changed. Each change is logged.
+  Snapshots carry the open records and those closed in the last day as
+  `ledger`; the Incidents tab and `topo show incidents` list them after
+  the open incidents, one row per occurrence, and an incident's evidence
+  says when it opened, how often it happened before and how long it
+  lasted. A recovering incident still needs attention.
 - Everything the TUI shows can be read from the command line. `topo status`
   prints the Overview (verdict, check and tab counts, what needs attention,
   services and observers) and says it in its exit status: 0 all clear,
@@ -45,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- An incident starts as early as the ledger saw it fail, rather than at
+  the oldest sample a collector still holds for its checks, and in a
+  cached view its evidence reads CACHED rather than OPEN.
 - **Wire format (schema 2).** Each observation carries the measurement
   contract of its check, a digest of what the check measures (kind,
   observer, target, timeout, bind and resolve settings, assertions,

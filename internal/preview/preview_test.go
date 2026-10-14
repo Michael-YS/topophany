@@ -323,3 +323,49 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 		}
 	}
 }
+
+// The preview remembers incidents as a collector watching all along would:
+// a scenario's incidents open in the minutes after it begins, close once
+// it ends, and a simulator started afresh on the same timeline remembers
+// the same. A view of one observer carries only its own records.
+func TestPreviewRemembersIncidents(t *testing.T) {
+	c, e := Preset()
+	if e != nil {
+		t.Fatal(e)
+	}
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	began := now.Add(-30 * time.Minute)
+	s := New(c, now)
+	s.SetScenario(2, began)
+	snap, e := s.Snapshot("", now)
+	if e != nil || len(snap.Incidents) == 0 || len(snap.Ledger) != len(snap.Incidents) {
+		t.Fatalf("%d incidents, %d records: %v", len(snap.Incidents), len(snap.Ledger), e)
+	}
+	for _, r := range snap.Ledger {
+		if r.State != "open" || r.Opened.Before(began) || r.Opened.After(began.Add(3*time.Minute)) || r.Since.After(r.Opened) {
+			t.Fatalf("record %+v of an outage that began at %s", r, began)
+		}
+	}
+	fresh := New(c, now)
+	fresh.SetScenario(2, began)
+	again, _ := fresh.Snapshot("", now)
+	if len(again.Ledger) != len(snap.Ledger) || again.Ledger[0].ID != snap.Ledger[0].ID || !again.Ledger[0].Opened.Equal(snap.Ledger[0].Opened) {
+		t.Fatal("a simulator on the same timeline remembers otherwise")
+	}
+	mine, _ := s.Snapshot("cs-win", now)
+	for _, r := range mine.Ledger {
+		if !strings.HasPrefix(r.Scope, "cs-win/") {
+			t.Fatalf("cs-win's view carries %s", r.Scope)
+		}
+	}
+	s.SetScenario(0, now)
+	later, _ := s.Snapshot("", now.Add(10*time.Minute))
+	if len(later.Incidents) != 0 || len(later.Ledger) != len(snap.Ledger) {
+		t.Fatalf("after the outage: %d incidents, %d records", len(later.Incidents), len(later.Ledger))
+	}
+	for _, r := range later.Ledger {
+		if r.State != "closed" || r.Ended != "recovered" {
+			t.Fatalf("after the outage %+v", r)
+		}
+	}
+}

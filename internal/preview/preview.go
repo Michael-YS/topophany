@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
+	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
@@ -82,10 +84,12 @@ type Sim struct {
 	paths     map[string]model.Path
 	services  map[string]model.Service
 	obsNode   map[string]string
+	ledger    *ledger.Ledger // what a collector watching all along would remember
+	observed  time.Time      // when the ledger last judged the evidence
 }
 
 func New(c model.Config, now time.Time) *Sim {
-	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, services: map[string]model.Service{}, obsNode: map[string]string{}}
+	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, services: map[string]model.Service{}, obsNode: map[string]string{}, ledger: ledger.New()}
 	for _, n := range c.Nodes {
 		s.nodes[n.ID] = n
 	}
@@ -180,6 +184,10 @@ func (s *Sim) SetScenario(i int, at time.Time) {
 		s.timeline = s.timeline[:len(s.timeline)-1]
 	}
 	s.timeline = append(s.timeline, change{at, s.available[i]})
+	if at.Before(s.observed) {
+		// The past the ledger judged is rewritten; it judges it again.
+		s.ledger, s.observed = ledger.New(), time.Time{}
+	}
 	if len(s.timeline) > 64 {
 		s.timeline = s.timeline[len(s.timeline)-64:]
 	}
@@ -194,10 +202,94 @@ func (s *Sim) at(t time.Time) Scenario {
 	return scenarios[s.timeline[0].sc]
 }
 
-// Snapshot builds what a collector would serve for view at now.
+// Snapshot builds what a collector would serve for view at now, with what
+// its ledger remembers of the incidents in it.
 func (s *Sim) Snapshot(view string, now time.Time) (model.Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.remember(now)
+	snap, e := s.build("", now)
+	if e != nil {
+		return snap, e
+	}
+	if now.After(s.observed) {
+		s.ledger.Observe(snap, now, true)
+		s.observed = now
+	}
+	if view != "" {
+		if snap, e = s.build(view, now); e != nil {
+			return snap, e
+		}
+	}
+	snap.Ledger = s.ledger.Recent(view, now)
+	return snap, nil
+}
+
+// replays are what ledgers concluded from timelines: simulators of one
+// topology and one timeline, as every read of topo preview starts, judge
+// it once.
+var replays = struct {
+	sync.Mutex
+	m map[string][]model.IncidentRecord
+}{m: map[string][]model.IncidentRecord{}}
+
+// remember brings the ledger up to now as a collector watching all along
+// would have kept it, judging the evidence in the minutes after each
+// scenario change of the last two hours, when incidents open and close.
+// A collector outage judges nothing.
+func (s *Sim) remember(now time.Time) {
+	moments := []time.Time{}
+	for _, c := range s.timeline {
+		if c.at.Before(now.Add(-2 * time.Hour)) {
+			continue
+		}
+		for _, after := range []time.Duration{20 * time.Second, time.Minute, 3 * time.Minute} {
+			if t := c.at.Add(after); t.Before(now) && t.After(s.observed) {
+				moments = append(moments, t)
+			}
+		}
+	}
+	if len(moments) == 0 {
+		return
+	}
+	slices.SortFunc(moments, func(a, b time.Time) int { return a.Compare(b) })
+	key := ""
+	if s.observed.IsZero() {
+		var b strings.Builder
+		b.WriteString(config.Revision(s.base))
+		for _, c := range s.timeline {
+			fmt.Fprintf(&b, ";%d@%d", c.sc, c.at.UnixNano())
+		}
+		for _, t := range moments {
+			fmt.Fprintf(&b, ";%d", t.UnixNano())
+		}
+		key = b.String()
+		replays.Lock()
+		records, ok := replays.m[key]
+		replays.Unlock()
+		if ok {
+			s.ledger, s.observed = ledger.With(records), moments[len(moments)-1]
+			return
+		}
+	}
+	for _, t := range moments {
+		if snap, e := s.build("", t); e == nil {
+			s.ledger.Observe(snap, t, true)
+		}
+		s.observed = t
+	}
+	if key != "" {
+		replays.Lock()
+		if len(replays.m) >= 32 {
+			clear(replays.m)
+		}
+		replays.m[key] = s.ledger.Records()
+		replays.Unlock()
+	}
+}
+
+// build is the snapshot of view at now, without the ledger; s.mu is held.
+func (s *Sim) build(view string, now time.Time) (model.Snapshot, error) {
 	cur := s.at(now)
 	if cur.Unreachable {
 		return model.Snapshot{}, errors.New("preview: simulated collector outage (connection refused)")

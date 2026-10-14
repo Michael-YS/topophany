@@ -83,6 +83,9 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	s.snapshotBuilds++
 	c, _ := s.current()
 	snap := engine.Build(c, s.Instance, view, s.snapshotRows, s.snapshotBeats, s.snapshotAt)
+	if s.Ledger != nil {
+		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
+	}
 	raw, err := summaryJSON(snap)
 	if err != nil {
 		return nil, 503, "snapshot_budget_exceeded"
@@ -127,6 +130,10 @@ func summaryJSON(s model.Snapshot) ([]byte, error) {
 	for i := range s.Incidents {
 		s.Incidents[i].Checks = trim(s.Incidents[i].Checks)
 		s.Incidents[i].CounterEvidence = trim(s.Incidents[i].CounterEvidence)
+	}
+	s.Ledger = slices.Clone(s.Ledger)
+	for i := range s.Ledger {
+		s.Ledger[i].Checks = trim(s.Ledger[i].Checks)
 	}
 	for _, states := range [][]model.EntityState{s.Nodes, s.Endpoints, s.Services, s.Paths, s.Links} {
 		for i := range states {

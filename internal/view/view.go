@@ -153,7 +153,7 @@ func ServiceRank(r Row) int {
 // State is the word in a row's state column; "" for a row that is simply up.
 func State(r Row) string {
 	switch r.Note {
-	case "cached", "affected", "paused", "maintenance", "outdated":
+	case "cached", "affected", "paused", "maintenance", "outdated", "recovering", "closed":
 		return r.Note
 	}
 	switch r.Health {
@@ -178,15 +178,17 @@ func HealthWord(h string) string {
 	return "unknown"
 }
 
-// Pill is the state shown beside an entity's name in its evidence: OPEN
-// for an incident, CACHED or AFFECTED when the row says so, otherwise its
-// health.
+// Pill is the state shown beside an entity's name in its evidence: CACHED
+// in a cached view; OPEN, RECOVERING or CLOSED for an incident; AFFECTED
+// or OUTDATED when the row says so, otherwise its health.
 func Pill(r Row) string {
 	switch {
-	case r.Kind == "incident":
-		return "OPEN"
 	case r.Note == "cached":
 		return "CACHED"
+	case r.Kind == "incident" && (r.Note == "recovering" || r.Note == "closed"):
+		return strings.ToUpper(r.Note)
+	case r.Kind == "incident":
+		return "OPEN"
 	case r.Note == "affected":
 		return "AFFECTED"
 	case r.Note == "outdated":
@@ -327,6 +329,11 @@ func (v View) Badge(tab int) (n int, down bool) {
 		}
 	case Incidents:
 		n, down = len(s.Incidents), len(s.Incidents) > 0
+		for _, r := range s.Ledger {
+			if r.State == "recovering" {
+				n++
+			}
+		}
 	case Observers:
 		for _, o := range s.Observers {
 			look(o.Health, o.Health != "up" || o.Contracts == "outdated")
