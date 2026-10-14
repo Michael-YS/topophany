@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -320,17 +321,26 @@ func (m *Model) healthBar(cv *Canvas, x, y, w int, up, warn, down, unk int, glyp
 	}
 }
 
+// A notice shows for noticeFor, fading out over the last noticeFade.
+const (
+	noticeFor  = 8 * time.Second
+	noticeFade = 1500 * time.Millisecond
+)
+
 // hasNews is a notice still on show, an error, or a request in flight.
 func (m *Model) hasNews() bool {
-	return m.notice != "" && m.Now.Sub(m.noticeAt) < 8e9 || m.Error != "" || m.Loading != ""
+	return m.notice != "" && m.Now.Sub(m.noticeAt) < noticeFor || m.Error != "" || m.Loading != ""
 }
 
 func (m *Model) statusBar(cv *Canvas, y int) {
 	x := 1
-	if m.notice != "" && m.Now.Sub(m.noticeAt) < 8e9 {
+	if m.notice != "" && m.Now.Sub(m.noticeAt) < noticeFor {
 		c, g := cUp, "✓ "
 		if m.noticeErr {
 			c, g = cDown, "✖ "
+		}
+		if left := noticeFor - m.Now.Sub(m.noticeAt); left < noticeFade {
+			c = Mix(cInk, c, float64(left)/float64(noticeFade))
 		}
 		cv.Text(x, y, g+m.notice, fg(c), cv.W-2)
 		return

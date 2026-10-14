@@ -629,6 +629,8 @@ func (m *Model) Animating() time.Duration {
 		return 100 * time.Millisecond // then only the globe turns
 	case m.Loading != "":
 		return 90 * time.Millisecond // the spinner turns
+	case m.notice != "" && m.Now.Sub(m.noticeAt) >= noticeFor-noticeFade && m.Now.Sub(m.noticeAt) < noticeFor:
+		return 100 * time.Millisecond // the notice fades out
 	case !m.Detail && (m.Tab == tabTopology || m.Tab == tabOverview && m.Width >= 90 && m.Height >= 25):
 		return 140 * time.Millisecond // glints run along the map's wires
 	}

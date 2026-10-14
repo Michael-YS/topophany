@@ -383,3 +383,30 @@ func TestFooterSaysEnterGoesBack(t *testing.T) {
 		t.Fatalf("footer after going back %q", f)
 	}
 }
+
+// A notice fades into its bar before it goes, repainted often enough to.
+func TestNoticesFadeOut(t *testing.T) {
+	m := previewModel(t)
+	m.setTab(tabServices)
+	m.say("Scenario: test", false)
+	color := func() Color {
+		cv := m.draw()
+		for x := 0; x < cv.W; x++ {
+			if p := cv.at(x, 2); p.ch == "S" {
+				return p.st.FG
+			}
+		}
+		return 0
+	}
+	if c := color(); c != cUp || m.Animating() == 100*time.Millisecond {
+		t.Fatalf("fresh notice %v, repainted every %v", c, m.Animating())
+	}
+	m.Now = m.Now.Add(noticeFor - noticeFade/2)
+	if c := color(); c == cUp || c == 0 || m.Animating() != 100*time.Millisecond {
+		t.Fatalf("fading notice %v, repainted every %v", c, m.Animating())
+	}
+	m.Now = m.Now.Add(noticeFade)
+	if strings.Contains(visible(m), "Scenario: test") {
+		t.Fatal("notice outstayed its time")
+	}
+}
