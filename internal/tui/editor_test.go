@@ -313,7 +313,7 @@ func TestEveryModeFrameBounds(t *testing.T) {
 	for _, dim := range [][2]int{{30, 10}, {64, 18}, {99, 30}, {100, 28}, {181, 52}} {
 		for _, mk := range models {
 			for tab := range tabs {
-				for _, mode := range []string{"geo", "network"} {
+				for _, mode := range []string{"virtual", "geo", "network"} {
 					for zoom := 0; zoom < 3; zoom++ {
 						for _, overlay := range []string{"", "a", "e"} {
 							m := mk()

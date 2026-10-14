@@ -1,5 +1,7 @@
 package tui
 
+import "math"
+
 // Network edges are wires: box-drawing lines that leave a chip on the right,
 // turn once in the gap before the next column and enter the next chip from
 // the left. Every cell remembers which way each edge leaves it, so an edge's
@@ -127,5 +129,26 @@ func (ws *wires) draw(cv *Canvas, ox, oy int) {
 			r = [3]rune{'│', '┊', '╎'}[mk.dash]
 		}
 		cv.Set(ox+x, oy+y, r, fg(mk.c))
+	}
+}
+
+// glint runs a short highlight along an edge's cells wherever its wire is the
+// one shown, so motion itself means "getting through".
+func (ws *wires) glint(cv *Canvas, ox, oy int, cells [][2]int, edge int, id string, phase float64) {
+	n := len(cells)
+	if n < 6 {
+		return
+	}
+	head := int(math.Mod(phase*12+float64(hash32(id)%97), float64(n+18)))
+	for t := 0; t < 2; t++ {
+		i := head - t
+		if i < 0 || i >= n {
+			continue
+		}
+		px, py := cells[i][0], cells[i][1]
+		if mk, _, ok := ws.top(px, py); ok && mk.edge == edge && cv.in(ox+px, oy+py) {
+			cl := cv.at(ox+px, oy+py)
+			cv.put(ox+px, oy+py, cl.ch, 1, cl.st.Fg(Mix(Mix(cUp, cGlow, .45), mk.c, float64(t)*.5)))
+		}
 	}
 }

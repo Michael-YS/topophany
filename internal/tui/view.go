@@ -93,21 +93,16 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 	}
 	switch {
 	case m.Tab == tabTopology:
-		mode := "geo map"
-		if m.mapMode() == "network" {
-			mode = "network graph"
-		}
+		mode := map[string]string{"virtual": "virtual geo", "geo": "geo map", "network": "network graph"}[m.mapMode()]
 		if w >= 120 {
 			lw := min(max(w*40/100, 34), 84)
 			mw := w - lw
-			// A world-spanning network letterboxes in a tall panel; the map
-			// then takes only the rows it can fill and the evidence moves
-			// under it, leaving the list the full height.
+			// In a tall panel, a geo or virtual map takes only the rows it
+			// can fill and the evidence moves under it, leaving the list the
+			// full height.
 			mh := h
-			if m.mapMode() == "geo" {
-				if need := m.geoRows(mw-2) + 2 + m.mapChrome(); h-need >= 10 {
-					mh = need
-				}
+			if rows := m.mapRows(mw - 2); rows > 0 && h-rows-2 >= 10 {
+				mh = rows + 2
 			}
 			ix, iy, iw, ih := m.panel(cv, x, y, mw, mh, title+" · "+mode, "m switch · z zoom", false)
 			m.drawMap(cv, ix-1, iy, iw+2, ih, sel)

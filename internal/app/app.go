@@ -59,8 +59,8 @@ Usage:
   topo version                      show version
 
 Use 'topo COMMAND --help' for command options. TUI: 1–9 tabs (9/? About),
-v observer, ↑↓/jk navigation, Enter details, / filter, r refresh, m geo/network
-map, z zoom, mouse clicks and wheel, q quit. In 'topo edit': a add, e edit,
+v observer, ↑↓/jk navigation, Enter details, / filter, r refresh, m map
+(virtual geo/geo/network), z zoom, mouse clicks and wheel, q quit. In 'topo edit': a add, e edit,
 d delete, u undo, Ctrl-S save. In 'topo preview': x scenario, D debug overlay;
 evidence is synthetic and the topology is read-only.
 Credentials default to the OS user config directory / topophany / credentials.json.

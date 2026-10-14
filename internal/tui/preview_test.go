@@ -48,7 +48,7 @@ func TestPreviewDump(t *testing.T) {
 	}
 	for _, color := range []bool{false, true} {
 		for tab := range tabs {
-			for _, mode := range []string{"geo", "network"} {
+			for _, mode := range []string{"virtual", "geo", "network"} {
 				if tab != tabTopology && mode == "network" {
 					continue
 				}

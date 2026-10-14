@@ -333,10 +333,8 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		sw := min(max(w*36/100, 46), 74)
 		mw := w - sw
 		mh := h
-		if m.mapMode() == "geo" {
-			if need := m.geoRows(mw-2) + 2 + m.mapChrome(); h-need >= 9 {
-				mh = need
-			}
+		if rows := m.mapRows(mw - 2); rows > 0 && h-rows-2 >= 9 {
+			mh = rows + 2
 		}
 		ix, iy, iw, ih := m.panel(cv, x, y, mw, mh, mapTitle, mapTag, false)
 		m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
@@ -380,8 +378,8 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		}
 	case w >= 90 && h >= 22:
 		mh := h * 52 / 100
-		if m.mapMode() == "geo" {
-			mh = min(mh, m.geoRows(w-2)+2+m.mapChrome())
+		if rows := m.mapRows(w - 2); rows > 0 {
+			mh = min(mh, rows+2)
 		}
 		ix, iy, iw, ih := m.panel(cv, x, y, w, mh, mapTitle, mapTag, false)
 		m.drawMap(cv, ix-1, iy, iw+2, ih, sel)

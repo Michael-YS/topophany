@@ -8,10 +8,10 @@ import (
 )
 
 type mapNode struct {
-	ID, Name, Kind, Group, Health, Place string
-	Lat, Lon                             float64
-	Located, Inherited, Affected         bool
-	order                                int
+	ID, Name, Kind, Group, Health, Place, Parent, Provider string
+	Lat, Lon                                               float64
+	Located, Inherited, Affected                           bool
+	order                                                  int
 }
 type mapEdge struct {
 	ID, From, To, Health, Label string
@@ -126,7 +126,7 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 			groups[n.Group] = groupHues[len(groups)%len(groupHues)]
 		}
 		h, affected := health(nodeStates, n.ID)
-		mn := mapNode{ID: n.ID, Name: name, Kind: n.Kind, Group: n.Group, Health: h, Affected: affected, order: i}
+		mn := mapNode{ID: n.ID, Name: name, Kind: n.Kind, Group: n.Group, Parent: n.Parent, Provider: n.Provider, Health: h, Affected: affected, order: i}
 		if n.Location != nil {
 			mn.Lat, mn.Lon, mn.Located, mn.Place = n.Location.Lat, n.Location.Lon, true, n.Location.Label
 		}
@@ -353,16 +353,37 @@ func (m *Model) focus(sel Row) mapFocus {
 	return f
 }
 
+// mapModes are the map's views in the order m cycles through them.
+var mapModes = []string{"virtual", "geo", "network"}
+
+// mapMode is the view the map shows: the one chosen with m, otherwise the
+// virtual geo view when any node has a location and the network graph when
+// none has.
 func (m *Model) mapMode() string {
-	if m.MapMode != "" {
+	if contains(mapModes, m.MapMode) {
 		return m.MapMode
 	}
 	for _, n := range m.Snapshot.Topology.Nodes {
 		if n.Location != nil {
-			return "geo"
+			return "virtual"
 		}
 	}
 	return "network"
+}
+
+// mapRows is how many rows a w-cell-wide map needs, legend and tray
+// included, in a mode with a natural height; 0 in one that fills any height.
+// Layouts give the rest of a tall panel to other panels.
+func (m *Model) mapRows(w int) int {
+	switch m.mapMode() {
+	case "geo":
+		return m.geoRows(w) + m.mapChrome()
+	case "virtual":
+		if rows := m.virtualRows(w); rows > 0 {
+			return rows + 1
+		}
+	}
+	return 0
 }
 
 // mapChrome is the rows a map gives to its legend and "no location" tray.
@@ -386,9 +407,12 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 	if legend {
 		mh--
 	}
-	if m.mapMode() == "geo" {
+	switch m.mapMode() {
+	case "geo":
 		m.drawGeo(cv, x, y, w, mh, nodes, edges, f)
-	} else {
+	case "virtual":
+		m.drawVirtual(cv, x, y, w, mh, nodes, edges, groups, f)
+	default:
 		m.drawNetwork(cv, x, y, w, mh, nodes, edges, groups, f)
 	}
 	if legend {
@@ -400,6 +424,11 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 			}
 			cv.Set(cx, ly, r, fg(c))
 			cx += 2 + cv.Text(cx+2, ly, label, fg(cMuted), -1) + 2
+		}
+		if m.mapMode() == "virtual" && m.vcache.dropped > 0 {
+			// Links the virtual map found no room for are said, not hidden.
+			item('⋯', cWarn, plural(m.vcache.dropped, "link")+" not drawn · m")
+			cx += 2
 		}
 		item('●', cUp, "up")
 		item('▲', cWarn, "warn")
@@ -418,6 +447,8 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 		}
 		if m.mapMode() == "network" {
 			item('┊', cFaint, "hosted in")
+		}
+		if m.mapMode() != "geo" {
 			cx += 2
 			names := []string{}
 			for _, n := range nodes {

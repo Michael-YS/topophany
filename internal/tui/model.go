@@ -53,7 +53,7 @@ type Model struct {
 	NoColor               bool
 	Colors                int // colorTrue or color256
 	Now                   time.Time
-	MapMode               string // "", "geo" or "network"; "" picks geo when locations exist
+	MapMode               string // "", "virtual", "geo" or "network"; "" picks virtual when locations exist
 	Zoom                  int
 	Edit                  *Editor // non-nil only for topo edit
 	Preview               Preview // non-nil only for topo preview
@@ -66,6 +66,7 @@ type Model struct {
 	noticeAt              time.Time
 	aboutAt               time.Time
 	aboutSpin             float64 // extra globe rotation from the mouse wheel
+	vcache                vCache  // the virtual map's wires, kept while its layout holds
 	hits                  []hit
 	drawingModal          bool
 }
@@ -733,10 +734,11 @@ func (m *Model) Key(k string) string {
 			m.setTab(tabAbout)
 		}
 	case "m":
-		if m.mapMode() == "geo" {
-			m.MapMode = "network"
-		} else {
-			m.MapMode = "geo"
+		for i, mode := range mapModes {
+			if mode == m.mapMode() {
+				m.MapMode = mapModes[(i+1)%len(mapModes)]
+				break
+			}
 		}
 	case "z":
 		m.Zoom = (m.Zoom + 1) % 3

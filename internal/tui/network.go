@@ -536,23 +536,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 	// means "getting through".
 	phase := m.phase()
 	for k, cells := range pulses {
-		n := len(cells)
-		if n < 6 {
-			continue
-		}
-		e := drawn[pulseEdge[k]]
-		head := int(math.Mod(phase*12+float64(hash32(e.ID)%97), float64(n+18)))
-		for t := 0; t < 2; t++ {
-			i := head - t
-			if i < 0 || i >= n {
-				continue
-			}
-			px, py := cells[i][0], cells[i][1]
-			if mk, _, ok := ws.top(px, py); ok && mk.edge == pulseEdge[k] && cv.in(x+px, y+py) {
-				cl := cv.at(x+px, y+py)
-				cv.put(x+px, y+py, cl.ch, 1, cl.st.Fg(Mix(Mix(cUp, cGlow, .45), mk.c, float64(t)*.5)))
-			}
-		}
+		ws.glint(cv, x, y, cells, pulseEdge[k], drawn[pulseEdge[k]].ID, phase)
 	}
 	for _, a := range arrows {
 		if a.x >= 0 && a.x < w {

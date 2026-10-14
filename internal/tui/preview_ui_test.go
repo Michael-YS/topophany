@@ -51,7 +51,7 @@ func TestPreviewScenarioMenuDebugAndReadOnly(t *testing.T) {
 		t.Fatal("preview edit hint missing")
 	}
 	for _, dim := range [][2]int{{40, 14}, {100, 30}, {160, 48}} {
-		for _, mode := range []string{"geo", "network"} {
+		for _, mode := range []string{"virtual", "geo", "network"} {
 			for tab := range tabs {
 				m.Width, m.Height = dim[0], dim[1]
 				m.MapMode = mode

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A virtual geo map, now the default when any node has a location: places
+  become cards in columns from west to east and north to south, keeping
+  the world's order but not its distances, so crowded sites stay legible.
+  Each node has its own row, links are wires between rows (and brackets
+  inside a card for links within one place), and unplaced nodes such as
+  edges and the internet float as pills beside what they connect to. `m`
+  cycles virtual geo, geo and network; cards fold on short maps, and links
+  that find no room are counted in the legend.
 - A Servers tab (`3`): a card for each server with its state, kind,
   provider and place, the services it runs and the edges in front of them,
   its addresses by network, what it hosts, who observes from it, its links,

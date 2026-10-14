@@ -18,7 +18,7 @@ Topophany is an open-source, self-hosted network topology and service availabili
 - **One binary, no dependencies.** No CGO, no database daemon, no Node.js, and zero external Go modules.
 
 <p align="center">
-  <img src="docs/assets/overview.png" alt="The Overview during a simulated outage: a world map with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
+  <img src="docs/assets/overview.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
   <br><sub>The Overview during a simulated outage, from <code>topo preview --scenario 1</code>.</sub>
 </p>
 
@@ -104,8 +104,9 @@ The TUI is built to answer one question before anything is read: *is anything wr
   </tr>
 </table>
 
-Press `m` to switch the map between two modes:
+Press `m` to cycle the map through three modes:
 
+- **virtual geo** — the default when any node has a `location`: a schematic of the world that keeps its order but not its distances, so a crowded city gets as much room as a lone island. Each place is a card with its name on top and its coordinates along the foot. Cards stand in columns from west to east along the shorter way round, north above south, and neighbouring places share a column when the terminal is narrow. Every node has a row of its own on its card, with containers and VMs indented under their hosts; links run as wires from row to row, arrowed where they arrive, and links between two nodes at one place are brackets inside the card. Wires that leave one node or reach one node share a trunk, and otherwise only cross at right angles, so a junction always belongs to a node. Nodes without a location, such as edges and the internet, float as pills beside what they connect to. Wires carry the same evidence colors as the other maps, with a glint running along those whose traffic gets through, and a card with a problem tints its frame. On a short map, cards fold their rows into "+2 more" and then into one-row chips; should a dense graph leave a link no room, the legend says how many links are not drawn.
 - **geo** — a braille dot-matrix world map (2×4 dots per cell, Natural Earth 1:110m land) that places nodes by their declared `location`, never by IP address. Nodes at one place are clustered into a single site with one marker per node; each pair of sites gets one arc. An arc is green when its link is measured up or a declared path over it succeeds, amber when it is degraded or on a failing path, red when it fails, and grey when nothing has measured it; healthy arcs stay faint so that problems stand out, and hops implied only by a declared path are dashed. Flow pulses run only along links with positive evidence, and sites with a problem ripple. Nodes without coordinates wait in a "no location" tray. The view crosses the antimeridian on the shorter side, and `z` cycles between fitting every site, focusing the selection, and the whole world.
 - **network** — a left-to-right layered graph drawn as a schematic: sources on the left, each link one column further, long links routed around the nodes in between. Nodes are chips colored by group; wires leave a chip to the right and turn once before the next column, wires from one source share a track, crossings are bridged, and "hosted in" relations are dotted. Selecting a path or incident highlights its hops.
 
@@ -116,7 +117,7 @@ Press `m` to switch the map between two modes:
 | `Enter` | expand evidence for the selected row |
 | `/` | filter rows |
 | `v` | cycle observer vantage points |
-| `m` / `z` | map mode / map zoom |
+| `m` / `z` | cycle the map (virtual geo, geo, network) / zoom the geo map |
 | `r` | refresh now |
 | `D` | debug overlay: frame time, bytes written, map geometry |
 | `q` | quit |
