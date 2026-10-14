@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blank rows between its paragraphs close up so the links stay.
 - Where there is room, About lists the keys of the mode the UI is in
   (viewer, preview or editor) as keycaps, so `?` doubles as help.
+- Tabs count what in them needs a look (failing services, paths and
+  checks, open incidents, silent observers), red when anything is down and
+  amber otherwise; on narrow terminals the tab's number takes the color.
 
 ### Changed
 

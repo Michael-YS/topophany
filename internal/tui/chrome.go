@@ -82,21 +82,107 @@ func (m *Model) header(cv *Canvas) {
 	}
 }
 
-// tabBar draws numbered tabs; when they do not fit, inactive tabs collapse
-// to their number. Under NO_COLOR the active tab is bracketed.
-func (m *Model) tabBar(cv *Canvas, y int) {
-	total := 0
-	for i, t := range tabs {
-		total += width(itoa(i+1)+" "+t) + 3
+// badge is what a tab counts beside its name: the entries in it that need a
+// look, red when any is down and amber otherwise; 0 when none do. A cached
+// view, a draft or a view still loading claims nothing.
+func (m *Model) badge(tab int) (int, Color) {
+	if m.Cached() || m.Edit != nil || m.Loading != "" {
+		return 0, 0
 	}
-	// Tabs close up before the inactive ones lose their names.
-	gap, short := 1, total > cv.W-1
-	if short && total-len(tabs) <= cv.W-1 {
-		gap, short = 0, false
+	s := m.Snapshot
+	n, down := 0, false
+	look := func(health string, affected bool) {
+		switch {
+		case health == "down":
+			n, down = n+1, true
+		case health == "degraded", affected:
+			n++
+		}
+	}
+	switch tab {
+	case tabServers:
+		known, servers := map[string]bool{}, map[string]bool{}
+		for _, nd := range s.Topology.Nodes {
+			known[nd.ID] = true
+		}
+		for _, nd := range s.Topology.Nodes {
+			servers[nd.ID] = serverNode(nd, known)
+		}
+		for _, e := range s.Nodes {
+			if servers[e.ID] {
+				look(e.Health, e.Affected)
+			}
+		}
+	case tabServices:
+		for _, e := range s.Services {
+			look(e.Health, e.Affected)
+		}
+	case tabPaths:
+		for _, e := range s.Paths {
+			look(e.Health, e.Affected)
+		}
+	case tabChecks:
+		for _, c := range s.Checks {
+			look(c.Health, false)
+		}
+	case tabIncidents:
+		n, down = len(s.Incidents), len(s.Incidents) > 0
+	case tabObservers:
+		for _, o := range s.Observers {
+			look(o.Health, o.Health != "up")
+		}
+	}
+	if down {
+		return n, cDown
+	}
+	return n, cWarn
+}
+
+// tabBar draws numbered tabs, each with the badge of what in it needs a
+// look. When they do not fit, the gaps close, then a badge only tints its
+// tab's number, then inactive tabs collapse to their number. Under NO_COLOR
+// the active tab is bracketed.
+func (m *Model) tabBar(cv *Canvas, y int) {
+	type tab struct {
+		name  string
+		count int
+		c     Color
+	}
+	ts := make([]tab, len(tabs))
+	for i, name := range tabs {
+		n, c := m.badge(i)
+		ts[i] = tab{name, n, c}
+	}
+	// need is the width of the strip with or without counts and names.
+	need := func(counts, short bool) int {
+		total := 0
+		for i, t := range ts {
+			label := itoa(i + 1)
+			if !short || i == m.Tab {
+				label += " " + t.name
+			}
+			if counts && t.count > 0 {
+				label += " " + itoa(t.count)
+			}
+			total += width(label) + 3
+		}
+		return total
+	}
+	gap, counts, short := 1, true, false
+	switch room := cv.W - 1; {
+	case need(true, false) <= room:
+	case need(true, false)-len(tabs) <= room:
+		gap = 0
+	case need(false, false) <= room:
+		counts = false
+	case need(false, false)-len(tabs) <= room:
+		gap, counts = 0, false
+	default:
+		counts, short = false, true
 	}
 	x := 1
-	for i, t := range tabs {
-		num, name := itoa(i+1), t
+	for i, t := range ts {
+		num, name := itoa(i+1), t.name
 		if short && i != m.Tab {
 			name = ""
 		}
@@ -107,18 +193,30 @@ func (m *Model) tabBar(cv *Canvas, y int) {
 			if active {
 				text = "[" + num + " " + name + "]"
 			}
+			if t.count > 0 && counts {
+				text = strings.TrimSuffix(text, " ") + " " + itoa(t.count) + " "
+			}
 			x += cv.Text(x, y, text, Style{}, -1)
 		} else {
-			ns, ts, pad := fg(cFaint), fg(cMuted), Style{}
+			ns, ls, pad := fg(cFaint), fg(cMuted), Style{}
+			bs := fg(t.c).bold()
+			if t.count > 0 && !counts {
+				ns = fg(t.c).bold() // no room to count: the number says it
+			}
 			if active {
 				pad = Style{BG: cAccent}
 				ns = fg(Mix(cInk, cAccent, .5)).Bg(cAccent).bold()
-				ts = fg(cInk).Bg(cAccent).bold()
+				ls = fg(cInk).Bg(cAccent).bold()
+				bs = fg(Mix(t.c, cInk, .45)).Bg(cAccent).bold()
 			}
 			x += cv.Text(x, y, " ", pad, -1)
 			x += cv.Text(x, y, num, ns, -1)
 			if name != "" {
-				x += cv.Text(x, y, " "+name, ts, -1)
+				x += cv.Text(x, y, " "+name, ls, -1)
+			}
+			if t.count > 0 && counts {
+				x += cv.Text(x, y, " ", pad, -1)
+				x += cv.Text(x, y, itoa(t.count), bs, -1)
 			}
 			x += cv.Text(x, y, " ", pad, -1)
 		}

@@ -313,3 +313,52 @@ func TestServersTabCardsAndMemo(t *testing.T) {
 		t.Fatal("memos are not searchable", rows)
 	}
 }
+
+// Tabs count what in them needs a look, and only from current evidence;
+// with no room to count, the number of a tab that needs a look is tinted.
+func TestTabsCountWhatNeedsALook(t *testing.T) {
+	m := previewModel(t)
+	m.Colors = colorTrue
+	for tab := range tabs {
+		if n, _ := m.badge(tab); n != 0 {
+			t.Fatalf("healthy preview: tab %s counts %d", tabs[tab], n)
+		}
+	}
+	sim := m.Preview.(*preview.Sim)
+	sim.SetScenario(1, m.Now.Add(-30*time.Minute))
+	m.Snapshot, _ = sim.Snapshot("", m.Now)
+	if n, c := m.badge(tabIncidents); n != len(m.Snapshot.Incidents) || n == 0 || c != cDown {
+		t.Fatalf("incidents badge %d %v, want %d red", n, c, len(m.Snapshot.Incidents))
+	}
+	failing := 0
+	for _, c := range m.Snapshot.Checks {
+		if c.Health == "down" || c.Health == "degraded" {
+			failing++
+		}
+	}
+	if n, _ := m.badge(tabChecks); n != failing {
+		t.Fatalf("checks badge %d, want %d", n, failing)
+	}
+	m.Width = 211
+	strip := ansi.ReplaceAllString(m.Render()[1], "")
+	if !strings.Contains(strip, "Incidents "+itoa(len(m.Snapshot.Incidents))+" ") || !strings.Contains(strip, "Checks "+itoa(failing)+" ") {
+		t.Fatalf("tab strip lacks its counts: %q", strip)
+	}
+	// At 80 columns the names collapse and the numbers carry the color.
+	m.Width = 80
+	cv := m.draw()
+	tinted := false
+	for x := 0; x < cv.W; x++ {
+		if p := cv.at(x, 1); p.ch == "7" && p.st.FG == cDown {
+			tinted = true
+		}
+	}
+	if !tinted {
+		t.Fatal("collapsed Incidents tab is not tinted")
+	}
+	// A cached view claims nothing.
+	m.Error = "collector unavailable"
+	if n, _ := m.badge(tabIncidents); n != 0 {
+		t.Fatal("cached view counts incidents")
+	}
+}
