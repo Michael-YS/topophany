@@ -82,6 +82,7 @@ This document lists the finite, verifiable scenario contracts for version 0.3.0,
 | Non-acknowledging collector isolation | `TestUnacknowledgedDestinationCannotStopHealthyDelivery`, `TestInvalidACKCollectorIsolationEndToEnd` |
 | Observer history reservations across restart | `TestHistoryReservationSurvivesCheckpoint`, `TestObserverQuotasSurviveRestartAndReserveHeartbeats` |
 | Pre-authentication connection and request admission | `TestConnectionLimitCoversPartialHeadersAndReleases`, `TestPreauthenticationConcurrencyAndRateBounds` |
+| Anonymous traffic that uses up its shared admission refuses no worker or viewer with a valid token; each principal is bounded by its own rate on every route | `TestAnonymousTrafficCannotRefuseAuthenticatedClients`, `TestHTTPConnectionPreauthRejectionsClose` |
 | Fair snapshot cache computation | `TestViewerCannotReserveAllSnapshotBuilds`, `TestSnapshotViewCacheHasGlobalBudget` |
 | Heartbeat project provenance; an executor on another topology revision stays alive | `TestRecoveredHeartbeatContract` |
 | Durable expired observation-ID binding | `TestExpiredEvictedIDRemainsBoundAcrossRestart` |

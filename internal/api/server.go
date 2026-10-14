@@ -106,7 +106,7 @@ type Server struct {
 	snapshotBuilds     int
 	preauthSlots       chan struct{}
 }
-type admissionKey struct{}
+type principalKey struct{}
 
 type limit struct {
 	At    time.Time
@@ -184,47 +184,63 @@ func (s *Server) Handler() http.Handler {
 		if r.ProtoMajor == 1 {
 			w.Header().Set("Connection", "close")
 		}
+		// A request that authenticates answers to the budgets of its own
+		// principal, whatever it asks for, never to the slots and the rate
+		// shared by everything anonymous, so anonymous traffic, however much
+		// of it, cannot refuse a worker or a viewer.
+		if p, ok := s.principal(r); ok {
+			if !s.allow(scope(p)) {
+				w.Header().Set("Retry-After", "1")
+				writeError(w, 429, "rate_limited")
+				return
+			}
+			mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+			return
+		}
 		select {
 		case s.preauthSlots <- struct{}{}:
 		default:
 			writeError(w, 429, "preauth_busy")
 			return
 		}
-		var once sync.Once
-		release := func() { once.Do(func() { <-s.preauthSlots }) }
-		defer release()
+		defer func() { <-s.preauthSlots }()
 		if !s.allowBudget("preauth", 300) {
 			writeError(w, 429, "preauth_rate_limited")
 			return
 		}
-		r = r.WithContext(context.WithValue(r.Context(), admissionKey{}, release))
 		mux.ServeHTTP(w, r)
 	})
 }
+
+// principal is the principal whose token r carries, if any: one SHA-256
+// and a constant-time comparison with each token, cheap enough to do
+// before any budget is charged.
+func (s *Server) principal(r *http.Request) (Principal, bool) {
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || secure.CheckToken(token) != nil {
+		return Principal{}, false
+	}
+	hash := secure.Hash(token)
+	var found Principal
+	ok = false
+	_, auth := s.current()
+	for _, p := range auth.Tokens {
+		if subtle.ConstantTimeCompare([]byte(strings.ToLower(p.TokenSHA256)), []byte(hash)) == 1 {
+			found = p
+			ok = true
+		}
+	}
+	return found, ok
+}
 func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Request, Principal)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		raw := r.Header.Get("Authorization")
-		if !strings.HasPrefix(raw, "Bearer ") {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="Topophany"`)
-			writeError(w, 401, "authentication_required")
-			return
-		}
-		token := strings.TrimPrefix(raw, "Bearer ")
-		if secure.CheckToken(token) != nil {
-			writeError(w, 401, "invalid_token")
-			return
-		}
-		hash := secure.Hash(token)
-		var found Principal
-		ok := false
-		_, auth := s.current()
-		for _, p := range auth.Tokens {
-			if subtle.ConstantTimeCompare([]byte(strings.ToLower(p.TokenSHA256)), []byte(hash)) == 1 {
-				found = p
-				ok = true
-			}
-		}
+		found, ok := r.Context().Value(principalKey{}).(Principal)
 		if !ok {
+			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="Topophany"`)
+				writeError(w, 401, "authentication_required")
+				return
+			}
 			writeError(w, 401, "invalid_token")
 			return
 		}
@@ -233,25 +249,22 @@ func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Req
 			return
 		}
 		w.Header().Del("Connection")
-		if release, ok := r.Context().Value(admissionKey{}).(func()); ok {
-			release()
-		}
-		scope := hash
-		if role == "worker" {
-			scope = "worker:" + found.Observer
-		}
-		if !s.allow(scope) {
-			w.Header().Set("Retry-After", "1")
-			writeError(w, 429, "rate_limited")
-			return
-		}
-		if !s.acquire(scope, role) {
+		if !s.acquire(scope(found), role) {
 			writeError(w, 429, "concurrency_limited")
 			return
 		}
-		defer s.release(scope, role)
+		defer s.release(scope(found), role)
 		next(w, r, found)
 	}
+}
+
+// scope is what a principal's rate and concurrency are counted under: a
+// worker's observer, whatever token it uses, or a viewer's token.
+func scope(p Principal) string {
+	if p.Role == "worker" {
+		return "worker:" + p.Observer
+	}
+	return strings.ToLower(p.TokenSHA256)
 }
 func (s *Server) allow(key string) bool { return s.allowBudget(key, 30) }
 func (s *Server) allowBudget(key string, maximum int) bool {

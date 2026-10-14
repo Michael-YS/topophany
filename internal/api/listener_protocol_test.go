@@ -8,6 +8,8 @@ import (
 	"net/http/httptrace"
 	"testing"
 	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
 func TestHTTPConnectionHTTP2RemainsReusable(t *testing.T) {
@@ -64,9 +66,14 @@ func TestHTTPConnectionPreauthRejectionsClose(t *testing.T) {
 		t.Fatal("preauth concurrency rejection retained an HTTP/1 connection")
 	}
 	srv.limits["preauth"] = limit{At: srv.Now(), Count: 300}
-	rate := request(h, "GET", "/v1/config", viewerToken, "", nil)
+	rate := request(h, "GET", "/v1/config", "", "", nil)
 	if rate.Code != 429 || rate.Header().Get("Connection") != "close" {
 		t.Fatal("preauth rate rejection retained an HTTP/1 connection")
+	}
+	srv.limits[secure.Hash(viewerToken)] = limit{At: srv.Now(), Count: 30}
+	rate = request(h, "GET", "/v1/config", viewerToken, "", nil)
+	if rate.Code != 429 || rate.Header().Get("Connection") != "close" {
+		t.Fatal("a principal's rate rejection retained an HTTP/1 connection")
 	}
 }
 

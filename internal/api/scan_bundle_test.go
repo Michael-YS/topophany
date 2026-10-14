@@ -100,6 +100,45 @@ func (w *blockedWriter) Header() http.Header         { return w.header }
 func (w *blockedWriter) WriteHeader(int)             { w.once.Do(func() { close(w.entered) }); <-w.release }
 func (w *blockedWriter) Write(p []byte) (int, error) { return len(p), nil }
 
+// Anonymous traffic shares one budget, which it can use up; a worker and
+// a viewer that authenticate are counted under budgets of their own and
+// are never refused for it, nor for the slots anonymous requests hold.
+func TestAnonymousTrafficCannotRefuseAuthenticatedClients(t *testing.T) {
+	srv, h, b := fixture(t)
+	for _, path := range []string{"/healthz", "/v1/snapshot", "/missing"} {
+		for i := 0; i < 120; i++ {
+			request(h, "GET", path, "", "", nil)
+		}
+	}
+	if got := request(h, "GET", "/v1/snapshot", "not-a-token", "", nil); got.Code != 429 {
+		t.Fatal("anonymous traffic was not bounded", got.Code)
+	}
+	for i := 0; i < cap(srv.preauthSlots); i++ {
+		srv.preauthSlots <- struct{}{}
+	}
+	defer func() {
+		for len(srv.preauthSlots) > 0 {
+			<-srv.preauthSlots
+		}
+	}()
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal("a worker was refused for anonymous traffic", w.Code, w.Body.String())
+	}
+	if w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil); w.Code != 200 {
+		t.Fatal("a viewer was refused for anonymous traffic", w.Code, w.Body.String())
+	}
+	// A principal is bounded by its own budget, whatever it asks for.
+	var got int
+	for i := 0; i < 31; i++ {
+		got = request(h, "GET", "/missing", viewerToken, "", nil).Code
+	}
+	if got != 429 {
+		t.Fatal("an authenticated client was not bounded", got)
+	}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal("one principal's budget refused another", w.Code)
+	}
+}
 func TestPreauthenticationConcurrencyAndRateBounds(t *testing.T) {
 	for _, path := range []string{"/healthz", "/v1/snapshot"} {
 		srv, h, _ := fixture(t)

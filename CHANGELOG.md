@@ -138,6 +138,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Anonymous requests can no longer lock workers and viewers out of a
+  collector. Every request, authenticated or not, was charged to one
+  admission of 16 simultaneous requests and 300 a second before its token
+  was read, so anyone who could reach a collector could have its workers'
+  samples and its viewers refused with 429. Tokens are now checked first;
+  a request that authenticates counts only against its own principal's
+  30 a second, on every route, and the shared admission bounds the rest.
 - A collector slow to answer no longer delays a worker's delivery to its
   other collector. Each round went to both at once but waited for both,
   so one that took eight seconds to time out, or answered slowly without
