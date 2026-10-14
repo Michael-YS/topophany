@@ -138,6 +138,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A worker with more checks due than it has workers runs each in turn,
+  the longest overdue first. Every pass gave free workers to the checks
+  listed first, so under sustained load, such as an outage with many
+  checks waiting out their timeouts, those listed last never ran: with
+  eight checks on one worker, five never started. A worker that comes
+  free also takes the next check at once rather than at the next tick.
 - A `Host` in an HTTP check's `request_headers` is sent. It was accepted
   and then dropped, since Go's client sends the URL's host whatever a
   Host header says, so a check meant for a virtual host measured the

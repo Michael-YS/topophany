@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"time"
 
@@ -110,6 +111,7 @@ func (s *Scheduler) Run(parent context.Context) error {
 	due := make([]time.Time, len(checks))
 	active := make([]bool, len(checks))
 	busy := map[string]bool{}
+	ready := make([]int, 0, len(checks))
 	now := time.Now()
 	for i := range due {
 		due[i] = now.Add(time.Duration(rand.IntN(1000)) * time.Millisecond)
@@ -117,11 +119,42 @@ func (s *Scheduler) Run(parent context.Context) error {
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	key := func(x model.Check) string { return x.Observer + "/" + config.Target(s.Config, x) }
+	idle := s.Workers
+	// hand gives idle workers the checks that are due, the longest overdue
+	// first, so under load each check waits its turn instead of those
+	// listed first taking every worker that comes free.
+	hand := func(now time.Time) {
+		ready = ready[:0]
+		for i := range checks {
+			if !active[i] && !now.Before(due[i]) {
+				ready = append(ready, i)
+			}
+		}
+		slices.SortStableFunc(ready, func(a, b int) int { return due[a].Compare(due[b]) })
+		for _, i := range ready {
+			if idle == 0 {
+				return
+			}
+			x := checks[i]
+			if busy[key(x)] {
+				continue
+			}
+			select {
+			case jobs <- i:
+			case <-ctx.Done():
+				return
+			}
+			idle--
+			active[i] = true
+			busy[key(x)] = true
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case r := <-done:
+			idle++
 			active[r.index] = false
 			delete(busy, key(checks[r.index]))
 			if ctx.Err() != nil {
@@ -132,18 +165,9 @@ func (s *Scheduler) Run(parent context.Context) error {
 			}
 			interval := time.Duration(checks[r.index].IntervalSeconds) * time.Second
 			due[r.index] = time.Now().Add(interval + time.Duration(float64(interval)*(rand.Float64()-.5)*.1))
+			hand(time.Now())
 		case now := <-tick.C:
-			for i, x := range checks {
-				if active[i] || busy[key(x)] || now.Before(due[i]) {
-					continue
-				}
-				select {
-				case jobs <- i:
-					active[i] = true
-					busy[key(x)] = true
-				default:
-				}
-			}
+			hand(now)
 		}
 	}
 }

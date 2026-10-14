@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
@@ -89,6 +90,55 @@ func TestSchedulerConcurrencyTargetExclusionAndCancellation(t *testing.T) {
 	defer mu.Unlock()
 	if active != 0 || calls < 2 || peak > 2 || time.Since(start) > 3500*time.Millisecond {
 		t.Fatal(active, calls, peak, time.Since(start))
+	}
+}
+func TestEveryCheckTakesItsTurnUnderSustainedLoad(t *testing.T) {
+	// Twelve checks a second, each taking 120ms, on one worker: more
+	// work than it can do, so checks wait, but every one in turn.
+	c := testkit.Config()
+	c.Checks = nil
+	for i := 0; i < 12; i++ {
+		c.Checks = append(c.Checks, model.Check{ID: fmt.Sprintf("c%02d", i), Observer: "home", Endpoint: "dmit-ssh", Target: fmt.Sprintf("127.0.0.1:%d", i+1), Kind: "tcp", IntervalSeconds: 1, TimeoutSeconds: 1, StaleSeconds: 3, FailureThreshold: 1, RecoveryThreshold: 1})
+	}
+	var mu sync.Mutex
+	starts := map[string][]time.Time{}
+	p := func(ctx context.Context, c model.Config, x model.Check) model.Observation {
+		mu.Lock()
+		starts[x.ID] = append(starts[x.ID], time.Now())
+		mu.Unlock()
+		select {
+		case <-ctx.Done():
+		case <-time.After(120 * time.Millisecond):
+		}
+		return model.Observation{Check: x.ID, SampledAt: time.Now(), Outcome: "ok"}
+	}
+	s, e := New(c, "home", 1, p, func(v model.Observation) error { return nil })
+	if e != nil {
+		t.Fatal(e)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4500*time.Millisecond)
+	defer cancel()
+	begin := time.Now()
+	if e = s.Run(ctx); e != nil {
+		t.Fatal(e)
+	}
+	end := time.Now()
+	mu.Lock()
+	defer mu.Unlock()
+	// A round of all twelve takes 1.44s; waiting longer than 2.5s for a
+	// turn means another check was served out of turn.
+	for _, x := range c.Checks {
+		at := starts[x.ID]
+		if len(at) < 2 {
+			t.Fatalf("%s started %d times in %v", x.ID, len(at), end.Sub(begin))
+		}
+		last := begin
+		for _, v := range append(at, end) {
+			if wait := v.Sub(last); wait > 2500*time.Millisecond {
+				t.Fatalf("%s waited %v for a turn", x.ID, wait)
+			}
+			last = v
+		}
 	}
 }
 func TestSinkFailureStopsWithoutLosingError(t *testing.T) {
