@@ -1,6 +1,10 @@
 package tui
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/WhitenWhiten/topophany/internal/view"
+)
 
 // The Overview answers "is anything wrong, and where?" before anything is
 // read: a map of the network, a status card whose headline and big number
@@ -61,30 +65,17 @@ func (m *Model) bigText(cv *Canvas, x, y int, s string, st Style) int {
 
 // verdict is the one-line answer at the top of the Overview.
 func (m *Model) verdict() (string, Color) {
-	up, down, warn, unk := m.counts()
-	inc := len(m.Snapshot.Incidents)
-	switch {
-	case m.Edit != nil:
-		return "◇ LOCAL DRAFT", cEdit
-	case m.Loading != "" && m.Snapshot.GeneratedAt.IsZero() && len(m.Snapshot.Topology.Nodes) == 0:
-		return m.spinner() + " CONNECTING", cAccent2
-	case m.Loading != "":
+	if m.Edit == nil && m.Loading != "" {
+		if m.Snapshot.GeneratedAt.IsZero() && len(m.Snapshot.Topology.Nodes) == 0 {
+			return m.spinner() + " CONNECTING", cAccent2
+		}
 		return m.spinner() + " LOADING", cAccent2
-	case m.Cached():
-		return "◌ CACHED", cWarn
-	case up+down+warn+unk == 0:
-		return "○ NO CHECKS", cUnknown
-	case inc > 0:
-		return "✖ " + itoa(inc) + map[bool]string{true: " INCIDENT", false: " INCIDENTS"}[inc == 1], cDown
-	case down > 0:
-		return "✖ " + itoa(down) + " DOWN", cDown
-	case warn > 0:
-		return "▲ DEGRADED", cWarn
-	case up == 0:
-		return "○ NO EVIDENCE", cUnknown
 	}
-	return "● ALL CLEAR", cUp
+	v := m.view().Verdict()
+	return v.Glyph + " " + v.Text, verdictColors[v.State]
 }
+
+var verdictColors = map[string]Color{"draft": cEdit, "cached": cWarn, "no-checks": cUnknown, "incidents": cDown, "down": cDown, "degraded": cWarn, "no-evidence": cUnknown, "clear": cUp}
 
 func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 	up, down, warn, unk := m.counts()
@@ -250,19 +241,7 @@ func serviceCols(rows []Row, w int) int {
 	return max(1, min(w/max(1, min(cellW, 26)), w/12))
 }
 
-func serviceRank(r Row) int {
-	switch {
-	case r.Health == "down":
-		return 0
-	case r.Health == "degraded":
-		return 1
-	case r.Note == "affected":
-		return 2
-	case r.Health == "unknown":
-		return 4
-	}
-	return 3
-}
+func serviceRank(r Row) int { return view.ServiceRank(r) }
 
 // observersCard lists each vantage point with the age of its last evidence.
 func (m *Model) observersCard(cv *Canvas, x, y, w, h int) {

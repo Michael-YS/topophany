@@ -1,6 +1,10 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/WhitenWhiten/topophany/internal/view"
+)
 
 // Lists are drawn as tables: a health glyph, the title (with its tree guide
 // in the Topology hierarchy), aligned secondary columns, and a state column
@@ -9,23 +13,20 @@ import "strings"
 // stateWord is the state-column label of a row and its style; "" for rows
 // that are simply up.
 func stateWord(r Row) (string, Style) {
-	switch r.Note {
-	case "cached":
-		return "cached", fg(cWarn)
-	case "affected":
-		return "affected", fg(cWarn)
-	case "paused", "maintenance":
-		return r.Note, fg(cMuted)
-	}
-	switch r.Health {
-	case "down":
-		return "DOWN", fg(cDown).bold()
-	case "degraded":
-		return "WARN", fg(cWarn).bold()
-	case "up":
+	word := view.State(r)
+	switch {
+	case word == "cached", word == "affected":
+		return word, fg(cWarn)
+	case word == "paused", word == "maintenance":
+		return word, fg(cMuted)
+	case word == "DOWN":
+		return word, fg(cDown).bold()
+	case word == "WARN":
+		return word, fg(cWarn).bold()
+	case word == "":
 		return "", Style{}
 	}
-	return "unknown", fg(cFaint)
+	return word, fg(cFaint)
 }
 
 type tableLayout struct {

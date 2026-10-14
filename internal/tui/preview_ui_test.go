@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/preview"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 func previewModel(t *testing.T) *Model {
@@ -99,7 +100,7 @@ func TestOverviewDashboardAnswersAtAGlance(t *testing.T) {
 		t.Fatal("attention list does not lead with incidents", rows)
 	}
 	for i := 1; i < len(rows); i++ {
-		if attentionRank(rows[i]) < attentionRank(rows[i-1]) {
+		if view.AttentionRank(rows[i]) < view.AttentionRank(rows[i-1]) {
 			t.Fatal("attention list not worst first", rows[i-1].Title, rows[i].Title)
 		}
 	}

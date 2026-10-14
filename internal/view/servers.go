@@ -1,0 +1,281 @@
+package view
+
+import (
+	"math"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
+)
+
+// The Servers tab has a card for each server. A card says what the server
+// is and where, what runs on it and how it is reached, what it hosts and
+// who observes from it, and ends with the operator's notes as a memo. Edges
+// and platforms get cards too, saying what runs there, what they stand in
+// front of and where they answered.
+
+// ServerNode reports whether a node gets a card of its own: anything but an
+// external party or a container, which appears on its host's card.
+func ServerNode(n model.Node, known map[string]bool) bool {
+	return n.Kind != "external" && !(n.Kind == "container" && known[n.Parent])
+}
+
+// Ref names an entity: its ID, and its name where it has one.
+type Ref struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Card is what a server's card says beside its state and name. Healths
+// are those of the view: unknown throughout a cached one.
+type Card struct {
+	Kind      string         `json:"kind"`            // with its provider, e.g. "edge · Cloudflare"
+	Group     string         `json:"group,omitempty"` //
+	Where     string         `json:"where,omitempty"` // its place, "anycast", or "on" its host
+	Services  []CardService  `json:"services"`        // what runs here, trouble first
+	Fronts    []CardEndpoint `json:"in_front_of"`     // the addresses it answers first for
+	Pops      []string       `json:"answered_from"`   // where it said it answered, by response headers
+	Addresses []CardEndpoint `json:"addresses"`       // how it is reached
+	Hosts     []CardHost     `json:"hosts"`           // the containers and VMs on it
+	Observers []CardObserver `json:"observers"`       // who observes from here
+	Links     []CardLink     `json:"links"`           // its declared connections
+	Memo      string         `json:"memo,omitempty"`  // the operator's notes
+}
+
+// CardService is a service that runs on a server. Via are the edges and
+// proxies in front of it; Monitored is false when no check measures it.
+type CardService struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Health    string `json:"health"`
+	Affected  bool   `json:"affected"`
+	Via       []Ref  `json:"via"`
+	Runtime   string `json:"runtime,omitempty"`
+	Monitored bool   `json:"monitored"`
+}
+
+// CardEndpoint is an address. Its health aggregates the checks that target
+// it, and is "" when none does.
+type CardEndpoint struct {
+	ID      string `json:"id"`
+	Network string `json:"network"`
+	Address string `json:"address"`
+	Health  string `json:"health"`
+	Node    Ref    `json:"node"`
+	Via     []Ref  `json:"via"`
+}
+
+// CardHost is a node a server hosts, with the services running on it.
+type CardHost struct {
+	Ref
+	Health string   `json:"health"`
+	Runs   []string `json:"runs"`
+}
+
+// CardObserver is an observer on a server and when it last reported.
+type CardObserver struct {
+	Ref
+	Health   string    `json:"health"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
+// CardLink is a declared link from or, when Inbound, to a server.
+type CardLink struct {
+	ID        string `json:"id"`
+	Other     Ref    `json:"other"`
+	Transport string `json:"transport"`
+	Inbound   bool   `json:"inbound"`
+}
+
+// Fleet is what the cards are built from, indexed once.
+type Fleet struct {
+	Names     map[string]string // node names; the ID of a node without one
+	Nodes     map[string]model.Node
+	topology  model.Config
+	cached    bool
+	nodeState map[string]model.EntityState
+	services  map[string][]model.Service // by node
+	svcState  map[string]model.EntityState
+	endpoints map[string][]model.Endpoint // by node
+	fronted   map[string][]model.Endpoint // by the edge or proxy in front
+	epHealth  map[string]string
+	children  map[string][]model.Node
+	observers map[string][]model.Observer // by node
+	obsState  map[string]model.ObserverState
+	links     map[string][]model.Link // by either end
+	pops      map[string][]string     // where each edge answered
+}
+
+func (v View) Fleet() *Fleet {
+	s := v.Snapshot
+	t := s.Topology
+	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, topology: t, cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}}
+	for _, n := range t.Nodes {
+		f.Nodes[n.ID] = n
+		f.Names[n.ID] = n.Name
+		if n.Name == "" {
+			f.Names[n.ID] = n.ID
+		}
+		if n.Parent != "" && n.Parent != n.ID {
+			f.children[n.Parent] = append(f.children[n.Parent], n)
+		}
+	}
+	for _, e := range s.Nodes {
+		f.nodeState[e.ID] = e
+	}
+	for _, sv := range t.Services {
+		f.services[sv.Node] = append(f.services[sv.Node], sv)
+	}
+	for _, e := range s.Services {
+		f.svcState[e.ID] = e
+	}
+	endpoints := map[string]model.Endpoint{}
+	for _, ep := range t.Endpoints {
+		endpoints[ep.ID] = ep
+		f.endpoints[ep.Node] = append(f.endpoints[ep.Node], ep)
+		for _, id := range ep.Via {
+			f.fronted[id] = append(f.fronted[id], ep)
+		}
+	}
+	for _, o := range t.Observers {
+		f.observers[o.Node] = append(f.observers[o.Node], o)
+	}
+	for _, o := range s.Observers {
+		f.obsState[o.ID] = o
+	}
+	for _, l := range t.Links {
+		f.links[l.From] = append(f.links[l.From], l)
+		if l.To != l.From {
+			f.links[l.To] = append(f.links[l.To], l)
+		}
+	}
+	target := map[string]string{}
+	for _, x := range t.Checks {
+		target[x.ID] = x.Endpoint
+	}
+	health := map[string][]string{}
+	for _, cs := range s.Checks {
+		ep, ok := endpoints[target[cs.ID]]
+		if !ok {
+			continue
+		}
+		health[ep.ID] = append(health[ep.ID], cs.Health)
+		// Where an edge said it answered from, freshly.
+		if cs.Freshness != "fresh" || cs.Last == nil || v.Cached {
+			continue
+		}
+		at := ep.Node
+		if len(ep.Via) > 0 {
+			at = ep.Via[0]
+		}
+		if pop := cs.Last.Facts["edge_pop"]; pop != "" && !slices.Contains(f.pops[at], pop) {
+			f.pops[at] = append(f.pops[at], pop)
+		}
+	}
+	for id, hs := range health {
+		f.epHealth[id] = aggregateHealth(hs)
+		if v.Cached {
+			f.epHealth[id] = "unknown"
+		}
+	}
+	for at := range f.pops {
+		sort.Strings(f.pops[at])
+	}
+	return f
+}
+
+// Card is the card of the server with the given ID.
+func (f *Fleet) Card(id string) Card {
+	n := f.Nodes[id]
+	state := func(h string) string {
+		if f.cached {
+			return "unknown"
+		}
+		return h
+	}
+	refs := func(ids []string) []Ref {
+		out := []Ref{}
+		for _, id := range ids {
+			out = append(out, Ref{id, f.Names[id]})
+		}
+		return out
+	}
+	endpoint := func(ep model.Endpoint) CardEndpoint {
+		return CardEndpoint{ID: ep.ID, Network: ep.Network, Address: ep.Address, Health: f.epHealth[ep.ID], Node: Ref{ep.Node, f.Names[ep.Node]}, Via: refs(ep.Via)}
+	}
+	c := Card{Kind: KindLabel(n), Group: n.Group, Memo: strings.TrimSpace(n.Notes), Services: []CardService{}, Fronts: []CardEndpoint{}, Pops: []string{}, Addresses: []CardEndpoint{}, Hosts: []CardHost{}, Observers: []CardObserver{}, Links: []CardLink{}}
+	if c.Kind == "" {
+		c.Kind = "node"
+	}
+	switch {
+	case n.Location != nil && n.Location.Label != "":
+		c.Where = n.Location.Label
+	case n.Location != nil:
+		c.Where = LatLon(*n.Location)
+	case n.Kind == "edge":
+		c.Where = "anycast"
+	case n.Parent != "":
+		c.Where = "on " + f.Names[n.Parent]
+	}
+
+	// What runs here, healthiest last so trouble reads first.
+	for _, sv := range f.services[n.ID] {
+		e := f.svcState[sv.ID]
+		c.Services = append(c.Services, CardService{ID: sv.ID, Name: sv.Name, Health: state(e.Health), Affected: e.Affected && !f.cached, Via: refs(ViaNodes(f.topology, sv.Endpoints)), Runtime: sv.Runtime, Monitored: len(e.Checks) > 0})
+	}
+	rank := func(sv CardService) int {
+		note := ""
+		if sv.Affected && sv.Health != "down" {
+			note = "affected"
+		}
+		return ServiceRank(Row{Health: sv.Health, Note: note})
+	}
+	sort.SliceStable(c.Services, func(i, j int) bool { return rank(c.Services[i]) < rank(c.Services[j]) })
+
+	// An edge: the addresses it answers for, and where it answered from.
+	for _, ep := range f.fronted[n.ID] {
+		c.Fronts = append(c.Fronts, endpoint(ep))
+	}
+	c.Pops = append(c.Pops, f.pops[n.ID]...)
+
+	// How it is reached, what it hosts and who observes from here.
+	for _, ep := range f.endpoints[n.ID] {
+		c.Addresses = append(c.Addresses, endpoint(ep))
+	}
+	for _, k := range f.children[n.ID] {
+		runs := []string{}
+		for _, sv := range f.services[k.ID] {
+			runs = append(runs, sv.Name)
+		}
+		c.Hosts = append(c.Hosts, CardHost{Ref: Ref{k.ID, f.Names[k.ID]}, Health: state(f.nodeState[k.ID].Health), Runs: runs})
+	}
+	for _, o := range f.observers[n.ID] {
+		st := f.obsState[o.ID]
+		c.Observers = append(c.Observers, CardObserver{Ref: Ref{o.ID, o.Name}, Health: state(st.Health), LastSeen: st.LastSeen})
+	}
+
+	// Its declared connections.
+	for _, l := range f.links[n.ID] {
+		inbound, other := false, l.To
+		if l.To == n.ID && l.From != n.ID {
+			inbound, other = true, l.From
+		}
+		c.Links = append(c.Links, CardLink{ID: l.ID, Other: Ref{other, f.Names[other]}, Transport: l.Transport, Inbound: inbound})
+	}
+	return c
+}
+
+// LatLon writes a place as "35.7°N 139.7°E".
+func LatLon(l model.Location) string {
+	ns, ew := "N", "E"
+	if l.Lat < 0 {
+		ns = "S"
+	}
+	if l.Lon < 0 {
+		ew = "W"
+	}
+	return strconv.FormatFloat(math.Abs(l.Lat), 'f', 1, 64) + "°" + ns + " " + strconv.FormatFloat(math.Abs(l.Lon), 'f', 1, 64) + "°" + ew
+}

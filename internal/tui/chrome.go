@@ -102,49 +102,7 @@ func (m *Model) badge(tab int) (int, Color) {
 	if m.Cached() || m.Edit != nil || m.Loading != "" {
 		return 0, 0
 	}
-	s := m.Snapshot
-	n, down := 0, false
-	look := func(health string, affected bool) {
-		switch {
-		case health == "down":
-			n, down = n+1, true
-		case health == "degraded", affected:
-			n++
-		}
-	}
-	switch tab {
-	case tabServers:
-		known, servers := map[string]bool{}, map[string]bool{}
-		for _, nd := range s.Topology.Nodes {
-			known[nd.ID] = true
-		}
-		for _, nd := range s.Topology.Nodes {
-			servers[nd.ID] = serverNode(nd, known)
-		}
-		for _, e := range s.Nodes {
-			if servers[e.ID] {
-				look(e.Health, e.Affected)
-			}
-		}
-	case tabServices:
-		for _, e := range s.Services {
-			look(e.Health, e.Affected)
-		}
-	case tabPaths:
-		for _, e := range s.Paths {
-			look(e.Health, e.Affected)
-		}
-	case tabChecks:
-		for _, c := range s.Checks {
-			look(c.Health, false)
-		}
-	case tabIncidents:
-		n, down = len(s.Incidents), len(s.Incidents) > 0
-	case tabObservers:
-		for _, o := range s.Observers {
-			look(o.Health, o.Health != "up")
-		}
-	}
+	n, down := m.view().Badge(tab)
 	if down {
 		return n, cDown
 	}
@@ -250,32 +208,12 @@ func (m *Model) tabBar(cv *Canvas, y int) {
 }
 
 func (m *Model) counts() (up, down, warn, unk int) {
-	for _, s := range m.Snapshot.Checks {
-		if m.Cached() {
-			unk++
-			continue
-		}
-		switch s.Health {
-		case "up":
-			up++
-		case "down":
-			down++
-		case "degraded":
-			warn++
-		default:
-			unk++
-		}
-	}
-	return
+	c := m.view().Counts()
+	return c.Up, c.Down, c.Warn, c.Unknown
 }
 
 func (m *Model) liveObservers() int {
-	live := 0
-	for _, o := range m.Snapshot.Observers {
-		if o.Health == "up" && !m.Cached() {
-			live++
-		}
-	}
+	live, _ := m.view().Live()
 	return live
 }
 

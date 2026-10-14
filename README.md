@@ -128,7 +128,7 @@ The mouse works too. Colors adapt to truecolor, 256-color and `NO_COLOR` termina
 
 ```text
 cmd/topo        the single binary
-internal/       model, config, probes, scheduler, journal, engine, API, client, outbox, TUI, preview
+internal/       model, config, probes, scheduler, journal, engine, API, client, outbox, view, TUI, preview
 examples/       sample topologies and credential templates
 deploy/         hardened systemd units for the collector and the worker
 docs/           guides, reference and verification records

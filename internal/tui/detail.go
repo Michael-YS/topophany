@@ -1,6 +1,10 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/WhitenWhiten/topophany/internal/view"
+)
 
 // The evidence panel: a title block (name, state pill, kind and identity)
 // over a body that lays "Key: value" detail lines out as an aligned table.
@@ -15,15 +19,15 @@ type vline []span
 
 // statePill is the bracketed state shown beside an entity's name.
 func statePill(r Row) (string, Style) {
-	word, c := strings.ToUpper(healthWord(r.Health)), healthColor(r.Health)
+	word, c := view.Pill(r), healthColor(r.Health)
 	glyph := string(healthGlyph(r.Health))
-	switch {
-	case r.Kind == "incident":
-		word, glyph, c = "OPEN", "⚑", cDown
-	case r.Note == "cached":
-		word, glyph, c = "CACHED", "◌", cWarn
-	case r.Note == "affected":
-		word, c = "AFFECTED", cWarn
+	switch word {
+	case "OPEN":
+		glyph, c = "⚑", cDown
+	case "CACHED":
+		glyph, c = "◌", cWarn
+	case "AFFECTED":
+		c = cWarn
 	}
 	return " " + glyph + " " + word + " ", fg(c).Bg(Mix(c, cInk, .82)).bold()
 }

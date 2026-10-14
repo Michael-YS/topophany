@@ -192,6 +192,8 @@ internal/engine    Freshness tracking, evidence aggregation, and dependency stat
 internal/api       Collector HTTP API and scoped token authorization
 internal/client    Credentials, project identity validation, and read-only failover
 internal/outbox    Durable dual-dispatch queue, backoff retries, and quarantine handling
+internal/view      What a reader is shown, derived once for the TUI and the CLI: verdict,
+                   counts, each tab's rows and evidence, server cards, map edges
 internal/tui       Native terminal handling, keyboard/mouse input, 9 tabs, dot-matrix canvas,
                    geo/network topology maps, About globe animation, and local editor
 internal/preview    Built-in rich topology and synthetic scenarios for offline TUI preview

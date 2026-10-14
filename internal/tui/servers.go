@@ -1,13 +1,10 @@
 package tui
 
 import (
-	"math"
-	"sort"
-	"strconv"
 	"strings"
 
-	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 // The Servers tab: a card for each server, laid out as a wall of columns.
@@ -21,12 +18,6 @@ const (
 	cardMaxW = 64
 )
 
-// serverNode reports whether a node gets a card of its own: anything but an
-// external party or a container, which appears on its host's card.
-func serverNode(n model.Node, known map[string]bool) bool {
-	return n.Kind != "external" && !(n.Kind == "container" && known[n.Parent])
-}
-
 // cardRow is one line inside a card: spans from the left, spans pushed to
 // the right edge, an optional tint and a click target.
 type cardRow struct {
@@ -36,111 +27,23 @@ type cardRow struct {
 	hit         string
 }
 
-// fleet is what the cards are built from, indexed once per frame.
+// fleet is what the cards are built from, indexed once per frame, with the
+// hue of each node group.
 type fleet struct {
-	names     map[string]string
-	nodes     map[string]model.Node
-	nodeState map[string]model.EntityState
-	services  map[string][]model.Service // by node
-	svcState  map[string]model.EntityState
-	endpoints map[string][]model.Endpoint // by node
-	fronted   map[string][]model.Endpoint // by the edge or proxy in front
-	epHealth  map[string]string
-	children  map[string][]model.Node
-	observers map[string][]model.Observer // by node
-	obsState  map[string]model.ObserverState
-	links     map[string][]model.Link // by either end
-	pops      map[string][]string     // where each edge answered
-	groups    map[string]Color
+	*view.Fleet
+	groups map[string]Color
 }
 
-func (m *Model) fleet() *fleet {
-	s := m.Snapshot
-	t := s.Topology
-	f := &fleet{names: map[string]string{}, nodes: map[string]model.Node{}, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, groups: m.groupColors()}
-	cached := m.Cached()
-	for _, n := range t.Nodes {
-		f.nodes[n.ID] = n
-		f.names[n.ID] = n.Name
-		if n.Name == "" {
-			f.names[n.ID] = n.ID
-		}
-		if n.Parent != "" && n.Parent != n.ID {
-			f.children[n.Parent] = append(f.children[n.Parent], n)
-		}
-	}
-	for _, e := range s.Nodes {
-		f.nodeState[e.ID] = e
-	}
-	for _, v := range t.Services {
-		f.services[v.Node] = append(f.services[v.Node], v)
-	}
-	for _, e := range s.Services {
-		f.svcState[e.ID] = e
-	}
-	endpoints := map[string]model.Endpoint{}
-	for _, ep := range t.Endpoints {
-		endpoints[ep.ID] = ep
-		f.endpoints[ep.Node] = append(f.endpoints[ep.Node], ep)
-		for _, v := range ep.Via {
-			f.fronted[v] = append(f.fronted[v], ep)
-		}
-	}
-	for _, o := range t.Observers {
-		f.observers[o.Node] = append(f.observers[o.Node], o)
-	}
-	for _, o := range s.Observers {
-		f.obsState[o.ID] = o
-	}
-	for _, l := range t.Links {
-		f.links[l.From] = append(f.links[l.From], l)
-		if l.To != l.From {
-			f.links[l.To] = append(f.links[l.To], l)
-		}
-	}
-	target := map[string]string{}
-	for _, x := range t.Checks {
-		target[x.ID] = x.Endpoint
-	}
-	health := map[string][]string{}
-	for _, cs := range s.Checks {
-		ep, ok := endpoints[target[cs.ID]]
-		if !ok {
-			continue
-		}
-		health[ep.ID] = append(health[ep.ID], cs.Health)
-		// Where an edge said it answered from, freshly.
-		if cs.Freshness != "fresh" || cs.Last == nil || cached {
-			continue
-		}
-		at := ep.Node
-		if len(ep.Via) > 0 {
-			at = ep.Via[0]
-		}
-		if pop := cs.Last.Facts["edge_pop"]; pop != "" && !contains(f.pops[at], pop) {
-			f.pops[at] = append(f.pops[at], pop)
-		}
-	}
-	for id, hs := range health {
-		f.epHealth[id] = aggregateHealth(hs)
-		if cached {
-			f.epHealth[id] = "unknown"
-		}
-	}
-	for at := range f.pops {
-		sort.Strings(f.pops[at])
-	}
-	return f
-}
+func (m *Model) fleet() fleet { return fleet{m.view().Fleet(), m.groupColors()} }
 
 // netColors tint the network of an address so a card shows at a glance
 // what is public and what only travels the tailnet or the LAN.
 var netColors = map[string]Color{"public": cAccent2, "tailnet": cEdit, "lan": Hex(0x86EFAC), "loopback": cMuted, "external": cFaint}
 
 // card builds the rows of a server's card for content width w.
-func (m *Model) card(f *fleet, r Row, w int, selected bool) []cardRow {
-	n := f.nodes[r.ID]
-	cached := m.Cached()
+func (m *Model) card(f fleet, r Row, w int, selected bool) []cardRow {
+	n := f.Nodes[r.ID]
+	c := f.Card(r.ID)
 	hue := f.groups[n.Group]
 	if hosted(n.Kind) {
 		hue = providerColor(n.Provider, hue)
@@ -167,12 +70,6 @@ func (m *Model) card(f *fleet, r Row, w int, selected bool) []cardRow {
 		}
 		add(cardRow{left: head})
 	}
-	state := func(h string) string {
-		if cached {
-			return "unknown"
-		}
-		return h
-	}
 
 	// The header: what it is, its state, its kind and where it is.
 	pill, pillStyle := statePill(r)
@@ -185,167 +82,136 @@ func (m *Model) card(f *fleet, r Row, w int, selected bool) []cardRow {
 		glyph, gc = '▲', cWarn
 	}
 	add(cardRow{left: []span{{string(glyph) + " ", fg(gc).bold()}, {r.Title, name}}, right: []span{{pill, pillStyle}}, bg: band, bar: hue})
-	kind := kindLabel(n)
-	if kind == "" {
-		kind = "node"
-	}
-	sub := []span{{kind, fg(Mix(hue, cText, .35))}}
-	if n.Group != "" {
-		sub = append(sub, span{" · " + n.Group, fg(cMuted)})
+	sub := []span{{c.Kind, fg(Mix(hue, cText, .35))}}
+	if c.Group != "" {
+		sub = append(sub, span{" · " + c.Group, fg(cMuted)})
 	}
 	where := []span{}
 	switch {
-	case n.Location != nil && n.Location.Label != "":
-		where = []span{{"◎ " + n.Location.Label, fg(cMuted)}}
 	case n.Location != nil:
-		where = []span{{"◎ " + latLon(*n.Location), fg(cMuted)}}
+		where = []span{{"◎ " + c.Where, fg(cMuted)}}
 	case n.Kind == "edge":
-		where = []span{{"◌ anycast", fg(cMuted)}}
-	case n.Parent != "":
-		where = []span{{"on " + f.names[n.Parent], fg(cMuted)}}
+		where = []span{{"◌ " + c.Where, fg(cMuted)}}
+	case c.Where != "":
+		where = []span{{c.Where, fg(cMuted)}}
 	}
 	add(cardRow{left: sub, right: where, bg: band, bar: hue})
 
 	// What runs here, healthiest last so trouble reads first.
-	services := append([]model.Service(nil), f.services[n.ID]...)
-	rank := func(v model.Service) int {
-		e := f.svcState[v.ID]
-		if cached {
-			return serviceRank(Row{Health: "unknown"})
-		}
-		return serviceRank(Row{Health: e.Health, Note: map[bool]string{true: "affected"}[e.Affected && e.Health != "down"]})
-	}
-	sort.SliceStable(services, func(i, j int) bool { return rank(services[i]) < rank(services[j]) })
-	if len(services) > 0 {
+	if len(c.Services) > 0 {
 		title := "SERVICES"
 		if hosted(n.Kind) {
 			title = "RUNS HERE"
 		}
-		heading(title, len(services))
-		for i, v := range services {
-			if i == most-1 && more(len(services)) {
+		heading(title, len(c.Services))
+		for i, v := range c.Services {
+			if i == most-1 && more(len(c.Services)) {
 				break
 			}
-			e := f.svcState[v.ID]
-			h := state(e.Health)
-			g, c := healthGlyph(h), healthColor(h)
-			if e.Affected && h != "down" && !cached {
-				g, c = '▲', cWarn
+			g, gc := healthGlyph(v.Health), healthColor(v.Health)
+			if v.Affected && v.Health != "down" {
+				g, gc = '▲', cWarn
 			}
 			right := []span{}
-			switch front := viaNodes(m.Snapshot.Topology, v.Endpoints); {
-			case len(front) > 0:
+			switch {
+			case len(v.Via) > 0:
 				names := []string{}
-				for _, id := range front {
-					names = append(names, f.names[id])
+				for _, ref := range v.Via {
+					names = append(names, ref.Name)
 				}
-				right = append(right, span{"via " + strings.Join(names, " ⇢ "), fg(providerColor(f.nodes[front[0]].Provider, cMuted))})
+				right = append(right, span{"via " + strings.Join(names, " ⇢ "), fg(providerColor(f.Nodes[v.Via[0].ID].Provider, cMuted))})
 			case v.Runtime != "":
 				right = append(right, span{v.Runtime, fg(Mix(hue, cText, .2))})
-			case len(e.Checks) == 0:
+			case !v.Monitored:
 				right = append(right, span{"not monitored", fg(cFaint)})
 			}
-			add(cardRow{left: []span{{string(g) + " ", fg(c)}, {v.Name, fg(cText)}}, right: right, hit: "goto:service:" + v.ID})
+			add(cardRow{left: []span{{string(g) + " ", fg(gc)}, {v.Name, fg(cText)}}, right: right, hit: "goto:service:" + v.ID})
 		}
 	}
 
 	// An edge: the addresses it answers for, and where it answered from.
-	if fronted := f.fronted[n.ID]; len(fronted) > 0 {
-		heading("IN FRONT OF", len(fronted))
-		for i, ep := range fronted {
-			if i == most-1 && more(len(fronted)) {
+	if len(c.Fronts) > 0 {
+		heading("IN FRONT OF", len(c.Fronts))
+		for i, ep := range c.Fronts {
+			if i == most-1 && more(len(c.Fronts)) {
 				break
 			}
-			h := state(f.epHealth[ep.ID])
-			add(cardRow{left: []span{{string(healthGlyph(h)) + " ", fg(healthColor(h))}, {hostOf(ep.Address), fg(cText)}}, right: []span{{"→ " + f.names[ep.Node], fg(cMuted)}}, hit: "select:endpoint:" + ep.ID})
+			add(cardRow{left: []span{{string(healthGlyph(ep.Health)) + " ", fg(healthColor(ep.Health))}, {hostOf(ep.Address), fg(cText)}}, right: []span{{"→ " + ep.Node.Name, fg(cMuted)}}, hit: "select:endpoint:" + ep.ID})
 		}
 	}
-	if pops := f.pops[n.ID]; len(pops) > 0 {
+	if len(c.Pops) > 0 {
 		heading("ANSWERED FROM", 0)
-		add(cardRow{left: []span{{strings.Join(pops, " · "), fg(Mix(hue, cText, .25))}}, right: []span{{"response headers", fg(cFaint)}}})
+		add(cardRow{left: []span{{strings.Join(c.Pops, " · "), fg(Mix(hue, cText, .25))}}, right: []span{{"response headers", fg(cFaint)}}})
 	}
 
 	// How it is reached.
-	if eps := f.endpoints[n.ID]; len(eps) > 0 {
-		heading("ADDRESSES", len(eps))
-		for i, ep := range eps {
-			if i == most-1 && more(len(eps)) {
+	if len(c.Addresses) > 0 {
+		heading("ADDRESSES", len(c.Addresses))
+		for i, ep := range c.Addresses {
+			if i == most-1 && more(len(c.Addresses)) {
 				break
-			}
-			h := state(f.epHealth[ep.ID])
-			if _, measured := f.epHealth[ep.ID]; !measured {
-				h = ""
 			}
 			right := []span{}
 			if len(ep.Via) > 0 {
-				right = append(right, span{"⇠ " + f.names[ep.Via[0]] + " ", fg(providerColor(f.nodes[ep.Via[0]].Provider, cMuted))})
+				right = append(right, span{"⇠ " + ep.Via[0].Name + " ", fg(providerColor(f.Nodes[ep.Via[0].ID].Provider, cMuted))})
 			}
-			if h == "" {
+			if ep.Health == "" {
 				right = append(right, span{"·", fg(cFaint)})
 			} else {
-				right = append(right, span{string(healthGlyph(h)), fg(healthColor(h))})
+				right = append(right, span{string(healthGlyph(ep.Health)), fg(healthColor(ep.Health))})
 			}
-			net := ep.Network
-			nc, ok := netColors[net]
+			nc, ok := netColors[ep.Network]
 			if !ok {
 				nc = cMuted
 			}
-			add(cardRow{left: []span{{fit(net, 9), fg(nc)}, {ep.Address, fg(cText)}}, right: right, hit: "select:endpoint:" + ep.ID})
+			add(cardRow{left: []span{{fit(ep.Network, 9), fg(nc)}, {ep.Address, fg(cText)}}, right: right, hit: "select:endpoint:" + ep.ID})
 		}
 	}
 
 	// What it hosts.
-	if kids := f.children[n.ID]; len(kids) > 0 {
-		heading("HOSTS", len(kids))
-		for i, k := range kids {
-			if i == most-1 && more(len(kids)) {
+	if len(c.Hosts) > 0 {
+		heading("HOSTS", len(c.Hosts))
+		for i, k := range c.Hosts {
+			if i == most-1 && more(len(c.Hosts)) {
 				break
 			}
-			e := f.nodeState[k.ID]
-			h := state(e.Health)
 			tree := "├ "
-			if i == len(kids)-1 {
+			if i == len(c.Hosts)-1 {
 				tree = "└ "
 			}
-			runs := []string{}
-			for _, v := range f.services[k.ID] {
-				runs = append(runs, v.Name)
-			}
-			add(cardRow{left: []span{{tree, fg(cFaint)}, {string(healthGlyph(h)) + " ", fg(healthColor(h))}, {f.names[k.ID], fg(cText)}}, right: []span{{strings.Join(runs, ", "), fg(cMuted)}}, hit: "select:node:" + k.ID})
+			add(cardRow{left: []span{{tree, fg(cFaint)}, {string(healthGlyph(k.Health)) + " ", fg(healthColor(k.Health))}, {k.Name, fg(cText)}}, right: []span{{strings.Join(k.Runs, ", "), fg(cMuted)}}, hit: "select:node:" + k.ID})
 		}
 	}
 
 	// Who observes from here.
-	if obs := f.observers[n.ID]; len(obs) > 0 {
-		heading("OBSERVES FROM HERE", len(obs))
-		for _, o := range obs {
-			st := f.obsState[o.ID]
-			h := state(st.Health)
-			add(cardRow{left: []span{{"◎ ", fg(healthColor(h))}, {o.Name, fg(cText)}}, right: []span{{age(m.Now, st.LastSeen), fg(cFaint)}}, hit: "goto:observer:" + o.ID})
+	if len(c.Observers) > 0 {
+		heading("OBSERVES FROM HERE", len(c.Observers))
+		for _, o := range c.Observers {
+			add(cardRow{left: []span{{"◎ ", fg(healthColor(o.Health))}, {o.Name, fg(cText)}}, right: []span{{age(m.Now, o.LastSeen), fg(cFaint)}}, hit: "goto:observer:" + o.ID})
 		}
 	}
 
 	// Its declared connections.
-	if links := f.links[n.ID]; len(links) > 0 {
-		heading("LINKS", len(links))
-		for i, l := range links {
-			if i == 4 && len(links) > 5 {
-				add(cardRow{left: []span{{"+" + itoa(len(links)-4) + " more", fg(cFaint)}}})
+	if len(c.Links) > 0 {
+		heading("LINKS", len(c.Links))
+		for i, l := range c.Links {
+			if i == 4 && len(c.Links) > 5 {
+				add(cardRow{left: []span{{"+" + itoa(len(c.Links)-4) + " more", fg(cFaint)}}})
 				break
 			}
-			arrow, other := "→ ", l.To
-			if l.To == n.ID && l.From != n.ID {
-				arrow, other = "← ", l.From
+			arrow := "→ "
+			if l.Inbound {
+				arrow = "← "
 			}
-			add(cardRow{left: []span{{arrow, fg(cAccent)}, {f.names[other], fg(cText)}}, right: []span{{l.Transport, fg(cFaint)}}, hit: "select:link:" + l.ID})
+			add(cardRow{left: []span{{arrow, fg(cAccent)}, {l.Other.Name, fg(cText)}}, right: []span{{l.Transport, fg(cFaint)}}, hit: "select:link:" + l.ID})
 		}
 	}
 
 	// The operator's notes, as a memo.
-	if memo := strings.TrimSpace(n.Notes); memo != "" {
+	if c.Memo != "" {
 		add(cardRow{})
 		paper := Mix(cInk, cCity, .07)
-		for i, line := range memoLines(memo, w-2) {
+		for i, line := range memoLines(c.Memo, w-2) {
 			lead := "  "
 			if i == 0 {
 				lead = "✎ "
@@ -354,18 +220,6 @@ func (m *Model) card(f *fleet, r Row, w int, selected bool) []cardRow {
 		}
 	}
 	return rows
-}
-
-// latLon writes a place as "35.7°N 139.7°E".
-func latLon(l model.Location) string {
-	ns, ew := "N", "E"
-	if l.Lat < 0 {
-		ns = "S"
-	}
-	if l.Lon < 0 {
-		ew = "W"
-	}
-	return strconv.FormatFloat(math.Abs(l.Lat), 'f', 1, 64) + "°" + ns + " " + strconv.FormatFloat(math.Abs(l.Lon), 'f', 1, 64) + "°" + ew
 }
 
 // memoLines keeps the line breaks an operator wrote and wraps the rest.
