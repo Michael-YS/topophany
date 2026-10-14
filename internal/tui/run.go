@@ -264,7 +264,10 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 					request()
 				}
 			}
-			samples.request(ctx, m, false)
+			if len(ks) > 0 {
+				// Only a key moves the selection to another check.
+				samples.request(ctx, m, false)
+			}
 			if len(ks) > 0 || now.Sub(last) >= m.Animating() {
 				if e = draw(); e != nil {
 					return e
