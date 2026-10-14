@@ -37,7 +37,7 @@ export async function loadLand(url) {
   const res = await fetch(url);
   landBits = new Uint8Array(await res.arrayBuffer());
 }
-function land(lat, lon) {
+export function land(lat, lon) {
   if (!landBits) return false;
   lon = (lon + 180) % 360;
   if (lon < 0) lon += 360;

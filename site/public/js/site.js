@@ -1,5 +1,5 @@
 import { Screen } from './term.js';
-import { Globe, Wordmark, loadLand, bayer8 } from './globe.js';
+import { Globe, Wordmark, loadLand, land, bayer8 } from './globe.js';
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = (s, root = document) => root.querySelector(s);
@@ -11,6 +11,9 @@ const STRINGS = (() => {
   try { return JSON.parse($('#strings').textContent); } catch { return {}; }
 })();
 const t = (key, vars = {}) => (STRINGS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
+
+// Natural Earth land, for the globe and the vantage map alike.
+const landLoaded = loadLand('/data/land.bin');
 
 // ---------------------------------------------------------------- nav
 
@@ -109,7 +112,7 @@ function hero() {
     if (landReady) globe.draw(0);
   };
 
-  loadLand('/data/land.bin').then(() => {
+  landLoaded.then(() => {
     landReady = true;
     globeEl.classList.add('ready');
     if (reduced) still();
@@ -375,6 +378,58 @@ function dotNumerals() {
   }
 }
 
+// ---------------------------------------------------------------- evidence
+
+// vantageMap lays the land under the vantage panel's observers as dots, on
+// the projection its places and paths were drawn in.
+function vantageMap() {
+  const g = $('.v-land');
+  if (!g) return;
+  const [lon, lat, scale, top, bottom] = ['lon', 'lat', 'scale', 'top', 'bottom'].map((k) => +g.dataset[k]);
+  const width = g.ownerSVGElement.viewBox.baseVal.width;
+  const step = 2; // degrees between dots
+  landLoaded.then(() => {
+    let out = '';
+    for (let y = top + step * scale / 2; y < bottom; y += step * scale) {
+      for (let x = step * scale / 2; x < width; x += step * scale) {
+        if (land(lat - (y - top) / scale, lon + x / scale)) out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.35"/>`;
+      }
+    }
+    g.innerHTML = out;
+  }).catch(() => {});
+}
+
+// strips draw recent samples as a check's evidence does in the TUI: one
+// slot per sample coloured by its outcome (o passed, x failed, . none
+// taken), over a bar for what each passing sample took.
+function strips() {
+  for (const svg of $$('svg[data-strip]')) {
+    const slots = [...svg.dataset.strip];
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const took = slots.map((c) => (c === 'o' ? Math.round(158 + rnd() * 34 + (rnd() < 0.1 ? rnd() * 80 : 0)) : 0));
+    const slowest = Math.max(...took);
+    const w = 12, h = 46;
+    let out = '';
+    slots.forEach((c, i) => {
+      const x = i * w + w / 2;
+      if (c === 'o') out += `<circle cx="${x}" cy="7" r="3.3" fill="#4ade80"/>`;
+      else if (c === 'x') out += `<path d="M${x - 3} 4l6 6m0-6l-6 6" stroke="#f87171" stroke-width="1.8" stroke-linecap="round"/>`;
+      else out += `<circle cx="${x}" cy="7" r="1.2" fill="#4a5868"/>`;
+      if (took[i]) {
+        const bh = Math.max(2, Math.round((took[i] / slowest) * 24));
+        out += `<rect x="${x - 4}" y="${h - bh}" width="8" height="${bh}" rx="1" fill="#70bebb"/>`;
+      }
+    });
+    svg.setAttribute('viewBox', `0 0 ${slots.length * w} ${h}`);
+    svg.innerHTML = out;
+    const sorted = took.filter(Boolean).sort((a, b) => a - b);
+    const at = (q) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+    const label = $('.samples-l', svg.parentElement);
+    if (label && sorted.length) label.textContent = `p50 ${at(0.5)} ms · p95 ${at(0.95)} ms`;
+  }
+}
+
 // ---------------------------------------------------------------- small things
 
 function copyButtons() {
@@ -479,6 +534,8 @@ function suggestLanguage() {
 hero();
 tour();
 dotNumerals();
+vantageMap();
+strips();
 copyButtons();
 tabs();
 languageMenu();
