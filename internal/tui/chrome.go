@@ -470,7 +470,12 @@ func (m *Model) footer(cv *Canvas, y int) {
 			add(0, "^S", "Save", "ctrl-s")
 			add(0, "u", "Undo", "u")
 		}
-		add(1, "↵", "Details", "enter")
+		if m.Detail && m.Tab != tabAbout {
+			add(1, "↵", "Back", "enter")
+			add(1, "↑↓", "Scroll", "")
+		} else {
+			add(1, "↵", "Details", "enter")
+		}
 		add(1, "/", "Filter", "/")
 		add(2, "v", "View", "v")
 		if m.Edit == nil {

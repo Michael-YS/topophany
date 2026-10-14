@@ -365,3 +365,21 @@ func TestEvidenceTimesAreReadable(t *testing.T) {
 		t.Fatalf("incident start is not readable:\n%s", details)
 	}
 }
+
+// In the expanded evidence the footer says what Enter does there.
+func TestFooterSaysEnterGoesBack(t *testing.T) {
+	m := previewModel(t)
+	m.setTab(tabServices)
+	footer := func() string { lines := m.Render(); return ansi.ReplaceAllString(lines[len(lines)-1], "") }
+	if f := footer(); !strings.Contains(f, "↵  Details") {
+		t.Fatalf("list footer %q", f)
+	}
+	m.Key("enter")
+	if f := footer(); !strings.Contains(f, "↵  Back") || !strings.Contains(f, "Scroll") || strings.Contains(f, "Details") {
+		t.Fatalf("evidence footer %q", f)
+	}
+	m.Key("enter")
+	if f := footer(); !strings.Contains(f, "↵  Details") {
+		t.Fatalf("footer after going back %q", f)
+	}
+}
