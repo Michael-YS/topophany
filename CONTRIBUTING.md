@@ -22,7 +22,8 @@ cross-builds and resource-budget behavior. JSON topology is the sole writable
 configuration authority in version 0.2.
 
 The homepage at topophany.com is the static site in `site/public/`, published
-as is by a Cloudflare Worker (`site/wrangler.jsonc`) with no build step;
+as is by a Cloudflare Worker (`site/wrangler.jsonc`) with no build step, and
+redeployed by Workers Builds on every push to `main` that touches `site/`;
 `site/go.mod` keeps it out of the Go module. Its terminal replay
 (`site/public/data/tour.json`) is recorded from `topo preview` by the TUI's own
 renderer; run `make site` after changing the TUI to record it again.
