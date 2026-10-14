@@ -282,6 +282,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contract of every check to answer for one, as HEAD requests did too,
   and every worker batch hashed the whole topology. What requests need of
   a topology is now worked out once when it is loaded or reloaded.
+- A monitored service or Mihomo controller that is sent a secret can no
+  longer hand it to viewers. Labels it answered with were kept in the
+  observation every viewer reads: the edge headers an HTTP check reads
+  its point of presence, region and cache status from, the exit address,
+  and a controller's mode, proxy names and test URL. When a request
+  carries a secret (a bearer, a private request header, a Mihomo token,
+  or a proxy password for a plain HTTP target), the observation now keeps
+  closed words, numbers and comparisons with the topology only: no
+  `edge_pop`, `edge_region` or `exit_ip`, a `mode` of `rule`, `global`,
+  `direct`, `script` or `other`, proxy names the topology declares and
+  `undeclared` for the rest, no `test_url`, and `peer_text:
+  withheld_secret_request`. Every check's `edge_cache` is now one of the
+  statuses edges report, or absent.
 
 ## [0.3.0] - 2026-10-14
 

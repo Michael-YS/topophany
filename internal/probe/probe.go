@@ -240,6 +240,7 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	secret := token != "" || privateHeaders(x.HTTP.RequestHeaders) || u.Scheme != "https" && proxyPassword(d.Proxies)
 	req.Header.Set("User-Agent", "Topophany/"+model.Version)
 	resp, e := client.Do(req)
 	if e != nil {
@@ -260,7 +261,13 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		o.Facts["response_proof"] = "verified_https"
 	}
 	for k, v := range EdgeFacts(resp.Header) {
+		if secret && (k == "edge_pop" || k == "edge_region") {
+			continue
+		}
 		o.Facts[k] = v
+	}
+	if secret {
+		o.Facts["peer_text"] = withheld
 	}
 	limit := x.HTTP.MaxBodyBytes
 	if limit <= 0 {
@@ -307,7 +314,9 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		if e != nil {
 			return &failure{stage: "exit_assert", code: "exit_not_observed"}
 		}
-		o.Facts["exit_ip"] = ip.String()
+		if !secret {
+			o.Facts["exit_ip"] = ip.String()
+		}
 		ok := false
 		for _, v := range x.HTTP.ExpectedExit {
 			if addr, e := netip.ParseAddr(v); e == nil {
@@ -329,6 +338,36 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	o.Detail = "HTTP assertions passed; result applies only to this request"
 	return nil
 }
+
+// withheld says that what a peer answered is kept only as closed words,
+// numbers and comparisons with the topology, as the request carried a
+// secret. A peer sent a secret could otherwise hand it back, in a header
+// or a name, for its observation to carry to every viewer of the
+// collector, though viewers are never given the secret itself.
+const withheld = "withheld_secret_request"
+
+// privateHeaders reports whether request headers, which the topology keeps
+// from viewers, carry anything but a Host.
+func privateHeaders(h map[string]string) bool {
+	for k := range h {
+		if !strings.EqualFold(k, "Host") {
+			return true
+		}
+	}
+	return false
+}
+
+// proxyPassword reports whether a hop is sent a password; over plain HTTP
+// such a hop can write the response.
+func proxyPassword(hops []model.Proxy) bool {
+	for _, p := range hops {
+		if p.PasswordEnv != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func exitIP(b []byte, h model.HTTPOptions) (netip.Addr, error) {
 	s := strings.TrimSpace(string(b))
 	switch h.ExitFormat {

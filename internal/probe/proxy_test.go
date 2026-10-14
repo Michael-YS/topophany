@@ -169,7 +169,9 @@ func TestRealThreeHopConnectSOCKSConnect(t *testing.T) {
 	x.Path = "direct"
 	x.HTTP.ExpectedExit = []string{"203.0.113.8"}
 	o := (Runner{}).Run(context.Background(), c, x)
-	if o.Outcome != "ok" || reached.Load() != 1 || o.Facts["exit_ip"] != "203.0.113.8" {
+	// A hop sent a password can write a plain HTTP answer, so what the
+	// answer says of the exit is checked but not kept.
+	if o.Outcome != "ok" || reached.Load() != 1 || o.Facts["exit_ip"] != "" || o.Facts["peer_text"] != withheld {
 		t.Fatal(o)
 	}
 	for _, want := range []string{middle, last, strings.TrimPrefix(target.URL, "http://")} {

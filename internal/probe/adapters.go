@@ -98,6 +98,20 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 	if x.ServerName != "" {
 		tlsName = x.ServerName
 	}
+	// A controller sent a secret says its mode in a closed word and names
+	// only what the topology declares; see withheld.
+	secret := token != "" || u.Scheme != "https" && proxyPassword(d.Proxies)
+	mode, name := safeFact, func(s string) string { return s }
+	if secret {
+		known := declared(x.Adapter)
+		mode = closedMode
+		name = func(s string) string {
+			if known[s] {
+				return s
+			}
+			return "undeclared"
+		}
+	}
 	tc, e := TLSConfig(tlsName, x.CAFile)
 	if e != nil {
 		return e
@@ -130,7 +144,10 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 	}
 	o.PathEvidence = "runtime_reported_not_request_verified"
 	o.Facts["sampling_atomicity"] = "separate_API_reads_not_atomic"
-	o.Facts["mode"] = safeFact(cfg.Mode)
+	o.Facts["mode"] = mode(cfg.Mode)
+	if secret {
+		o.Facts["peer_text"] = withheld
+	}
 	o.Facts["tun_enabled"] = strconv.FormatBool(cfg.TUN.Enable)
 	o.Facts["provider_parameters"] = "not_verifiable_by_names_alone"
 	o.Outcome = "ok"
@@ -151,11 +168,16 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 				o.Detail = "runtime chain unresolved (missing selection, unsupported shape or cycle)"
 			}
 		} else {
+			for i := range chain {
+				chain[i] = name(chain[i])
+			}
 			o.Facts["reported_chain"] = safeFact(strings.Join(chain, " -> "))
 		}
 		if p, ok := proxies.Proxies[x.Adapter.RootProxy]; ok {
-			o.Facts["reported_selection"] = safeFact(p.Now)
-			o.Facts["test_url"] = publicURL(p.TestURL)
+			o.Facts["reported_selection"] = safeFact(name(p.Now))
+			if !secret {
+				o.Facts["test_url"] = publicURL(p.TestURL)
+			}
 			if len(p.History) > 0 {
 				last := p.History[len(p.History)-1]
 				o.Facts["core_last_checked"] = last.Time.UTC().Format(time.RFC3339)
@@ -190,9 +212,10 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 		sort.Strings(keys)
 		for _, k := range keys {
 			p, ok := out.Providers[k]
-			actual := []string{}
+			actual, shown := []string{}, []string{}
 			for _, v := range p.Proxies {
 				actual = append(actual, v.Name)
+				shown = append(shown, name(v.Name))
 			}
 			want := x.Adapter.ExpectedProviders[k]
 			same := ok && len(actual) == len(want)
@@ -204,7 +227,7 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 					}
 				}
 			}
-			o.Facts["provider."+safeFact(k)] = safeFact(strings.Join(actual, ","))
+			o.Facts["provider."+safeFact(k)] = safeFact(strings.Join(shown, ","))
 			if !same {
 				o.Outcome = "policy"
 				o.Code = "provider_membership_mismatch"
@@ -214,6 +237,31 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 	}
 	return nil
 }
+
+// closedMode is a Mihomo mode as one of the words Mihomo has for it.
+func closedMode(s string) string {
+	switch s = strings.ToLower(s); s {
+	case "rule", "global", "direct", "script":
+		return s
+	}
+	return "other"
+}
+
+// declared are the proxy names an adapter check's topology gives, which
+// its viewers already see, and the two Mihomo builds in.
+func declared(a model.AdapterOptions) map[string]bool {
+	known := map[string]bool{"DIRECT": true, "REJECT": true}
+	if a.RootProxy != "" {
+		known[a.RootProxy] = true
+	}
+	for _, names := range a.ExpectedProviders {
+		for _, n := range names {
+			known[n] = true
+		}
+	}
+	return known
+}
+
 func expandProxy(all map[string]coreProxy, root string) ([]string, error) {
 	state := map[string]bool{}
 	var visit func(string, int) ([]string, error)

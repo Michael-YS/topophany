@@ -8,11 +8,17 @@ import (
 // EdgeFacts reads which edge network answered an HTTP request from the
 // headers it adds to every response: its name, the point of presence that
 // served the request, the function region behind it where one is named,
-// and whether its cache answered without asking the origin. They are what
-// the response says, not verified routing: an origin can send them too.
+// and whether its cache answered without asking the origin, in one of
+// the words edges have for that. They are what the response says, not
+// verified routing: an origin can send them too.
 func EdgeFacts(h http.Header) map[string]string {
 	out := map[string]string{}
 	set := func(k, v string) {
+		if k == "edge_cache" {
+			if v = strings.ToUpper(token(v)); !cacheStatuses[v] {
+				return
+			}
+		}
 		if v = token(v); v != "" {
 			out[k] = v
 		}
@@ -71,6 +77,11 @@ func EdgeFacts(h http.Header) map[string]string {
 	}
 	return out
 }
+
+// cacheStatuses are the cache statuses edges report, as EdgeFacts reads
+// them; any other is not kept. CloudFront's FunctionGeneratedResponse
+// is cut short as every label is.
+var cacheStatuses = map[string]bool{"HIT": true, "MISS": true, "EXPIRED": true, "STALE": true, "BYPASS": true, "REVALIDATED": true, "UPDATING": true, "DYNAMIC": true, "NONE": true, "UNKNOWN": true, "PRERENDER": true, "REFRESHHIT": true, "PASS": true, "ERROR": true, "REDIRECT": true, "LAMBDAGENERATEDRESPONSE": true, "FUNCTIONGENERATEDRESPONS": true}
 
 // token keeps a short run of the characters such a label is made of.
 func token(s string) string {

@@ -21,11 +21,13 @@ func TestMihomoReadsOnlySafeEndpointsAndExpandsDialerProxy(t *testing.T) {
 	t.Setenv("TOPH_CORE_TOKEN", "private-control-token")
 	var mu sync.Mutex
 	calls := []string{}
+	auth := "Bearer private-control-token"
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		calls = append(calls, r.Method+" "+r.URL.Path)
+		want := auth
 		mu.Unlock()
-		if r.Method != "GET" || r.Header.Get("Authorization") != "Bearer private-control-token" {
+		if r.Method != "GET" || r.Header.Get("Authorization") != want {
 			t.Error("wrong method or auth")
 		}
 		switch r.URL.Path {
@@ -45,8 +47,9 @@ func TestMihomoReadsOnlySafeEndpointsAndExpandsDialerProxy(t *testing.T) {
 	x.Kind = "mihomo"
 	x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_CORE_TOKEN", RootProxy: "residential", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"airport": {"node-a", "node-b"}}}
 	o := (Runner{}).Run(context.Background(), testkit.Config(), x)
-	if o.Outcome != "ok" || o.Evidence != "reported" || o.Connectivity || o.Facts["reported_chain"] != "s2 -> aaitr" {
-		t.Fatal("runtime report promoted to measured path or reverse chain", o)
+	// Sent a token, the controller names only what the topology declares.
+	if o.Outcome != "ok" || o.Evidence != "reported" || o.Connectivity || o.Facts["reported_chain"] != "undeclared -> undeclared" || o.Facts["provider.airport"] != "node-a,node-b" {
+		t.Fatal("runtime report promoted to measured path, or undeclared names kept", o)
 	}
 	if o.Facts["provider_parameters"] != "not_verifiable_by_names_alone" {
 		t.Fatal("provider names claimed parameter verification")
@@ -67,6 +70,48 @@ func TestMihomoReadsOnlySafeEndpointsAndExpandsDialerProxy(t *testing.T) {
 		t.Fatal("historical kernel timestamp replaced with sampling time")
 	}
 	if !strings.Contains(o.PathEvidence, "not_request_verified") {
+		t.Fatal(o)
+	}
+	// Sent no secret, it names the chain as it is, nearest hop first.
+	mu.Lock()
+	auth = ""
+	mu.Unlock()
+	x.Adapter.TokenEnv = ""
+	o = (Runner{}).Run(context.Background(), testkit.Config(), x)
+	if o.Outcome != "ok" || o.Facts["reported_chain"] != "s2 -> aaitr" || o.Facts["reported_selection"] != "aaitr" || o.Facts["test_url"] != "https://example.invalid/204?redacted" {
+		t.Fatal("reverse chain", o)
+	}
+}
+
+// A controller sent a token can hand it back in anything it answers. The
+// observation, which every viewer of a collector reads, keeps its mode in
+// a closed word, names only what the topology declares and leaves out its
+// test URL, so no part of the token reaches it.
+func TestMihomoSentATokenCannotEchoIt(t *testing.T) {
+	const token = "ctl-9f8e7d6c5b4a39281706"
+	t.Setenv("TOPH_CORE_TOKEN", token)
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/configs":
+			_, _ = io.WriteString(w, `{"mode":"`+token+`","tun":{"enable":true}}`)
+		case "/proxies":
+			_, _ = io.WriteString(w, `{"proxies":{"root":{"type":"Selector","now":"`+token[:12]+`","testUrl":"https://`+token+`.example.invalid/`+token+`"},"`+token[:12]+`":{"type":"Selector","now":"`+token[12:]+`"},"`+token[12:]+`":{"type":"VLESS"}}}`)
+		case "/providers/proxies":
+			_, _ = io.WriteString(w, `{"providers":{"airport":{"proxies":[{"name":"node-a"},{"name":"`+token+`"}]}}}`)
+		}
+	}))
+	defer s.Close()
+	x := httpCheck(s.URL)
+	x.Kind = "mihomo"
+	x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_CORE_TOKEN", RootProxy: "root", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"airport": {"node-a", "node-b"}}}
+	o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+	b, _ := json.Marshal(o)
+	for _, part := range []string{token[:12], token[12:], "9f8e7d"} {
+		if strings.Contains(string(b), part) {
+			t.Fatalf("observation carries %q: %s", part, b)
+		}
+	}
+	if o.Outcome != "policy" || o.Facts["mode"] != "other" || o.Facts["reported_chain"] != "undeclared" || o.Facts["reported_selection"] != "undeclared" || o.Facts["provider.airport"] != "node-a,undeclared" || o.Facts["test_url"] != "" || o.Facts["peer_text"] != withheld {
 		t.Fatal(o)
 	}
 }

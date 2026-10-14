@@ -302,6 +302,52 @@ func TestHTTPRecordsTheEdgeThatAnswered(t *testing.T) {
 	}
 }
 
+// An HTTP peer sent a bearer token can hand it back in the headers an
+// edge's labels are read from, or as the exit address. The observation,
+// which every viewer of a collector reads, keeps the edge's name and a
+// cache status from a closed list, and checks the exit without keeping
+// it, so no part of the token reaches it. Sent no secret, the labels and
+// the exit are kept.
+func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
+	const token = "tok-a1b2c3d4e5f6a7b8c9d0e1f2"
+	t.Setenv("TOPH_HTTP_TOKEN", token)
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Vercel-Id", token[:12]+"::"+token[12:]+"::x")
+		w.Header().Set("X-Vercel-Cache", token[12:])
+		_, _ = io.WriteString(w, "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2")
+	}))
+	defer s.Close()
+	for _, tt := range []struct {
+		name    string
+		check   func(*model.Check)
+		secret  bool
+		pop, ip string
+	}{
+		{"bearer", func(x *model.Check) { x.HTTP.BearerEnv = "TOPH_HTTP_TOKEN" }, true, "", ""},
+		{"private header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"X-Key": token} }, true, "", ""},
+		{"host header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"Host": "example.invalid"} }, false, token[:12], "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			x := httpCheck(s.URL)
+			x.HTTP.ExpectedExit = []string{"2001:db8::/32"}
+			tt.check(&x)
+			o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+			if o.Outcome != "ok" || o.Facts["edge_provider"] != "vercel" || o.Facts["edge_pop"] != tt.pop || o.Facts["exit_ip"] != tt.ip || o.Facts["edge_cache"] != "" || (o.Facts["peer_text"] == withheld) != tt.secret {
+				t.Fatal(o.Outcome, o.Facts)
+			}
+			if !tt.secret {
+				return
+			}
+			b, _ := json.Marshal(o)
+			for _, part := range []string{token[:12], token[12:], "a1b2", "A1B2"} {
+				if strings.Contains(string(b), part) {
+					t.Fatalf("observation carries %q: %s", part, b)
+				}
+			}
+		})
+	}
+}
+
 func TestEdgeFactsFromEachNetworkAndUntrustedValues(t *testing.T) {
 	header := func(kv ...string) http.Header {
 		h := http.Header{}
@@ -321,6 +367,9 @@ func TestEdgeFactsFromEachNetworkAndUntrustedValues(t *testing.T) {
 		{header("X-Served-By", "cache-iad-kiad7000025-IAD, cache-nrt-rjtf7700040-NRT", "X-Cache", "MISS, HIT"), "fastly", "NRT", "", "HIT"},
 		{header("Server", "Netlify", "Cache-Status", `"Netlify Durable"; fwd=bypass, "Netlify Edge"; hit`), "netlify", "", "", "HIT"},
 		{header("Server", "nginx"), "", "", "", ""},
+		// A cache status is one edges have, or none.
+		{header("Cf-Ray", "8f2c1b2a3d4e5f60-LAX", "Cf-Cache-Status", "secret-token"), "cloudflare", "LAX", "", ""},
+		{header("X-Amz-Cf-Pop", "NRT57-P1", "X-Cache", "LambdaGeneratedResponse from cloudfront"), "cloudfront", "NRT57-P1", "", "LAMBDAGENERATEDRESPONSE"},
 		// Header values are untrusted: kept short and free of anything
 		// that is not a label character.
 		{header("Cf-Ray", "x-NRT\x1b[2J"+strings.Repeat("A", 64), "Cf-Cache-Status", "hit\r\n"), "cloudflare", "NRT2J" + strings.Repeat("A", 19), "", "HIT"},
