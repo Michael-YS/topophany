@@ -25,16 +25,21 @@ func mapLayoutAllowed(w, h, nodes, edges int) bool {
 	return mapGraphAllowed(w, nodes, edges) && h > 0 && h <= maxLayoutHeight && w <= maxLayoutCells/h
 }
 
+// drawLayoutLimit says, centred where the map would be, why it is not
+// drawn and where the topology still is.
 func drawLayoutLimit(cv *Canvas, x, y, w, h, nodes, edges int) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	cv.Text(x, y, "Map complexity limit", fg(cWarn), w)
-	if h > 1 {
-		cv.Text(x, y+1, itoa(nodes)+" nodes / "+itoa(edges)+" edges; diagram omitted", fg(cMuted), w)
+	lines := []span{
+		{"▲ Map complexity limit", fg(cWarn).bold()},
+		{plural(nodes, "node") + " · " + plural(edges, "edge") + " · diagram omitted", fg(cMuted)},
+		{"Topology remains available in the list and details.", fg(cMuted).italic()},
 	}
-	if h > 2 {
-		cv.Text(x, y+2, "Topology remains available in the list and details.", fg(cMuted), w)
+	n := min(h, len(lines))
+	for i, l := range lines[:n] {
+		off := max(0, (w-width(l.s))/2)
+		cv.Text(x+off, y+(h-n)/2+i, l.s, l.st, w-off)
 	}
 }
 
