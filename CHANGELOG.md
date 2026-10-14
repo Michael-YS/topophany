@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Overview's verdict and the empty map show a turning spinner rather than
   a still `◌`, so a slow collector reads as busy, not stuck.
 
+### Fixed
+
+- On narrow terminals the header's project and view no longer run into
+  the live indicator: they end in an ellipsis before it. Before the first
+  snapshot the header no longer says it was updated "never".
+
 ## [0.2.0] - 2026-10-13
 
 ### Added

@@ -13,27 +13,26 @@ func (m *Model) header(cv *Canvas) {
 	w := cv.W
 	on := func(c Color) Style { return fg(c).Bg(cInkHi) }
 	cv.Fill(0, 0, w, 1, Style{BG: cInkHi})
-	x := 1
-	cv.Set(x, 0, '◉', on(cAccent).bold())
-	x += 2
-	for i, r := range "TOPOPHANY" {
-		cv.Set(x+i, 0, r, on(Mix(cAccent, cAccent2, float64(i)/8)).bold())
-	}
-	x += 9
-	view := m.Observer
-	if view == "" {
-		view = "all observers"
-	}
-	if m.Snapshot.Project != "" {
-		x += cv.Text(x, 0, "  ╱  ", on(cFaint), w-x-1)
-		x += cv.Text(x, 0, m.Snapshot.Project, on(cText).bold(), w-x-1)
-	}
-	x += cv.Text(x, 0, "   view: ", on(cMuted), w-x-1)
-	x += cv.Text(x, 0, view, on(cAccent2), w-x-1)
 	type part struct {
 		s  string
 		st Style
 	}
+	measure := func(ps []part) int {
+		n := 0
+		for _, p := range ps {
+			n += width(secure.Text(p.s))
+		}
+		return n
+	}
+	view := m.Observer
+	if view == "" {
+		view = "all observers"
+	}
+	var left []part
+	if m.Snapshot.Project != "" {
+		left = append(left, part{"  ╱  ", on(cFaint)}, part{m.Snapshot.Project, on(cText).bold()})
+	}
+	left = append(left, part{"   view: ", on(cMuted)}, part{view, on(cAccent2)})
 	var right []part
 	add := func(s string, c Color) { right = append(right, part{s, on(c)}) }
 	if m.Edit != nil {
@@ -55,7 +54,10 @@ func (m *Model) header(cv *Canvas) {
 			}
 			add(m.Server, cMuted)
 		}
-		add("   "+age(m.Now, m.Snapshot.GeneratedAt)+"  ", cFaint)
+		if !m.Snapshot.GeneratedAt.IsZero() {
+			add("   "+age(m.Now, m.Snapshot.GeneratedAt), cFaint)
+		}
+		add("  ", cFaint)
 		switch {
 		case m.Loading != "":
 			add(m.spinner()+" LOADING", cAccent2)
@@ -66,19 +68,29 @@ func (m *Model) header(cv *Canvas) {
 			add("● LIVE", Mix(cUp, cGlow, .5*float64(m.Now.Second()%2)))
 		}
 	}
-	total := 0
-	for _, r := range right {
-		total += width(secure.Text(r.s))
+	// Without room for both sides, the right keeps only its state, and
+	// the left gives way to it, ending in an ellipsis.
+	const brand = 12 // "◉ TOPOPHANY" from column 1
+	if 1+brand+measure(left)+2+measure(right) > w-1 {
+		right = right[len(right)-1:]
 	}
-	rx := w - 1 - total
-	if rx < x+2 {
-		// Not enough room: keep the trailing state indicator only.
-		last := right[len(right)-1]
-		cv.Text(w-1-width(last.s), 0, last.s, last.st, -1)
-		return
+	rx := w - 1 - measure(right)
+	x := 1
+	cv.Set(x, 0, '◉', on(cAccent).bold())
+	x += 2
+	for i, r := range "TOPOPHANY" {
+		cv.Set(x+i, 0, r, on(Mix(cAccent, cAccent2, float64(i)/8)).bold())
 	}
-	for _, r := range right {
-		rx += cv.Text(rx, 0, r.s, r.st, -1)
+	x += 9
+	for _, p := range left {
+		room := rx - 2 - x
+		if room <= 0 {
+			break
+		}
+		x += cv.Text(x, 0, ellipsis(p.s, room), p.st, room)
+	}
+	for _, p := range right {
+		rx += cv.Text(rx, 0, p.s, p.st, -1)
 	}
 }
 
