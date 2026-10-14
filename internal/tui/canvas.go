@@ -66,16 +66,20 @@ func (s Style) Merge(o Style) Style {
 type cell struct {
 	ch   string
 	st   Style
-	cont bool // right half of a wide rune
+	cont bool   // right half of a wide rune
+	link uint16 // 1 + index into the canvas's links; 0 for none
 }
 
 // Canvas is a fixed grid of terminal cells. Every rendered line is exactly W
 // columns wide; untrusted text is stripped of control characters on entry.
 // Base, when set, is the background of every cell that does not set its own.
+// Hyperlinks, when set, writes the links on cells as OSC 8 hyperlinks.
 type Canvas struct {
-	W, H  int
-	Base  Color
-	cells []cell
+	W, H       int
+	Base       Color
+	Hyperlinks bool
+	cells      []cell
+	links      []string
 }
 
 func NewCanvas(w, h int) *Canvas {
@@ -193,6 +197,34 @@ func (c *Canvas) Box(x, y, w, h int, st Style) {
 	c.Set(x+w-1, y+h-1, '╯', st)
 }
 
+// Link makes the w cells from (x,y) a hyperlink to url, which terminals
+// that understand OSC 8 open on a click; drawing over a cell unlinks it.
+func (c *Canvas) Link(x, y, w int, url string) {
+	k := 0
+	for i, u := range c.links {
+		if u == url {
+			k = i + 1
+		}
+	}
+	if k == 0 {
+		c.links = append(c.links, url)
+		k = len(c.links)
+	}
+	for i := max(x, 0); i < x+w && i < c.W; i++ {
+		if c.in(i, y) {
+			c.at(i, y).link = uint16(k)
+		}
+	}
+}
+
+// url is the target of a cell's link, "" for none.
+func (c *Canvas) url(p *cell) string {
+	if p.link == 0 {
+		return ""
+	}
+	return c.links[p.link-1]
+}
+
 // Each applies f to the style of every cell, e.g. to dim a modal background.
 func (c *Canvas) Each(f func(Style) Style) {
 	for i := range c.cells {
@@ -297,14 +329,19 @@ func (c *Canvas) Lines(profile int) []string {
 }
 
 // span writes the cells from column a up to e of row y, starting from and
-// returning to the terminal's default style.
+// returning to the terminal's default style, outside any link.
 func (c *Canvas) span(b *strings.Builder, y, a, e, profile int) {
 	cur := Style{}
 	styled := false
+	link := ""
 	for x := a; x < e; x++ {
 		p := c.at(x, y)
 		if p.cont {
 			continue
+		}
+		if u := c.url(p); c.Hyperlinks && u != link {
+			b.WriteString("\x1b]8;;" + u + "\x1b\\")
+			link = u
 		}
 		st := p.st
 		if st.BG == 0 {
@@ -327,6 +364,9 @@ func (c *Canvas) span(b *strings.Builder, y, a, e, profile int) {
 		}
 		b.WriteString(p.ch)
 	}
+	if link != "" {
+		b.WriteString("\x1b]8;;\x1b\\")
+	}
 	if styled && !cur.plain() {
 		b.WriteString("\x1b[0m")
 	}
@@ -336,7 +376,7 @@ func (c *Canvas) span(b *strings.Builder, y, a, e, profile int) {
 // shows only its background, so its foreground does not count.
 func (c *Canvas) same(prev *Canvas, x, y int) bool {
 	p, q := c.at(x, y), prev.at(x, y)
-	if p.ch != q.ch || p.cont != q.cont {
+	if p.ch != q.ch || p.cont != q.cont || c.url(p) != prev.url(q) {
 		return false
 	}
 	if p.ch == " " && (p.st.Attr|q.st.Attr)&visibleOnBlank == 0 {
@@ -357,7 +397,7 @@ const diffGap = 12
 // line is written.
 func (c *Canvas) Diff(prev *Canvas, profile int) string {
 	var b strings.Builder
-	full := prev == nil || prev.W != c.W || prev.H != c.H || prev.Base != c.Base
+	full := prev == nil || prev.W != c.W || prev.H != c.H || prev.Base != c.Base || prev.Hyperlinks != c.Hyperlinks
 	for y := 0; y < c.H; y++ {
 		if full {
 			b.WriteString("\x1b[" + strconv.Itoa(y+1) + ";1H")

@@ -261,6 +261,31 @@ func TestAboutAnimatesAndNamesTheEtymology(t *testing.T) {
 	}
 }
 
+// About says where Topophany lives, as text anyone can copy and, where the
+// terminal takes them, as hyperlinks; small screens close up to keep them.
+func TestAboutLinksTheHomepageAndTheSource(t *testing.T) {
+	m := homelabModel(t)
+	m.setTab(tabAbout)
+	m.Now = m.Now.Add(5 * time.Second)
+	for _, dim := range [][2]int{{80, 24}, {120, 36}, {211, 43}} {
+		m.Width, m.Height = dim[0], dim[1]
+		out := visible(&m)
+		if !strings.Contains(out, "topophany.com") || !strings.Contains(out, "github.com/WhitenWhiten/topophany") {
+			t.Fatalf("%v: About lacks the links\n%s", dim, out)
+		}
+		if strings.Contains(strings.Join(m.Render(), ""), "\x1b]8;") {
+			t.Fatal("hyperlinks written to a terminal that did not ask for them")
+		}
+	}
+	m.Hyperlinks = true
+	raw := ansi.ReplaceAllString(strings.Join(m.Render(), "\n"), "")
+	for _, want := range []string{"\x1b]8;;" + homepage + "\x1b\\topophany.com\x1b]8;;\x1b\\", "\x1b]8;;" + repo + "\x1b\\github.com/WhitenWhiten/topophany\x1b]8;;\x1b\\"} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("About lacks the hyperlink %q", want)
+		}
+	}
+}
+
 // The globe is a lit ball, not a disc: shaded under its dots, brighter
 // toward the light than across the terminator, and as tall as it is wide.
 func TestGlobeIsShadedAsASphere(t *testing.T) {

@@ -47,7 +47,7 @@ The TUI is built to answer one question before anything is read: *is anything wr
 - **Topology** — the node → endpoint → link hierarchy beside the map, with the evidence for the selected entity underneath.
 - **Servers** — a wall of cards, one per server: its state, kind, provider and place; the services it runs (and the edge in front of each); its addresses by network; the containers and VMs it hosts; the observers on it and its links; and your notes as a memo at the foot. Edges and platforms get cards too, listing what runs there, what they stand in front of, and the points of presence they answered from. `/` searches the memos as well; clicking a service, address or link opens it.
 - **Services, Paths, Checks, Incidents, Observers** — aligned tables. The state column stays empty for healthy rows, so problems are the only lit words; `Enter` expands the evidence behind a row.
-- **About** — a lit globe: a shaded ocean, dotted land and a graticule that curves with the surface, on which the places you declared are the only lights. The mouse wheel spins it.
+- **About** — a lit globe: a shaded ocean, dotted land and a graticule that curves with the surface, on which the places you declared are the only lights. The mouse wheel spins it. Beside it are what the name means, the version, and links to [topophany.com](https://topophany.com) and the source on GitHub.
 
 <table>
   <tr>
@@ -80,7 +80,7 @@ Press `m` to cycle the map through three modes:
 
 Tabs, rows, footer buttons, map sites, menus and modal buttons all respond to the mouse, and the wheel scrolls lists.
 
-The UI paints its own dark ink background, so contrast is the same on dark, light and tinted terminal themes; set `TOPO_BACKGROUND=terminal` to keep your terminal's background instead. Truecolor terminals get 24-bit color and others fall back to xterm-256; under `NO_COLOR` every escape for color is dropped and selection switches to plain glyphs such as `›` and `[a]`. Only the cells and colors that change are written to the terminal. Wide characters and full UTF-8 are supported; the recommended geometry is at least 100×28 (minimum 30×10), and the layouts adapt to whatever space there is.
+The UI paints its own dark ink background, so contrast is the same on dark, light and tinted terminal themes; set `TOPO_BACKGROUND=terminal` to keep your terminal's background instead. Truecolor terminals get 24-bit color and others fall back to xterm-256; under `NO_COLOR` every escape for color is dropped and selection switches to plain glyphs such as `›` and `[a]`. Only the cells and colors that change are written to the terminal. Links are written as OSC 8 hyperlinks, which terminals that support them open on a click, usually with a modifier key held because the TUI uses the mouse; the Linux console and GNU screen get plain text, and `TOPO_HYPERLINKS=0` or `1` decides outright. Wide characters and full UTF-8 are supported; the recommended geometry is at least 100×28 (minimum 30×10), and the layouts adapt to whatever space there is.
 
 ### Editing Topology
 

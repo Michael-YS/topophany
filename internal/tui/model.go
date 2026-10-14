@@ -59,6 +59,7 @@ type Model struct {
 	Preview               Preview // non-nil only for topo preview
 	Debug                 bool    // performance/geometry overlay (D)
 	Transparent           bool    // keep the terminal background (TOPO_BACKGROUND=terminal)
+	Hyperlinks            bool    // write links as OSC 8 hyperlinks
 	perf                  perf
 	modal                 *modal
 	notice                string

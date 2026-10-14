@@ -57,6 +57,21 @@ func ColorProfile() int {
 	return color256
 }
 
+// hyperlinks reports whether to write OSC 8 hyperlinks. Most terminals that
+// do not know them skip them, but the Linux console prints them, so it, a
+// dumb terminal and GNU screen outside tmux get plain text instead;
+// TOPO_HYPERLINKS=0 or 1 decides outright.
+func hyperlinks() bool {
+	switch strings.ToLower(os.Getenv("TOPO_HYPERLINKS")) {
+	case "0", "no", "off", "false":
+		return false
+	case "1", "yes", "on", "true":
+		return true
+	}
+	t := os.Getenv("TERM")
+	return t != "linux" && t != "dumb" && (!strings.HasPrefix(t, "screen") || os.Getenv("TMUX") != "")
+}
+
 // screen repaints only the cells that changed since the previous frame,
 // inside a synchronized-update block so animation does not tear.
 type screen struct {
@@ -121,6 +136,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, in, out *os.File) error
 		m.Colors = ColorProfile()
 	}
 	m.Transparent = !paintBackground()
+	m.Hyperlinks = hyperlinks()
 	m.Now = time.Now()
 	m.Width, m.Height = term.Size()
 	ch := make(chan fetched, 1)

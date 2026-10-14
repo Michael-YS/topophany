@@ -36,6 +36,7 @@ func (m *Model) draw() *Canvas {
 		return nil
 	}
 	cv := NewCanvas(w, h)
+	cv.Hyperlinks = m.Hyperlinks
 	if !m.Transparent {
 		cv.Base = cInk
 	}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"math"
+	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
@@ -381,7 +382,14 @@ func (m *Model) drawWordmark(cv *Canvas, x, y int, t float64) int {
 
 type aboutLine struct {
 	parts []span
+	url   string // the last part is a link to url
 }
+
+// Where Topophany lives.
+const (
+	homepage = "https://topophany.com"
+	repo     = "https://github.com/WhitenWhiten/topophany"
+)
 
 // aboutText is the right-hand (or lower) column of the About view; the
 // caption about the globe is left out when there is no globe.
@@ -389,23 +397,40 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 	c := m.Snapshot.Topology
 	sp := func(s string, st Style) span { return span{s, st} }
 	greek, latin, gloss := fg(cAccent).bold(), fg(cMuted).italic(), fg(cText)
+	link := func(label, url string) aboutLine {
+		return aboutLine{[]span{sp("↗ ", fg(cAccent)), sp(fit(label, 10), latin), sp(strings.TrimPrefix(url, "https://"), fg(cAccent2).With(Underline))}, url}
+	}
 	lines := []aboutLine{
-		{[]span{sp("τόπος", greek), sp("   tópos    ", latin), sp("place", gloss)}},
-		{[]span{sp("φαίνω", greek), sp("   phaínō   ", latin), sp("to bring to light · to appear", gloss)}},
+		{parts: []span{sp("τόπος", greek), sp("   tópos    ", latin), sp("place", gloss)}},
+		{parts: []span{sp("φαίνω", greek), sp("   phaínō   ", latin), sp("to bring to light · to appear", gloss)}},
 		{},
-		{[]span{sp("topophany", fg(cGlow).bold()), sp("  n.  ", latin), sp("the appearance of a place —", gloss)}},
-		{[]span{sp("the moment a network shows where it actually is.", gloss)}},
+		{parts: []span{sp("topophany", fg(cGlow).bold()), sp("  n.  ", latin), sp("the appearance of a place —", gloss)}},
+		{parts: []span{sp("the moment a network shows where it actually is.", gloss)}},
 		{},
-		{[]span{sp("From where, through which path, reaching what,", fg(cAccent))}},
-		{[]span{sp("and on what evidence.", fg(cAccent))}},
+		{parts: []span{sp("From where, through which path, reaching what,", fg(cAccent))}},
+		{parts: []span{sp("and on what evidence.", fg(cAccent))}},
 		{},
-		{[]span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("`topo`", fg(cMuted))}},
+		link("homepage", homepage),
+		link("source", repo),
+		{},
+		{parts: []span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("`topo`", fg(cMuted))}},
 	}
 	if c.Project != "" {
-		lines = append(lines, aboutLine{[]span{sp(c.Project, fg(cText)), sp("  ·  "+plural(len(c.Nodes), "node")+"  ·  "+plural(len(c.Links), "link")+"  ·  "+plural(len(c.Checks), "check"), fg(cMuted))}})
+		lines = append(lines, aboutLine{parts: []span{sp(c.Project, fg(cText)), sp("  ·  "+plural(len(c.Nodes), "node")+"  ·  "+plural(len(c.Links), "link")+"  ·  "+plural(len(c.Checks), "check"), fg(cMuted))}})
 	}
 	if globe {
-		lines = append(lines, aboutLine{}, aboutLine{[]span{sp("Each lit point on the globe is a place you declared.", fg(cFaint).italic())}})
+		lines = append(lines, aboutLine{}, aboutLine{parts: []span{sp("Each lit point on the globe is a place you declared.", fg(cFaint).italic())}})
+	}
+	return lines
+}
+
+// fitAbout closes up the column to n rows: the blank rows between its
+// paragraphs go first, from the bottom up.
+func fitAbout(lines []aboutLine, n int) []aboutLine {
+	for i := len(lines) - 1; i >= 0 && len(lines) > n; i-- {
+		if len(lines[i].parts) == 0 {
+			lines = append(lines[:i:i], lines[i+1:]...)
+		}
 	}
 	return lines
 }
@@ -465,16 +490,20 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 		ty += 2
 	}
 	// Lines fade up one after another on opening.
-	for i, l := range lines {
+	for i, l := range fitAbout(lines, y+h-ty) {
 		if ty >= y+h {
 			break
 		}
 		k := clamp(t*1.6-float64(i)*.16, 0, 1)
 		cx := tx
-		for _, s := range l.parts {
+		for j, s := range l.parts {
 			st := s.st
 			st.FG = Mix(cInk, st.FG, k)
-			cx += cv.Text(cx, ty, s.s, st, tx+tw-cx)
+			n := cv.Text(cx, ty, s.s, st, tx+tw-cx)
+			if l.url != "" && j == len(l.parts)-1 {
+				cv.Link(cx, ty, n, l.url)
+			}
+			cx += n
 		}
 		ty++
 	}

@@ -10,24 +10,26 @@ import (
 )
 
 // term is just enough of a terminal to replay what the painter writes:
-// cursor moves, SGR, clears and printed runes.
+// cursor moves, SGR, hyperlinks, clears and printed runes.
 type term struct {
-	w, h int
-	ch   []string
-	st   []Style
-	x, y int
-	cur  Style
+	w, h  int
+	ch    []string
+	st    []Style
+	links []string
+	x, y  int
+	cur   Style
+	link  string
 }
 
 func newTerm(w, h int) *term {
-	t := &term{w: w, h: h, ch: make([]string, w*h), st: make([]Style, w*h)}
+	t := &term{w: w, h: h, ch: make([]string, w*h), st: make([]Style, w*h), links: make([]string, w*h)}
 	t.clear()
 	return t
 }
 
 func (t *term) clear() {
 	for i := range t.ch {
-		t.ch[i], t.st[i] = " ", Style{}
+		t.ch[i], t.st[i], t.links[i] = " ", Style{}, ""
 	}
 }
 
@@ -41,12 +43,23 @@ func (t *term) apply(tb *testing.T, s string) {
 				continue
 			}
 			if t.x < t.w && t.y < t.h {
-				t.ch[t.y*t.w+t.x], t.st[t.y*t.w+t.x] = string(rs[i]), t.cur
+				at := t.y*t.w + t.x
+				t.ch[at], t.st[at], t.links[at] = string(rs[i]), t.cur, t.link
 				if k == 2 && t.x+1 < t.w {
-					t.ch[t.y*t.w+t.x+1], t.st[t.y*t.w+t.x+1] = "", t.cur
+					t.ch[at+1], t.st[at+1], t.links[at+1] = "", t.cur, t.link
 				}
 			}
 			t.x += k
+			continue
+		}
+		if i+1 < len(rs) && rs[i+1] == ']' {
+			j := strings.Index(string(rs[i:]), "\x1b\\")
+			osc, ok := strings.CutPrefix(string(rs[i:])[2:j], "8;;")
+			if j < 0 || !ok {
+				tb.Fatalf("unexpected OSC %q", string(rs[i:]))
+			}
+			t.link = osc
+			i += len([]rune(string(rs[i:])[:j])) + 1
 			continue
 		}
 		if i+1 >= len(rs) || rs[i+1] != '[' {
@@ -117,6 +130,9 @@ func (t *term) matches(tb *testing.T, cv *Canvas) {
 			if got != p.ch || gs.BG != want.BG || p.ch != " " && (gs.FG != want.FG || gs.Attr != want.Attr) {
 				tb.Fatalf("cell %d,%d: shows %q %+v, canvas has %q %+v", x, y, got, gs, p.ch, want)
 			}
+			if t.links[y*t.w+x] != cv.url(p) {
+				tb.Fatalf("cell %d,%d links to %q, canvas to %q", x, y, t.links[y*t.w+x], cv.url(p))
+			}
 		}
 	}
 }
@@ -124,6 +140,7 @@ func (t *term) matches(tb *testing.T, cv *Canvas) {
 func TestScreenRepaintsOnlyWhatChanged(t *testing.T) {
 	m := previewModel(t)
 	m.Colors = colorTrue
+	m.Hyperlinks = true
 	m.Width, m.Height = 140, 40
 	tm := newTerm(m.Width, m.Height)
 	s := &screen{}
@@ -148,7 +165,8 @@ func TestScreenRepaintsOnlyWhatChanged(t *testing.T) {
 		t.Fatalf("an unchanged frame wrote %d bytes", n)
 	}
 	// Tabs, scrolling, a modal over the dimmed screen, wide text replaced
-	// by narrow and back, and the About animation all land exactly.
+	// by narrow and back, and the About animation and links all land
+	// exactly.
 	for _, k := range []string{"j", "j", "3", "j", "x", "esc", "4", "6", "8", "9"} {
 		m.Key(k)
 		m.Now = m.Now.Add(90 * time.Millisecond)
