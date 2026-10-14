@@ -113,7 +113,7 @@ func NeedsAttention(r Row) bool {
 	case r.Kind == "incident", r.Health == "down", r.Health == "degraded", r.Note == "affected":
 		return true
 	case r.Kind == "observer":
-		return r.Health != "up"
+		return r.Health != "up" || r.Note == "outdated"
 	}
 	return false
 }
@@ -153,7 +153,7 @@ func ServiceRank(r Row) int {
 // State is the word in a row's state column; "" for a row that is simply up.
 func State(r Row) string {
 	switch r.Note {
-	case "cached", "affected", "paused", "maintenance":
+	case "cached", "affected", "paused", "maintenance", "outdated":
 		return r.Note
 	}
 	switch r.Health {
@@ -189,6 +189,8 @@ func Pill(r Row) string {
 		return "CACHED"
 	case r.Note == "affected":
 		return "AFFECTED"
+	case r.Note == "outdated":
+		return "OUTDATED"
 	}
 	return strings.ToUpper(HealthWord(r.Health))
 }
@@ -327,7 +329,7 @@ func (v View) Badge(tab int) (n int, down bool) {
 		n, down = len(s.Incidents), len(s.Incidents) > 0
 	case Observers:
 		for _, o := range s.Observers {
-			look(o.Health, o.Health != "up")
+			look(o.Health, o.Health != "up" || o.Contracts == "outdated")
 		}
 	}
 	return n, down

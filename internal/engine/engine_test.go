@@ -383,3 +383,57 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		t.Fatal("claimed an answer that never came", s.Incidents[0])
 	}
 }
+
+// An observer says whether its executor measures what the collector
+// counts: a schema 2 executor by the digest of its contracts, a schema 1
+// one by its revision; one that never said is neither. Endpoints carry
+// the state of the checks that target them.
+func TestObserversSayWhetherTheyMeasureTheCurrentTopology(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now()
+	edited := testkit.Config()
+	edited.Checks[2].HTTP.Status = []int{204} // cloud-http
+	renamed := testkit.Config()
+	renamed.Nodes[0].Name = "renamed" // another revision, the same contracts
+	beat := func(observer string, h model.Heartbeat) model.Heartbeat {
+		h.Project, h.Observer, h.Boot, h.SampledAt = c.Project, observer, "boot", now
+		return h
+	}
+	for _, tc := range []struct {
+		name string
+		beat model.Heartbeat
+		want string
+	}{
+		{"current", beat("home", model.Heartbeat{Contracts: config.ObserverContracts(renamed, "home")}), "current"},
+		{"outdated", beat("cloud", model.Heartbeat{Contracts: config.ObserverContracts(edited, "cloud")}), "outdated"},
+		{"legacy_current", beat("home", model.Heartbeat{Revision: config.Revision(c)}), "current"},
+		{"legacy_outdated", beat("home", model.Heartbeat{Revision: config.Revision(renamed)}), "outdated"},
+		{"silent", model.Heartbeat{}, ""},
+	} {
+		beats := map[string]model.Heartbeat{}
+		if tc.beat.Observer != "" {
+			beats[tc.beat.Observer] = tc.beat
+		}
+		for _, o := range Build(c, "a", "", nil, beats, now).Observers {
+			if o.ID == tc.beat.Observer || tc.beat.Observer == "" && o.ID == "home" {
+				if o.Contracts != tc.want || o.Health != map[bool]string{true: "unknown", false: "up"}[tc.beat.Observer == ""] {
+					t.Fatalf("%s: %+v", tc.name, o)
+				}
+				if tc.want == "outdated" && !strings.Contains(o.Reason, "refused until it reloads") {
+					t.Fatalf("%s: reason %q", tc.name, o.Reason)
+				}
+			}
+		}
+	}
+	rows := []model.Observation{testkit.Observation(c, "home-ssh", 1, now.Add(-time.Second), "fail")}
+	endpoints := map[string]model.EntityState{}
+	for _, e := range Build(c, "a", "", rows, nil, now).Endpoints {
+		endpoints[e.ID] = e
+	}
+	if e := endpoints["dmit-ssh"]; e.Health != "degraded" || len(e.Checks) != 1 {
+		t.Fatalf("endpoint state %+v", e)
+	}
+	if e := endpoints["win-tailnet"]; e.Health != "unknown" || len(e.Checks) != 0 || len(endpoints) != len(c.Endpoints) {
+		t.Fatalf("unmeasured endpoint %+v", e)
+	}
+}

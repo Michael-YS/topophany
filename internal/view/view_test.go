@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
@@ -71,4 +72,37 @@ func checkHealth(s model.Snapshot, id string) string {
 		}
 	}
 	return ""
+}
+
+// An observer that is alive but measures an outdated topology needs
+// attention: its samples of changed checks are refused until it reloads.
+func TestOutdatedObserverNeedsAttention(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	edited := testkit.Config()
+	edited.Checks[0].HTTP.Status = []int{204}
+	beats := map[string]model.Heartbeat{"home": {Project: c.Project, Observer: "home", Boot: "b", SampledAt: now, Contracts: config.ObserverContracts(edited, "home")}}
+	v := View{Snapshot: engine.Build(c, "primary", "", nil, beats, now), Now: now}
+	var row Row
+	for _, r := range v.Rows(Observers) {
+		if r.ID == "home" {
+			row = r
+		}
+	}
+	if row.Note != "outdated" || !NeedsAttention(row) || State(row) != "outdated" || Pill(row) != "OUTDATED" {
+		t.Fatalf("%+v", row)
+	}
+	if n, _ := v.Badge(Observers); n != 2 { // home outdated, cloud silent
+		t.Fatal("badge", n)
+	}
+	found := false
+	for _, r := range v.Rows(Overview) {
+		found = found || r.Kind == "observer" && r.ID == "home"
+	}
+	if !found {
+		t.Fatal("the outdated observer is not on the Overview")
+	}
+	if live, _ := v.Live(); live != 1 {
+		t.Fatal("an outdated observer is still live", live)
+	}
 }

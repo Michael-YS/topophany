@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
@@ -76,11 +75,13 @@ type CardHost struct {
 	Runs   []string `json:"runs"`
 }
 
-// CardObserver is an observer on a server and when it last reported.
+// CardObserver is an observer on a server and when it last reported;
+// Outdated when it is alive but measures an outdated topology.
 type CardObserver struct {
 	Ref
 	Health   string    `json:"health"`
 	LastSeen time.Time `json:"last_seen"`
+	Outdated bool      `json:"outdated"`
 }
 
 // CardLink is a declared link from or, when Inbound, to a server.
@@ -157,13 +158,11 @@ func (v View) Fleet() *Fleet {
 	for _, x := range t.Checks {
 		target[x.ID] = x.Endpoint
 	}
-	states := map[string][]model.CheckState{}
 	for _, cs := range s.Checks {
 		ep, ok := endpoints[target[cs.ID]]
 		if !ok {
 			continue
 		}
-		states[ep.ID] = append(states[ep.ID], cs)
 		// Where an edge said it answered from, freshly.
 		if cs.Freshness != "fresh" || cs.Last == nil || v.Cached {
 			continue
@@ -176,10 +175,10 @@ func (v View) Fleet() *Fleet {
 			f.pops[at] = append(f.pops[at], pop)
 		}
 	}
-	for id, list := range states {
-		f.epHealth[id] = engine.Aggregate(id, list, "").Health
-		if v.Cached {
-			f.epHealth[id] = "unknown"
+	// An endpoint some check in the view targets has a health.
+	for _, e := range s.Endpoints {
+		if len(e.Checks) > 0 {
+			f.epHealth[e.ID] = map[bool]string{true: "unknown", false: e.Health}[v.Cached]
 		}
 	}
 	for at := range f.pops {
@@ -255,7 +254,7 @@ func (f *Fleet) Card(id string) Card {
 	}
 	for _, o := range f.observers[n.ID] {
 		st := f.obsState[o.ID]
-		c.Observers = append(c.Observers, CardObserver{Ref: Ref{o.ID, o.Name}, Health: state(st.Health), LastSeen: st.LastSeen})
+		c.Observers = append(c.Observers, CardObserver{Ref: Ref{o.ID, o.Name}, Health: state(st.Health), LastSeen: st.LastSeen, Outdated: !f.cached && st.Health == "up" && st.Contracts == "outdated"})
 	}
 
 	// Its declared connections.

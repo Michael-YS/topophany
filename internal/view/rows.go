@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
@@ -48,7 +47,7 @@ func (v View) Rows(tab int) []Row {
 		}
 		return out
 	}
-	nodeStates, linkStates := index(s.Nodes), index(s.Links)
+	nodeStates, endpointStates, linkStates := index(s.Nodes), index(s.Endpoints), index(s.Links)
 	find := func(list map[string]model.EntityState, id string) model.EntityState {
 		if e, ok := list[id]; ok {
 			return e
@@ -109,12 +108,6 @@ func (v View) Rows(tab int) []Row {
 		}
 		sort.SliceStable(rows, func(i, j int) bool { return AttentionRank(rows[i]) < AttentionRank(rows[j]) })
 	case Topology:
-		checkStates := map[string][]model.CheckState{}
-		for _, cs := range s.Checks {
-			if d, ok := checkDefs[cs.ID]; ok && d.Endpoint != "" {
-				checkStates[d.Endpoint] = append(checkStates[d.Endpoint], cs)
-			}
-		}
 		known := map[string]bool{}
 		children := map[string][]model.Node{}
 		for _, n := range s.Topology.Nodes {
@@ -159,8 +152,7 @@ func (v View) Rows(tab int) []Row {
 				if i == len(eps)-1 && len(kids) == 0 {
 					b = "└ "
 				}
-				h := engine.Aggregate(ep.ID, checkStates[ep.ID], "").Health
-				details := []string{"Endpoint: " + ep.ID, "Node: " + ep.Node, "Address: " + ep.Address, "Network: " + ep.Network, "Execution scope: " + ep.Observer}
+				details := []string{"", "Node: " + ep.Node, "Address: " + ep.Address, "Network: " + ep.Network, "Execution scope: " + ep.Observer}
 				if len(ep.Via) > 0 {
 					hops := []string{}
 					for _, v := range ep.Via {
@@ -169,7 +161,9 @@ func (v View) Rows(tab int) []Row {
 					details = append(details, "Reached via: "+strings.Join(append(hops, nodeNames[ep.Node]), " → "), "", "An edge in front answers first: its answer proves the edge; the node behind it counts only a passing response not served from the edge's cache.")
 				}
 				details = append(details, "", "Health aggregates checks that target this endpoint.", "", ep.Notes)
-				rows = append(rows, Row{Kind: "endpoint", ID: ep.ID, Health: h, Title: ep.ID, Meta: ep.Network, Tree: next + b, Cols: []string{ep.Network + via(ep), ep.Address}, Details: details})
+				r := entity("endpoint", find(endpointStates, ep.ID), ep.ID, ep.Network, details)
+				r.Tree, r.Cols = next+b, []string{ep.Network + via(ep), ep.Address}
+				rows = append(rows, r)
 			}
 			for i, k := range kids {
 				b := "├ "
@@ -316,7 +310,8 @@ func (v View) Rows(tab int) []Row {
 		for _, e := range s.Observers {
 			title := e.ID
 			host := ""
-			details := []string{"Observer: " + e.ID, "State: " + e.Health, "Last evidence: " + Age(v.Now, e.LastSeen), "", e.Reason}
+			topology := map[string]string{"current": "current — it measures what the collector counts", "outdated": "outdated — samples of checks that changed are refused until it reloads", "": "not reported"}[e.Contracts]
+			details := []string{"Observer: " + e.ID, "State: " + e.Health, "Last evidence: " + Age(v.Now, e.LastSeen), "Topology: " + topology, "", e.Reason}
 			for _, d := range s.Topology.Observers {
 				if d.ID == e.ID {
 					title = d.Name
@@ -325,7 +320,11 @@ func (v View) Rows(tab int) []Row {
 					break
 				}
 			}
-			rows = append(rows, Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: Age(v.Now, e.LastSeen), Cols: []string{host, Age(v.Now, e.LastSeen)}, Details: details})
+			r := Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: Age(v.Now, e.LastSeen), Cols: []string{host, Age(v.Now, e.LastSeen)}, Details: details}
+			if e.Health == "up" && e.Contracts == "outdated" {
+				r.Note = "outdated"
+			}
+			rows = append(rows, r)
 		}
 	}
 	return rows

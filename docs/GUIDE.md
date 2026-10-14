@@ -52,7 +52,7 @@ The TUI is built to answer one question before anything is read: *is anything wr
 - **Services, Paths, Checks, Incidents, Observers** — aligned tables. The state column stays empty for healthy rows, so problems are the only lit words; `Enter` expands the evidence behind a row.
 - **About** — a lit globe: a shaded ocean, dotted land and a graticule that curves with the surface, on which the places you declared are the only lights. The mouse wheel spins it. Beside it are what the name means, the version, links to [topophany.com](https://topophany.com) and the source on GitHub, and, where there is room, the keys of the mode you are in.
 
-Tabs count what in them needs a look: servers, services and paths that are down, degraded or on a failing path, failing checks, open incidents and observers that are not reporting. The count is red when anything is down and amber otherwise; when the tabs are short of room, the tab's number takes the color instead. A cached view counts nothing, because it knows nothing current.
+Tabs count what in them needs a look: servers, services and paths that are down, degraded or on a failing path, failing checks, open incidents, and observers that are not reporting or that report measuring an outdated topology (after a collector reload, until their worker reloads too). The count is red when anything is down and amber otherwise; when the tabs are short of room, the tab's number takes the color instead. A cached view counts nothing, because it knows nothing current.
 
 <table>
   <tr>

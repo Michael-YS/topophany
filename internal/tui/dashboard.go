@@ -265,7 +265,11 @@ func (m *Model) observersCard(cv *Canvas, x, y, w, h int) {
 		if m.Cached() {
 			hl = "unknown"
 		}
-		cv.Set(x, y+i, healthGlyph(hl), fg(healthColor(hl)))
+		g, gc := healthGlyph(hl), healthColor(hl)
+		if r.Note == "outdated" {
+			g, gc = '▲', cWarn // alive, but measuring an outdated topology
+		}
+		cv.Set(x, y+i, g, fg(gc))
 		last := ""
 		if len(r.Cols) > 1 {
 			last = r.Cols[1]

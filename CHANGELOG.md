@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project or drops the process's own observer is refused and logged, and
   the running topology kept; a reload logs which checks measure something
   new and so start afresh. Windows has no `SIGHUP`; restart there.
+- Snapshots say, for each observer, whether its executor measures what the
+  collector counts. After a collector reload, an observer whose worker
+  still runs the old topology reads `outdated`, needs attention and is
+  counted on the Observers tab until that worker reloads too. Workers
+  report this in their heartbeats.
+- Snapshots carry each endpoint's state from the checks that target it,
+  and the Topology tab's endpoints show the same evidence lines as other
+  entities: the state's reason and the checks behind it.
 - `topo preview [--scenario N] status` (or `show`, `history`) reads the
   synthetic evidence, and `topo preview scenarios` lists the scenarios, so
   scripts and agents can be rehearsed on a simulated outage.
@@ -41,7 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and history show public contracts, and incidents are ordered by scope.
   Collectors accept the schema 1 batches of 0.4 workers while the
   topology is unchanged; upgrade collectors first, then workers, then
-  viewers, which read only schema 2 snapshots.
+  viewers, which read only schema 2 snapshots. Schema 2 clients ignore
+  snapshot fields they do not know, so later additions will not break
+  them, and pass over a collector of another release rather than refuse.
 - What the TUI shows is derived in one place, `internal/view`, which the
   TUI draws and the CLI prints; a test holds the two to the same rows,
   evidence, verdict and counts across every preview scenario.

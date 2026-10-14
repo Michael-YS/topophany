@@ -99,7 +99,17 @@ func TestServeAndWorkerReloadOnHangup(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
+	// reports waits until the worker's observer says whether it measures
+	// what the collector counts.
+	reports := func(want string) {
+		t.Helper()
+		testkit.Wait(t, 30*time.Second, func() bool {
+			s, _, e := viewer.Snapshot(context.Background(), "")
+			return e == nil && len(s.Observers) == 1 && s.Observers[0].Contracts == want
+		})
+	}
 	counted(c, time.Time{})
+	reports("current")
 
 	// A rename and a note: the collector reloads; the worker, still on the
 	// old file, keeps delivering samples that count.
@@ -123,9 +133,11 @@ func TestServeAndWorkerReloadOnHangup(t *testing.T) {
 	serveHup <- syscall.SIGHUP
 	logged(serveLog, "1 check measures something new and start afresh: api-health")
 	logged(workerLog, "contract_mismatch")
+	reports("outdated")
 	workerHup <- syscall.SIGHUP
 	logged(workerLog, "1 check measures something new and start afresh: api-health")
 	counted(asserted, time.Now())
+	reports("current")
 
 	// A broken file and another project are refused; both keep running.
 	if e = os.WriteFile(topology, []byte("{broken"), 0600); e != nil {

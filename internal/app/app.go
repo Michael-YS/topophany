@@ -419,7 +419,7 @@ func (a *App) worker(parent context.Context, args []string) error {
 				fmt.Fprintf(a.Err, "reload refused; still running revision %s: %v\n", config.Revision(c)[:12], e)
 			}
 		case <-tick.C:
-			hb := &model.Heartbeat{Observer: *observer, Boot: running.Boot, SampledAt: time.Now().UTC()}
+			hb := &model.Heartbeat{Observer: *observer, Boot: running.Boot, SampledAt: time.Now().UTC(), Contracts: config.ObserverContracts(c, *observer)}
 			for _, r := range d.Tick(ctx, q, hb) {
 				if r.Error != "" {
 					fmt.Fprintf(a.Err, "collector=%s accepted=%d quarantined=%d: %s; %s\n", r.Recipient, r.Accepted, r.Quarantined, r.Error, q)

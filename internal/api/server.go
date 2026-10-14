@@ -425,7 +425,7 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 		if h.Observer != observer {
 			return "heartbeat_scope_violation", 403
 		}
-		if !config.ID(h.Boot) || !validTime(h.SampledAt) || !h.ReceivedAt.IsZero() {
+		if !config.ID(h.Boot) || !validTime(h.SampledAt) || !h.ReceivedAt.IsZero() || h.Contracts != "" && (len(h.Contracts) != 64 || strings.Trim(h.Contracts, "0123456789abcdef") != "") {
 			return "invalid_heartbeat", 400
 		}
 	}

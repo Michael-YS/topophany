@@ -743,7 +743,7 @@ func (t *text) card(c view.Card, now time.Time) {
 		section("OBSERVES FROM HERE", len(c.Observers))
 		cells := [][]string{}
 		for _, o := range c.Observers {
-			cells = append(cells, []string{word(view.Row{Health: o.Health}), o.ID, o.Name, "last seen " + view.Age(now, o.LastSeen)})
+			cells = append(cells, []string{word(view.Row{Health: o.Health, Note: map[bool]string{true: "outdated"}[o.Outdated]}), o.ID, o.Name, "last seen " + view.Age(now, o.LastSeen)})
 		}
 		t.table(cells)
 	}

@@ -4,18 +4,38 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
+// errSchema is a snapshot of a schema this client does not read, as from
+// a collector of another release.
+type errSchema struct{ schema int }
+
+func (e errSchema) Error() string {
+	return fmt.Sprintf("a collector serves snapshot schema %d, and this client reads schema %d; upgrade them to the same release", e.schema, model.SnapshotSchema)
+}
+
+// decodeSnapshot reads a schema 2 snapshot. Fields it does not know are
+// ignored, so a later release can add some without breaking this one;
+// everything it knows is checked.
 func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 	if err := secure.JSONBudget(raw); err != nil {
 		return err
 	}
+	var head struct {
+		Schema int `json:"schema"`
+	}
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return err
+	}
+	if head.Schema != model.SnapshotSchema {
+		return errSchema{head.Schema}
+	}
 	d := json.NewDecoder(bytes.NewReader(raw))
-	d.DisallowUnknownFields()
 	if err := d.Decode(s); err != nil {
 		return err
 	}
@@ -60,9 +80,12 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 		}
 		return nil
 	}
-	nodes, services, paths, links, observers := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+	nodes, endpoints, services, paths, links, observers := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, v := range s.Topology.Nodes {
 		nodes[v.ID] = true
+	}
+	for _, v := range s.Topology.Endpoints {
+		endpoints[v.ID] = true
 	}
 	for _, v := range s.Topology.Services {
 		services[v.ID] = true
@@ -79,14 +102,14 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 	for _, group := range []struct {
 		states []model.EntityState
 		ids    map[string]bool
-	}{{s.Nodes, nodes}, {s.Services, services}, {s.Paths, paths}, {s.Links, links}} {
+	}{{s.Nodes, nodes}, {s.Endpoints, endpoints}, {s.Services, services}, {s.Paths, paths}, {s.Links, links}} {
 		if err := validate(group.states, group.ids); err != nil {
 			return err
 		}
 	}
 	seen = map[string]bool{}
 	for _, v := range s.Observers {
-		if !observers[v.ID] || seen[v.ID] {
+		if !observers[v.ID] || seen[v.ID] || v.Contracts != "" && v.Contracts != "current" && v.Contracts != "outdated" {
 			return errors.New("invalid snapshot observer")
 		}
 		seen[v.ID] = true

@@ -121,7 +121,7 @@ func Evaluate(x model.Check, rows []model.Observation, now time.Time) model.Chec
 func Build(c model.Config, instance, view string, rows []model.Observation, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
 	revision := config.Revision(c)
 	contracts, public := config.Contracts(c), config.PublicContracts(c)
-	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: config.PublicRevision(c), GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Public(c), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
+	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: config.PublicRevision(c), GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Public(c), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Endpoints: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
 	checkDefs := map[string]model.Check{}
 	for _, x := range c.Checks {
 		checkDefs[x.ID] = x
@@ -130,9 +130,21 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 	lastSeen := map[string]time.Time{}
 	// An executor is alive whatever topology it runs; whether its samples
 	// count is decided sample by sample.
+	reported := map[string]string{}
 	for id, h := range beats {
-		if h.Project == c.Project && !h.SampledAt.After(now.Add(5*time.Second)) {
+		if h.Project != c.Project {
+			continue
+		}
+		if !h.SampledAt.After(now.Add(5 * time.Second)) {
 			lastSeen[id] = h.SampledAt
+		}
+		// What it measures: a schema 2 executor digests its contracts; a
+		// schema 1 one counts only under the very revision it runs.
+		switch {
+		case h.Contracts != "":
+			reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Contracts == config.ObserverContracts(c, id)]
+		case h.Revision != "":
+			reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Revision == revision]
 		}
 	}
 	for _, v := range rows {
@@ -165,10 +177,13 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 		}
 	}
 	for _, o := range c.Observers {
-		s := model.ObserverState{ID: o.ID, Health: "unknown", LastSeen: lastSeen[o.ID], Reason: "no recent executor evidence"}
+		s := model.ObserverState{ID: o.ID, Health: "unknown", LastSeen: lastSeen[o.ID], Reason: "no recent executor evidence", Contracts: reported[o.ID]}
 		if !s.LastSeen.IsZero() && now.Sub(s.LastSeen) <= time.Duration(o.StaleSeconds)*time.Second {
 			s.Health = "up"
 			s.Reason = "recent executor evidence; target health evaluated separately"
+		}
+		if s.Contracts == "outdated" {
+			s.Reason += "; it measures an outdated topology, so samples of checks that changed are refused until it reloads"
 		}
 		out.Observers = append(out.Observers, s)
 	}
@@ -224,6 +239,10 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 			s.Reason = "registered asset; no checks in this view"
 		}
 		out.Nodes = append(out.Nodes, s)
+	}
+	// An endpoint is judged from the checks that target it.
+	for _, e := range c.Endpoints {
+		out.Endpoints = append(out.Endpoints, Aggregate(e.ID, group(func(x model.Check) bool { return x.Endpoint == e.ID }), "no check targets this endpoint in this view"))
 	}
 	pathStates := map[string]model.EntityState{}
 	pathDefs := map[string]model.Path{}

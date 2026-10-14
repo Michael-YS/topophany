@@ -181,9 +181,13 @@ type Observation struct {
 	PathEvidence string            `json:"path_evidence,omitempty"`
 	Facts        map[string]string `json:"facts,omitempty"`
 }
+
+// Heartbeat says an executor is alive. Contracts digests the contracts of
+// its observer's checks as it runs them (see config.ObserverContracts).
 type Heartbeat struct {
 	Project    string    `json:"project,omitempty"`
 	Revision   string    `json:"revision,omitempty"`
+	Contracts  string    `json:"contracts,omitempty"`
 	Observer   string    `json:"observer"`
 	Boot       string    `json:"boot"`
 	SampledAt  time.Time `json:"sampled_at"`
@@ -230,11 +234,17 @@ type Incident struct {
 	CounterEvidence []string  `json:"counter_evidence,omitempty"`
 	Since           time.Time `json:"since"`
 }
+
+// ObserverState is an executor's liveness. Contracts says whether it last
+// reported measuring what the collector counts: current, outdated (its
+// samples of changed checks are refused until it reloads), or "" when it
+// has not said.
 type ObserverState struct {
-	ID       string    `json:"id"`
-	Health   string    `json:"health"`
-	LastSeen time.Time `json:"last_seen"`
-	Reason   string    `json:"reason"`
+	ID        string    `json:"id"`
+	Health    string    `json:"health"`
+	LastSeen  time.Time `json:"last_seen"`
+	Reason    string    `json:"reason"`
+	Contracts string    `json:"contracts,omitempty"`
 }
 type Snapshot struct {
 	DetailsOmitted bool            `json:"details_omitted,omitempty"`
@@ -248,6 +258,7 @@ type Snapshot struct {
 	Topology       Config          `json:"topology"`
 	Checks         []CheckState    `json:"checks"`
 	Nodes          []EntityState   `json:"nodes"`
+	Endpoints      []EntityState   `json:"endpoints"`
 	Services       []EntityState   `json:"services"`
 	Paths          []EntityState   `json:"paths"`
 	Links          []EntityState   `json:"links"`

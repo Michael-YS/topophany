@@ -15,7 +15,7 @@ import (
 func stateWord(r Row) (string, Style) {
 	word := view.State(r)
 	switch {
-	case word == "cached", word == "affected":
+	case word == "cached", word == "affected", word == "outdated":
 		return word, fg(cWarn)
 	case word == "paused", word == "maintenance":
 		return word, fg(cMuted)

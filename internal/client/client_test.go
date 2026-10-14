@@ -70,7 +70,7 @@ func TestReadFailClosedSecurityBoundaries(t *testing.T) {
 		name   string
 		status int
 		mutate func(*model.Snapshot)
-	}{{"auth", 401, nil}, {"scope", 403, nil}, {"bad_request", 400, nil}, {"project", 200, func(s *model.Snapshot) { s.Project = "foreign" }}, {"embedded_project", 200, func(s *model.Snapshot) { s.Topology.Project = "foreign" }}, {"schema", 200, func(s *model.Snapshot) { s.Schema = 1 }}, {"future_schema", 200, func(s *model.Snapshot) { s.Schema = 3 }}, {"zero_generated", 200, func(s *model.Snapshot) { s.GeneratedAt = time.Time{} }}, {"view", 200, func(s *model.Snapshot) { s.ViewObserver = "cloud" }}}
+	}{{"auth", 401, nil}, {"scope", 403, nil}, {"bad_request", 400, nil}, {"project", 200, func(s *model.Snapshot) { s.Project = "foreign" }}, {"embedded_project", 200, func(s *model.Snapshot) { s.Topology.Project = "foreign" }}, {"zero_generated", 200, func(s *model.Snapshot) { s.GeneratedAt = time.Time{} }}, {"view", 200, func(s *model.Snapshot) { s.ViewObserver = "cloud" }}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := snapshot()
@@ -89,6 +89,30 @@ func TestReadFailClosedSecurityBoundaries(t *testing.T) {
 				t.Fatal("security failure silently fell through")
 			}
 		})
+	}
+}
+
+// A collector of another release is passed over, as during a rolling
+// upgrade, not taken for an attack; with none of this release the client
+// says why. Fields a later schema 2 release adds are ignored.
+func TestCollectorsOfAnotherReleaseArePassedOver(t *testing.T) {
+	old := snapshot()
+	old.Schema = 1
+	older := jsonServer(t, 200, old)
+	good := jsonServer(t, 200, snapshot())
+	if _, url, e := newClient(t, older.URL, good.URL).Snapshot(context.Background(), ""); e != nil || url != good.URL {
+		t.Fatal(url, e)
+	}
+	if _, _, e := newClient(t, older.URL).Snapshot(context.Background(), ""); !errors.Is(e, ErrNoCollector) || !strings.Contains(e.Error(), "schema 1") {
+		t.Fatal("version skew not reported:", e)
+	}
+	later := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := json.Marshal(snapshot())
+		w.Write(append([]byte(`{"added_later":{"x":1},`), raw[1:]...))
+	}))
+	defer later.Close()
+	if _, _, e := newClient(t, later.URL).Snapshot(context.Background(), ""); e != nil {
+		t.Fatal("a field added later broke the client:", e)
 	}
 }
 func TestStaleAndFutureCollectorFailover(t *testing.T) {

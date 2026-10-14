@@ -128,7 +128,7 @@ func summaryJSON(s model.Snapshot) ([]byte, error) {
 		s.Incidents[i].Checks = trim(s.Incidents[i].Checks)
 		s.Incidents[i].CounterEvidence = trim(s.Incidents[i].CounterEvidence)
 	}
-	for _, states := range [][]model.EntityState{s.Nodes, s.Services, s.Paths, s.Links} {
+	for _, states := range [][]model.EntityState{s.Nodes, s.Endpoints, s.Services, s.Paths, s.Links} {
 		for i := range states {
 			states[i].Reason = model.SummaryText(states[i].Reason)
 			states[i].Checks = trim(states[i].Checks)

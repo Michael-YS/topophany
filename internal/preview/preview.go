@@ -225,7 +225,7 @@ func (s *Sim) Snapshot(view string, now time.Time) (model.Snapshot, error) {
 	for _, o := range c.Observers {
 		if !has(cur.Offline, o.ID) {
 			t := now.Add(-time.Second + cur.Skew[o.ID])
-			beats[o.ID] = model.Heartbeat{Observer: o.ID, Boot: "preview", SampledAt: t, ReceivedAt: now}
+			beats[o.ID] = model.Heartbeat{Project: c.Project, Contracts: config.ObserverContracts(c, o.ID), Observer: o.ID, Boot: "preview", SampledAt: t, ReceivedAt: now}
 		}
 	}
 	return engine.Build(c, "preview", view, rows, beats, now), nil

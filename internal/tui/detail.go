@@ -26,7 +26,7 @@ func statePill(r Row) (string, Style) {
 		glyph, c = "⚑", cDown
 	case "CACHED":
 		glyph, c = "◌", cWarn
-	case "AFFECTED":
+	case "AFFECTED", "OUTDATED":
 		c = cWarn
 	}
 	return " " + glyph + " " + word + " ", fg(c).Bg(Mix(c, cInk, .82)).bold()

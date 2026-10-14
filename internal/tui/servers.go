@@ -187,7 +187,11 @@ func (m *Model) card(f fleet, r Row, w int, selected bool) []cardRow {
 	if len(c.Observers) > 0 {
 		heading("OBSERVES FROM HERE", len(c.Observers))
 		for _, o := range c.Observers {
-			add(cardRow{left: []span{{"◎ ", fg(healthColor(o.Health))}, {o.Name, fg(cText)}}, right: []span{{age(m.Now, o.LastSeen), fg(cFaint)}}, hit: "goto:observer:" + o.ID})
+			oc := healthColor(o.Health)
+			if o.Outdated {
+				oc = cWarn
+			}
+			add(cardRow{left: []span{{"◎ ", fg(oc)}, {o.Name, fg(cText)}}, right: []span{{age(m.Now, o.LastSeen), fg(cFaint)}}, hit: "goto:observer:" + o.ID})
 		}
 	}
 

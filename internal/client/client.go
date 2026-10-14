@@ -177,6 +177,7 @@ func authorize(req *http.Request, ep Endpoint) error {
 }
 func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot, string, error) {
 	var empty model.Snapshot
+	var skew error // a collector of another release, passed over
 	for i, ep := range c.profile.Servers {
 		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/snapshot", url.Values{"observer": {observer}}), nil)
 		if e != nil {
@@ -211,6 +212,13 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 		}
 		var snap model.Snapshot
 		if e = decodeSnapshot(b, &snap); e != nil {
+			// During a rolling upgrade another collector may already
+			// speak this client's schema; a malformed snapshot is refused.
+			var schema errSchema
+			if errors.As(e, &schema) {
+				skew = schema
+				continue
+			}
 			return empty, "", errors.New("invalid collector snapshot")
 		}
 		if snap.Project != c.profile.Project || snap.Topology.Project != c.profile.Project {
@@ -227,6 +235,9 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 			continue
 		}
 		return snap, ep.URL, nil
+	}
+	if skew != nil {
+		return empty, "", fmt.Errorf("%w with a current, matching snapshot: %v", ErrNoCollector, skew)
 	}
 	return empty, "", fmt.Errorf("%w with a current, matching snapshot", ErrNoCollector)
 }
