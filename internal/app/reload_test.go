@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/alert"
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -22,8 +24,9 @@ import (
 // A collector and a worker reload their topology on SIGHUP. An edit that
 // measures nothing new keeps every sample counting, even from a worker
 // still on the old file; one that does is refused from that worker until
-// it reloads too, and then counts under the new contract. A broken file
-// or another project is refused, and the running topology kept.
+// it reloads too, and then counts under the new contract. A broken file,
+// another project or an invalid alerts file is refused, and the running
+// topology kept.
 func TestServeAndWorkerReloadOnHangup(t *testing.T) {
 	dir, c, _, cr := initialized(t)
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"status":"ok"}`) }))
@@ -35,11 +38,26 @@ func TestServeAndWorkerReloadOnHangup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	hook := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer hook.Close()
+	alerts := filepath.Join(dir, "alerts.json")
+	writeAlerts := func(a alert.Config) {
+		t.Helper()
+		b, e := json.Marshal(a)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(alerts, b, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	writeAlerts(alert.Config{Schema: 1, Webhooks: []alert.Webhook{{ID: "hook", Format: "json", URL: hook.URL}}})
+
 	serveLog, serveHup := &lockedWriter{}, make(chan os.Signal, 1)
 	collector := &App{In: strings.NewReader(""), Out: io.Discard, Err: serveLog, Reload: serveHup}
 	served := make(chan error, 1)
 	go func() {
-		served <- collector.Run(ctx, []string{"serve", "--config", topology, "--auth", filepath.Join(dir, "auth.json"), "--data", filepath.Join(dir, "data"), "--listen", "127.0.0.1:0"})
+		served <- collector.Run(ctx, []string{"serve", "--config", topology, "--auth", filepath.Join(dir, "auth.json"), "--alerts", alerts, "--data", filepath.Join(dir, "data"), "--listen", "127.0.0.1:0"})
 	}()
 	var addr string
 	listening := regexp.MustCompile(`listening on (127\.0\.0\.1:\d+)`)
@@ -118,7 +136,7 @@ func TestServeAndWorkerReloadOnHangup(t *testing.T) {
 	renamed.Nodes[0].Name, renamed.Nodes[0].Notes = "Renamed collector", "edited"
 	saveConfig(t, topology, renamed)
 	serveHup <- syscall.SIGHUP
-	logged(serveLog, "every check measures what it did")
+	logged(serveLog, ", tokens and alerts; every check measures what it did")
 	counted(renamed, time.Now())
 	if s, _, e := viewer.Snapshot(context.Background(), ""); e != nil || s.Topology.Nodes[0].Name != "Renamed collector" {
 		t.Fatal("the reloaded topology is not served", e)
@@ -153,6 +171,12 @@ func TestServeAndWorkerReloadOnHangup(t *testing.T) {
 	serveHup <- syscall.SIGHUP
 	logged(serveLog, `project "topophany-demo" cannot become "other-project"`)
 	counted(asserted, time.Now())
+
+	// So is an alerts file that does not validate, with a valid topology.
+	saveConfig(t, topology, asserted)
+	writeAlerts(alert.Config{Schema: 1})
+	serveHup <- syscall.SIGHUP
+	logged(serveLog, alerts+": alerts require schema 1")
 
 	cancel()
 	for _, done := range []chan error{served, worked} {

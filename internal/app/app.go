@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/WhitenWhiten/topophany/internal/alert"
 	"github.com/WhitenWhiten/topophany/internal/api"
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
@@ -187,6 +188,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	f := a.flags("serve")
 	path := f.String("config", "topology.json", "reviewed local topology JSON")
 	authPath := f.String("auth", "auth.json", "0600 collector token-hash configuration")
+	alertsPath := f.String("alerts", "", "0600 webhook configuration; no alerts when empty")
 	dir := f.String("data", "./collector-data", "exclusive local journal directory")
 	listen := f.String("listen", "127.0.0.1:7447", "collector listen address")
 	instance := f.String("instance", "collector", "visible collector instance ID")
@@ -225,6 +227,10 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
+	alerts, e := loadAlerts(*alertsPath, c)
+	if e != nil {
+		return e
+	}
 	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory})
 	if e != nil {
 		return e
@@ -241,10 +247,16 @@ func (a *App) serve(parent context.Context, args []string) error {
 	backend := api.New(c, *instance, st, auth)
 	backend.MaxSampleAge = *retention
 	backend.Ledger = book
+	var notifier *alert.Notifier
+	if *alertsPath != "" {
+		notifier = &alert.Notifier{Project: c.Project, Instance: *instance, Log: func(format string, args ...any) { fmt.Fprintf(a.Err, format+"\n", args...) }}
+		notifier.Configure(alerts)
+		defer notifier.Close()
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		a.watch(ctx, backend, ledger.Settle(c))
+		a.watch(ctx, backend, ledger.Settle(c), notifier)
 	}()
 	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	// Local checks, if any, under a topology; reloads replace them.
@@ -291,7 +303,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if *insecure && *cert == "" {
 		fmt.Fprintln(a.Err, "WARNING: plaintext HTTP explicitly enabled; use only inside a trusted encrypted tunnel")
 	}
-	// reload reads the topology and tokens again; on any error the
+	// reload reads the topology, tokens and alerts again; on any error the
 	// collector keeps what it runs.
 	reload := func() error {
 		next, e := reloaded(*path, c, *observer)
@@ -302,16 +314,27 @@ func (a *App) serve(parent context.Context, args []string) error {
 		if e != nil {
 			return fmt.Errorf("%s: %w", *authPath, e)
 		}
+		alerts, e := loadAlerts(*alertsPath, next)
+		if e != nil {
+			return e
+		}
 		scheduler, e := local(next)
 		if e != nil {
 			return e
 		}
 		running.stop()
 		backend.Reload(next, auth)
+		if notifier != nil {
+			notifier.Configure(alerts)
+		}
 		if scheduler != nil {
 			running = background(ctx, &wg, scheduler, failures)
 		}
-		fmt.Fprintf(a.Err, "reloaded topology revision %s → %s and tokens; %s\n", config.Revision(c)[:12], config.Revision(next)[:12], changes(c, next))
+		also := " and tokens"
+		if notifier != nil {
+			also = ", tokens and alerts"
+		}
+		fmt.Fprintf(a.Err, "reloaded topology revision %s → %s%s; %s\n", config.Revision(c)[:12], config.Revision(next)[:12], also, changes(c, next))
 		c = next
 		return nil
 	}
@@ -338,10 +361,23 @@ wait:
 	return result
 }
 
+// loadAlerts reads a collector's alerts file, if it has one.
+func loadAlerts(path string, c model.Config) (alert.Config, error) {
+	if path == "" {
+		return alert.Config{}, nil
+	}
+	a, e := alert.Load(path, c)
+	if e != nil {
+		return a, fmt.Errorf("%s: %w", path, e)
+	}
+	return a, nil
+}
+
 // watch keeps a collector's incident ledger until ctx ends, judging the
-// evidence every two seconds and logging what opens and closes. For settle
-// after it starts, a record whose evidence lapsed stays open.
-func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Duration) {
+// evidence every two seconds, logging what opens and closes and, with a
+// notifier, alerting on it. For settle after it starts, a record whose
+// evidence lapsed stays open and no observer is called silent.
+func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Duration, notifier *alert.Notifier) {
 	started := time.Now()
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
@@ -351,9 +387,13 @@ func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Durati
 		case <-ctx.Done():
 			return
 		case now := <-tick.C:
-			_, changes, e := backend.Observe(now.UTC(), now.Sub(started) >= settle)
+			settled := now.Sub(started) >= settle
+			snap, changes, e := backend.Observe(now.UTC(), settled)
 			for _, ch := range changes {
 				fmt.Fprintln(a.Err, ch.Line())
+			}
+			if notifier != nil {
+				notifier.Observe(snap, changes, settled)
 			}
 			switch {
 			case e != nil && !failing:

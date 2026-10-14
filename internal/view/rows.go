@@ -455,6 +455,10 @@ var endings = map[string]string{
 	"changed":     "what its checks measure changed, or they were removed",
 }
 
+// Ending says what a way a record closed means: "recovered" is "every
+// check that failed passes again".
+func Ending(ended string) string { return endings[ended] }
+
 // RecordDetails is what the collector's ledger remembers of an incident
 // that is recovering or closed.
 func RecordDetails(now time.Time, r model.IncidentRecord) []string {

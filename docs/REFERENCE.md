@@ -107,6 +107,34 @@ Client and worker credential files use the following format, with separate files
 
 Specify either `token` or `token_env`, with up to 8 server addresses. Worker credential files must reference tokens authorized for the worker role on each server. Client read-only failover engages on connection errors, 5xx server errors, rate limits (429), or stale snapshots. Failover is refused on 401/403 authorization failures, project/observer mismatches, and malformed responses.
 
+## Alerts
+
+A collector started with `--alerts alerts.json` tells webhooks what it concludes. Webhook URLs are secrets, so the file is private to the collector like `auth.json` (a regular file, mode `0600` or stricter, unknown fields refused), never part of the topology that workers and viewers receive:
+
+```json
+{
+  "schema": 1,
+  "webhooks": [
+    {"id": "phone", "format": "ntfy", "url": "https://ntfy.sh/REPLACE_WITH_A_PRIVATE_TOPIC"},
+    {"id": "team", "format": "slack", "url": "https://hooks.slack.com/services/REPLACE", "events": ["incidents"]},
+    {"id": "ops", "format": "json", "url": "https://ops.example.invalid/topophany", "bearer": "REPLACE", "observers": ["observer-local-01"]}
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | Names the webhook in logs, which never show its URL |
+| `format` | `json` (the event as data), `ntfy` (text, with a title, tags and high priority for an opened incident or a silent observer), `slack` (incoming webhook, markup escaped) or `discord` (mentioning no one) |
+| `url` | HTTPS; plain HTTP only to a literal loopback address or with `"allow_insecure": true`. A query may carry the service's own token; credentials in the authority are refused |
+| `bearer` | Optional; sent as `Authorization: Bearer …` |
+| `events` | `incidents`, `observers` or both (the default) |
+| `observers` | Optional; only what these observers saw |
+
+There are four events: `incident.opened` and `incident.closed` when the incident ledger opens or closes a record (a recovery, an unconfirmed ending, a pause or a change, with how long it lasted), and `observer.silent` and `observer.back`. An observer is called silent once the collector has settled after starting (as long as its stalest check takes to lapse), once per silence, and called back only after it was called silent. A `json` webhook receives `{"schema": 1, "project", "collector", "event", "at", "title", "text"}` and either `incident` (the ledger record) or `observer` (its state).
+
+Each webhook has its own queue of 64 alerts, delivered in order; when it is full, new alerts for it are dropped and logged. An alert is tried again after a failure to connect or a 408, 429 or 5xx status, six times in all with pauses of 2 to 32 seconds; any other status, including a redirect, which is never followed, drops it. Environment proxies are not used. Alerts wait only in memory: a collector that stops loses those it has not sent. Each collector with an alerts file sends its own, so give the file to one collector of a pair unless duplicates are wanted. The alerts file applies when the collector reloads (`SIGHUP`) or restarts; one that fails validation is refused with the rest of the reload.
+
 ## HTTP API Specifications
 
 | Method / Path | Role | Description |
