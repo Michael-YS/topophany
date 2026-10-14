@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
 ### Added
 
 - A virtual geo map, now the default when any node has a location: places
@@ -48,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Avoid a data race when reading outbox delivery retry state.
 - A service reached over several failing paths no longer repeats "access
   path unavailable" once per path in its reason.
 
@@ -108,5 +111,6 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/WhitenWhiten/topophany/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/WhitenWhiten/topophany/releases/tag/v0.1.0

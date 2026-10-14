@@ -22,7 +22,7 @@ Topophany is an open-source, self-hosted network topology and service availabili
   <br><sub>The Overview during a simulated outage, from <code>topo preview --scenario 1</code>.</sub>
 </p>
 
-The official project name is **Topophany**, and the CLI command is **`topo`**. This codebase is a clean-room, verified 0.1.0 release. It contains no production addresses, external network memos, or live credentials.
+The official project name is **Topophany**, and the CLI command is **`topo`**. This codebase is a clean-room, verified 0.2.0 release. It contains no production addresses, external network memos, or live credentials.
 
 ## Installation
 
