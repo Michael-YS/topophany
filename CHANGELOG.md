@@ -138,6 +138,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The origin behind an edge is credited only with a passing response the
+  edge says it fetched from it (`MISS`, `DYNAMIC`, `BYPASS`, `EXPIRED`,
+  `REVALIDATED`, `REFRESHHIT` or `PASS`). Any status but a cache hit used
+  to count, as did none, so the origin read up on the strength of
+  answers the edge made itself: a Cloudflare Worker that sends no
+  subrequest reports no cache status, and CloudFront reports
+  `LambdaGeneratedResponse`. Behind a hop that reports no cache status,
+  such as a plain reverse proxy, the origin is now unknown until a check
+  of its own measures it.
 - A worker with more checks due than it has workers runs each in turn,
   the longest overdue first. Every pass gave free workers to the checks
   listed first, so under sustained load, such as an outage with many

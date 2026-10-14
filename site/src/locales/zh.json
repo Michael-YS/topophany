@@ -97,7 +97,7 @@
   "edge.origin": "S1 源站",
   "edge.up": "HTTP 521 · 边缘在线",
   "edge.affected": "受影响",
-  "edge.text": "CDN 的应答只能证明边缘；只有非缓存的响应才能证明源站。",
+  "edge.text": "CDN 的应答只能证明边缘；只有边缘表明是从源站取回的响应，才能证明源站。",
   "guess.title": "推测就标为推测",
   "guess.label": "一个事件的证据",
   "guess.text": "事件给出证据，此外的一切都标为假设。",

@@ -97,7 +97,7 @@
   "edge.origin": "S1 origin",
   "edge.up": "HTTP 521 · edge up",
   "edge.affected": "affected",
-  "edge.text": "An answer from the CDN proves the edge. Only an uncached response proves the origin.",
+  "edge.text": "An answer from the CDN proves the edge. Only a response it says it fetched proves the origin.",
   "guess.title": "A guess is labeled a guess",
   "guess.label": "An incident's evidence",
   "guess.text": "Incidents show their evidence. Anything more is marked as a hypothesis.",

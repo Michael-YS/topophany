@@ -356,10 +356,13 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		t.Fatal("no bounded diagnosis behind the edge", s.Incidents)
 	}
 
+	// Only a response the edge says it fetched proves the origin: not one
+	// from its cache, from code it runs itself or from a hop that says
+	// nothing of its cache.
 	for _, tt := range []struct {
 		cache  string
 		origin string
-	}{{"DYNAMIC", "up"}, {"MISS", "up"}, {"", "up"}, {"HIT", "unknown"}, {"STALE", "unknown"}} {
+	}{{"DYNAMIC", "up"}, {"MISS", "up"}, {"EXPIRED", "up"}, {"REVALIDATED", "up"}, {"REFRESHHIT", "up"}, {"PASS", "up"}, {"BYPASS", "up"}, {"", "unknown"}, {"HIT", "unknown"}, {"STALE", "unknown"}, {"UPDATING", "unknown"}, {"PRERENDER", "unknown"}, {"NONEUNKNOWN", "unknown"}, {"LAMBDAGENERATEDRESPONSE", "unknown"}, {"FUNCTIONGENERATEDRESPONS", "unknown"}, {"ERROR", "unknown"}} {
 		v := through(c, "cloud-http", 1, now.Add(-time.Second), "ok", "200", tt.cache, true)
 		s := Build(c, "a", "cloud", []model.Observation{v}, nil, now)
 		if e := findEntity(t, s.Nodes, "edge"); e.Health != "up" {
@@ -368,6 +371,15 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		if o := findEntity(t, s.Nodes, "dmit"); o.Health != tt.origin {
 			t.Fatalf("cache %q: origin %s, want %s", tt.cache, o.Health, tt.origin)
 		}
+	}
+
+	// A check of the origin's own, not through the edge, proves it.
+	direct := testkit.Observation(c, "home-ssh", 1, now.Add(-time.Second), "ok")
+	direct.Connectivity = true
+	direct.Facts = map[string]string{"response_proof": "ssh_banner"}
+	s = Build(c, "a", "", []model.Observation{through(c, "cloud-http", 1, now.Add(-time.Second), "ok", "200", "", true), direct}, nil, now)
+	if o := findEntity(t, s.Nodes, "dmit"); o.Health != "up" || !strings.Contains(o.Reason, "home-ssh") || strings.Contains(o.Reason, "cloud-http") {
+		t.Fatal("the origin's own answer was not what proved it", o)
 	}
 
 	// Nothing answered: the fault may be at the edge or anywhere behind it.

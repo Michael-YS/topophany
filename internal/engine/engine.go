@@ -434,7 +434,7 @@ const unavailable = "; access path unavailable, intrinsic service state not esta
 // endpoint's own node, or an edge or proxy in its via chain. The first hop
 // answers whatever happens behind it, even with an error page, so any
 // response proves it; the nodes behind it count only a passing HTTP
-// response that the edge did not serve from its cache.
+// response that the edge says it fetched from them.
 func answered(ep model.Endpoint, node, kind string, v *model.Observation) bool {
 	if v.Evidence != "measured" || !v.Connectivity || v.Facts["response_proof"] == "" || v.Facts["response_proof"] == "none" {
 		return false
@@ -442,7 +442,7 @@ func answered(ep model.Endpoint, node, kind string, v *model.Observation) bool {
 	if len(ep.Via) == 0 || ep.Via[0] == node {
 		return true
 	}
-	return kind == "http" && v.Outcome == "ok" && !edgeCached(v.Facts["edge_cache"])
+	return kind == "http" && v.Outcome == "ok" && edgeForwarded(v.Facts["edge_cache"])
 }
 
 // implicated reports whether a confirmed failure of a check on ep may lie at
@@ -451,11 +451,15 @@ func implicated(ep model.Endpoint, node string, v *model.Observation) bool {
 	return len(ep.Via) == 0 || ep.Via[0] != node || !v.Connectivity
 }
 
-// edgeCached reports whether an edge cache status says the edge answered
-// from its cache, without asking the origin.
-func edgeCached(status string) bool {
+// edgeForwarded reports whether an edge cache status says the edge asked
+// what is behind it for this response. Anything else proves only the
+// edge: its cache (HIT, STALE, UPDATING, PRERENDER), code it runs itself
+// (a Worker that sends no subrequest has no status, CloudFront says
+// LambdaGeneratedResponse or FunctionGeneratedResponse), its own pages,
+// or a hop that says nothing of its cache at all.
+func edgeForwarded(status string) bool {
 	switch status {
-	case "HIT", "STALE", "UPDATING", "PRERENDER":
+	case "MISS", "DYNAMIC", "BYPASS", "EXPIRED", "REVALIDATED", "REFRESHHIT", "PASS":
 		return true
 	}
 	return false
