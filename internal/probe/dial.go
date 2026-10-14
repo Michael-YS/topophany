@@ -407,6 +407,10 @@ func sshDial(ctx context.Context, p model.Proxy, target, bindIP string) (net.Con
 }
 
 func sshFile(path string) (string, error) {
+	// A ~ is the shell's to expand; here it would name a directory "~".
+	if strings.HasPrefix(path, "~") {
+		return "", local("setup", "invalid_ssh_file")
+	}
 	path, e := filepath.Abs(path)
 	if e != nil {
 		return "", local("setup", "invalid_ssh_file")

@@ -85,7 +85,7 @@ func TestSSHKnownHostsOptionParsesAsOneLiteralFile(t *testing.T) {
 	if !strings.Contains(string(out), "userknownhostsfile "+filepath.ToSlash(path)) {
 		t.Fatal("OpenSSH did not preserve the known_hosts path")
 	}
-	for _, p := range []string{"${HOME}/known", "bad\"quote", "bad\nline"} {
+	for _, p := range []string{"${HOME}/known", "~/known", "bad\"quote", "bad\nline"} {
 		if _, e := sshFile(p); e == nil {
 			t.Fatal("unsafe path accepted", p)
 		}

@@ -455,7 +455,7 @@ func (a *App) worker(parent context.Context, args []string) error {
 	credPath := f.String("credentials", "worker-credentials.json", "0600 worker credential file")
 	profileName := f.String("profile", "", "credential profile (default active)")
 	dir := f.String("data", "./worker-data", "exclusive durable outbox directory")
-	budget := f.Int64("outbox-bytes", 32<<20, "hard outbox budget including quarantine")
+	budget := f.Int64("outbox-bytes", 32<<20, "hard budget for pending observations; quarantine has its own, at least as large")
 	workers := f.Int("concurrency", 4, "bounded probe concurrency (1..32)")
 	if e := parsed(f, args); e != nil {
 		return e

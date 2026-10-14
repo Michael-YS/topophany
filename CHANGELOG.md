@@ -308,6 +308,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   topology removed user information and queries only from URLs with a
   scheme, and kept every fragment. Adapter test URLs and the topology
   now share one sanitizer.
+- An SSH hop's `ssh_identity_file` or `ssh_known_hosts` beginning with
+  `~` is refused, as the reference already said, rather than read as a
+  directory named `~`. The reference now says that a relative path is
+  resolved against the worker's working directory, the security notes
+  that `tailscale`, `wg` and `ssh` are found on `PATH` rather than at
+  fixed paths, `SECURITY.md` that 0.3.x is the supported line, and
+  `--outbox-bytes` that quarantine has a budget of its own.
 
 ## [0.3.0] - 2026-10-14
 
