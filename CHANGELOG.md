@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-13
+
+Initial release.
+
 ### Changed
 
 - The terminal UI is redesigned to be read at a glance: an Overview dashboard
@@ -33,9 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Flaky DNS TCP-fallback test fixture when the paired TCP port was already in use.
 
-## [0.1.0]
+### Security
 
-Initial release.
+- Isolated API resource budgets, bounded JSON and snapshot decoding, and hardened
+  configuration, probe, storage and worker outbox boundaries.
+- Release archives are built from an immutable checkout and verified before
+  publication; executable GitHub Actions are pinned to commit SHAs.
+
+### Added
 
 - Single `topo` binary: remote TUI client, ingestion collector (`serve`) and
   scoped observation worker (`worker`).
