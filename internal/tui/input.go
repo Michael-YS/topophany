@@ -40,6 +40,29 @@ func sgrMouse(seq []byte) (string, bool) {
 	return "mouse:" + string(parts[0]) + ":" + string(parts[1]) + ":" + string(parts[2]) + ":" + string(final), true
 }
 
+// cellSize parses a reply to CSI 16 t, "\x1b[6;h;wt", into "cell:h:w": a
+// cell's height and width in pixels. Anything else is not one.
+func cellSize(seq []byte) (string, bool) {
+	if len(seq) < 8 || seq[len(seq)-1] != 't' {
+		return "", false
+	}
+	parts := bytes.Split(seq[2:len(seq)-1], []byte(";"))
+	if len(parts) != 3 || string(parts[0]) != "6" {
+		return "", false
+	}
+	for _, p := range parts[1:] {
+		if len(p) == 0 || len(p) > 4 {
+			return "", false
+		}
+		for _, c := range p {
+			if c < '0' || c > '9' {
+				return "", false
+			}
+		}
+	}
+	return "cell:" + string(parts[1]) + ":" + string(parts[2]), true
+}
+
 func (d *Decoder) Feed(b []byte, now time.Time) []string {
 	d.buffer = append(d.buffer, b...)
 	keys := []string{}
@@ -106,6 +129,8 @@ func (d *Decoder) Feed(b []byte, now time.Time) []string {
 				}
 				if end >= 0 {
 					if k, ok := sgrMouse(d.buffer[:end+1]); ok {
+						keys = append(keys, k)
+					} else if k, ok := cellSize(d.buffer[:end+1]); ok {
 						keys = append(keys, k)
 					}
 					d.buffer = d.buffer[end+1:]

@@ -59,3 +59,13 @@ func (t *terminal) Size() (int, int) {
 	}
 	return int(s.Cols), int(s.Rows)
 }
+
+// Cell is a cell's height over its width, from the pixel size the terminal
+// gives with its rows and columns; 0 when it gives none.
+func (t *terminal) Cell() float64 {
+	var s struct{ Rows, Cols, X, Y uint16 }
+	if e := ioctl(t.out.Fd(), syscall.TIOCGWINSZ, unsafe.Pointer(&s)); e != nil || s.Cols == 0 || s.Rows == 0 || s.X == 0 || s.Y == 0 {
+		return 0
+	}
+	return float64(s.Y) / float64(s.Rows) / (float64(s.X) / float64(s.Cols))
+}

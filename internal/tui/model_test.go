@@ -221,6 +221,27 @@ func TestDecoderFragmentedKeysAndPaste(t *testing.T) {
 		t.Fatal(ks)
 	}
 }
+
+// The terminal's answer to CSI 16 t gives the cell's shape; other window
+// reports are dropped, and a shape no terminal has keeps cells 2:1.
+func TestDecoderReadsCellSize(t *testing.T) {
+	var d Decoder
+	now := time.Now()
+	ks := d.Feed([]byte("\x1b[6;26;10t\x1b[4;800;600t\x1b[6;26t\x1b[6;;9tq"), now)
+	if strings.Join(ks, ",") != "cell:26:10,q" {
+		t.Fatal(ks)
+	}
+	m := fixtureModel()
+	if m.Key("cell:26:10") != "" || m.Cell != 2.6 || m.cellAspect() != 2.6 {
+		t.Fatal("cell size", m.Cell)
+	}
+	if m.Key("cell:0:10"); m.Cell != 2.6 {
+		t.Fatal("empty cell size taken", m.Cell)
+	}
+	if m.Cell = 9; m.cellAspect() != 2 {
+		t.Fatal("implausible cell shape kept", m.cellAspect())
+	}
+}
 func TestNonTerminalFailsWithoutControlOutput(t *testing.T) {
 	in, e := os.Open(os.DevNull)
 	if e != nil {

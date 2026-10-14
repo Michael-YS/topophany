@@ -296,7 +296,7 @@ func TestAboutLinksTheHomepageAndTheSource(t *testing.T) {
 func TestGlobeIsShadedAsASphere(t *testing.T) {
 	m := homelabModel(t)
 	d := NewDots(60, 30)
-	m.paintGlobe(d, 120, 120, 0, 0) // R = 54 dots about (60, 60)
+	m.paintGlobe(d, 120, 120, 1, 0, 0) // R = 54 dots about (60, 60)
 	if d.shade == nil {
 		t.Fatal("globe is flat: nothing is shaded under its dots")
 	}
@@ -330,6 +330,52 @@ func TestGlobeIsShadedAsASphere(t *testing.T) {
 		if c.st.BG != 0 {
 			t.Fatal("256-colour globe is shaded")
 		}
+	}
+}
+
+// On cells taller than 2:1 a dot is taller than it is wide, so the globe
+// spans fewer rows of dots than columns and is round on screen.
+func TestGlobeIsRoundOnTallCells(t *testing.T) {
+	m := homelabModel(t)
+	const ky = 1.3 // cells 2.6 times as tall as wide
+	d := NewDots(60, 30)
+	m.paintGlobe(d, 120, 120, ky, 0, 0)
+	wide, tall := 0, 0
+	for x := 0; x < d.W; x++ {
+		if d.shade[15*d.W+x].a >= 4 {
+			wide += 2
+		}
+	}
+	for y := 0; y < d.H; y++ {
+		if d.shade[y*d.W+30].a >= 4 {
+			tall += 4
+		}
+	}
+	if h := float64(tall) * ky; wide < 100 || h < float64(wide)-6 || h > float64(wide)+6 {
+		t.Fatalf("ball is %d dot widths wide and %.0f tall", wide, h)
+	}
+	// The About view gives the globe columns for its rows to match: on a
+	// 160x40 screen the shaded ball, left of the text, is as many cell
+	// widths wide as its rows are tall, and as tall as the view allows.
+	m.Cell = 2.6
+	m.Width, m.Height = 160, 40
+	m.setTab(tabAbout)
+	cv := m.draw()
+	rows, cols := 0, 0
+	for y := 3; y < cv.H-2; y++ {
+		n := 0
+		for x := 0; x < 100; x++ {
+			if bg := cv.cells[y*cv.W+x].st.BG; bg != 0 && bg != cInk {
+				n++
+			}
+		}
+		if n > 0 {
+			rows++
+		}
+		cols = max(cols, n)
+	}
+	if h := float64(rows) * m.Cell; rows < 30 || float64(cols) < h-6 || float64(cols) > h+6 {
+		t.Fatalf("globe on 2.6:1 cells is %d columns by %d rows", cols, rows)
 	}
 }
 

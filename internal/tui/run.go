@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -162,6 +164,16 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 	}
 	m.Transparent = !paintBackground()
 	m.Hyperlinks = hyperlinks()
+	// A cell's shape, which keeps the globe round: TOPO_CELL_ASPECT, else
+	// the pixel size the terminal gives with its rows and columns, else
+	// its answer to CSI 16 t. Windows hands Read one key at a time, too
+	// slowly for the decoder to keep an answer together, so it is not asked.
+	fixed := false
+	if a, e := strconv.ParseFloat(os.Getenv("TOPO_CELL_ASPECT"), 64); e == nil {
+		m.Cell, fixed = a, true
+	} else if term.Cell() == 0 && osc() && runtime.GOOS != "windows" {
+		fmt.Fprint(out, "\x1b[16t")
+	}
 	m.Now = time.Now()
 	m.Width, m.Height = term.Size()
 	ch := make(chan fetched, 1)
@@ -198,6 +210,9 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 	draw := func() error {
 		m.Now = time.Now()
 		m.Width, m.Height = term.Size()
+		if a := term.Cell(); a > 0 && !fixed {
+			m.Cell = a
+		}
 		last = m.Now
 		n, e := scr.paint(out, m)
 		m.measured(time.Since(last), n, last)

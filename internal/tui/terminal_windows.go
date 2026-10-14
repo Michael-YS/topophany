@@ -140,3 +140,6 @@ func (t *terminal) Size() (int, int) {
 	}
 	return int(s.Right - s.Left + 1), int(s.Bottom - s.Top + 1)
 }
+
+// Cell is 0: on Windows a cell's shape comes from TOPO_CELL_ASPECT.
+func (t *terminal) Cell() float64 { return 0 }

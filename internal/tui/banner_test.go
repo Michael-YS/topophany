@@ -112,7 +112,7 @@ func banner() *image.RGBA {
 	m := &Model{}
 	const gw = 104
 	gx := bannerW - gw - 8
-	m.paintGlobe(shifted{d, gx, 0}, gw, bannerH, 7.5, 0)
+	m.paintGlobe(shifted{d, gx, 0}, gw, bannerH, 1, 7.5, 0)
 
 	// TOPOPHANY, three dots to a pixel of the 5x7 face, filled with an
 	// ordered-dither gradient and cast with a sparse shadow; under it the

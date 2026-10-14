@@ -52,6 +52,7 @@ type Model struct {
 	Debug                 bool    // performance/geometry overlay (D)
 	Transparent           bool    // keep the terminal background (TOPO_BACKGROUND=terminal)
 	Hyperlinks            bool    // write links as OSC 8 hyperlinks
+	Cell                  float64 // a cell's height over its width, as the terminal reports it; 0 when unknown
 	perf                  perf
 	modal                 *modal
 	notice                string
@@ -156,6 +157,17 @@ func (m *Model) NextObserver() {
 
 // Key returns quit/refresh/view actions; it never performs network calls itself.
 func (m *Model) Key(k string) string {
+	if c, ok := strings.CutPrefix(k, "cell:"); ok {
+		// The terminal's answer to CSI 16 t: a cell's height and width in
+		// pixels.
+		h, w, _ := strings.Cut(c, ":")
+		ch, e1 := strconv.Atoi(h)
+		cw, e2 := strconv.Atoi(w)
+		if e1 == nil && e2 == nil && ch > 0 && cw > 0 {
+			m.Cell = float64(ch) / float64(cw)
+		}
+		return ""
+	}
 	if strings.HasPrefix(k, "mouse:") {
 		k = m.mouse(k)
 		if k == "" {

@@ -111,6 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The About globe is round on terminals whose character cells are not
+  twice as tall as they are wide; on Windows Terminal with a tall line
+  height it was an upright oval. The TUI reads a cell's shape from the
+  pixel size the terminal gives with its rows and columns, or asks for it
+  with `CSI 16 t`, and `TOPO_CELL_ASPECT` (a cell's height over its width,
+  such as `2.6`) sets it where the terminal says neither.
 - The homepage no longer scrolls sideways on phones. On narrow screens the
   panels of its Semantics section were as wide as their widest line, up to
   65 pixels wider than the screen at 320; they now fit, and the edge

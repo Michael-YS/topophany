@@ -112,6 +112,16 @@ func (g globe) toWorld(v vec) vec {
 	return vec{v[0]*c + z*s, y, -v[0]*s + z*c}
 }
 
+// cellAspect is how many times taller than wide a terminal cell is, as the
+// terminal reports it; 2, at which a cell's 2x4 braille dots are square,
+// when it does not say.
+func (m *Model) cellAspect() float64 {
+	if m.Cell < 1 || m.Cell > 4 {
+		return 2
+	}
+	return m.Cell
+}
+
 // drawGlobe renders the globe centred in w×h cells and names the places
 // facing the viewer. t is seconds since the About view opened; spin is extra
 // rotation from the mouse wheel.
@@ -123,7 +133,7 @@ func (m *Model) drawGlobe(cv *Canvas, x, y, w, h int, t, spin float64) {
 		// these terminals get the dotted ocean instead.
 		p = dotsOnly{d}
 	}
-	marks := m.paintGlobe(p, w*2, h*4, t, spin)
+	marks := m.paintGlobe(p, w*2, h*4, m.cellAspect()/2, t, spin)
 	d.Blit(cv, x, y, 0)
 	// Names of the places facing the viewer, where they do not collide.
 	used := map[[2]int]bool{}
@@ -151,7 +161,9 @@ type globeMark struct {
 	c    Color
 }
 
-// paintGlobe draws the globe centred on a W×H dot grid. Where the plotter
+// paintGlobe draws the globe centred on a W×H dot grid whose dots are ky
+// times as tall as they are wide, so the ball is round where the dots land
+// rather than in the grid. Lengths are in dot widths. Where the plotter
 // can tint the ground beneath its dots (the terminal's cells, the banner's
 // dots) the sphere is shaded: an ocean lit from the upper left with a
 // specular glint and land a lighter ground, both falling off across a soft
@@ -160,8 +172,9 @@ type globeMark struct {
 // graticule curves with the surface, the limb is a thin line brightest
 // sunward and a dithered haze lies beyond it. It returns the places facing
 // the viewer.
-func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
-	R := math.Min(float64(W), float64(H))/2 - math.Max(3, math.Min(float64(W), float64(H))*.05)
+func (m *Model) paintGlobe(d plotter, W, H int, ky, t, spin float64) []globeMark {
+	short := math.Min(float64(W), float64(H)*ky)
+	R := short/2 - math.Max(3, short*.05)
 	if R < 6 {
 		return nil
 	}
@@ -173,7 +186,7 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 	half := vec{light[0], light[1], light[2] + 1}.norm()
 	sh, shading := d.(shader)
 	normal := func(px, py int) vec {
-		nx, ny := (float64(px)+.5-cx)/R, (float64(py)+.5-cy)/R
+		nx, ny := (float64(px)+.5-cx)/R, (float64(py)+.5-cy)*ky/R
 		return vec{nx, -ny, math.Sqrt(math.Max(0, 1-nx*nx-ny*ny))}
 	}
 	// Once per frame, for every dot on the disc: land or sea, and the
@@ -186,7 +199,7 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 		for px := 0; px < W; px++ {
 			i := py*W + px
 			band[i] = -1
-			if math.Hypot(float64(px)+.5-cx, float64(py)+.5-cy) > R+.5 {
+			if math.Hypot(float64(px)+.5-cx, (float64(py)+.5-cy)*ky) > R+.5 {
 				continue
 			}
 			wv := g.toWorld(normal(px, py))
@@ -225,7 +238,7 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 	thick := math.Max(3, R*.09)
 	for py := 0; py < H; py++ {
 		for px := 0; px < W; px++ {
-			dx, dy := float64(px)+.5-cx, float64(py)+.5-cy
+			dx, dy := float64(px)+.5-cx, (float64(py)+.5-cy)*ky
 			r := math.Hypot(dx, dy)
 			// How squarely this edge of the disc faces the light.
 			side := 0.0
@@ -269,8 +282,15 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 					}
 					sh.Shade(px, py, c, clamp(R+.5-r, 0, 1))
 				}
+				// The limb is one dot deep: deeper toward the poles when
+				// a row of dots is taller than a dot is wide, so it does
+				// not break where the rows step over it.
+				deep := 1.0
+				if ky > 1 && r > 0 {
+					deep += (ky - 1) * dy * dy / (r * r)
+				}
 				switch {
-				case r > R-1:
+				case r > R-deep:
 					// The limb: one thin line, so the sphere keeps its
 					// shape on the night side too.
 					d.Set(px, py, Mix(cLimb, cAccent2, math.Round(side*4)/4*.6), 1)
@@ -295,7 +315,7 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 	}
 	project := func(v vec) (float64, float64, vec) {
 		p := g.toView(v)
-		return cx + p[0]*R, cy - p[1]*R, p
+		return cx + p[0]*R, cy - p[1]*R/ky, p
 	}
 	// Places: a bright core and a slow ring; their health colors them when
 	// the topology has evidence, otherwise they are warm lights.
@@ -502,14 +522,15 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 		}
 	}
 	tw := min(aboutTextW, w-2)
+	cell := m.cellAspect()
 	var gx, gy, gw, gh, tx, ty int
 	switch {
 	case w >= aboutTextW+44 && h >= 14:
 		// Side by side: the globe is as tall as the view allows (and no
 		// wider than leaves room for the text), the pair centred.
 		gh = h
-		gw = min(gh*2+2, w-aboutTextW-6)
-		gh = min(gh, gw/2+1)
+		gw = min(int(float64(gh)*cell)+2, w-aboutTextW-6)
+		gh = min(gh, int(float64(gw)/cell)+1)
 		total := gw + 6 + tw
 		gx = x + max(0, (w-total)/2)
 		gy = y + (h-gh)/2
@@ -519,8 +540,8 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 	case h >= core+head+12 && w >= 30:
 		// Stacked: the globe above, the text below, both centred; the
 		// globe takes its rows before the keys do.
-		gh = min(h-core-head-1, w/2)
-		gw = min(w, gh*2+2)
+		gh = min(h-core-head-1, int(float64(w)/cell))
+		gw = min(w, int(float64(gh)*cell)+2)
 		lines = fitAbout(lines, h-gh-1-head)
 		gx = x + (w-gw)/2
 		gy = y + max(0, (h-gh-len(lines)-head-1)/2)
