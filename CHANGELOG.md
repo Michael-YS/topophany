@@ -111,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The homepage no longer scrolls sideways on phones. On narrow screens the
+  panels of its Semantics section were as wide as their widest line, up to
+  65 pixels wider than the screen at 320; they now fit, and the edge
+  diagram's names wrap.
 - A worker no longer backs off after quarantining a sample a collector
   refused, and returns to batching with the first sample accepted; it
   used to slow to one sample per tick, with growing pauses, until its

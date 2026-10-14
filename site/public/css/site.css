@@ -417,7 +417,9 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 .panel > p em { font-style: normal; color: var(--unknown); font-family: var(--mono); font-size: .92em; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 28px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
-@media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+/* One column may be no wider than the screen, whatever a panel holds. */
+@media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 420px) { .panel { padding: 28px 16px 20px; } }
 
 .tui-table { font: 13px/1.5 var(--mono); }
 .tui-table .tr { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.65fr) 60px; gap: 14px; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); align-items: baseline; }
@@ -476,6 +478,10 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 @media (max-width: 560px) {
   .edge { font-size: 11.5px; }
   .chip { padding: 6px 8px; }
+}
+@media (max-width: 420px) {
+  .edge-row { grid-template-columns: auto minmax(12px, 1fr) auto minmax(12px, 1fr) auto; }
+  .chip { white-space: normal; flex-wrap: wrap; }
 }
 
 .incident {
