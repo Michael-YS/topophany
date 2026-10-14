@@ -28,10 +28,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / ".verify-build" / "verification")
-    parser.add_argument("--fuzz-seconds", type=int, default=2)
+    fuzz_budget = parser.add_mutually_exclusive_group()
+    fuzz_budget.add_argument("--fuzz-seconds", type=int)
+    fuzz_budget.add_argument("--fuzz-executions", type=int, default=25000)
     args = parser.parse_args()
-    if args.fuzz_seconds < 1 or args.fuzz_seconds > 60:
+    if args.fuzz_seconds is not None and not 1 <= args.fuzz_seconds <= 60:
         parser.error("fuzz-seconds must be in [1,60]")
+    if args.fuzz_executions < 1:
+        parser.error("fuzz-executions must be positive")
+    # An execution budget avoids racing Go's short fuzz deadline on busy CI
+    # runners. Real failures still fail the run; the subprocess timeout bounds hangs.
+    fuzz_time = f"{args.fuzz_seconds}s" if args.fuzz_seconds is not None else f"{args.fuzz_executions}x"
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if not shutil.which("go"):
@@ -112,7 +119,7 @@ def main() -> int:
         ]
         for package, target in fuzz:
             run("fuzz-" + target, ["go", "test", "./internal/" + package, "-run=^$",
-                "-fuzz=^" + target + "$", "-fuzztime=" + str(args.fuzz_seconds) + "s", "-parallel=2"], timeout=120)
+                "-fuzz=^" + target + "$", "-fuzztime=" + fuzz_time, "-parallel=2"], timeout=120)
         binary = build_dir / ("topo.exe" if os.name == "nt" else "topo")
         run("build-native", ["go", "build", "-trimpath", "-o", str(binary), "./cmd/topo"],
             overrides={"CGO_ENABLED": "0"}, timeout=300)
@@ -184,6 +191,7 @@ def main() -> int:
         "skipped_tests": [event for event in events if event["Action"] == "skip"],
         "package_results": packages, "bounded_fuzz_targets": len(fuzz),
         "fuzz_seconds_per_target": args.fuzz_seconds,
+        "fuzz_executions_per_target": args.fuzz_executions if args.fuzz_seconds is None else None,
         "process_acceptance": smoke,
         "cross_builds_are_execution_tests": False,
         "production_acceptance": "NOT EXECUTED; see docs/ACCEPTANCE.md",
@@ -212,7 +220,7 @@ Full module statement coverage: **{summary['coverage_statement_percent']}%**; pe
 Skipped items: {", ".join(event["Test"] for event in summary["skipped_tests"]) or "None"}. `TestICMPRealLoopback` runs only when raw socket permissions are available; explicitly skipped when unprivileged/unavailable. ICMP correlation, checksums, permission classification, and packet budgets remain verified by deterministic unit tests. Skipped items are never counted as real-network passes.
 
 Environment: `{summary['go_version']}`; `{summary['host_platform']}`. Go module network disabled, zero external Go modules.
-Race detector, 3x repeat tests, 8 time-bounded fuzz suites, native build, and 5 cross-compilation targets are detailed in the table below. Time-bounded fuzzing is budgeted exploration, not proof of zero defects.
+Race detector, 3x repeat tests, {len(fuzz)} fuzz suites (budget {fuzz_time} each), native build, and 5 cross-compilation targets are detailed in the table below. Bounded fuzzing is budgeted exploration, not proof of zero defects.
 
 ## Real Process and Terminal Acceptance
 

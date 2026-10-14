@@ -7,6 +7,8 @@ import argparse, contextlib, fcntl, http.server, json, os, pathlib, pty, re
 import select, signal, socket, struct, subprocess, tempfile, termios, threading, time
 import urllib.request
 
+from terminal_screen import TerminalScreen
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -130,17 +132,22 @@ def main():
             tty = subprocess.Popen([binary], stdin=slave, stdout=slave, stderr=slave, env=env)
             processes.append(tty)
             captured = bytearray()
+            screen = TerminalScreen(140, 34)
+            def read_terminal():
+                chunk = os.read(master, 65536)
+                captured.extend(chunk)
+                screen.feed(chunk)
+
             def drain_until(needle, seconds=8):
                 deadline = time.monotonic() + seconds
-                offset = len(captured)
                 while time.monotonic() < deadline:
                     if select.select([master], [], [], .1)[0]:
-                        captured.extend(os.read(master, 65536))
-                    if needle in captured[offset:]:
+                        read_terminal()
+                    if needle.decode() in screen.text():
                         return True
                     if tty.poll() is not None:
                         raise AssertionError('TUI exited unexpectedly')
-                raise AssertionError('TUI did not render expected state')
+                raise AssertionError('TUI did not render expected state: ' + needle.decode())
             drain_until(b'collector-0')
             assert b'\x1b[?1049h' in captured and b'TOPOPHANY' in captured
             for key, text in [('2', b'[2 Topology]'), ('3', b'[3 Servers]'), ('4', b'[4 Services]'), ('5', b'[5 Paths]'),
@@ -170,10 +177,10 @@ def main():
                 # A PTY master must consume output, just as a real terminal does.
                 # Waiting without draining can fill the kernel's PTY buffer.
                 if select.select([master], [], [], .1)[0]:
-                    captured.extend(os.read(master, 65536))
+                    read_terminal()
             tty.wait(timeout=1)
             while select.select([master], [], [], .1)[0]:
-                captured.extend(os.read(master, 65536))
+                read_terminal()
             assert tty.returncode == 0 and b'\x1b[?1049l' in captured and b'\x1b[?25h' in captured
             restored = termios.tcgetattr(slave)
             assert restored == old_term, 'terminal attributes not restored'
