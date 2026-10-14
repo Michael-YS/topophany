@@ -90,7 +90,7 @@ The TUI is built to answer one question before anything is read: *is anything wr
 - **Overview** — a verdict headline with a big failure count, a map of every node and link, the list of what needs attention (incidents, failing paths and services, silent observers), a service matrix, and how fresh each observer is. Selecting an item lights its whole route on the map. On wide terminals the map sits beside the cards; smaller terminals stack them.
 - **Topology** — the node → endpoint → link hierarchy beside the map, with the evidence for the selected entity underneath.
 - **Services, Paths, Checks, Incidents, Observers** — aligned tables. The state column stays empty for healthy rows, so problems are the only lit words; `Enter` expands the evidence behind a row.
-- **About** — a one-bit dithered globe on which the places you declared are the only lights. The mouse wheel spins it.
+- **About** — a lit globe: a shaded ocean, dotted land and a graticule that curves with the surface, on which the places you declared are the only lights. The mouse wheel spins it.
 
 <table>
   <tr>

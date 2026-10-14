@@ -9,24 +9,28 @@ import (
 )
 
 // The README banner (docs/assets/banner.png) is drawn from the About art:
-// the same dithered globe and the same 5x7 face, every dot a round dot as in
-// a terminal, but each with its own color. `make banner` regenerates it;
-// otherwise the test only checks that the art renders.
+// the same shaded globe and the same 5x7 face, every dot a round dot as in
+// a terminal, but each with its own color and the ground shaded per dot
+// rather than per cell. `make banner` regenerates it; otherwise the test
+// only checks that the art renders.
 
 const (
 	bannerW, bannerH = 300, 96 // dots
 	bannerPitch      = 6       // pixels per dot
 )
 
-// dotImage is a per-dot raster for the paintGlobe plotter.
+// dotImage is a per-dot raster for the paintGlobe plotter, with a ground
+// that is shaded one dot at a time.
 type dotImage struct {
-	W, H int
-	c    []Color
-	pri  []int8
+	W, H   int
+	c      []Color
+	pri    []int8
+	ground []Color
+	cover  []float64
 }
 
 func newDotImage(w, h int) *dotImage {
-	return &dotImage{W: w, H: h, c: make([]Color, w*h), pri: make([]int8, w*h)}
+	return &dotImage{W: w, H: h, c: make([]Color, w*h), pri: make([]int8, w*h), ground: make([]Color, w*h), cover: make([]float64, w*h)}
 }
 
 func (d *dotImage) Set(px, py int, c Color, pri int8) {
@@ -38,6 +42,12 @@ func (d *dotImage) Set(px, py int, c Color, pri int8) {
 	}
 }
 
+func (d *dotImage) Shade(px, py int, c Color, a float64) {
+	if px >= 0 && py >= 0 && px < d.W && py < d.H && a > 0 {
+		d.ground[py*d.W+px], d.cover[py*d.W+px] = c, a
+	}
+}
+
 // shifted moves a plotter's origin.
 type shifted struct {
 	plotter
@@ -45,13 +55,30 @@ type shifted struct {
 }
 
 func (s shifted) Set(px, py int, c Color, pri int8) { s.plotter.Set(px+s.x, py+s.y, c, pri) }
+func (s shifted) Shade(px, py int, c Color, a float64) {
+	if sh, ok := s.plotter.(shader); ok {
+		sh.Shade(px+s.x, py+s.y, c, a)
+	}
+}
 
-// image draws every lit dot as an anti-aliased disc on the ink background.
+// image draws every lit dot as an anti-aliased disc on the ink background,
+// over the shaded ground.
 func (d *dotImage) image(pitch int) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, d.W*pitch, d.H*pitch))
-	br, bg, bb := cInk.rgb()
-	for i := 0; i < len(img.Pix); i += 4 {
-		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = uint8(br), uint8(bg), uint8(bb), 255
+	for py := 0; py < d.H; py++ {
+		for px := 0; px < d.W; px++ {
+			i := py*d.W + px
+			gr, gg, gb := Mix(cInk, d.ground[i], d.cover[i]).rgb()
+			if d.cover[i] == 0 {
+				gr, gg, gb = cInk.rgb()
+			}
+			for y := py * pitch; y < (py+1)*pitch; y++ {
+				for x := px * pitch; x < (px+1)*pitch; x++ {
+					o := img.PixOffset(x, y)
+					img.Pix[o], img.Pix[o+1], img.Pix[o+2], img.Pix[o+3] = uint8(gr), uint8(gg), uint8(gb), 255
+				}
+			}
+		}
 	}
 	r := float64(pitch) * .36
 	for py := 0; py < d.H; py++ {

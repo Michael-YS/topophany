@@ -8,10 +8,11 @@ import (
 // Dots is a braille sub-cell raster: each terminal cell holds 2x4 dots, which
 // gives the dot-matrix look of the map and the About globe.
 type Dots struct {
-	W, H int // cells
-	bits []uint8
-	col  []Color
-	pri  []int8
+	W, H  int // cells
+	bits  []uint8
+	col   []Color
+	pri   []int8
+	shade []tint // per cell; nil until something is shaded
 }
 
 // plotter takes dots: the braille raster, or the per-dot image the README
@@ -19,6 +20,19 @@ type Dots struct {
 type plotter interface {
 	Set(px, py int, c Color, pri int8)
 }
+
+// shader is a plotter that can also tint the ground under a dot, a of it
+// covered: the braille raster tints whole cells, the banner each dot.
+type shader interface {
+	Shade(px, py int, c Color, a float64)
+}
+
+type tint struct{ r, g, b, a float64 }
+
+// dotsOnly hides a raster's shading, for art that should be dots alone.
+type dotsOnly struct{ d *Dots }
+
+func (o dotsOnly) Set(px, py int, c Color, pri int8) { o.d.Set(px, py, c, pri) }
 
 var brailleBit = [4][2]uint8{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
 
@@ -77,18 +91,47 @@ func (d *Dots) Polyline(pts [][2]float64, c Color, pri int8, dash int) {
 	}
 }
 
-// Blit renders lit cells onto the canvas; unlit cells keep their content.
-// With bg 0 a lit cell keeps the background already painted beneath it.
+// Shade tints the cell under dot (px,py). A cell's background becomes the
+// mean of its tints, blended over the ground by how much of its eight dots
+// they cover, so a shaded shape has soft, cell-sized antialiased edges.
+func (d *Dots) Shade(px, py int, c Color, a float64) {
+	if a <= 0 || px < 0 || py < 0 || px >= d.W*2 || py >= d.H*4 {
+		return
+	}
+	if d.shade == nil {
+		d.shade = make([]tint, d.W*d.H)
+	}
+	r, g, b := c.rgb()
+	t := &d.shade[(py/4)*d.W+px/2]
+	t.r, t.g, t.b, t.a = t.r+float64(r)*a, t.g+float64(g)*a, t.b+float64(b)*a, t.a+a
+}
+
+// Blit renders lit and shaded cells onto the canvas; other cells keep their
+// content. With bg 0 a lit cell keeps the background already painted
+// beneath it.
 func (d *Dots) Blit(cv *Canvas, ox, oy int, bg Color) {
 	for y := 0; y < d.H; y++ {
 		for x := 0; x < d.W; x++ {
 			i := y*d.W + x
-			if d.bits[i] == 0 || !cv.in(ox+x, oy+y) {
+			shaded := d.shade != nil && d.shade[i].a > 0
+			if d.bits[i] == 0 && !shaded || !cv.in(ox+x, oy+y) {
 				continue
 			}
 			b := bg
 			if b == 0 {
 				b = cv.at(ox+x, oy+y).st.BG
+			}
+			if shaded {
+				t := d.shade[i]
+				ground := b
+				if ground == 0 {
+					ground = cInk
+				}
+				b = Mix(ground, Hex(uint32(t.r/t.a+.5)<<16|uint32(t.g/t.a+.5)<<8|uint32(t.b/t.a+.5)), t.a/8)
+			}
+			if d.bits[i] == 0 {
+				cv.put(ox+x, oy+y, " ", 1, Style{BG: b})
+				continue
 			}
 			cv.Set(ox+x, oy+y, rune(0x2800+int(d.bits[i])), Style{FG: d.col[i], BG: b})
 		}

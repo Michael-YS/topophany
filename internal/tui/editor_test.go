@@ -261,6 +261,48 @@ func TestAboutAnimatesAndNamesTheEtymology(t *testing.T) {
 	}
 }
 
+// The globe is a lit ball, not a disc: shaded under its dots, brighter
+// toward the light than across the terminator, and as tall as it is wide.
+func TestGlobeIsShadedAsASphere(t *testing.T) {
+	m := homelabModel(t)
+	d := NewDots(60, 30)
+	m.paintGlobe(d, 120, 120, 0, 0) // R = 54 dots about (60, 60)
+	if d.shade == nil {
+		t.Fatal("globe is flat: nothing is shaded under its dots")
+	}
+	at := func(px, py int) tint { return d.shade[(py/4)*d.W+px/2] }
+	luma := func(px, py int) float64 { s := at(px, py); return (s.r + s.g + s.b) / s.a }
+	if lit, dark := luma(60-27, 60-22), luma(60+32, 60+27); lit < dark*1.8 {
+		t.Fatalf("sunward %.0f is not brighter than the night side %.0f", lit, dark)
+	}
+	if at(2, 2).a != 0 || at(60, 60).a != 8 {
+		t.Fatal("shading leaks off the ball or leaves its centre bare")
+	}
+	extent := func(shaded func(i int) bool, n, dots int) int {
+		k := 0
+		for i := 0; i < n; i++ {
+			if shaded(i) {
+				k++
+			}
+		}
+		return k * dots
+	}
+	wide := extent(func(x int) bool { return d.shade[15*d.W+x].a >= 4 }, d.W, 2)
+	tall := extent(func(y int) bool { return d.shade[y*d.W+30].a >= 4 }, d.H, 4)
+	if wide < 100 || tall < 100 || wide-tall > 4 || tall-wide > 4 {
+		t.Fatalf("ball is %d dots wide and %d tall", wide, tall)
+	}
+	// The xterm cube would band the shading, so 256 colours keep the dots.
+	m.Colors = color256
+	cv := NewCanvas(60, 30)
+	m.drawGlobe(cv, 0, 0, 60, 30, 0, 0)
+	for _, c := range cv.cells {
+		if c.st.BG != 0 {
+			t.Fatal("256-colour globe is shaded")
+		}
+	}
+}
+
 func TestEveryModeFrameBounds(t *testing.T) {
 	ed, _ := editorModel(t)
 	models := []func() *Model{

@@ -7,8 +7,8 @@ import (
 )
 
 // Topophany = τόπος (place) + -phany (φαίνειν, to show): the appearance of
-// place. The About art is a one-bit dithered globe on which the places
-// declared in the topology are the only lights.
+// place. The About art is a lit, dotted globe on which the places declared
+// in the topology are the only lights.
 
 var font5x7 = map[rune][7]string{
 	'T': {"#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."},
@@ -91,13 +91,17 @@ func (g globe) toView(v vec) vec {
 }
 
 var (
-	cLandDay  = Hex(0xB4F5E8)
-	cLandDusk = Hex(0x2F9389)
-	cLandDark = Hex(0x1A4448)
-	cSeaDot   = Hex(0x183F57)
-	cSeaLit   = Hex(0x4A93B5)
-	cLimb     = Hex(0x235A77)
-	cCity     = Hex(0xFCD34D)
+	cLandDay    = Hex(0xB4F5E8)
+	cLandDusk   = Hex(0x2F9389)
+	cLandDark   = Hex(0x1A4448)
+	cSeaNight   = Hex(0x0C1922)
+	cSeaDay     = Hex(0x1A4B69)
+	cSeaGlint   = Hex(0x4C93B8)
+	cGroundDark = Hex(0x0E2321)
+	cGroundDay  = Hex(0x23584F)
+	cGraticule  = Hex(0x3E86AD)
+	cLimb       = Hex(0x235A77)
+	cCity       = Hex(0xFCD34D)
 )
 
 func (g globe) toWorld(v vec) vec {
@@ -112,7 +116,13 @@ func (g globe) toWorld(v vec) vec {
 // rotation from the mouse wheel.
 func (m *Model) drawGlobe(cv *Canvas, x, y, w, h int, t, spin float64) {
 	d := NewDots(w, h)
-	marks := m.paintGlobe(d, w*2, h*4, t, spin)
+	var p plotter = d
+	if m.profile() == color256 {
+		// The xterm cube turns a smooth shade into grey and teal blocks;
+		// these terminals get the dotted ocean instead.
+		p = dotsOnly{d}
+	}
+	marks := m.paintGlobe(p, w*2, h*4, t, spin)
 	d.Blit(cv, x, y, 0)
 	// Names of the places facing the viewer, where they do not collide.
 	used := map[[2]int]bool{}
@@ -140,10 +150,15 @@ type globeMark struct {
 	c    Color
 }
 
-// paintGlobe draws the globe centred on a W×H dot grid as one-bit dot art:
-// land is an ordered dither lit by the sun with a crisp dotted coast, the
-// ocean a faint halftone that follows the light, the limb a thin line with a
-// haze beyond it. It returns the places facing the viewer.
+// paintGlobe draws the globe centred on a W×H dot grid. Where the plotter
+// can tint the ground beneath its dots (the terminal's cells, the banner's
+// dots) the sphere is shaded: an ocean lit from the upper left with a
+// specular glint and land a lighter ground, both falling off across a soft
+// terminator and toward the limb, so it reads as a ball rather than a disc.
+// Over that, land is an ordered dither of lit dots with a crisp coast, a
+// graticule curves with the surface, the limb is a thin line brightest
+// sunward and a dithered haze lies beyond it. It returns the places facing
+// the viewer.
 func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 	R := math.Min(float64(W), float64(H))/2 - math.Max(3, math.Min(float64(W), float64(H))*.05)
 	if R < 6 {
@@ -155,24 +170,49 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 	g := globe{spin: places[0].lon*math.Pi/180 - .35 + t*.11 + spin, tilt: .36}
 	light := vec{-.62, .42, .66}.norm()
 	half := vec{light[0], light[1], light[2] + 1}.norm()
-	normal := func(px, py int) (vec, bool) {
+	sh, shading := d.(shader)
+	normal := func(px, py int) vec {
 		nx, ny := (float64(px)+.5-cx)/R, (float64(py)+.5-cy)/R
-		r2 := nx*nx + ny*ny
-		return vec{nx, -ny, math.Sqrt(math.Max(0, 1-r2))}, r2 <= 1
+		return vec{nx, -ny, math.Sqrt(math.Max(0, 1-nx*nx-ny*ny))}
 	}
-	// Which dots are land, once per frame; the coast test reads neighbours.
+	// Once per frame, for every dot on the disc: land or sea, and the
+	// graticule band it lies in. A dot whose right or lower neighbour lies
+	// in another band is on a grid line, so lines are one dot wide and bend
+	// with the surface. Meridians stop short of the poles, where they bunch.
 	grid := make([]bool, W*H)
+	band := make([]int16, W*H)
 	for py := 0; py < H; py++ {
 		for px := 0; px < W; px++ {
-			if v, in := normal(px, py); in {
-				wv := g.toWorld(v)
-				grid[py*W+px] = land(math.Asin(clamp(wv[1], -1, 1))*180/math.Pi, math.Atan2(wv[0], wv[2])*180/math.Pi)
+			i := py*W + px
+			band[i] = -1
+			if math.Hypot(float64(px)+.5-cx, float64(py)+.5-cy) > R+.5 {
+				continue
+			}
+			wv := g.toWorld(normal(px, py))
+			lat := math.Asin(clamp(wv[1], -1, 1)) * 180 / math.Pi
+			lon := math.Atan2(wv[0], wv[2]) * 180 / math.Pi
+			grid[i] = land(lat, lon)
+			band[i] = int16((lat+90)/30) * 16
+			if math.Abs(lat) < 70 {
+				band[i] += int16((lon+180)/30) + 1
 			}
 		}
 	}
 	isLand := func(px, py int) bool { return px >= 0 && py >= 0 && px < W && py < H && grid[py*W+px] }
+	onLine := func(px, py int) bool {
+		i := py*W + px
+		differs := func(j int) bool {
+			a, b := band[i], band[j]
+			if b < 0 {
+				return false
+			}
+			// Parallels always; meridians only where both dots carry one.
+			return a/16 != b/16 || a%16 != 0 && b%16 != 0 && a%16 != b%16
+		}
+		return px+1 < W && differs(i+1) || py+1 < H && differs(i+W)
+	}
 	// Shades are quantized: neighbouring cells share colors, which keeps
-	// the escape stream small without visible banding at dot scale.
+	// the escape stream small without visible banding under the dots.
 	landColor := func(lit, z float64) Color {
 		lit, z = math.Round(lit*10)/10, math.Round(z*5)/5
 		c := Mix(cLandDark, cLandDusk, math.Min(1, lit*3))
@@ -186,6 +226,11 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 		for px := 0; px < W; px++ {
 			dx, dy := float64(px)+.5-cx, float64(py)+.5-cy
 			r := math.Hypot(dx, dy)
+			// How squarely this edge of the disc faces the light.
+			side := 0.0
+			if r > 0 {
+				side = math.Max(0, (dx*light[0]-dy*light[1])/r)
+			}
 			switch {
 			case r > R+thick*2:
 				// Sparse stars far from the globe.
@@ -197,33 +242,52 @@ func (m *Model) paintGlobe(d plotter, W, H int, t, spin float64) []globeMark {
 					}
 				}
 			case r > R+thick:
-			case r > R:
+			case r > R+.5:
 				// Atmosphere: an ordered-dither haze, brightest sunward.
 				f := 1 - (r-R)/thick
-				side := math.Max(0, (dx*light[0]-dy*light[1])/r)
 				if dither(px, py, f*f*(.18+.82*side)) {
 					d.Set(px, py, Mix(cInk, cAccent2, .25+.5*math.Round(f*4)/4), 1)
 				}
-			case r > R-1:
-				// The limb: one thin line, so the sphere keeps its shape on
-				// the night side too.
-				d.Set(px, py, cLimb, 1)
 			default:
-				v, _ := normal(px, py)
-				lit := math.Max(0, v.dot(light))
-				if grid[py*W+px] {
+				v := normal(px, py)
+				nl := v.dot(light)
+				lit := math.Max(0, nl)
+				// Lambert light through a soft terminator, darkening
+				// toward the limb.
+				day := clamp((nl+.12)/.42, 0, 1)
+				day = day * day * (3 - 2*day)
+				level := math.Round((.1+.9*day*(.4+.6*lit))*math.Pow(v[2], .3)*16) / 16
+				sea := Mix(cSeaNight, cSeaDay, level)
+				onLand := grid[py*W+px]
+				if shading {
+					c := sea
+					if onLand {
+						c = Mix(cGroundDark, cGroundDay, level)
+					} else if spec := math.Pow(math.Max(0, v.dot(half)), 24); spec > .04 {
+						c = Mix(c, cSeaGlint, math.Round(spec*8)/8)
+					}
+					sh.Shade(px, py, c, clamp(R+.5-r, 0, 1))
+				}
+				switch {
+				case r > R-1:
+					// The limb: one thin line, so the sphere keeps its
+					// shape on the night side too.
+					d.Set(px, py, Mix(cLimb, cAccent2, math.Round(side*4)/4*.6), 1)
+				case onLand:
 					if !isLand(px-1, py) || !isLand(px+1, py) || !isLand(px, py-1) || !isLand(px, py+1) {
 						d.Set(px, py, landColor(math.Max(lit, .2), v[2]), 2)
-					} else if dither(px, py, .3+.7*lit) {
+					} else if dither(px, py, .22+.6*lit) {
 						d.Set(px, py, landColor(lit, v[2]), 2)
 					}
-					continue
-				}
-				// Ocean: a sparse halftone that follows the light, with a
-				// soft specular glint.
-				spec := math.Pow(math.Max(0, v.dot(half)), 26)
-				if dither(px, py, .16*math.Pow(lit, 1.3)+.4*spec) {
-					d.Set(px, py, Mix(cSeaDot, cSeaLit, math.Round(math.Min(1, lit*.7+spec)*6)/6), 0)
+				case onLine(px, py):
+					d.Set(px, py, Mix(sea, cGraticule, .3+.4*level), 1)
+				case !shading:
+					// Without a ground to shade, the ocean is a sparse
+					// halftone that follows the light.
+					spec := math.Pow(math.Max(0, v.dot(half)), 26)
+					if dither(px, py, .16*math.Pow(lit, 1.3)+.4*spec) {
+						d.Set(px, py, Mix(cSeaDay, cSeaGlint, math.Round(math.Min(1, lit*.7+spec)*6)/6), 0)
+					}
 				}
 			}
 		}

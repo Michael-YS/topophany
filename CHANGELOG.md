@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The About globe reads as a sphere instead of a flat disc: a shaded ocean
+  and land lit from the upper left, falling off across a soft terminator and
+  toward the limb, with a graticule that curves with the surface. Truecolor
+  terminals shade under the dots; 256-colour terminals keep a dotted ocean.
+  The README banner is redrawn from the same art.
+
 ### Security
 
 - Bound Exit-IP and Mihomo JSON structure before decoding; escape bidirectional controls in CLI JSON without changing parsed values.
