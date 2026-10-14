@@ -53,22 +53,22 @@ var escapes = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
 // are the rows the TUI lists, evidence included; the verdict the CLI
 // gives is the one on the TUI's Overview, and so are the tab counts.
 func TestReadCommandsShowWhatTheTUIShows(t *testing.T) {
-	c, e := preview.Preset()
+	c, e := preview.Preset(preview.DefaultLanguage)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	scenarios := len(preview.New(c, now).Scenarios())
+	scenarios := len(preview.New(c, now, preview.DefaultLanguage).Scenarios())
 	for sc := 0; sc < scenarios; sc++ {
 		for _, observer := range []string{"", "cs-win"} {
 			name := fmt.Sprintf("scenario %d from %q", sc, observer)
-			sim := preview.New(c, now)
+			sim := preview.New(c, now, preview.DefaultLanguage)
 			if sc != 0 {
 				sim.SetScenario(sc, now.Add(-30*time.Minute))
 			}
 			snap, unreachable := sim.Snapshot(observer, now)
 			args := func(rest ...string) []string {
-				return append([]string{"preview", "--scenario", fmt.Sprint(sc), "--observer", observer}, rest...)
+				return append([]string{"preview", "--lang", preview.DefaultLanguage, "--scenario", fmt.Sprint(sc), "--observer", observer}, rest...)
 			}
 			out, e := at(now, args("status", "--json")...)
 			if unreachable != nil {
@@ -127,13 +127,13 @@ func TestReadCommandsShowWhatTheTUIShows(t *testing.T) {
 // The evidence behind every entry reads the same in text as in the TUI's
 // evidence panel, line for line, and a server's entry carries its card.
 func TestShowEntryTextCarriesTheEvidence(t *testing.T) {
-	c, e := preview.Preset()
+	c, e := preview.Preset(preview.DefaultLanguage)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	for _, sc := range []int{1, 10} {
-		sim := preview.New(c, now)
+		sim := preview.New(c, now, preview.DefaultLanguage)
 		sim.SetScenario(sc, now.Add(-30*time.Minute))
 		snap, e := sim.Snapshot("", now)
 		if e != nil {
@@ -142,7 +142,7 @@ func TestShowEntryTextCarriesTheEvidence(t *testing.T) {
 		v := view.View{Snapshot: snap, Now: now}
 		for tab := view.Topology; tab < len(view.Tabs); tab++ {
 			for _, r := range v.List(tab, "") {
-				out, e := at(now, "preview", "--scenario", fmt.Sprint(sc), "show", tabNames[tab], r.Kind+":"+r.ID)
+				out, e := at(now, "preview", "--lang", preview.DefaultLanguage, "--scenario", fmt.Sprint(sc), "show", tabNames[tab], r.Kind+":"+r.ID)
 				if e != nil {
 					t.Fatalf("show %s %s:%s: %v", tabNames[tab], r.Kind, r.ID, e)
 				}
@@ -177,7 +177,7 @@ func TestShowEntryTextCarriesTheEvidence(t *testing.T) {
 // panel has them: the strip topo show prints is the newest part of the one
 // the TUI draws, from the same samples, and its text says the same.
 func TestShowCheckCarriesItsRecentSamples(t *testing.T) {
-	c, e := preview.Preset()
+	c, e := preview.Preset(preview.DefaultLanguage)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -185,7 +185,7 @@ func TestShowCheckCarriesItsRecentSamples(t *testing.T) {
 	const id = "w-dmit-443"
 	// All clear, a lossy border, then a worker gone quiet.
 	for _, sc := range []int{0, 5, 6} {
-		sim := preview.New(c, now)
+		sim := preview.New(c, now, preview.DefaultLanguage)
 		if sc != 0 {
 			sim.SetScenario(sc, now.Add(-30*time.Minute))
 		}
@@ -199,7 +199,7 @@ func TestShowCheckCarriesItsRecentSamples(t *testing.T) {
 		}
 		x, _ := config.Check(c, id)
 		want := view.NewStrip(x, entries, now, textSlots)
-		out, e := at(now, "preview", "--scenario", fmt.Sprint(sc), "show", "checks", id, "--json")
+		out, e := at(now, "preview", "--lang", preview.DefaultLanguage, "--scenario", fmt.Sprint(sc), "show", "checks", id, "--json")
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -221,7 +221,7 @@ func TestShowCheckCarriesItsRecentSamples(t *testing.T) {
 		if !strings.Contains(frame, view.Glyphs(want.Slots)) {
 			t.Fatalf("scenario %d: the TUI's strip does not end as show's %q:\n%s", sc, view.Glyphs(want.Slots), frame)
 		}
-		text, e := at(now, "preview", "--scenario", fmt.Sprint(sc), "show", "checks", id)
+		text, e := at(now, "preview", "--lang", preview.DefaultLanguage, "--scenario", fmt.Sprint(sc), "show", "checks", id)
 		if e != nil || !strings.Contains(text, "RECENT SAMPLES · "+want.Span(now)+" · "+want.Every()+"\n"+view.Glyphs(want.Slots)+"\n") || !strings.Contains(text, want.Latency.String()) {
 			t.Fatalf("scenario %d: show's text lacks the strip: %v\n%s", sc, e, text)
 		}
@@ -340,24 +340,66 @@ func TestTextOutputDropsControlSequences(t *testing.T) {
 // topo preview lists its scenarios and refuses commands it does not have.
 func TestPreviewScenariosAndCommands(t *testing.T) {
 	now := time.Now()
-	out, e := at(now, "preview", "--scenario", "2", "scenarios", "--json")
+	out, e := at(now, "preview", "--lang", preview.DefaultLanguage, "--scenario", "2", "scenarios", "--json")
 	var list []struct {
 		Index   int
+		ID      string
 		Name    string
 		Current bool
 	}
-	if e != nil || json.Unmarshal([]byte(out), &list) != nil || len(list) < 3 || !list[2].Current || list[0].Current {
+	if e != nil || json.Unmarshal([]byte(out), &list) != nil || len(list) < 3 || !list[2].Current || list[0].Current || list[1].ID != "dmit-blocked" {
 		t.Fatalf("%v\n%s", e, out)
 	}
-	if out, e = at(now, "preview", "--scenario", "2", "scenarios"); e != nil || !strings.Contains(out, "2*") {
+	if out, e = at(now, "preview", "--lang", preview.DefaultLanguage, "--scenario", "2", "scenarios"); e != nil || !strings.Contains(out, "2*") {
 		t.Fatalf("%v\n%s", e, out)
 	}
-	if out, e = at(now, "preview", "--scenario", "1", "status"); !strings.Contains(out, "Scenario: "+list[1].Name) || exitCode(e) != ExitAttention {
+	if out, e = at(now, "preview", "--lang", preview.DefaultLanguage, "--scenario", "1", "status"); !strings.Contains(out, "Scenario: "+list[1].Name) || exitCode(e) != ExitAttention {
 		t.Fatalf("%v\n%s", e, out)
 	}
-	for _, args := range [][]string{{"preview", "nonsense"}, {"preview", "--print-topology", "status"}, {"preview", "status", "--observer", "nobody"}} {
+	for _, args := range [][]string{{"preview", "nonsense"}, {"preview", "--print-topology", "status"}, {"preview", "status", "--observer", "nobody"}, {"preview", "--lang", "tlh", "status"}} {
 		if _, e = at(now, args...); exitCode(e) != 1 {
 			t.Fatal("accepted", args, e)
+		}
+	}
+}
+
+// topo preview speaks every language it has a catalog for, chosen by
+// --lang or else by the locale, and the scenarios keep their IDs in each.
+func TestPreviewLanguages(t *testing.T) {
+	now := time.Now()
+	base, e := at(now, "preview", "--lang", preview.DefaultLanguage, "scenarios", "--json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, lang := range preview.Languages() {
+		out, e := at(now, "preview", "--lang", lang, "scenarios", "--json")
+		var list, want []struct{ ID, Name string }
+		if e != nil || json.Unmarshal([]byte(out), &list) != nil || json.Unmarshal([]byte(base), &want) != nil || len(list) != len(want) {
+			t.Fatalf("%s: %v\n%s", lang, e, out)
+		}
+		for i := range list {
+			if list[i].ID != want[i].ID || (lang != preview.DefaultLanguage) == (list[i].Name == want[i].Name) {
+				t.Fatalf("%s: scenario %d is %+v, %+v in %s", lang, i, list[i], want[i], preview.DefaultLanguage)
+			}
+		}
+		topo, e := at(now, "preview", "--lang", lang, "--print-topology")
+		want0, _ := preview.PresetJSON(lang)
+		if e != nil || topo != string(want0) {
+			t.Fatalf("%s: --print-topology wrote another topology: %v", lang, e)
+		}
+	}
+	for _, env := range []struct{ all, messages, lang, want string }{
+		{"", "", "", preview.DefaultLanguage},
+		{"", "", "ja_JP.UTF-8", "ja"},
+		{"", "zh_CN.UTF-8", "ja_JP.UTF-8", "zh"},
+		{"C", "zh_CN.UTF-8", "ja_JP.UTF-8", preview.DefaultLanguage},
+		{"", "", "tlh", preview.DefaultLanguage},
+	} {
+		t.Setenv("LC_ALL", env.all)
+		t.Setenv("LC_MESSAGES", env.messages)
+		t.Setenv("LANG", env.lang)
+		if got := localeLanguage(); got != env.want {
+			t.Errorf("LC_ALL=%q LC_MESSAGES=%q LANG=%q chose %q, not %q", env.all, env.messages, env.lang, got, env.want)
 		}
 	}
 }

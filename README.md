@@ -20,7 +20,7 @@
 
 <p align="center">
   <img src="docs/assets/overview.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
-  <br><sub>The Overview during a simulated outage, from <code>topo preview --scenario 1</code>.</sub>
+  <br><sub>The Overview during a simulated outage, from <code>topo preview --lang zh --scenario 1</code>.</sub>
 </p>
 
 ## Why Topophany
@@ -38,7 +38,7 @@ Install from the [releases page](https://github.com/WhitenWhiten/topophany/relea
 go install github.com/WhitenWhiten/topophany/cmd/topo@latest
 ```
 
-See the whole UI with synthetic evidence, no setup needed. Press `x` to switch failure scenarios:
+See the whole UI with synthetic evidence, no setup needed. Press `x` to switch failure scenarios. The built-in topology and its scenarios are written in English, Japanese and Chinese and follow your locale; `--lang ja` picks one:
 
 ```sh
 topo preview

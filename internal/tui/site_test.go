@@ -48,12 +48,12 @@ type recorder struct {
 }
 
 func newRecorder(t *testing.T) *recorder {
-	c, e := preview.Preset()
+	c, e := preview.Preset(preview.DefaultLanguage)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	sim := preview.New(c, now)
+	sim := preview.New(c, now, preview.DefaultLanguage)
 	r := &recorder{t: t, sim: sim, styles: map[Style]int{}}
 	r.m = &Model{Now: now, Width: tourW, Height: tourH, Preview: sim, Server: "synthetic", Colors: colorTrue}
 	r.out.Size = [2]int{tourW, tourH}

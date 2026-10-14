@@ -1,6 +1,7 @@
 package preview
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -8,26 +9,31 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
-func settled(t *testing.T, name string) model.Snapshot {
+func settled(t *testing.T, id string) model.Snapshot {
 	t.Helper()
-	c, e := Preset()
+	return settledIn(t, id, DefaultLanguage)
+}
+
+// settledIn is the snapshot of a scenario half an hour after it began, with
+// the built-in topology written in lang.
+func settledIn(t *testing.T, id, lang string) model.Snapshot {
+	t.Helper()
+	c, e := Preset(lang)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	s := New(c, now)
-	for i, line := range s.Scenarios() {
-		if strings.HasPrefix(line, name+"\t") || line == name {
-			s.SetScenario(i, now.Add(-30*time.Minute))
-			snap, e := s.Snapshot("", now)
-			if e != nil {
-				t.Fatal(name, e)
-			}
-			return snap
-		}
+	s := New(c, now, lang)
+	i := slices.Index(s.ScenarioIDs(), id)
+	if i < 0 {
+		t.Fatal("missing scenario", id)
 	}
-	t.Fatal("missing scenario", name)
-	return model.Snapshot{}
+	s.SetScenario(i, now.Add(-30*time.Minute))
+	snap, e := s.Snapshot("", now)
+	if e != nil {
+		t.Fatal(id, e)
+	}
+	return snap
 }
 
 func check(t *testing.T, s model.Snapshot, id string) model.CheckState {
@@ -52,7 +58,7 @@ func entity(t *testing.T, list []model.EntityState, id string) model.EntityState
 }
 
 func TestPresetModelsTheDeclaredNetwork(t *testing.T) {
-	c, e := Preset()
+	c, e := Preset(DefaultLanguage)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -85,7 +91,7 @@ func TestPresetModelsTheDeclaredNetwork(t *testing.T) {
 }
 
 func TestHealthyPresetMostlyUpWithLiveObservers(t *testing.T) {
-	s := settled(t, "全部正常")
+	s := settled(t, "normal")
 	if s.Instance != "preview" || s.Project != "preview-homelab" {
 		t.Fatal(s.Instance, s.Project)
 	}
@@ -117,7 +123,7 @@ func TestHealthyPresetMostlyUpWithLiveObservers(t *testing.T) {
 }
 
 func TestBlockedLineFallsBackAndKeepsCounterEvidence(t *testing.T) {
-	s := settled(t, "DMIT 线路被阻断（仅国内）")
+	s := settled(t, "dmit-blocked")
 	if check(t, s, "w-dmit-443").Health != "down" || check(t, s, "w-dmit-icmp").Health != "up" {
 		t.Fatal("public port and icmp should disagree")
 	}
@@ -156,7 +162,7 @@ func TestBlockedLineFallsBackAndKeepsCounterEvidence(t *testing.T) {
 }
 
 func TestHostDownIsGlobalAndExitFailureIsSpecific(t *testing.T) {
-	down := settled(t, "DMIT 线路机宕机")
+	down := settled(t, "dmit-down")
 	if check(t, down, "w-tn-dmit").Health != "down" || check(t, down, "s-dmit-tn").Health != "down" || check(t, down, "w-ts-dmit").Health != "down" {
 		t.Fatal("a dead host should fail from every observer, including tailnet")
 	}
@@ -170,7 +176,7 @@ func TestHostDownIsGlobalAndExitFailureIsSpecific(t *testing.T) {
 			}
 		}
 	}
-	exit := settled(t, "AAITR 家宽落地故障")
+	exit := settled(t, "aaitr-down")
 	if check(t, exit, "w-exit-dmit-aaitr").Health != "down" || check(t, exit, "w-exit-dmit-qqpr").Health != "up" {
 		t.Fatal("only the AAITR exit should fail")
 	}
@@ -183,7 +189,7 @@ func TestHostDownIsGlobalAndExitFailureIsSpecific(t *testing.T) {
 }
 
 func TestPolicyDriftMaintenanceOutageAndClock(t *testing.T) {
-	drift := settled(t, "AAITR 出口 IP 漂移")
+	drift := settled(t, "aaitr-exit-drift")
 	bad := check(t, drift, "w-exit-dmit-aaitr")
 	if bad.Health != "degraded" || bad.Last.Outcome != "policy" || bad.Last.Facts["exit_ip"] != "203.0.113.99" {
 		t.Fatal(bad.Health, bad.Last)
@@ -191,7 +197,7 @@ func TestPolicyDriftMaintenanceOutageAndClock(t *testing.T) {
 	if check(t, drift, "w-exit-dmit-qqpr").Health != "up" {
 		t.Fatal("the other exit is unaffected")
 	}
-	maint := settled(t, "S2 维护窗口")
+	maint := settled(t, "s2-maintenance")
 	if check(t, maint, "w-s2-443").Freshness != "maintenance" || check(t, maint, "w-memos").Freshness != "maintenance" {
 		t.Fatal("s2 checks should leave alerting")
 	}
@@ -205,7 +211,7 @@ func TestPolicyDriftMaintenanceOutageAndClock(t *testing.T) {
 			}
 		}
 	}
-	home := settled(t, "长沙家宽断网")
+	home := settled(t, "home-offline")
 	if check(t, home, "w-tn-s1").Freshness != "never" || check(t, home, "m-tn-win").Freshness != "never" {
 		t.Fatal("offline workers should not keep fresh results")
 	}
@@ -216,11 +222,11 @@ func TestPolicyDriftMaintenanceOutageAndClock(t *testing.T) {
 	if proxy.Health != "down" || proxy.Last.Facts["http_status"] != "502" {
 		t.Fatal("visitor should see the reverse proxy fail", proxy.Health, proxy.Last)
 	}
-	hz := settled(t, "杭州中继宕机")
+	hz := settled(t, "relay-down")
 	if check(t, hz, "h-derp").Freshness != "never" || check(t, hz, "j-home").Health != "down" {
 		t.Fatal("hangzhou observer and the relay should both be gone")
 	}
-	clock := settled(t, "东京 worker 时钟超前")
+	clock := settled(t, "tokyo-clock-skew")
 	jp := check(t, clock, "j-openlist")
 	if jp.Health != "unknown" || jp.Freshness != "stale" || !strings.Contains(jp.Reason, "clock") {
 		t.Fatal(jp)
@@ -231,14 +237,14 @@ func TestPolicyDriftMaintenanceOutageAndClock(t *testing.T) {
 }
 
 func TestUnreachableAndForeignTopology(t *testing.T) {
-	c, e := Preset()
+	c, e := Preset(DefaultLanguage)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	s := New(c, now)
-	for i, line := range s.Scenarios() {
-		if strings.HasPrefix(line, "Collector") {
+	s := New(c, now, DefaultLanguage)
+	for i, id := range s.ScenarioIDs() {
+		if id == "collector-unreachable" {
 			s.SetScenario(i, now.Add(-time.Minute))
 		}
 	}
@@ -246,13 +252,13 @@ func TestUnreachableAndForeignTopology(t *testing.T) {
 		t.Fatal(e)
 	}
 	small := model.Config{Schema: 1, Project: "lab", Nodes: []model.Node{{ID: "box", Name: "Box"}}, Observers: []model.Observer{{ID: "here", Name: "Here", Node: "box", Context: "local", StaleSeconds: 30}}}
-	sim := New(small, now)
+	sim := New(small, now, DefaultLanguage)
 	if len(sim.Scenarios()) >= len(scenarios) {
 		t.Fatal("scenarios that name missing nodes stayed available", len(sim.Scenarios()))
 	}
-	for _, line := range sim.Scenarios() {
-		if strings.Contains(line, "DMIT") || strings.Contains(line, "长沙") {
-			t.Fatal("inapplicable scenario", line)
+	for _, id := range sim.ScenarioIDs() {
+		if id != "normal" && id != "cross-border-loss" && id != "chaos" && id != "collector-unreachable" {
+			t.Fatal("inapplicable scenario", id)
 		}
 	}
 }
@@ -267,7 +273,7 @@ func contains(list []string, v string) bool {
 }
 
 func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
-	ok := settled(t, "全部正常")
+	ok := settled(t, "normal")
 	if f := check(t, ok, "h-s1-web").Last.Facts; f["edge_provider"] != "cloudflare" || f["edge_pop"] != "LAX" || f["edge_cache"] != "DYNAMIC" {
 		t.Fatal("mainland visitors should land on a US edge", f)
 	}
@@ -286,7 +292,7 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 		}
 	}
 
-	down := settled(t, "S1 源站宕机（经 Cloudflare）")
+	down := settled(t, "s1-origin-down")
 	blog := check(t, down, "j-blog")
 	if blog.Health != "down" || blog.Last.Facts["http_status"] != "521" || !blog.Last.Connectivity {
 		t.Fatal("the edge should answer for a dead origin", blog.Health, blog.Last)
@@ -310,7 +316,7 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 		t.Fatal("no bounded diagnosis behind the edge", down.Incidents)
 	}
 
-	blocked := settled(t, "Cloudflare 边缘不可达（仅国内）")
+	blocked := settled(t, "edge-blocked")
 	if h := check(t, blocked, "h-worker"); h.Health != "down" || h.Last.Connectivity {
 		t.Fatal("mainland requests should get no answer at all", h.Health, h.Last)
 	}
@@ -329,13 +335,13 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 // it ends, and a simulator started afresh on the same timeline remembers
 // the same. A view of one observer carries only its own records.
 func TestPreviewRemembersIncidents(t *testing.T) {
-	c, e := Preset()
+	c, e := Preset(DefaultLanguage)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	began := now.Add(-30 * time.Minute)
-	s := New(c, now)
+	s := New(c, now, DefaultLanguage)
 	s.SetScenario(2, began)
 	snap, e := s.Snapshot("", now)
 	if e != nil || len(snap.Incidents) == 0 || len(snap.Ledger) != len(snap.Incidents) {
@@ -346,7 +352,7 @@ func TestPreviewRemembersIncidents(t *testing.T) {
 			t.Fatalf("record %+v of an outage that began at %s", r, began)
 		}
 	}
-	fresh := New(c, now)
+	fresh := New(c, now, DefaultLanguage)
 	fresh.SetScenario(2, began)
 	again, _ := fresh.Snapshot("", now)
 	if len(again.Ledger) != len(snap.Ledger) || again.Ledger[0].ID != snap.Ledger[0].ID || !again.Ledger[0].Opened.Equal(snap.Ledger[0].Opened) {

@@ -10,14 +10,18 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
+// previewLang is the language the preview is read in here: one whose names
+// are wide characters, which the layout must measure by their cells.
+const previewLang = "zh"
+
 func previewModel(t *testing.T) *Model {
 	t.Helper()
-	c, e := preview.Preset()
+	c, e := preview.Preset(previewLang)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	sim := preview.New(c, now)
+	sim := preview.New(c, now, previewLang)
 	snap, e := sim.Snapshot("", now)
 	if e != nil {
 		t.Fatal(e)
@@ -73,12 +77,12 @@ func TestPreviewScenarioMenuDebugAndReadOnly(t *testing.T) {
 }
 
 func TestOverviewDashboardAnswersAtAGlance(t *testing.T) {
-	c, e := preview.Preset()
+	c, e := preview.Preset(previewLang)
 	if e != nil {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	sim := preview.New(c, now)
+	sim := preview.New(c, now, previewLang)
 	snap, _ := sim.Snapshot("", now)
 	m := &Model{Snapshot: snap, Now: now, Width: 160, Height: 48, Preview: sim, Server: "synthetic"}
 	out := visible(m)

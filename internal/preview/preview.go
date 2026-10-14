@@ -28,43 +28,50 @@ var preset []byte
 
 // Preset returns the built-in complex topology (Changsha home, Hangzhou
 // relay, LA line + residential exits, Hawaii exit, New York, Tokyo, Frankfurt,
-// and Cloudflare, Vercel and Supabase at the edge).
-func Preset() (model.Config, error) { return config.Decode(bytes.NewReader(preset)) }
+// and Cloudflare, Vercel and Supabase at the edge), written in lang.
+func Preset(lang string) (model.Config, error) {
+	b, e := PresetJSON(lang)
+	if e != nil {
+		return model.Config{}, e
+	}
+	return config.Decode(bytes.NewReader(b))
+}
 
-// PresetJSON is the reviewed source of Preset, for `topo preview --print-topology`.
-func PresetJSON() []byte { return append([]byte(nil), preset...) }
+// PresetJSON is the reviewed source of Preset in lang, for `topo preview
+// --print-topology`.
+func PresetJSON(lang string) ([]byte, error) { return localize(preset, lang) }
 
 // Scenario is one simulated world state. Node and observer IDs that are not in
 // the topology make a scenario unavailable rather than silently empty.
 type Scenario struct {
-	Name, Detail string
-	Down         []string          // nodes that answer nothing (power/host failure)
-	Blocked      []string          // nodes unreachable over public networks from mainland-China observers
-	Offline      []string          // observers whose worker stops reporting
-	Maintenance  []string          // nodes whose checks are put in maintenance
-	WrongExit    map[string]string // exit node → observed exit IP that violates policy
-	Lossy        float64           // failure probability on cross-border samples
-	Slow         float64           // latency multiplier on cross-border samples
-	Chaos        bool              // random 30-second outage windows everywhere
-	Skew         map[string]time.Duration
-	Unreachable  bool // the collector itself cannot be reached
+	ID          string            // its name and detail are scenario.ID and scenario.ID.detail in the catalogs
+	Down        []string          // nodes that answer nothing (power/host failure)
+	Blocked     []string          // nodes unreachable over public networks from mainland-China observers
+	Offline     []string          // observers whose worker stops reporting
+	Maintenance []string          // nodes whose checks are put in maintenance
+	WrongExit   map[string]string // exit node → observed exit IP that violates policy
+	Lossy       float64           // failure probability on cross-border samples
+	Slow        float64           // latency multiplier on cross-border samples
+	Chaos       bool              // random 30-second outage windows everywhere
+	Skew        map[string]time.Duration
+	Unreachable bool // the collector itself cannot be reached
 }
 
 var scenarios = []Scenario{
-	{Name: "全部正常", Detail: "所有链路可用；偶尔出现单次失败（未达确认阈值，只显示 warning）。"},
-	{Name: "DMIT 线路被阻断（仅国内）", Detail: "长沙和杭州到 DMIT 的公网连接超时，ICMP 仍通，tailnet 走 DERP 中继；纽约/东京对照仍可达 → 反证 + 路径特定故障假设。Clash 回落到 S2。", Blocked: []string{"dmit"}},
-	{Name: "DMIT 线路机宕机", Detail: "DMIT 对所有观测点都无响应（含 tailnet）；主链全断，S2 备链接管。", Down: []string{"dmit"}},
-	{Name: "AAITR 家宽落地故障", Detail: "两条经 AAITR 的链都失败，QQPR 夏威夷出口仍可用 → 出口候选降级。", Down: []string{"aaitr"}},
-	{Name: "AAITR 出口 IP 漂移", Detail: "请求成功但出口 IP 不在声明范围 → policy 违规，不算宕机。", WrongExit: map[string]string{"aaitr": "203.0.113.99"}},
-	{Name: "跨境高丢包 / 高延迟", Detail: "国内观测点的跨境样本 35% 失败、延迟 ×2.6；状态在 warning/down 之间抖动。", Lossy: .35, Slow: 2.6},
-	{Name: "长沙家宽断网", Detail: "Windows/MacBook 的 worker 停止上报（几十秒后转为 stale/unknown）；杭州反代访问家庭面板失败，访客看到 502。", Down: []string{"win", "mac", "router"}, Offline: []string{"cs-win", "cs-mac"}},
-	{Name: "杭州中继宕机", Detail: "阿里云杭州整机不可用：DERP 中继、反向代理和杭州观测点同时消失。", Down: []string{"hz"}, Offline: []string{"obs-hz"}},
-	{Name: "S2 维护窗口", Detail: "S2 相关检查进入维护（不告警）；备用线路与私有服务暂停判定。", Maintenance: []string{"s2"}},
-	{Name: "东京 worker 时钟超前", Detail: "东京执行器时钟快 40 秒；其样本不被当作当前结果。", Skew: map[string]time.Duration{"obs-jp": 40 * time.Second}},
-	{Name: "S1 源站宕机（经 Cloudflare）", Detail: "S1 整机无响应：访客经 Cloudflare 收到 521，边缘仍在应答 → 主站与 API 失败，但 Cloudflare 有应答证据、S1 只记为受影响；纽约观测点随之离线。", Down: []string{"s1"}, Offline: []string{"obs-s1"}},
-	{Name: "Cloudflare 边缘不可达（仅国内）", Detail: "国内观测点连不上 Cloudflare 边缘（超时、没有任何应答）；东京经 NRT 照常 → 故障在边缘之前，不归咎于源站。", Blocked: []string{"cf"}},
-	{Name: "随机混沌", Detail: "每个检查以 30 秒为窗口随机中断（约 15%），延迟随机尖峰。", Chaos: true},
-	{Name: "Collector 不可达", Detail: "TUI 拿不到新快照：保留缓存但全部显示为 unknown / CACHED。", Unreachable: true},
+	{ID: "normal"},
+	{ID: "dmit-blocked", Blocked: []string{"dmit"}},
+	{ID: "dmit-down", Down: []string{"dmit"}},
+	{ID: "aaitr-down", Down: []string{"aaitr"}},
+	{ID: "aaitr-exit-drift", WrongExit: map[string]string{"aaitr": "203.0.113.99"}},
+	{ID: "cross-border-loss", Lossy: .35, Slow: 2.6},
+	{ID: "home-offline", Down: []string{"win", "mac", "router"}, Offline: []string{"cs-win", "cs-mac"}},
+	{ID: "relay-down", Down: []string{"hz"}, Offline: []string{"obs-hz"}},
+	{ID: "s2-maintenance", Maintenance: []string{"s2"}},
+	{ID: "tokyo-clock-skew", Skew: map[string]time.Duration{"obs-jp": 40 * time.Second}},
+	{ID: "s1-origin-down", Down: []string{"s1"}, Offline: []string{"obs-s1"}},
+	{ID: "edge-blocked", Blocked: []string{"cf"}},
+	{ID: "chaos", Chaos: true},
+	{ID: "collector-unreachable", Unreachable: true},
 }
 
 type change struct {
@@ -84,12 +91,19 @@ type Sim struct {
 	paths     map[string]model.Path
 	services  map[string]model.Service
 	obsNode   map[string]string
-	ledger    *ledger.Ledger // what a collector watching all along would remember
-	observed  time.Time      // when the ledger last judged the evidence
+	ledger    *ledger.Ledger    // what a collector watching all along would remember
+	observed  time.Time         // when the ledger last judged the evidence
+	text      map[string]string // the catalog the scenarios are named from
 }
 
-func New(c model.Config, now time.Time) *Sim {
+// New simulates c from now on, naming the scenarios in lang (one of
+// Languages; any other names them in DefaultLanguage).
+func New(c model.Config, now time.Time, lang string) *Sim {
 	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, services: map[string]model.Service{}, obsNode: map[string]string{}, ledger: ledger.New()}
+	var e error
+	if s.text, e = catalog(lang); e != nil {
+		s.text, _ = catalog(DefaultLanguage)
+	}
 	for _, n := range c.Nodes {
 		s.nodes[n.ID] = n
 	}
@@ -153,9 +167,28 @@ func keysD(m map[string]time.Duration) []string {
 func (s *Sim) Scenarios() []string {
 	r := []string{}
 	for _, i := range s.available {
-		r = append(r, scenarios[i].Name+"\t"+scenarios[i].Detail)
+		id := scenarios[i].ID
+		r = append(r, s.say("scenario."+id, id)+"\t"+s.say("scenario."+id+".detail", ""))
 	}
 	return r
+}
+
+// ScenarioIDs lists the same scenarios by the IDs that name them in every
+// language.
+func (s *Sim) ScenarioIDs() []string {
+	r := []string{}
+	for _, i := range s.available {
+		r = append(r, scenarios[i].ID)
+	}
+	return r
+}
+
+// say is the text of key in the simulator's language, or otherwise.
+func (s *Sim) say(key, otherwise string) string {
+	if t, ok := s.text[key]; ok {
+		return t
+	}
+	return otherwise
 }
 
 // Scenario is the index (into Scenarios) currently in effect.

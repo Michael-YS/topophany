@@ -60,6 +60,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `topo preview [--scenario N] status` (or `show`, `history`) reads the
   synthetic evidence, and `topo preview scenarios` lists the scenarios, so
   scripts and agents can be rehearsed on a simulated outage.
+- The preview speaks English, Japanese and Chinese. Its built-in topology
+  is written once with references such as `@node.win`, and the names,
+  notes, places and scenarios come from one catalog per language in
+  `internal/preview/locales`; a language is supported when its catalog is
+  there. `topo preview --lang` picks one, and by default the first of
+  `LC_ALL`, `LC_MESSAGES` and `LANG` that is set decides, falling back to
+  English. `--print-topology` writes the topology in that language, and
+  `topo preview scenarios --json` gives each scenario an `id` that is the
+  same in every language. A test holds every language to the same
+  evidence, scenario by scenario.
 
 ### Changed
 
@@ -83,6 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - What the TUI shows is derived in one place, `internal/view`, which the
   TUI draws and the CLI prints; a test holds the two to the same rows,
   evidence, verdict and counts across every preview scenario.
+- `topo preview` follows the locale, so where none of its languages is
+  asked for it now shows the built-in topology in English rather than
+  Chinese; `--lang zh` shows it as before.
 
 ### Fixed
 

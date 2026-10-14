@@ -71,6 +71,8 @@ observers or map. topo status exits 0 when all is clear, 2 when something
 needs attention, 3 when nothing current is known and 4 when no collector
 answers. 'topo preview [--scenario N] status' (or show, history) reads the
 synthetic evidence instead; 'topo preview scenarios' lists the scenarios.
+'topo preview --lang LANG' writes the built-in topology and the scenarios in
+another language; by default they follow LC_ALL, LC_MESSAGES or LANG.
 
 Use 'topo COMMAND --help' for command options. TUI: 1–9 tabs (9/? About),
 v observer, ↑↓/jk navigation, Enter details, / filter, r refresh, m map
@@ -621,20 +623,28 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	printTopo := f.Bool("print-topology", false, "write the built-in topology JSON to stdout and exit")
 	dump := f.Bool("json", false, "print one synthetic snapshot and exit")
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
+	lang := f.String("lang", localeLanguage(), "language of the built-in topology and the scenarios: "+strings.Join(preview.Languages(), ", "))
 	if e := f.Parse(args); e != nil {
 		return e
+	}
+	if preview.Language(*lang) != *lang {
+		return fmt.Errorf("--lang %q is not one of %s", secure.Text(*lang), strings.Join(preview.Languages(), ", "))
 	}
 	if *printTopo {
 		if f.NArg() > 0 {
 			return errors.New("--print-topology takes no command")
 		}
-		_, e := a.Out.Write(preview.PresetJSON())
+		b, e := preview.PresetJSON(*lang)
+		if e != nil {
+			return e
+		}
+		_, e = a.Out.Write(b)
 		return e
 	}
 	var c model.Config
 	var e error
 	if *path == "" {
-		c, e = preview.Preset()
+		c, e = preview.Preset(*lang)
 	} else {
 		c, e = config.Load(*path)
 	}
@@ -642,7 +652,7 @@ func (a *App) preview(ctx context.Context, args []string) error {
 		return e
 	}
 	now := a.now()
-	sim := preview.New(c, now)
+	sim := preview.New(c, now, *lang)
 	names := sim.Scenarios()
 	if *scenario < 0 || *scenario >= len(names) {
 		return fmt.Errorf("scenario %d out of range (0..%d)", *scenario, len(names)-1)
@@ -655,7 +665,7 @@ func (a *App) preview(ctx context.Context, args []string) error {
 		case "status", "show", "history":
 			return a.read(ctx, cmd, rest, &previewed{config: c, sim: sim, now: now, observer: *observer, json: *dump})
 		case "scenarios":
-			return a.scenarios(rest, names, sim.Scenario(), *dump)
+			return a.scenarios(rest, sim.ScenarioIDs(), names, sim.Scenario(), *dump)
 		default:
 			return fmt.Errorf("unknown preview command %q; use status, show, history or scenarios", secure.Text(cmd))
 		}
@@ -677,6 +687,22 @@ func (a *App) preview(ctx context.Context, args []string) error {
 		return sim.History(check, limit, time.Now())
 	}, *observer, *noColor, a.TerminalIn, a.TerminalOut)
 }
+
+// localeLanguage is the preview language the environment asks for: the
+// first of LC_ALL, LC_MESSAGES and LANG that is set decides, as it does for
+// messages, and a locale no catalog is written in asks for the default.
+func localeLanguage() string {
+	for _, name := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
+		if v := os.Getenv(name); v != "" {
+			if lang := preview.Language(v); lang != "" {
+				return lang
+			}
+			break
+		}
+	}
+	return preview.DefaultLanguage
+}
+
 func (a *App) login(ctx context.Context, args []string) error {
 	f := a.flags("login")
 	defaultPath, e := client.DefaultPath()

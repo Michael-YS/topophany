@@ -589,7 +589,7 @@ func (a *App) history(ctx context.Context, r reader, check string, limit int, as
 }
 
 // scenarios lists the preview's scenarios, the one in effect marked.
-func (a *App) scenarios(args []string, list []string, current int, jsonDefault bool) error {
+func (a *App) scenarios(args []string, ids, list []string, current int, jsonDefault bool) error {
 	f := a.flags("scenarios")
 	asJSON := f.Bool("json", jsonDefault, "print the scenarios as JSON")
 	if e := parsed(f, args); e != nil {
@@ -597,6 +597,7 @@ func (a *App) scenarios(args []string, list []string, current int, jsonDefault b
 	}
 	type scenario struct {
 		Index   int    `json:"index"`
+		ID      string `json:"id"`
 		Name    string `json:"name"`
 		Detail  string `json:"detail"`
 		Current bool   `json:"current"`
@@ -604,7 +605,7 @@ func (a *App) scenarios(args []string, list []string, current int, jsonDefault b
 	out := []scenario{}
 	for i, s := range list {
 		name, detail, _ := strings.Cut(s, "\t")
-		out = append(out, scenario{i, name, detail, i == current})
+		out = append(out, scenario{i, ids[i], name, detail, i == current})
 	}
 	if *asJSON {
 		return printJSON(a.Out, out)

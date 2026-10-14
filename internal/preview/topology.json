@@ -4,23 +4,23 @@
   "nodes": [
     {
       "id": "win",
-      "name": "Windows 台式机",
+      "name": "@node.win",
       "kind": "host",
-      "group": "家庭·长沙",
+      "group": "@group.home",
       "location": {
-        "label": "长沙",
+        "label": "@place.changsha",
         "lat": 28.23,
         "lon": 112.94
       },
-      "notes": "Clash Verge Rev (mihomo) + Tailscale；家庭面板运行在本机"
+      "notes": "@node.win.notes"
     },
     {
       "id": "mac",
       "name": "MacBook Pro",
       "kind": "host",
-      "group": "家庭·长沙",
+      "group": "@group.home",
       "location": {
-        "label": "长沙",
+        "label": "@place.changsha",
         "lat": 28.2,
         "lon": 112.97
       },
@@ -28,201 +28,201 @@
     },
     {
       "id": "router",
-      "name": "家庭路由器",
+      "name": "@node.router",
       "kind": "router",
-      "group": "家庭·长沙",
+      "group": "@group.home",
       "location": {
-        "label": "长沙",
+        "label": "@place.changsha",
         "lat": 28.21,
         "lon": 112.95
       },
-      "notes": "宽带出口 / LAN DNS"
+      "notes": "@node.router.notes"
     },
     {
       "id": "hz",
-      "name": "阿里云 杭州",
+      "name": "@node.hz",
       "kind": "host",
-      "group": "中继",
+      "group": "@group.relay",
       "location": {
-        "label": "杭州",
+        "label": "@place.hangzhou",
         "lat": 30.27,
         "lon": 120.15
       },
-      "notes": "自建 DERP 中继 + 家庭设备反向代理"
+      "notes": "@node.hz.notes"
     },
     {
       "id": "dmit",
-      "name": "DMIT 线路机",
+      "name": "@node.dmit",
       "kind": "host",
-      "group": "线路机",
+      "group": "@group.transit",
       "location": {
-        "label": "Los Angeles",
+        "label": "@place.los-angeles",
         "lat": 34.05,
         "lon": -118.24
       },
-      "notes": "只承载 VLESS+Reality 入口，不跑其他服务"
+      "notes": "@node.dmit.notes"
     },
     {
       "id": "aaitr",
-      "name": "AAITR 家宽落地",
+      "name": "@node.aaitr",
       "kind": "host",
-      "group": "落地机",
+      "group": "@group.exit",
       "location": {
-        "label": "Los Angeles",
+        "label": "@place.los-angeles",
         "lat": 33.99,
         "lon": -118.31
       },
-      "notes": "住宅 IP 出口，只承载代理"
+      "notes": "@notes.residential-exit"
     },
     {
       "id": "qqpr",
-      "name": "QQPR 夏威夷落地",
+      "name": "@node.qqpr",
       "kind": "host",
-      "group": "落地机",
+      "group": "@group.exit",
       "location": {
-        "label": "Honolulu",
+        "label": "@place.honolulu",
         "lat": 21.31,
         "lon": -157.86
       },
-      "notes": "住宅 IP 出口，只承载代理"
+      "notes": "@notes.residential-exit"
     },
     {
       "id": "s1",
-      "name": "S1 主站 (高性能)",
+      "name": "@node.s1",
       "kind": "host",
-      "group": "自建服务",
+      "group": "@group.self-hosted",
       "location": {
-        "label": "New York",
+        "label": "@place.new-york",
         "lat": 40.71,
         "lon": -74.01
       },
-      "notes": "主要建站服务器，对外提供服务"
+      "notes": "@node.s1.notes"
     },
     {
       "id": "s1-db",
-      "name": "PostgreSQL 容器",
+      "name": "@node.s1-db",
       "kind": "container",
       "parent": "s1",
-      "group": "自建服务"
+      "group": "@group.self-hosted"
     },
     {
       "id": "s2",
-      "name": "S2 个人服务 / 备用线路",
+      "name": "@node.s2",
       "kind": "host",
-      "group": "自建服务",
+      "group": "@group.self-hosted",
       "location": {
-        "label": "New York",
+        "label": "@place.new-york",
         "lat": 40.73,
         "lon": -73.94
       },
-      "notes": "低性能；私有服务不对外；兼任备用线路机（S2 → 落地）"
+      "notes": "@node.s2.notes"
     },
     {
       "id": "jp",
-      "name": "JP 东京",
+      "name": "@node.jp",
       "kind": "host",
-      "group": "自建服务",
+      "group": "@group.self-hosted",
       "location": {
-        "label": "Tokyo",
+        "label": "@place.tokyo",
         "lat": 35.68,
         "lon": 139.69
       }
     },
     {
       "id": "jp-openlist",
-      "name": "OpenList 容器",
+      "name": "@node.jp-openlist",
       "kind": "container",
       "parent": "jp",
-      "group": "自建服务"
+      "group": "@group.self-hosted"
     },
     {
       "id": "de",
-      "name": "DE 法兰克福",
+      "name": "@node.de",
       "kind": "host",
-      "group": "自建服务",
+      "group": "@group.self-hosted",
       "location": {
-        "label": "Frankfurt",
+        "label": "@place.frankfurt",
         "lat": 50.11,
         "lon": 8.68
       },
-      "notes": "Forgejo + 备份仓库"
+      "notes": "@node.de.notes"
     },
     {
       "id": "cf",
       "name": "Cloudflare",
       "kind": "edge",
-      "group": "边缘平台",
+      "group": "@group.edge",
       "provider": "cloudflare",
-      "notes": "橙云代理主站与 API（Full (strict) 回源 S1）；另跑短链 Worker 和文档站 Pages"
+      "notes": "@node.cf.notes"
     },
     {
       "id": "vercel",
       "name": "Vercel",
       "kind": "edge",
-      "group": "边缘平台",
+      "group": "@group.edge",
       "provider": "vercel",
-      "notes": "个人主页 Next.js；静态资源在边缘，函数区域 hnd1"
+      "notes": "@node.vercel.notes"
     },
     {
       "id": "supabase",
       "name": "Supabase",
       "kind": "platform",
-      "group": "边缘平台",
+      "group": "@group.edge",
       "provider": "supabase",
       "location": {
-        "label": "Tokyo",
+        "label": "@place.tokyo",
         "lat": 35.68,
         "lon": 139.77
       },
-      "notes": "托管 Postgres + Auth，项目区域 ap-northeast-1（东京）"
+      "notes": "@node.supabase.notes"
     },
     {
       "id": "internet",
-      "name": "互联网 (出口校验目标)",
+      "name": "@node.internet",
       "kind": "external",
-      "group": "外部"
+      "group": "@group.external"
     },
     {
       "id": "visitors",
-      "name": "公网访客",
+      "name": "@node.visitors",
       "kind": "external",
-      "group": "外部"
+      "group": "@group.external"
     }
   ],
   "observers": [
     {
       "id": "cs-win",
-      "name": "长沙 Windows",
+      "name": "@observer.cs-win",
       "node": "win",
-      "context": "Windows 原生；Clash Verge TUN 开启。显式代理检查只走专用 socks 监听，不代表普通程序经 TUN 的路径",
+      "context": "@observer.cs-win.context",
       "stale_seconds": 45
     },
     {
       "id": "cs-mac",
-      "name": "长沙 MacBook",
+      "name": "@observer.cs-mac",
       "node": "mac",
-      "context": "macOS 原生；Clash Verge 系统代理",
+      "context": "@observer.cs-mac.context",
       "stale_seconds": 45
     },
     {
       "id": "obs-hz",
-      "name": "杭州 阿里云",
+      "name": "@observer.obs-hz",
       "node": "hz",
-      "context": "国内云对照视角；反代本机回环",
+      "context": "@observer.obs-hz.context",
       "stale_seconds": 45
     },
     {
       "id": "obs-s1",
-      "name": "纽约 S1",
+      "name": "@observer.obs-s1",
       "node": "s1",
-      "context": "海外对照视角；主站本机回环",
+      "context": "@observer.obs-s1.context",
       "stale_seconds": 45
     },
     {
       "id": "obs-jp",
-      "name": "东京 JP",
+      "name": "@observer.obs-jp",
       "node": "jp",
-      "context": "海外公网访客视角",
+      "context": "@observer.obs-jp.context",
       "stale_seconds": 45
     }
   ],
@@ -301,7 +301,7 @@
       "node": "dmit",
       "address": "192.0.2.10:443",
       "network": "public",
-      "notes": "VLESS+Reality 入口端口；TCP 建连不等于代理认证"
+      "notes": "@endpoint.dmit-entry.notes"
     },
     {
       "id": "dmit-tn",
@@ -357,14 +357,14 @@
       "node": "s1-db",
       "address": "100.64.0.61:5432",
       "network": "tailnet",
-      "notes": "TCP 只是端口检查，不是 SQL 查询"
+      "notes": "@endpoint.s1-db-tn.notes"
     },
     {
       "id": "s2-entry",
       "node": "s2",
       "address": "192.0.2.70:443",
       "network": "public",
-      "notes": "备用 VLESS+Reality 入口"
+      "notes": "@endpoint.s2-entry.notes"
     },
     {
       "id": "s2-tn",
@@ -437,7 +437,7 @@
       "node": "supabase",
       "address": "https://db.example.invalid/rest/v1/",
       "network": "public",
-      "notes": "REST 网关健康；不是 SQL 查询"
+      "notes": "@endpoint.supabase-rest.notes"
     },
     {
       "id": "exit-check",
@@ -465,7 +465,7 @@
     },
     {
       "id": "home-dash",
-      "name": "家庭面板 (Homepage)",
+      "name": "@service.home-dash",
       "node": "win",
       "endpoints": [
         "win-dash"
@@ -473,7 +473,7 @@
     },
     {
       "id": "derp",
-      "name": "自建 DERP 中继",
+      "name": "@service.derp",
       "node": "hz",
       "endpoints": [
         "hz-derp"
@@ -481,7 +481,7 @@
     },
     {
       "id": "home-rproxy",
-      "name": "反向代理 → 家庭设备",
+      "name": "@service.home-rproxy",
       "node": "hz",
       "endpoints": [
         "hz-rproxy",
@@ -493,7 +493,7 @@
     },
     {
       "id": "vless-dmit",
-      "name": "VLESS+Reality 入口 (主)",
+      "name": "@service.vless-dmit",
       "node": "dmit",
       "endpoints": [
         "dmit-entry"
@@ -501,7 +501,7 @@
     },
     {
       "id": "vless-s2",
-      "name": "VLESS+Reality 入口 (备)",
+      "name": "@service.vless-s2",
       "node": "s2",
       "endpoints": [
         "s2-entry"
@@ -509,7 +509,7 @@
     },
     {
       "id": "egress-aaitr",
-      "name": "家宽出口 · AAITR",
+      "name": "@service.egress-aaitr",
       "node": "aaitr",
       "endpoints": [
         "exit-check"
@@ -517,7 +517,7 @@
     },
     {
       "id": "egress-qqpr",
-      "name": "家宽出口 · QQPR",
+      "name": "@service.egress-qqpr",
       "node": "qqpr",
       "endpoints": [
         "exit-check"
@@ -533,7 +533,7 @@
     },
     {
       "id": "blog",
-      "name": "主站 (Caddy + 博客)",
+      "name": "@service.blog",
       "node": "s1",
       "endpoints": [
         "s1-web",
@@ -545,7 +545,7 @@
     },
     {
       "id": "api",
-      "name": "主站 API",
+      "name": "@service.api",
       "node": "s1",
       "endpoints": [
         "s1-api"
@@ -556,7 +556,7 @@
     },
     {
       "id": "memos",
-      "name": "Memos (私有)",
+      "name": "@service.memos",
       "node": "s2",
       "endpoints": [
         "s2-memos"
@@ -564,7 +564,7 @@
     },
     {
       "id": "rsshub",
-      "name": "RSSHub (私有)",
+      "name": "@service.rsshub",
       "node": "s2",
       "endpoints": [
         "s2-rsshub"
@@ -572,7 +572,7 @@
     },
     {
       "id": "openlist",
-      "name": "OpenList 网盘",
+      "name": "@service.openlist",
       "node": "jp-openlist",
       "endpoints": [
         "jp-openlist"
@@ -580,7 +580,7 @@
     },
     {
       "id": "forgejo",
-      "name": "Forgejo 代码托管",
+      "name": "@service.forgejo",
       "node": "de",
       "endpoints": [
         "de-git"
@@ -588,7 +588,7 @@
     },
     {
       "id": "restic",
-      "name": "Restic 备份仓库",
+      "name": "@service.restic",
       "node": "de",
       "endpoints": [
         "de-restic"
@@ -596,17 +596,17 @@
     },
     {
       "id": "backup-job",
-      "name": "S1 → DE 夜间备份",
+      "name": "@service.backup-job",
       "node": "s1",
       "depends_on": [
         "restic",
         "postgres"
       ],
-      "notes": "仅登记；没有真实回执检查时不伪造心跳"
+      "notes": "@service.backup-job.notes"
     },
     {
       "id": "shortlink",
-      "name": "短链 (Worker)",
+      "name": "@service.shortlink",
       "node": "cf",
       "runtime": "workers",
       "endpoints": [
@@ -615,7 +615,7 @@
     },
     {
       "id": "docs",
-      "name": "文档站 (Pages)",
+      "name": "@service.docs",
       "node": "cf",
       "runtime": "pages",
       "endpoints": [
@@ -624,7 +624,7 @@
     },
     {
       "id": "webapp",
-      "name": "个人主页 (Next.js)",
+      "name": "@service.webapp",
       "node": "vercel",
       "runtime": "functions",
       "endpoints": [
@@ -661,49 +661,49 @@
       "id": "win-s2",
       "from": "win",
       "to": "s2",
-      "transport": "VLESS+Reality · 备用"
+      "transport": "@transport.vless-backup"
     },
     {
       "id": "mac-s2",
       "from": "mac",
       "to": "s2",
-      "transport": "VLESS+Reality · 备用"
+      "transport": "@transport.vless-backup"
     },
     {
       "id": "dmit-aaitr",
       "from": "dmit",
       "to": "aaitr",
-      "transport": "链式代理 dialer-proxy"
+      "transport": "@transport.chain"
     },
     {
       "id": "dmit-qqpr",
       "from": "dmit",
       "to": "qqpr",
-      "transport": "链式代理 dialer-proxy"
+      "transport": "@transport.chain"
     },
     {
       "id": "s2-aaitr",
       "from": "s2",
       "to": "aaitr",
-      "transport": "链式代理 dialer-proxy (fallback)"
+      "transport": "@transport.chain-fallback"
     },
     {
       "id": "s2-qqpr",
       "from": "s2",
       "to": "qqpr",
-      "transport": "链式代理 dialer-proxy (fallback)"
+      "transport": "@transport.chain-fallback"
     },
     {
       "id": "aaitr-net",
       "from": "aaitr",
       "to": "internet",
-      "transport": "住宅 IP 出口"
+      "transport": "@transport.residential-exit"
     },
     {
       "id": "qqpr-net",
       "from": "qqpr",
       "to": "internet",
-      "transport": "住宅 IP 出口"
+      "transport": "@transport.residential-exit"
     },
     {
       "id": "win-router",
@@ -721,31 +721,31 @@
       "id": "hz-win",
       "from": "hz",
       "to": "win",
-      "transport": "反向代理 · tailnet"
+      "transport": "@link.hz-win"
     },
     {
       "id": "visitors-hz",
       "from": "visitors",
       "to": "hz",
-      "transport": "HTTPS 反代入口"
+      "transport": "@link.visitors-hz"
     },
     {
       "id": "visitors-cf",
       "from": "visitors",
       "to": "cf",
-      "transport": "HTTPS · 橙云代理"
+      "transport": "@link.visitors-cf"
     },
     {
       "id": "cf-s1",
       "from": "cf",
       "to": "s1",
-      "transport": "回源 HTTPS · Full (strict)"
+      "transport": "@link.cf-s1"
     },
     {
       "id": "visitors-jp",
       "from": "visitors",
       "to": "jp",
-      "transport": "HTTPS 网盘"
+      "transport": "@link.visitors-jp"
     },
     {
       "id": "visitors-de",
@@ -769,13 +769,13 @@
       "id": "s1-de",
       "from": "s1",
       "to": "de",
-      "transport": "restic 备份 · tailnet"
+      "transport": "@link.s1-de"
     }
   ],
   "paths": [
     {
       "id": "w-dmit",
-      "name": "入口直连 DMIT",
+      "name": "@path.w-dmit",
       "observer": "cs-win",
       "nodes": [
         "win",
@@ -787,7 +787,7 @@
     },
     {
       "id": "w-s2",
-      "name": "入口直连 S2 (备)",
+      "name": "@path.w-s2",
       "observer": "cs-win",
       "nodes": [
         "win",
@@ -799,7 +799,7 @@
     },
     {
       "id": "w-dmit-aaitr",
-      "name": "主链 DMIT → AAITR 家宽",
+      "name": "@path.dmit-aaitr",
       "observer": "cs-win",
       "nodes": [
         "win",
@@ -819,11 +819,11 @@
           "node": "win"
         }
       ],
-      "notes": "Clash Verge 中预先配置的专用 socks 监听；内层 VLESS+Reality 链由 mihomo 负责，Topophany 不创建也不切换它"
+      "notes": "@notes.socks-listener"
     },
     {
       "id": "w-dmit-qqpr",
-      "name": "主链 DMIT → QQPR 夏威夷",
+      "name": "@path.dmit-qqpr",
       "observer": "cs-win",
       "nodes": [
         "win",
@@ -843,11 +843,11 @@
           "node": "win"
         }
       ],
-      "notes": "Clash Verge 中预先配置的专用 socks 监听；内层 VLESS+Reality 链由 mihomo 负责，Topophany 不创建也不切换它"
+      "notes": "@notes.socks-listener"
     },
     {
       "id": "w-s2-aaitr",
-      "name": "备链 S2 → AAITR 家宽",
+      "name": "@path.s2-aaitr",
       "observer": "cs-win",
       "nodes": [
         "win",
@@ -867,11 +867,11 @@
           "node": "win"
         }
       ],
-      "notes": "Clash Verge 中预先配置的专用 socks 监听；内层 VLESS+Reality 链由 mihomo 负责，Topophany 不创建也不切换它"
+      "notes": "@notes.socks-listener"
     },
     {
       "id": "w-s2-qqpr",
-      "name": "备链 S2 → QQPR 夏威夷",
+      "name": "@path.s2-qqpr",
       "observer": "cs-win",
       "nodes": [
         "win",
@@ -891,11 +891,11 @@
           "node": "win"
         }
       ],
-      "notes": "Clash Verge 中预先配置的专用 socks 监听；内层 VLESS+Reality 链由 mihomo 负责，Topophany 不创建也不切换它"
+      "notes": "@notes.socks-listener"
     },
     {
       "id": "w-egress",
-      "name": "出口候选 (主 DMIT · 备 S2)",
+      "name": "@path.egress",
       "observer": "cs-win",
       "nodes": [],
       "candidates": [
@@ -904,7 +904,7 @@
         "w-s2-aaitr",
         "w-s2-qqpr"
       ],
-      "notes": "对应 Clash Verge 的 fallback 组；实际选中哪条由 mihomo 决定，这里不推断"
+      "notes": "@path.egress.notes"
     },
     {
       "id": "w-tn-mac",
@@ -989,7 +989,7 @@
     },
     {
       "id": "w-lan",
-      "name": "LAN → 路由器",
+      "name": "@path.w-lan",
       "observer": "cs-win",
       "nodes": [
         "win",
@@ -1010,7 +1010,7 @@
     },
     {
       "id": "m-dmit-aaitr",
-      "name": "主链 DMIT → AAITR 家宽",
+      "name": "@path.dmit-aaitr",
       "observer": "cs-mac",
       "nodes": [
         "mac",
@@ -1030,11 +1030,11 @@
           "node": "mac"
         }
       ],
-      "notes": "Clash Verge 中预先配置的专用 socks 监听；内层 VLESS+Reality 链由 mihomo 负责，Topophany 不创建也不切换它"
+      "notes": "@notes.socks-listener"
     },
     {
       "id": "m-s2-aaitr",
-      "name": "备链 S2 → AAITR 家宽",
+      "name": "@path.s2-aaitr",
       "observer": "cs-mac",
       "nodes": [
         "mac",
@@ -1054,11 +1054,11 @@
           "node": "mac"
         }
       ],
-      "notes": "Clash Verge 中预先配置的专用 socks 监听；内层 VLESS+Reality 链由 mihomo 负责，Topophany 不创建也不切换它"
+      "notes": "@notes.socks-listener"
     },
     {
       "id": "m-egress",
-      "name": "出口候选 (主 DMIT · 备 S2)",
+      "name": "@path.egress",
       "observer": "cs-mac",
       "nodes": [],
       "candidates": [
@@ -1077,7 +1077,7 @@
     },
     {
       "id": "h-win",
-      "name": "反代 → 家庭面板",
+      "name": "@path.h-win",
       "observer": "obs-hz",
       "nodes": [
         "hz",
@@ -1089,7 +1089,7 @@
     },
     {
       "id": "h-dmit",
-      "name": "国内对照 → DMIT",
+      "name": "@path.h-dmit",
       "observer": "obs-hz",
       "nodes": [
         "hz",
@@ -1098,7 +1098,7 @@
     },
     {
       "id": "h-s1",
-      "name": "国内对照 → S1 主站",
+      "name": "@path.h-s1",
       "observer": "obs-hz",
       "nodes": [
         "hz",
@@ -1108,7 +1108,7 @@
     },
     {
       "id": "s-de",
-      "name": "备份 → DE",
+      "name": "@path.s-de",
       "observer": "obs-s1",
       "nodes": [
         "s1",
@@ -1120,7 +1120,7 @@
     },
     {
       "id": "s-dmit",
-      "name": "海外对照 → DMIT",
+      "name": "@path.overseas-dmit",
       "observer": "obs-s1",
       "nodes": [
         "s1",
@@ -1147,7 +1147,7 @@
     },
     {
       "id": "j-s1",
-      "name": "访客 → S1 主站",
+      "name": "@path.j-s1",
       "observer": "obs-jp",
       "nodes": [
         "jp",
@@ -1157,19 +1157,19 @@
     },
     {
       "id": "j-hz",
-      "name": "访客 → 家庭反代",
+      "name": "@path.j-hz",
       "observer": "obs-jp",
       "nodes": [
         "jp",
         "hz",
         "win"
       ],
-      "notes": "反代内部转发到家庭设备，中间段不可见",
+      "notes": "@path.j-hz.notes",
       "opaque": true
     },
     {
       "id": "j-de",
-      "name": "访客 → Forgejo",
+      "name": "@path.j-de",
       "observer": "obs-jp",
       "nodes": [
         "jp",
@@ -1178,7 +1178,7 @@
     },
     {
       "id": "j-dmit",
-      "name": "海外对照 → DMIT",
+      "name": "@path.overseas-dmit",
       "observer": "obs-jp",
       "nodes": [
         "jp",
@@ -1189,7 +1189,7 @@
   "checks": [
     {
       "id": "w-clash",
-      "name": "Clash Verge 运行时",
+      "name": "@check.clash",
       "observer": "cs-win",
       "kind": "mihomo",
       "interval_seconds": 10,
@@ -1207,7 +1207,7 @@
     },
     {
       "id": "w-ts-dmit",
-      "name": "Tailscale 对端 DMIT",
+      "name": "@check.ts-dmit",
       "observer": "cs-win",
       "kind": "tailscale",
       "interval_seconds": 10,
@@ -1221,7 +1221,7 @@
     },
     {
       "id": "w-ts-s2",
-      "name": "Tailscale 对端 S2",
+      "name": "@check.ts-s2",
       "observer": "cs-win",
       "kind": "tailscale",
       "interval_seconds": 10,
@@ -1235,7 +1235,7 @@
     },
     {
       "id": "w-ts-hz",
-      "name": "Tailscale 对端 杭州",
+      "name": "@check.ts-hz",
       "observer": "cs-win",
       "kind": "tailscale",
       "interval_seconds": 10,
@@ -1249,7 +1249,7 @@
     },
     {
       "id": "w-dns",
-      "name": "路由器 DNS",
+      "name": "@check.w-dns",
       "observer": "cs-win",
       "kind": "dns",
       "interval_seconds": 10,
@@ -1266,7 +1266,7 @@
     },
     {
       "id": "w-dmit-443",
-      "name": "DMIT 入口端口",
+      "name": "@check.w-dmit-443",
       "observer": "cs-win",
       "kind": "tcp",
       "interval_seconds": 10,
@@ -1292,7 +1292,7 @@
     },
     {
       "id": "w-s2-443",
-      "name": "S2 备用入口端口",
+      "name": "@check.w-s2-443",
       "observer": "cs-win",
       "kind": "tcp",
       "interval_seconds": 10,
@@ -1318,7 +1318,7 @@
     },
     {
       "id": "w-exit-dmit-aaitr",
-      "name": "出口 DMIT → AAITR",
+      "name": "@check.exit-dmit-aaitr",
       "observer": "cs-win",
       "kind": "http",
       "interval_seconds": 15,
@@ -1343,7 +1343,7 @@
     },
     {
       "id": "w-exit-dmit-qqpr",
-      "name": "出口 DMIT → QQPR",
+      "name": "@check.exit-dmit-qqpr",
       "observer": "cs-win",
       "kind": "http",
       "interval_seconds": 15,
@@ -1368,7 +1368,7 @@
     },
     {
       "id": "w-exit-s2-aaitr",
-      "name": "出口 S2 → AAITR",
+      "name": "@check.exit-s2-aaitr",
       "observer": "cs-win",
       "kind": "http",
       "interval_seconds": 15,
@@ -1393,7 +1393,7 @@
     },
     {
       "id": "w-exit-s2-qqpr",
-      "name": "出口 S2 → QQPR",
+      "name": "@check.exit-s2-qqpr",
       "observer": "cs-win",
       "kind": "http",
       "interval_seconds": 15,
@@ -1586,7 +1586,7 @@
     },
     {
       "id": "m-clash",
-      "name": "Clash Verge 运行时",
+      "name": "@check.clash",
       "observer": "cs-mac",
       "kind": "mihomo",
       "interval_seconds": 10,
@@ -1604,7 +1604,7 @@
     },
     {
       "id": "m-ts-dmit",
-      "name": "Tailscale 对端 DMIT",
+      "name": "@check.ts-dmit",
       "observer": "cs-mac",
       "kind": "tailscale",
       "interval_seconds": 10,
@@ -1618,7 +1618,7 @@
     },
     {
       "id": "m-exit-dmit-aaitr",
-      "name": "出口 DMIT → AAITR",
+      "name": "@check.exit-dmit-aaitr",
       "observer": "cs-mac",
       "kind": "http",
       "interval_seconds": 15,
@@ -1643,7 +1643,7 @@
     },
     {
       "id": "m-exit-s2-aaitr",
-      "name": "出口 S2 → AAITR",
+      "name": "@check.exit-s2-aaitr",
       "observer": "cs-mac",
       "kind": "http",
       "interval_seconds": 15,
@@ -1681,7 +1681,7 @@
     },
     {
       "id": "h-rproxy-local",
-      "name": "反代本机健康",
+      "name": "@check.h-rproxy-local",
       "observer": "obs-hz",
       "kind": "http",
       "interval_seconds": 10,
@@ -1699,7 +1699,7 @@
     },
     {
       "id": "h-dash",
-      "name": "家庭面板 (经 tailnet)",
+      "name": "@check.h-dash",
       "observer": "obs-hz",
       "kind": "http",
       "interval_seconds": 10,
@@ -1736,7 +1736,7 @@
     },
     {
       "id": "h-dmit-443",
-      "name": "国内对照 DMIT 入口",
+      "name": "@check.h-dmit-443",
       "observer": "obs-hz",
       "kind": "tcp",
       "interval_seconds": 10,
@@ -1748,7 +1748,7 @@
     },
     {
       "id": "h-dmit-icmp",
-      "name": "国内对照 DMIT ICMP",
+      "name": "@check.h-dmit-icmp",
       "observer": "obs-hz",
       "kind": "icmp",
       "interval_seconds": 10,
@@ -1761,7 +1761,7 @@
     },
     {
       "id": "h-s1-web",
-      "name": "国内访问主站",
+      "name": "@check.h-s1-web",
       "observer": "obs-hz",
       "kind": "http",
       "interval_seconds": 15,
@@ -1780,7 +1780,7 @@
     },
     {
       "id": "s-web-local",
-      "name": "主站本机",
+      "name": "@check.s-web-local",
       "observer": "obs-s1",
       "kind": "http",
       "interval_seconds": 10,
@@ -1798,7 +1798,7 @@
     },
     {
       "id": "s-api",
-      "name": "主站 API",
+      "name": "@service.api",
       "observer": "obs-s1",
       "kind": "http",
       "interval_seconds": 10,
@@ -1817,7 +1817,7 @@
     },
     {
       "id": "s-db",
-      "name": "PostgreSQL 端口",
+      "name": "@check.s-db",
       "observer": "obs-s1",
       "kind": "tcp",
       "interval_seconds": 10,
@@ -1830,7 +1830,7 @@
     },
     {
       "id": "s-restic",
-      "name": "备份仓库",
+      "name": "@check.s-restic",
       "observer": "obs-s1",
       "kind": "http",
       "interval_seconds": 20,
@@ -1863,7 +1863,7 @@
     },
     {
       "id": "s-dmit-443",
-      "name": "海外对照 DMIT 入口",
+      "name": "@check.overseas-dmit-443",
       "observer": "obs-s1",
       "kind": "tcp",
       "interval_seconds": 10,
@@ -1875,7 +1875,7 @@
     },
     {
       "id": "s-dmit-tn",
-      "name": "海外对照 DMIT SSH",
+      "name": "@check.s-dmit-tn",
       "observer": "obs-s1",
       "kind": "ssh-banner",
       "interval_seconds": 20,
@@ -1914,7 +1914,7 @@
     },
     {
       "id": "j-openlist",
-      "name": "OpenList 网盘",
+      "name": "@service.openlist",
       "observer": "obs-jp",
       "kind": "http",
       "interval_seconds": 10,
@@ -1932,7 +1932,7 @@
     },
     {
       "id": "j-blog",
-      "name": "访客访问主站",
+      "name": "@check.j-blog",
       "observer": "obs-jp",
       "kind": "http",
       "interval_seconds": 15,
@@ -1951,7 +1951,7 @@
     },
     {
       "id": "j-home",
-      "name": "访客访问家庭反代",
+      "name": "@check.j-home",
       "observer": "obs-jp",
       "kind": "http",
       "interval_seconds": 15,
@@ -1970,7 +1970,7 @@
     },
     {
       "id": "j-git",
-      "name": "访客访问 Forgejo",
+      "name": "@check.j-git",
       "observer": "obs-jp",
       "kind": "http",
       "interval_seconds": 15,
@@ -1989,7 +1989,7 @@
     },
     {
       "id": "j-dmit-443",
-      "name": "海外对照 DMIT 入口",
+      "name": "@check.overseas-dmit-443",
       "observer": "obs-jp",
       "kind": "tcp",
       "interval_seconds": 10,
@@ -2001,7 +2001,7 @@
     },
     {
       "id": "j-dmit-icmp",
-      "name": "海外对照 DMIT ICMP",
+      "name": "@check.j-dmit-icmp",
       "observer": "obs-jp",
       "kind": "icmp",
       "interval_seconds": 10,
@@ -2014,7 +2014,7 @@
     },
     {
       "id": "j-worker",
-      "name": "短链 Worker",
+      "name": "@check.j-worker",
       "observer": "obs-jp",
       "kind": "http",
       "interval_seconds": 15,
@@ -2032,7 +2032,7 @@
     },
     {
       "id": "h-worker",
-      "name": "国内访问短链 Worker",
+      "name": "@check.h-worker",
       "observer": "obs-hz",
       "kind": "http",
       "interval_seconds": 15,
@@ -2050,7 +2050,7 @@
     },
     {
       "id": "j-docs",
-      "name": "文档站 Pages",
+      "name": "@check.j-docs",
       "observer": "obs-jp",
       "kind": "http",
       "interval_seconds": 15,
@@ -2068,7 +2068,7 @@
     },
     {
       "id": "j-webapp",
-      "name": "个人主页 (Vercel)",
+      "name": "@check.j-webapp",
       "observer": "obs-jp",
       "kind": "http",
       "interval_seconds": 15,

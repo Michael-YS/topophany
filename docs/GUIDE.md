@@ -110,7 +110,10 @@ topo preview --scenario 2            # Opens in the steady state of a specific s
 topo preview --config topology.json  # Runs synthetic scenarios against your own topology file (non-matching scenarios hidden automatically)
 topo preview --json                  # Emits a synthetic snapshot JSON without entering TUI
 topo preview --print-topology        # Dumps the built-in topology JSON to stdout for customization via topo edit
+topo preview --lang ja               # Writes the built-in topology and the scenarios in Japanese (en, ja, zh)
 ```
+
+The built-in topology and the scenario names follow the locale: the first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is set picks English, Japanese or Chinese, and any other locale gets English. Only the words change; the topology, the scenarios and the evidence are the same in every language, and `topo preview scenarios --json` names each scenario by an `id` that does not change with it.
 
 In the built-in preview topology: local workstations connect across primary transit gateways to regional egress nodes for external verification; a backup transit gateway serves as failover; Tailscale connects nodes across locations; a central cloud relay provides DERP relaying and reverse proxying; and Cloudflare fronts the main site while running a Worker and a Pages site, beside a Vercel app that depends on Supabase. Press `x` to switch scenarios (transit filtering, host downtime, egress IP drift, local uplink failure, maintenance, clock skew, an origin down behind Cloudflare, the edge unreachable from the mainland, collector unreachable, etc.). CLI-specified scenarios initialize in an established state; switching scenarios inside the TUI begins at the current time, applying confirmation thresholds and expiration rules in real time. Evidence is derived from simulated observations through the state engine rather than hardcoded UI colors. Press `D` to toggle debug overlays (frame render duration, redraw bytes, map node count). The topology in preview mode is read-only.
 
