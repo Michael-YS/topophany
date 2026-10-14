@@ -410,7 +410,6 @@ func (m *Model) footer(cv *Canvas, y int) {
 		add := func(rank int, key, label, action string) {
 			opts = append(opts, ranked{keycap{key, label, action}, rank})
 		}
-		mapShown := m.Tab == tabTopology || m.Tab == tabOverview && cv.W >= 90 && cv.H >= 25
 		if m.Edit != nil {
 			add(0, "a", "Add", "a")
 			add(0, "e", "Edit", "e")
@@ -432,9 +431,14 @@ func (m *Model) footer(cv *Canvas, y int) {
 		if m.Preview != nil {
 			add(2, "x", "Scenario", "x")
 		}
-		if mapShown {
+		if m.mapShown() {
 			add(3, "m", "Map", "m")
 			add(4, "z", "Zoom", "z")
+			if m.FullMap {
+				add(1, "f", "Panels", "f")
+			} else {
+				add(3, "f", "Full map", "f")
+			}
 		}
 		if m.Edit == nil {
 			add(5, "a", "Add", "a")

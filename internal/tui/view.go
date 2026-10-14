@@ -69,9 +69,10 @@ func (m *Model) draw() *Canvas {
 	m.header(cv)
 	m.tabBar(cv, 1)
 	top := 3
-	if m.Tab == tabOverview && !m.hasNews() {
+	if m.Tab == tabOverview && !m.hasNews() && !m.FullMap {
 		// The Overview's status card says everything the status row would;
-		// there the row is kept only for notices and errors.
+		// there the row is kept only for notices and errors, and while the
+		// map alone has the card's place.
 		top = 2
 	} else {
 		m.statusBar(cv, 2)
@@ -127,9 +128,13 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		m.drawDetail(cv, ix, iy, iw, ih, sel, true)
 		return
 	}
+	if m.FullMap && (m.Tab == tabTopology || m.Tab == tabOverview) {
+		m.fullMap(cv, x, y, w, h, rows, sel)
+		return
+	}
 	switch {
 	case m.Tab == tabTopology:
-		mode := map[string]string{"virtual": "virtual geo", "geo": "geo map", "network": "network graph"}[m.mapMode()]
+		mode := mapNames[m.mapMode()]
 		if w >= 120 {
 			lw := min(max(w*40/100, 34), 84)
 			mw := w - lw
@@ -187,6 +192,46 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 	}
 	ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, tag, true)
 	m.drawList(cv, ix, iy, iw, ih, rows)
+}
+
+// mapNames are the maps as panel titles name them.
+var mapNames = map[string]string{"virtual": "virtual geo", "geo": "geo map", "network": "network graph"}
+
+// fullMap gives the whole body to the map, so its cards and labels have
+// the room to say everything. The selection still moves with ↑↓, and the
+// panel's foot names it.
+func (m *Model) fullMap(cv *Canvas, x, y, w, h int, rows []Row, sel Row) {
+	title := strings.ToUpper(tabs[m.Tab]) + " · " + mapNames[m.mapMode()]
+	ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, "m switch · z zoom · f panels", false)
+	m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+	if sel.Kind == "" || w < 30 {
+		return
+	}
+	// Along the foot: the selection and its state on the left, where it
+	// stands in the list on the right.
+	fy := y + h - 1
+	pos := " " + itoa(m.Selected+1) + "/" + itoa(len(rows)) + " "
+	pill, ps := statePill(sel)
+	rx := x + w - 2 - width(pos)
+	cv.Text(rx, fy, pos, fg(cFaint), -1)
+	if rx -= width(pill) + 1; rx-x > 24 {
+		cv.Text(rx, fy, pill, ps, -1)
+	} else {
+		rx += width(pill) + 1
+	}
+	cx := x + 2
+	room := rx - 2 - cx
+	sub := "  " + sel.Kind + " · " + sel.ID
+	if _, scope, ok := strings.Cut(sel.ID, "/"); ok && sel.Kind == "incident" {
+		sub = "  incident · " + scope
+	}
+	name := " " + strings.TrimSpace(sel.Title)
+	if width(name)+width(sub)+1 > room {
+		sub = ""
+	}
+	n := cv.Text(cx, fy, ellipsis(name, room-1), fg(cGlow).bold(), room-1)
+	n += cv.Text(cx+n, fy, sub+" ", fg(cFaint), room-n)
+	m.hit(cx, fy, n, "key:enter")
 }
 
 func (m *Model) drawModal(cv *Canvas) {

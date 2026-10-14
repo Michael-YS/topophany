@@ -7,6 +7,8 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 // The virtual geo view keeps the world's order but not its distances. Each
@@ -18,15 +20,18 @@ import (
 // such as edges and the internet, float as pills beside what they connect to.
 
 const (
-	vMaxW   = 24 // widest card
-	vMinW   = 12 // narrowest card when space is short
-	vMinGap = 5  // between columns: room for three wires between two cards
+	vMaxW    = 24 // widest card a column count allows for
+	vFullW   = 36 // the same with the map to itself, when cards say what runs on each node
+	vMinW    = 12 // narrowest card when space is short
+	vMinGap  = 5  // between columns: room for three wires between two cards
+	vWideGap = 8  // the gap a card leaves when it widens to show its rows in full
 )
 
 type vCard struct {
 	rows     []int // node indices, parents before their children
 	depth    []int
 	shown    []bool // rows on the card; the rest are counted in its frame
+	svc      []bool // rows with a line under them saying what runs there
 	place    string
 	lat, lon float64
 	located  bool
@@ -74,11 +79,18 @@ func (c *vCard) title() string {
 	return coords(c.lat, c.lon)
 }
 
-// natural is the width a card needs to show every row in full.
-func (c *vCard) natural(nodes []mapNode) int {
+// natural is the width a card needs to show every row in full and, with
+// runs, what runs on each node: after its name, or on a line of its own
+// under it when lined.
+func (c *vCard) natural(nodes []mapNode, runs map[string][]span, lined bool) int {
 	w := 0
 	for k, i := range c.rows {
-		w = max(w, 2*c.depth[k]+2+width(nodes[i].Name))
+		name, more := 2*c.depth[k]+2+width(nodes[i].Name), runsWidth(runs[nodes[i].ID])
+		if lined && !c.pill() {
+			w = max(w, name, 2*c.depth[k]+2+more)
+		} else {
+			w = max(w, name+more)
+		}
 	}
 	if c.pill() {
 		return w + 2
@@ -100,6 +112,9 @@ func (c *vCard) lanes(all bool) ([]vLane, int) {
 		if all || c.shown[k] {
 			r++
 			row[i] = r
+			if !all && c.svc != nil && c.svc[k] {
+				r++
+			}
 		}
 	}
 	lanes := []vLane{}
@@ -178,6 +193,11 @@ func (c *vCard) show(n int, nodes []mapNode, f mapFocus) {
 	c.h = 1
 	if !c.pill() {
 		c.h = n + 2
+		for k := range c.rows {
+			if c.shown[k] && c.svc != nil && c.svc[k] {
+				c.h++
+			}
+		}
 	}
 }
 
@@ -670,14 +690,27 @@ func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdg
 	// Columns run west to east along the shortest arc of longitude holding
 	// every place, as the geographic view frames it; when the width runs
 	// short, the places closest in longitude share a column.
-	centre, span := lonBounds(pts)
+	centre, arc := lonBounds(pts)
 	for _, c := range places {
-		c.key = math.Mod(c.lon-(centre-span/2)+720+1e-6, 360)
+		c.key = math.Mod(c.lon-(centre-arc/2)+720+1e-6, 360)
 	}
 	sort.SliceStable(places, func(i, j int) bool { return places[i].key < places[j].key })
-	natural := map[*vCard]int{}
+	// How many columns there are is settled with cards no wider than
+	// vMaxW; only then may they widen to show every row in full. With the
+	// map to itself, a card also says what runs on each node, and since
+	// there is height to spare its cards may be wider and share columns
+	// sooner.
+	var runs map[string][]span
+	if m.FullMap {
+		runs = m.nodeServices()
+	}
+	natural, full := map[*vCard]int{}, map[*vCard]int{}
 	for _, c := range cards {
-		natural[c] = min(c.natural(nodes), vMaxW)
+		full[c] = c.natural(nodes, nil, false)
+		natural[c] = min(full[c], vMaxW)
+		if runs != nil {
+			natural[c] = min(max(full[c], c.natural(nodes, runs, true)), vFullW)
+		}
 	}
 	// The gap ordering does not depend on the candidate column count. Sort
 	// once rather than multiplying O(n log n) sorting by every width retry.
@@ -789,6 +822,61 @@ func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdg
 		}
 		colW[wide]--
 	}
+	// What runs on a node goes on a line under it when every column has
+	// the height for those lines with its cards two rows apart, and after
+	// its name otherwise.
+	lined := runs != nil
+	for _, list := range cols {
+		need := -2
+		for _, c := range list {
+			need += 3
+			if !c.pill() {
+				need += len(c.rows) + 1
+				for _, i := range c.rows {
+					if len(runs[nodes[i].ID]) > 0 {
+						need++
+					}
+				}
+			}
+		}
+		lined = lined && need <= h
+	}
+	rich := map[*vCard]int{}
+	for _, c := range cards {
+		rich[c] = c.natural(nodes, runs, lined)
+		if lined && !c.pill() {
+			c.svc = make([]bool, len(c.rows))
+			for k, i := range c.rows {
+				c.svc[k] = len(runs[nodes[i].ID]) > 0
+			}
+		}
+	}
+	// Room to spare goes first to cards whose names are cut short, then to
+	// saying what runs on each node, a cell at a time to the column
+	// missing most, while the gaps keep room for their wires.
+	for phase, want := range []map[*vCard]int{full, rich} {
+		wantW := make([]int, nc)
+		for _, c := range cards {
+			wantW[c.col] = max(wantW[c.col], want[c])
+		}
+		gap := vWideGap
+		if phase == 1 {
+			gap = vMinGap + 1
+		}
+		for {
+			total, short := 4+(nc-1)*gap, -1
+			for l, v := range colW {
+				total += v
+				if v < wantW[l] && (short < 0 || wantW[l]-v > wantW[short]-colW[short]) {
+					short = l
+				}
+			}
+			if short < 0 || total >= w {
+				break
+			}
+			colW[short]++
+		}
+	}
 	spare := w
 	for _, v := range colW {
 		spare -= v
@@ -815,7 +903,7 @@ func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdg
 		}
 	}
 	for _, c := range cards {
-		c.w = min(natural[c], colW[c.col])
+		c.w = min(rich[c], colW[c.col])
 		c.x = colX[c.col] + (colW[c.col]-c.w)/2
 	}
 
@@ -875,6 +963,9 @@ func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdg
 			case c.shown[k]:
 				r++
 				rowOf[i] = r
+				if c.svc != nil && c.svc[k] {
+					r++
+				}
 			default:
 				rowOf[i] = c.h - 1
 			}
@@ -1190,8 +1281,12 @@ func (m *Model) drawVirtual(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 			ws.glint(cv, x, y, cells, k, e.ID, phase)
 		}
 	}
+	var runs map[string][]span
+	if m.FullMap {
+		runs = m.nodeServices()
+	}
 	for _, c := range l.cards {
-		m.drawVCard(cv, x, y, h, c, nodes, groups, f)
+		m.drawVCard(cv, x, y, h, c, nodes, groups, f, runs)
 	}
 	// Where wires meet a card's frame: an arrowhead where one arrives, a tee
 	// where they only leave, in the color of the one that needs the most
@@ -1267,9 +1362,10 @@ func (m *Model) drawVirtual(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 }
 
 // drawVCard draws a place as a card: its name in the frame, one row per node
-// with children indented under their parents, and its position (or how many
-// rows are folded away) along the foot. A node without a place is a pill.
-func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, groups map[string]Color, f mapFocus) {
+// with children indented under their parents and, where the card is wide
+// enough, what runs on each node; along the foot, its position or how many
+// rows are folded away. A node without a place is a pill.
+func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, groups map[string]Color, f mapFocus, runs map[string][]span) {
 	in := func(yy int) bool { return yy >= 0 && yy < h }
 	paper := Mix(cInk, cKeyBG, .38)
 	signal, focused := "", false
@@ -1297,6 +1393,9 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 		cv.Set(ox+c.x, oy+c.y, ' ', Style{BG: chip})
 		cv.Set(ox+c.x+1, oy+c.y, signalGlyph(sig), fg(signalColor(sig)).Bg(chip).bold())
 		cv.Pad(ox+c.x+2, oy+c.y, " "+ellipsis(n.Name, c.w-4)+" ", st, c.w-2)
+		if at := ox + c.x + 3 + width(n.Name); width(n.Name) <= c.w-4 {
+			drawRuns(cv, at, oy+c.y, ox+c.x+c.w-1-at, runs[n.ID], chip, false)
+		}
 		m.hit(ox+c.x, oy+c.y, c.w, "select:node:"+n.ID)
 		return
 	}
@@ -1425,10 +1524,34 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 		sig := nodeSignal(n)
 		cv.Set(cx, oy+yy, signalGlyph(sig), fg(signalColor(sig)).Bg(bg).bold())
 		cx += 2
+		lined := c.svc != nil && c.svc[k]
 		if room := ox + c.x + c.w - 2 - laneW - cx; room > 0 {
-			cv.Text(cx, oy+yy, ellipsis(n.Name, room), st, room)
+			if nw := cv.Text(cx, oy+yy, ellipsis(n.Name, room), st, room); nw == width(n.Name) && !lined {
+				drawRuns(cv, cx+nw, oy+yy, room-nw, runs[n.ID], bg, false)
+			}
 		}
 		m.hit(ox+c.x, oy+yy, c.w, "select:node:"+n.ID)
+		if lined {
+			// What runs here, on a line of its own under the name.
+			row++
+			if yy++; in(yy) {
+				cv.Fill(ox+c.x+1, oy+yy, inner, 1, Style{BG: paper})
+				if room := ox + c.x + c.w - 2 - laneW - cx; room > 2 {
+					rs := runs[n.ID]
+					gc := runQuiet
+					for _, r := range rs {
+						if r.st.FG != runQuiet {
+							gc = r.st.FG
+							break
+						}
+					}
+					if drawRuns(cv, cx, oy+yy, room, rs, paper, true) {
+						cv.Set(cx, oy+yy, '◆', fg(gc).Bg(paper))
+					}
+				}
+				m.hit(ox+c.x, oy+yy, c.w, "select:node:"+n.ID)
+			}
+		}
 	}
 	// The card's own links: each source row runs right into its lane, which
 	// carries it to an arrowhead at the destination row.
@@ -1472,4 +1595,109 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 			}
 		}
 	}
+}
+
+// runQuiet is the voice of a service that has no problem.
+var runQuiet = Mix(cMuted, cFaint, .35)
+
+// nodeServices says what runs on each node: its services' names, those with
+// a problem first and lit, the rest in a quiet voice.
+func (m *Model) nodeServices() map[string][]span {
+	s := m.Snapshot
+	state := map[string]model.EntityState{}
+	for _, e := range s.Services {
+		state[e.ID] = e
+	}
+	type run struct {
+		span
+		rank int // 0 down, 1 degraded or affected, 2 fine
+	}
+	runs := map[string][]run{}
+	for _, v := range s.Topology.Services {
+		r := run{span{v.Name, fg(runQuiet)}, 2}
+		if r.s == "" {
+			r.s = v.ID
+		}
+		switch e := state[v.ID]; {
+		case m.Cached() || m.Edit != nil:
+		case e.Health == "down":
+			r.st, r.rank = fg(Mix(cDown, cMuted, .2)), 0
+		case e.Health == "degraded" || e.Affected:
+			r.st, r.rank = fg(Mix(cWarn, cMuted, .2)), 1
+		}
+		runs[v.Node] = append(runs[v.Node], r)
+	}
+	out := map[string][]span{}
+	for node, rs := range runs {
+		// Trouble first, so it is what shows when not everything fits.
+		sort.SliceStable(rs, func(i, j int) bool { return rs[i].rank < rs[j].rank })
+		for _, r := range rs {
+			out[node] = append(out[node], r.span)
+		}
+	}
+	return out
+}
+
+// runsWidth is what a row's services take after its name: a gap of two,
+// then the names joined by ", ".
+func runsWidth(runs []span) int {
+	n := 0
+	for _, r := range runs {
+		n += 2 + width(r.s)
+	}
+	return n
+}
+
+// drawRuns writes what runs on a node in up to room cells from x, after a
+// gap of two: as many whole names as fit, then how many more there are.
+// When no whole name fits, a line of its own (alone) cuts the first short,
+// or says how many there are; after a name, nothing is said. It reports
+// whether it said anything.
+func drawRuns(cv *Canvas, x, y, room int, runs []span, bg Color, alone bool) bool {
+	x, room = x+2, room-2
+	n, used := 0, 0
+	for i, r := range runs {
+		w := width(r.s)
+		if i > 0 {
+			w += 2
+		}
+		if used+w > room {
+			break
+		}
+		n, used = n+1, used+w
+	}
+	for n > 0 && n < len(runs) && used+width(" +"+itoa(len(runs)-n)) > room {
+		n--
+		used -= width(runs[n].s)
+		if n > 0 {
+			used -= 2
+		}
+	}
+	more := func(k int) string {
+		if k < len(runs) {
+			return " +" + itoa(len(runs)-k)
+		}
+		return ""
+	}
+	switch count := plural(len(runs), "service"); {
+	case n == 0 && !alone:
+		return false
+	case n == 0 && room-width(more(1)) >= 8:
+		x += cv.Text(x, y, ellipsis(runs[0].s, room-width(more(1))), runs[0].st.Bg(bg), -1)
+		cv.Text(x, y, more(1), fg(cFaint).Bg(bg), -1)
+		return true
+	case n == 0 && width(count) <= room:
+		cv.Text(x, y, count, fg(cFaint).Bg(bg), -1)
+		return true
+	case n == 0:
+		return false
+	}
+	for i, r := range runs[:n] {
+		if i > 0 {
+			x += cv.Text(x, y, ", ", fg(cFaint).Bg(bg), -1)
+		}
+		x += cv.Text(x, y, r.s, r.st.Bg(bg), -1)
+	}
+	cv.Text(x, y, more(n), fg(cFaint).Bg(bg), -1)
+	return true
 }

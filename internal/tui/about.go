@@ -449,7 +449,7 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 // aboutKeys is a reference to the keys of the mode the UI is in, as
 // keycaps three to a row.
 func (m *Model) aboutKeys() []aboutLine {
-	keys := [][2]string{{"1–9", "tabs"}, {"↑↓", "move"}, {"↵", "evidence"}, {"/", "filter"}, {"v", "vantage"}, {"m", "map"}, {"z", "zoom"}}
+	keys := [][2]string{{"1–9", "tabs"}, {"↑↓", "move"}, {"↵", "evidence"}, {"/", "filter"}, {"v", "vantage"}, {"m", "map"}, {"z", "zoom"}, {"f", "full map"}}
 	switch {
 	case m.Edit != nil:
 		keys = append(keys, [2]string{"a", "add"}, [2]string{"e", "edit"}, [2]string{"d", "delete"}, [2]string{"u", "undo"}, [2]string{"^S", "save"})

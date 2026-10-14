@@ -192,7 +192,7 @@ func TestGeoKeepsItsShapeOnTallCells(t *testing.T) {
 			t.Fatal("at does not invert project", p, lat, lon)
 		}
 	}
-	if out := visible(&m); !regexp.MustCompile(`Shanghai [●○▲✖]{3}`).MatchString(out) {
+	if out := mapText(&m, 84); !regexp.MustCompile(`▎ Shanghai`).MatchString(out) || !regexp.MustCompile(`▎ [●○▲✖] Home Windows`).MatchString(out) {
 		t.Fatal("cluster missing on tall cells", out)
 	}
 }
@@ -257,9 +257,11 @@ func TestGeoFitCrossesPacificAndClustersNodes(t *testing.T) {
 	m.MapMode = "geo"
 	out := visible(&m)
 	// Home Windows, its hosted WSL and the MacBook share Shanghai: one site,
-	// one glyph per node.
-	if !regexp.MustCompile(`Shanghai [●○▲✖]{3}`).MatchString(out) || !strings.Contains(out, "no location") {
-		t.Fatal("cluster/unplaced tray missing", out)
+	// labelled by a plate with a row for each node, WSL under its host.
+	for _, want := range []string{`▎ Shanghai`, `▎ [●○▲✖] Home Windows`, `▎ └ [●○▲✖] WSL mirrored`, `▎ [●○▲✖] MacBook`, `no location`} {
+		if !regexp.MustCompile(want).MatchString(out) {
+			t.Fatal("cluster/unplaced tray missing", want, out)
+		}
 	}
 }
 

@@ -217,8 +217,13 @@ func (m *Model) servicesCard(cv *Canvas, x, y, w, h int) {
 		if h0 == "down" || h0 == "degraded" || note == "affected" {
 			ts = fg(cText)
 		}
+		// A name with no cell to its right may run on to the edge.
+		room := cellW - 3
+		if i+per >= len(rows) {
+			room = x + w - cx - 2
+		}
 		cv.Set(cx, cy, g, fg(gc))
-		n := cv.Text(cx+2, cy, ellipsis(r.Title, cellW-3), ts, cellW-3)
+		n := cv.Text(cx+2, cy, ellipsis(r.Title, room), ts, room)
 		m.hit(cx, cy, n+2, "goto:service:"+r.ID)
 	}
 }
@@ -312,9 +317,11 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 	case w >= 140 && h >= 24:
 		sw := min(max(w*36/100, 46), 74)
 		mw := w - sw
+		// The map gives rows it does not need to what needs attention;
+		// when nothing does, it keeps them.
 		mh := h
-		if rows := m.mapRows(mw - 2); rows > 0 && h-rows-2 >= 9 {
-			mh = rows + 2
+		if need := m.mapRows(mw - 2); need > 0 && h-need-2 >= 9 && (len(rows) > 0 || m.Search != "") {
+			mh = need + 2
 		}
 		ix, iy, iw, ih := m.panel(cv, x, y, mw, mh, mapTitle, mapTag, false)
 		m.drawMap(cv, ix-1, iy, iw+2, ih, sel)

@@ -114,8 +114,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make captures` captures the TUI stills in `docs/assets` from the
   preview, painted by the homepage's terminal renderer: the README's in
   every language, the guide's in English. They now show the current TUI.
+- `f` shows the map alone, on the Overview or Topology (from another tab,
+  the Topology's), and `f` or `Esc` brings the panels back. The selection
+  still moves with the arrow keys and is named with its state along the
+  map's foot. With the room, the virtual geo says what runs on each node,
+  services with a problem first and in their color, on a line under it
+  when its cards have the height, and geo plates name them after each
+  node.
 
 ### Changed
+
+- The geo map labels a site with a plate, its place over a row for each
+  node, set down where it covers the least land and the fewest arcs:
+  beside its marker when there is room, otherwise joined to it by a thin
+  leader, so a crowded region spreads its labels into the sea around it
+  rather than stacking them over each other. A short map shows fewer rows
+  and counts the rest, then folds a plate to one line. Labels stay put
+  while the selection moves.
+- Fitting every site, the geo map folds a stretch of longitude wider than
+  60° with no site in it, such as the Pacific between China and
+  California, to a narrow seam marked with how many degrees it holds, so
+  the coasts on either side get the width instead of an empty ocean. The
+  focus and world views are never folded. Its natural height is the
+  latitudes its sites span with room for their labels, rather than the
+  whole world, and on the Overview it keeps the rest when nothing needs
+  attention.
+- Labels take the room there is rather than a fixed width: virtual geo
+  cards widen to their full names where the gaps can spare it, a network
+  chip cut short by its column runs on into free cells to its right, a
+  service on the Overview with no cell beside it runs on to the edge, and
+  a server card's row keeps what it names whole before what it says on
+  the right.
+- Server cards name the server once, its state in the pill, and take an
+  amber or red header when something on them is affected or down. Their
+  sections open with a quiet label and a hairline rather than a bright
+  heading, and the frame is the card's edge, with no paper outside it.
 
 - Accepting a batch no longer visits every receipt a collector holds.
   Receipts expire from a queue in the order they were taken, and what

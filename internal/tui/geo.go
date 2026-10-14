@@ -3,7 +3,6 @@ package tui
 import (
 	"math"
 	"sort"
-	"strings"
 )
 
 // The geographic view: declared node locations on a quiet dotted world map.
@@ -17,23 +16,78 @@ import (
 // latitudes lo .. hi exist on screen: a panel wider than the world shows it
 // once, centred, and spare height is left empty rather than filled with
 // Antarctica. Dots are ky times as tall as they are wide; scale is degrees
-// per dot width, so the map keeps its shape whatever shape a cell is.
-type geoView struct{ lon0, lat0, scale, kx, ky, x0, x1, lo, hi float64 }
+// per dot width, so the map keeps its shape whatever shape a cell is. Folds
+// squeeze wide stretches of empty longitude, such as an ocean between two
+// coasts, into narrow seams.
+type geoView struct {
+	lon0, lat0, scale, kx, ky, x0, x1, lo, hi float64
+	folds                                     []fold
+}
+
+// fold squeezes the degrees a ≤ d < b east of a view's lon0 into seam
+// degrees on screen.
+type fold struct{ a, b, seam float64 }
+
+// squeeze maps degrees east of lon0 to degrees across the screen.
+func (g geoView) squeeze(d float64) float64 {
+	out := d
+	for _, f := range g.folds {
+		switch {
+		case d >= f.b:
+			out -= f.b - f.a - f.seam
+		case d > f.a:
+			out -= (d - f.a) * (1 - f.seam/(f.b-f.a))
+		}
+	}
+	return out
+}
+
+// unsqueeze is the inverse of squeeze.
+func (g geoView) unsqueeze(s float64) float64 {
+	shift := 0.0
+	for _, f := range g.folds {
+		a := f.a - shift
+		switch {
+		case s >= a+f.seam:
+			shift += f.b - f.a - f.seam
+		case s > a:
+			return f.a + (s-a)*(f.b-f.a)/f.seam
+		default:
+			return s + shift
+		}
+	}
+	return s + shift
+}
 
 func (g geoView) project(lat, lon float64) (float64, float64) {
 	d := math.Mod(lon-g.lon0-g.x0, 360)
 	if d < 0 {
 		d += 360
 	}
-	return (d + g.x0) * g.kx / g.scale, (g.lat0 - lat) / g.scale / g.ky
+	return g.squeeze(d+g.x0) * g.kx / g.scale, (g.lat0 - lat) / g.scale / g.ky
 }
 
-// at is the inverse of project; ok is false off the world.
+// at is the inverse of project; ok is false off the world and in a fold's
+// seam, which is left blank.
 func (g geoView) at(px, py float64) (lat, lon float64, ok bool) {
-	d := px * g.scale / g.kx
+	s := px * g.scale / g.kx
+	d := g.unsqueeze(s)
 	lat = g.lat0 - py*g.ky*g.scale
+	for _, f := range g.folds {
+		if a := g.squeeze(f.a); s > a && s < a+f.seam {
+			return lat, g.lon0 + d, false
+		}
+	}
 	return lat, g.lon0 + d, d >= g.x0 && d < g.x1 && lat >= g.lo && lat <= g.hi
 }
+
+// Gaps between sites wider than foldGap degrees of longitude are folded,
+// keeping foldPad degrees beside each site and a seam foldSeam degrees wide.
+const (
+	foldGap  = 60.0
+	foldPad  = 15.0
+	foldSeam = 6.0
+)
 
 // lonBounds finds the smallest arc of longitude holding every point, so
 // Shanghai + Los Angeles spans the Pacific rather than Europe.
@@ -55,9 +109,15 @@ func lonBounds(points [][2]float64) (centre, span float64) {
 
 // fitGeo frames the view: zoom 0 fits every placed node, 1 frames the focused
 // node's region, 2 shows the world. Antarctica is left out unless a node is
-// there, and the frame never zooms out past one world. The view is wd×hd
-// dots, each ky times as tall as it is wide.
+// there, and the frame never zooms out past one world. Fitting every node,
+// a wide gap between them folds: the longitudes it leaves empty, but for room
+// beside the sites on either side, shrink to a seam, so those sites get the
+// width. The view is wd×hd dots, each ky times as tall as it is wide.
 func fitGeo(points [][2]float64, wd, hd, ky float64, zoom int, focus *[2]float64) geoView {
+	return frameGeo(points, wd, hd, ky, zoom, focus, zoom == 0)
+}
+
+func frameGeo(points [][2]float64, wd, hd, ky float64, zoom int, focus *[2]float64, folding bool) geoView {
 	hd *= ky // in dot widths from here on
 	lo, hi := -56.0, 80.0
 	for _, p := range points {
@@ -66,12 +126,32 @@ func fitGeo(points [][2]float64, wd, hd, ky float64, zoom int, focus *[2]float64
 	lo, hi = math.Max(lo, -90), math.Min(hi, 90)
 	cLat, cLon := (lo+hi)/2, 10.0
 	spanLat, spanLon := hi-lo, 360.0
+	var folds []fold
+	removed, lead := 0.0, 0.0
 	if len(points) > 0 {
 		var span float64
 		cLon, span = lonBounds(points)
 		minLat, maxLat := 90.0, -90.0
 		for _, p := range points {
 			minLat, maxLat = math.Min(minLat, p[0]), math.Max(maxLat, p[0])
+		}
+		if folding {
+			// Degrees east of the sites' western end, where each gap starts
+			// and ends.
+			west := cLon - span/2
+			ds := []float64{}
+			for _, p := range points {
+				ds = append(ds, math.Mod(math.Mod(p[1]-west+1e-9, 360)+360, 360))
+			}
+			sort.Float64s(ds)
+			for i := 1; i < len(ds); i++ {
+				if a, b := ds[i-1]+foldPad, ds[i]-foldPad; ds[i]-ds[i-1] > foldGap && b-a > 2*foldSeam {
+					folds = append(folds, fold{a, b, foldSeam})
+					removed += b - a - foldSeam
+				}
+			}
+			span -= removed
+			cLon = west + span/2 // in degrees across the screen from here on
 		}
 		switch {
 		case zoom == 1 && focus != nil:
@@ -81,6 +161,7 @@ func fitGeo(points [][2]float64, wd, hd, ky float64, zoom int, focus *[2]float64
 			spanLon = math.Max(span+math.Max(32, span*.2), 64)
 			spanLat = math.Max(maxLat-minLat+math.Max(22, (maxLat-minLat)*.35), 32)
 		}
+		lead = span / 2
 	}
 	kx := clamp(math.Cos(cLat*math.Pi/180), .62, 1)
 	whole := math.Max(360*kx/wd, (hi-lo)/hd)
@@ -93,32 +174,54 @@ func fitGeo(points [][2]float64, wd, hd, ky float64, zoom int, focus *[2]float64
 	}
 	hs := wd * scale / kx
 	g := geoView{lon0: cLon - hs/2, lat0: cLat + vs/2, scale: scale, kx: kx, ky: ky, x1: hs, lo: lo, hi: hi}
+	if len(folds) > 0 {
+		if hs >= 360-removed {
+			// The whole world fits: nothing needs folding.
+			return frameGeo(points, wd, hd/ky, ky, zoom, focus, false)
+		}
+		// The sites' western end stands hs/2 - lead east of lon0.
+		for i := range folds {
+			folds[i].a += hs/2 - lead
+			folds[i].b += hs/2 - lead
+		}
+		g.folds = folds
+		g.x1 = g.unsqueeze(hs)
+		return g
+	}
 	if hs > 360 {
 		g.x0, g.x1 = (hs-360)/2, (hs+360)/2
 	}
 	return g
 }
 
-// geoRows is how many map rows a w-cell-wide geographic view needs to show
-// its latitude band at the default fit without letterboxing; layouts give any
-// height beyond that to other panels.
+// geoRows is how many map rows a w-cell-wide geographic view needs at the
+// default fit: the latitudes its sites span, with room above and below for
+// their labels, and never more than its whole latitude band. Layouts give
+// any height beyond that to other panels rather than to empty sea and ice.
 func (m *Model) geoRows(w int) int {
 	nodes, _, _ := m.graph()
 	pts := [][2]float64{}
+	lo, hi := 90.0, -90.0
 	for _, n := range nodes {
 		if n.Located {
 			pts = append(pts, [2]float64{n.Lat, n.Lon})
+			lo, hi = math.Min(lo, n.Lat), math.Max(hi, n.Lat)
 		}
 	}
 	ky := m.cellAspect() / 2
 	g := fitGeo(pts, float64(w*2), 1e6, ky, 0, nil)
-	return int(math.Ceil((g.hi - g.lo) / g.scale / ky / 4))
+	band := g.hi - g.lo
+	if len(pts) > 0 {
+		band = math.Min(band, math.Max(hi-lo+48, 60))
+	}
+	return int(math.Ceil(band / g.scale / ky / 4))
 }
 
 // drawLand shades each cell by how much land it covers, then lays a regular
 // dot lattice over the land and a dotted coastline along its edge. The shading
-// carries the silhouette; the dots carry the texture.
-func (m *Model) drawLand(cv *Canvas, d *Dots, x, y, w, h int, g geoView) {
+// carries the silhouette; the dots carry the texture. It returns how many of
+// each cell's eight dots are land.
+func (m *Model) drawLand(cv *Canvas, d *Dots, x, y, w, h int, g geoView) []uint8 {
 	W, H := w*2, h*4
 	grid := make([]bool, W*H)
 	for py := 0; py < H; py++ {
@@ -134,18 +237,18 @@ func (m *Model) drawLand(cv *Canvas, d *Dots, x, y, w, h int, g geoView) {
 		lat, lon, ok := g.at(float64(px)+.5, float64(py)+.5)
 		return ok && land(lat, lon)
 	}
-	if !m.NoColor {
-		for cy := 0; cy < h; cy++ {
-			for cx := 0; cx < w; cx++ {
-				n := 0
-				for k := 0; k < 8; k++ {
-					if grid[(cy*4+k/2)*W+cx*2+k%2] {
-						n++
-					}
+	cells := make([]uint8, w*h)
+	for cy := 0; cy < h; cy++ {
+		for cx := 0; cx < w; cx++ {
+			n := uint8(0)
+			for k := 0; k < 8; k++ {
+				if grid[(cy*4+k/2)*W+cx*2+k%2] {
+					n++
 				}
-				if n > 0 {
-					cv.put(x+cx, y+cy, " ", 1, Style{BG: Mix(cInk, cLandFill, float64(n)/8)})
-				}
+			}
+			cells[cy*w+cx] = n
+			if n > 0 && !m.NoColor {
+				cv.put(x+cx, y+cy, " ", 1, Style{BG: Mix(cInk, cLandFill, float64(n)/8)})
 			}
 		}
 	}
@@ -161,6 +264,7 @@ func (m *Model) drawLand(cv *Canvas, d *Dots, x, y, w, h int, g geoView) {
 			}
 		}
 	}
+	return cells
 }
 
 type geoSite struct {
@@ -233,6 +337,7 @@ type geoArc struct {
 	a, b                     int // site indices, a < b
 	edge                     mapEdge
 	declared, focused        bool
+	always                   bool // drawn whatever is selected
 	forward, backward        bool
 	links, implied, problems int
 }
@@ -262,7 +367,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 	W, H := float64(w*2), float64(mh*4)
 	g := fitGeo(pts, W, H, m.cellAspect()/2, m.Zoom, focus)
 	d := NewDots(w, mh)
-	m.drawLand(cv, d, x, y, w, mh, g)
+	landCells := m.drawLand(cv, d, x, y, w, mh, g)
 	sites := geoSites(nodes, g, f)
 	siteOf := map[string]int{}
 	for k, s := range sites {
@@ -298,6 +403,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		if e.Kind == edgeLink {
 			a.declared = true
 		}
+		a.always = a.always || e.Kind != edgePath || signalRank(e.Signal) >= 3 || m.Observer != "" && e.Observer == m.Observer
 		a.focused = a.focused || focused
 		if sa == key[0] {
 			a.forward = true
@@ -316,6 +422,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		return order[i].b < order[j].b
 	})
 	phase := m.phase()
+	arcCells := make([]bool, w*mh)
 	for _, a := range order {
 		A, B := sites[a.a], sites[a.b]
 		p0, p3 := [2]float64{A.x, A.y}, [2]float64{B.x, B.y}
@@ -334,6 +441,14 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		p1 := [2]float64{p0[0] + (cp[0]-p0[0])*2/3, p0[1] + (cp[1]-p0[1])*2/3}
 		p2 := [2]float64{p3[0] + (cp[0]-p3[0])*2/3, p3[1] + (cp[1]-p3[1])*2/3}
 		path := trimEnds(curve(p0, p1, p2, p3), 4.5)
+		if a.always {
+			// Where labels would hide an arc, whatever is selected.
+			for _, p := range path {
+				if cx, cy := int(p[0])/2, int(p[1])/4; cx >= 0 && cy >= 0 && cx < w && cy < mh {
+					arcCells[cy*w+cx] = true
+				}
+			}
+		}
 		e := a.edge
 		e.Kind = edgePath
 		if a.declared {
@@ -366,8 +481,68 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 			halo(d, s.x, s.y, 4.5+5.5*t, g.ky, Mix(c, cInk, .35+.6*t), 6)
 		}
 	}
+	// Labels are placed before the dots are drawn, so their leaders are
+	// dots too, under the arcs.
+	tag := " " + []string{"fit", "focus", "world"}[m.Zoom%3] + " · z "
+	taken := make([]bool, w*mh)
+	for i := max(0, w-width(tag)-2); i < w; i++ {
+		taken[i] = true
+	}
+	// A fold's seam is a dotted line down the middle of a blank strip,
+	// headed by how many degrees of longitude it holds, so it is never
+	// taken for a coast or a meridian.
+	type seam struct {
+		x     int
+		label string
+	}
+	seams := []seam{}
+	for _, f := range g.folds {
+		sx := (g.squeeze(f.a) + f.seam/2) * g.kx / g.scale
+		for py := 0; py < int(H); py += 2 {
+			d.Set(int(sx), py, Mix(cLine, cAccent, .2), 1)
+		}
+		label := " " + itoa(int(math.Round(f.b-f.a))) + "° folded "
+		lx := int(sx)/2 - width(label)/2
+		seams = append(seams, seam{lx, label})
+		for i := max(0, lx-1); i < min(w, lx+width(label)+1); i++ {
+			taken[i] = true
+		}
+	}
+	// With the map to itself, a plate also says what runs on each node.
+	var runs map[string][]span
+	if m.FullMap {
+		runs = m.nodeServices()
+	}
+	plates := m.plates(sites, nodes, f, w, mh, m.cellAspect(), landCells, arcCells, taken, runs)
+	for _, p := range plates {
+		if !p.beside {
+			p.leader(d, Mix(signalColor(p.site.signal), cInk, .25), g.ky)
+		}
+	}
 	d.Blit(cv, x, y, 0)
-	m.geoMarkers(cv, x, y, w, mh, nodes, sites, f.node)
+	for _, s := range sites {
+		cx, cy := int(s.x)/2, int(s.y)/4
+		if cx < 0 || cy < 0 || cx >= w || cy >= mh {
+			continue
+		}
+		lead := s.nodes[0]
+		for _, i := range s.nodes {
+			if f.hasNode(nodes[i].ID) {
+				lead = i
+				break
+			}
+		}
+		cv.Set(x+cx, y+cy, signalGlyph(s.signal), fg(signalColor(s.signal)).bold())
+		m.hit(x+cx, y+cy, 1, "select:node:"+nodes[lead].ID)
+	}
+	for _, s := range seams {
+		if s.x >= 0 && s.x+width(s.label) < w-width(tag)-2 {
+			cv.Text(x+s.x, y, s.label, fg(Mix(cLine, cAccent, .45)), -1)
+		}
+	}
+	for _, p := range plates {
+		m.drawPlate(cv, x, y, p, nodes, f, runs)
+	}
 	if tray {
 		ty := y + mh
 		cx := x + 1
@@ -392,7 +567,6 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		msg := "No node locations declared — add one with e (edit) or press m for the network view"
 		cv.Text(x+max(0, (w-width(msg))/2), y+mh/2, msg, fg(cMuted).italic(), w)
 	}
-	tag := " " + []string{"fit", "focus", "world"}[m.Zoom%3] + " · z "
 	tx := x + w - width(tag) - 1
 	cv.Text(tx, y, tag, fg(cFaint), -1)
 	m.hit(tx, y, width(tag), "key:z")
@@ -405,121 +579,5 @@ func halo(d plotter, cx, cy, r, ky float64, c Color, pri int8) {
 	for i := 0; i < steps; i++ {
 		a := 2 * math.Pi * float64(i) / float64(steps)
 		d.Set(int(math.Round(cx+math.Cos(a)*r)), int(math.Round(cy+math.Sin(a)*r/ky)), c, pri)
-	}
-}
-
-// geoMarkers draws each site's marker and label. Labels try the right, the
-// left, then the rows above and below, and are skipped rather than drawn over
-// another label or marker. The focused site is labelled first.
-func (m *Model) geoMarkers(cv *Canvas, x, y, w, h int, nodes []mapNode, sites []*geoSite, focusNode string) {
-	occupied := make([]bool, w*h)
-	occupy := func(cx, cy, n int) {
-		for i := cx; i < cx+n; i++ {
-			if i >= 0 && i < w && cy >= 0 && cy < h {
-				occupied[cy*w+i] = true
-			}
-		}
-	}
-	free := func(cx, cy, n int) bool {
-		if cy < 0 || cy >= h || cx < 0 || cx+n > w {
-			return false
-		}
-		for i := cx; i < cx+n; i++ {
-			if occupied[cy*w+i] {
-				return false
-			}
-		}
-		return true
-	}
-	cell := func(s *geoSite) (int, int) { return int(s.x) / 2, int(s.y) / 4 }
-	for _, s := range sites {
-		cx, cy := cell(s)
-		occupy(cx, cy, 1)
-	}
-	order := append([]*geoSite(nil), sites...)
-	sort.SliceStable(order, func(i, j int) bool {
-		a, b := order[i], order[j]
-		if a.focused != b.focused {
-			return a.focused
-		}
-		if signalRank(a.signal) != signalRank(b.signal) {
-			return signalRank(a.signal) > signalRank(b.signal)
-		}
-		return len(a.nodes) > len(b.nodes)
-	})
-	for _, s := range order {
-		cx, cy := cell(s)
-		if cx < 0 || cy < 0 || cx >= w || cy >= h {
-			continue
-		}
-		lead := s.nodes[0]
-		for _, i := range s.nodes {
-			if nodes[i].ID == focusNode {
-				lead = i
-			}
-		}
-		c := signalColor(s.signal)
-		cv.Set(x+cx, y+cy, signalGlyph(s.signal), fg(c).bold())
-		m.hit(x+cx, y+cy, 1, "select:node:"+nodes[lead].ID)
-		// A site is named by its places; the focused one by its node.
-		label := nodes[lead].Name
-		switch {
-		case s.focused:
-			if p := nodes[lead].Place; p != "" && !strings.Contains(label, p) {
-				label += " · " + p
-			}
-		case len(s.places) == 1:
-			label = s.places[0]
-		case len(s.places) == 2:
-			label = s.places[0] + " · " + s.places[1]
-		case len(s.places) > 2:
-			label = s.places[0] + " +" + itoa(len(s.places)-1)
-		}
-		// One glyph per node shows a site's make-up at a glance.
-		var minis []rune
-		var miniC []Color
-		if len(s.nodes) > 1 {
-			for k, i := range s.nodes {
-				if k == 5 {
-					break
-				}
-				sig := nodeSignal(nodes[i])
-				minis = append(minis, signalGlyph(sig))
-				miniC = append(miniC, signalColor(sig))
-			}
-		}
-		more := ""
-		if len(s.nodes) > 5 {
-			more = "+" + itoa(len(s.nodes)-5)
-		}
-		lw := width(label)
-		total := lw
-		if len(minis) > 0 {
-			total += 1 + len(minis) + width(more)
-		}
-		for _, cand := range [][2]int{{cx + 2, cy}, {cx - 1 - total, cy}, {cx + 1, cy - 1}, {cx + 1, cy + 1}, {cx - total, cy - 1}, {cx - total, cy + 1}} {
-			if !free(cand[0], cand[1], total) {
-				continue
-			}
-			ls := fg(cText)
-			if s.focused {
-				ls = fg(cGlow).Bg(cSelBG).bold()
-			}
-			lx := x + cand[0]
-			cv.Text(lx, y+cand[1], label, ls, lw)
-			if len(minis) > 0 {
-				mx := lx + lw + 1
-				if s.focused {
-					cv.Set(lx+lw, y+cand[1], ' ', Style{BG: cSelBG})
-				}
-				for k, r := range minis {
-					cv.Set(mx+k, y+cand[1], r, fg(miniC[k]).Bg(ls.BG))
-				}
-				cv.Text(mx+len(minis), y+cand[1], more, fg(cMuted).Bg(ls.BG), -1)
-			}
-			m.hit(lx, y+cand[1], total, "select:node:"+nodes[lead].ID)
-			occupy(cand[0]-1, cand[1], total+2)
-			break
-		}
 	}
 }

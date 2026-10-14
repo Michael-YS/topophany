@@ -47,6 +47,7 @@ type Model struct {
 	Now                   time.Time
 	MapMode               string // "", "virtual", "geo" or "network"; "" picks virtual when locations exist
 	Zoom                  int
+	FullMap               bool    // the map alone fills the body where a tab has one (f)
 	Edit                  *Editor // non-nil only for topo edit
 	Preview               Preview // non-nil only for topo preview
 	Debug                 bool    // performance/geometry overlay (D)
@@ -59,9 +60,10 @@ type Model struct {
 	noticeErr             bool
 	noticeAt              time.Time
 	aboutAt               time.Time
-	aboutSpin             float64 // extra globe rotation from the mouse wheel
-	vcache                vCache  // the virtual map's wires, kept while its layout holds
-	samples               samples // the selected check's recent samples, as last read
+	aboutSpin             float64    // extra globe rotation from the mouse wheel
+	vcache                vCache     // the virtual map's wires, kept while its layout holds
+	pcache                plateCache // the geographic map's labels, kept while what they label holds
+	samples               samples    // the selected check's recent samples, as last read
 	hits                  []hit
 	drawingModal          bool
 }
@@ -127,11 +129,26 @@ func (m *Model) Animating() time.Duration {
 		return 90 * time.Millisecond // the spinner turns
 	case m.notice != "" && m.Now.Sub(m.noticeAt) >= noticeFor-noticeFade && m.Now.Sub(m.noticeAt) < noticeFor:
 		return 100 * time.Millisecond // the notice fades out
-	case !m.Detail && (m.Tab == tabTopology || m.Tab == tabOverview && m.Width >= 90 && m.Height >= 25):
+	case m.mapShown():
 		return 140 * time.Millisecond // glints run along the map's wires
 	}
 	return 500 * time.Millisecond
 }
+
+// mapShown reports whether the body shows a map: Topology always, the
+// Overview when it has the room or the map fills the body.
+func (m *Model) mapShown() bool {
+	switch {
+	case m.Detail:
+		return false
+	case m.Tab == tabTopology:
+		return true
+	case m.Tab == tabOverview:
+		return m.FullMap || m.Width >= 90 && m.Height >= 25
+	}
+	return false
+}
+
 func (m *Model) phase() float64 { return float64(m.Now.UnixMilli()%3_600_000) / 1000 }
 
 // NextObserver cycles the observer view: all observers, then each declared one.
@@ -270,6 +287,16 @@ func (m *Model) Key(k string) string {
 		}
 	case "z":
 		m.Zoom = (m.Zoom + 1) % 3
+	case "f":
+		// The map alone, or the panels back; from a tab without a map,
+		// the Topology's map alone.
+		if m.Tab != tabTopology && m.Tab != tabOverview {
+			m.setTab(tabTopology)
+			m.FullMap = true
+		} else {
+			m.FullMap = !m.FullMap
+			m.Detail = false
+		}
 	case "x":
 		if m.Preview != nil {
 			m.scenarioMenu()
@@ -292,6 +319,9 @@ func (m *Model) Key(k string) string {
 			}
 		}
 	case "esc":
+		if m.Search == "" && !m.Detail {
+			m.FullMap = false
+		}
 		m.Search = ""
 		m.Detail = false
 	case "enter":

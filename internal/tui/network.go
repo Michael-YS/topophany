@@ -489,6 +489,32 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 			cv.Set(x+a.x, y+a.y, a.r, fg(c))
 		}
 	}
+	// A name its column cut short runs on to the right, through cells no
+	// wire, arrow or other chip uses, keeping one clear before the next.
+	taken := make([]bool, w*h)
+	for k := range ws.marks {
+		taken[k] = true
+	}
+	for _, a := range arrows {
+		if a.x >= 0 && a.x < w && a.y >= 0 && a.y < h {
+			taken[a.y*w+a.x] = true
+		}
+	}
+	for _, b := range boxes {
+		for cx := max(b.x, 0); cx < min(b.x+b.w, w); cx++ {
+			if b.y >= 0 && b.y < h {
+				taken[b.y*w+cx] = true
+			}
+		}
+	}
+	free := func(cx, cy int) bool { return cx < w-1 && cy >= 0 && cy < h && !taken[cy*w+cx] }
+	for i := range nodes {
+		b := &boxes[i]
+		for b.w < width(label[i])+4 && free(b.x+b.w, b.y) && free(b.x+b.w+1, b.y) {
+			taken[b.y*w+b.x+b.w] = true
+			b.w++
+		}
+	}
 	for i, n := range nodes {
 		b := boxes[i]
 		if b.x+b.w > w {

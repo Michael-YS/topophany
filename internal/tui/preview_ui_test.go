@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -420,4 +422,46 @@ func TestSmallOverviewUsesItsRoom(t *testing.T) {
 	if strings.Contains(out, "SERVICES") {
 		t.Fatal("an outage's attention list gives its room to the services")
 	}
+}
+
+// A server card names its server once, its state in the pill; its sections
+// open with a quiet label and a hairline; a server with a problem takes the
+// problem's color across its header, so it stands out on the wall; and the
+// card's edge is its frame, with nothing painted outside it.
+func TestServerCardsPutTroubleUpFront(t *testing.T) {
+	m := previewModel(t)
+	m.Colors = colorTrue
+	m.Width, m.Height = 160, 45
+	sim := m.Preview.(*preview.Sim)
+	sim.SetScenario(slices.Index(sim.ScenarioIDs(), "dmit-blocked"), m.Now.Add(-30*time.Minute))
+	snap, e := sim.Snapshot("", m.Now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	m.Snapshot = snap
+	m.setTab(tabServers)
+	m.Key("select:node:dmit")
+	out := visible(m)
+	if !regexp.MustCompile(`│▎DMIT 线路机 +● AFFECTED +│`).MatchString(out) {
+		t.Fatal("the header should name the server once, its state in the pill", out)
+	}
+	if !regexp.MustCompile(`SERVICES ─{10,}`).MatchString(out) || !regexp.MustCompile(`ADDRESSES 2 ─{10,}`).MatchString(out) {
+		t.Fatal("sections do not open with a label and a hairline", out)
+	}
+	cv := m.draw()
+	for y := 0; y < cv.H; y++ {
+		for x := 1; x+4 < cv.W; x++ {
+			if cv.at(x-1, y).ch != "▎" || cv.at(x, y).ch != "D" || cv.at(x+1, y).ch != "M" || cv.at(x+3, y).ch != "T" {
+				continue
+			}
+			if bg := cv.at(x, y).st.BG; bg != Mix(Mix(cWarn, cInk, .86), cSelBG, .35) {
+				t.Fatalf("an affected server's header is not amber: %06x", uint32(bg)&0xFFFFFF)
+			}
+			if frame := cv.at(x-2, y-1); frame.ch != "┏" && frame.ch != "╭" || frame.st.BG != 0 && frame.st.BG != cInk {
+				t.Fatalf("the frame is painted outside its line: %q %06x", frame.ch, uint32(frame.st.BG)&0xFFFFFF)
+			}
+			return
+		}
+	}
+	t.Fatal("no DMIT card drawn")
 }

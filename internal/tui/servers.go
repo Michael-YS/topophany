@@ -24,6 +24,7 @@ type cardRow struct {
 	left, right []span
 	bg          Color
 	bar         Color // a stripe at the card's inner left edge
+	rule        bool  // a hairline runs on from the left spans to the edge
 	hit         string
 }
 
@@ -60,28 +61,32 @@ func (m *Model) card(f fleet, r Row, w int, selected bool) []cardRow {
 		}
 		return false
 	}
+	// A section opens with a quiet label and a hairline, so the name and
+	// what needs attention stay the loudest things on the card.
 	heading := func(title string, count int) {
-		if len(rows) > 0 {
-			add(cardRow{})
-		}
-		head := []span{{title, fg(Mix(cAccent, cMuted, .35)).bold()}}
+		add(cardRow{})
+		head := []span{{title, fg(Mix(cMuted, cAccent, .3)).bold()}}
 		if count > 1 {
-			head = append(head, span{" · " + itoa(count), fg(cFaint)})
+			head = append(head, span{" " + itoa(count), fg(cFaint)})
 		}
-		add(cardRow{left: head})
+		add(cardRow{left: head, rule: true})
 	}
 
-	// The header: what it is, its state, its kind and where it is.
+	// The header: what it is and its state, then its kind and where it is.
+	// A server with a problem takes the problem's color, so it stands out
+	// on the wall.
 	pill, pillStyle := statePill(r)
 	name := fg(cText).bold()
 	if selected {
 		name = fg(cGlow).bold()
 	}
-	glyph, gc := healthGlyph(r.Health), healthColor(r.Health)
-	if r.Note == "affected" {
-		glyph, gc = '▲', cWarn
+	switch {
+	case r.Health == "down":
+		band = Mix(cDown, cInk, .84)
+	case r.Health == "degraded" || r.Note == "affected":
+		band = Mix(cWarn, cInk, .86)
 	}
-	add(cardRow{left: []span{{string(glyph) + " ", fg(gc).bold()}, {r.Title, name}}, right: []span{{pill, pillStyle}}, bg: band, bar: hue})
+	add(cardRow{left: []span{{r.Title, name}}, right: []span{{pill, pillStyle}}, bg: band, bar: hue})
 	sub := []span{{c.Kind, fg(Mix(hue, cText, .35))}}
 	if c.Group != "" {
 		sub = append(sub, span{" · " + c.Group, fg(cMuted)})
@@ -353,17 +358,19 @@ func (m *Model) drawCard(cv *Canvas, x, y, w int, rows []cardRow, r Row, index i
 			continue
 		}
 		m.hit(x, yy, w, "row:"+itoa(index))
+		// The frame stands on the ground and only its inside is paper, so
+		// the line is the card's edge.
 		switch i {
 		case 0, len(rows) + 1:
 			l, rr := frame[0], frame[1]
 			if i > 0 {
 				l, rr = frame[2], frame[3]
 			}
-			cv.Set(x, yy, l, border.Bg(paper))
+			cv.Set(x, yy, l, border)
 			for k := 1; k < w-1; k++ {
-				cv.Set(x+k, yy, frame[4], border.Bg(paper))
+				cv.Set(x+k, yy, frame[4], border)
 			}
-			cv.Set(x+w-1, yy, rr, border.Bg(paper))
+			cv.Set(x+w-1, yy, rr, border)
 			continue
 		}
 		row := rows[i-1]
@@ -374,18 +381,26 @@ func (m *Model) drawCard(cv *Canvas, x, y, w int, rows []cardRow, r Row, index i
 				bg = Mix(row.bg, cSelBG, .35)
 			}
 		}
-		cv.Set(x, yy, frame[5], border.Bg(paper))
+		cv.Set(x, yy, frame[5], border)
 		cv.Fill(x+1, yy, w-2, 1, Style{BG: bg})
-		cv.Set(x+w-1, yy, frame[5], border.Bg(paper))
+		cv.Set(x+w-1, yy, frame[5], border)
 		if row.bar != 0 {
 			cv.Set(x+1, yy, '▎', fg(row.bar).Bg(bg))
 		}
+		// What a row names keeps its width first; what it says on the right
+		// stays whole when short (a state, an age) and otherwise gets what
+		// is left, but never less than a third.
 		inner := w - 4
-		rw := 0
+		lw0, rw := 0, 0
+		for _, s := range row.left {
+			lw0 += width(s.s)
+		}
 		for _, s := range row.right {
 			rw += width(s.s)
 		}
-		rw = min(rw, inner/2)
+		if rw > 12 && lw0+1+rw > inner {
+			rw = max(min(rw, inner-lw0-1), min(rw, 12, inner/3))
+		}
 		lw := inner
 		if rw > 0 {
 			lw = inner - rw - 1
@@ -403,6 +418,11 @@ func (m *Model) drawCard(cv *Canvas, x, y, w int, rows []cardRow, r Row, index i
 				break
 			}
 			cx += cv.Text(cx, yy, ellipsis(s.s, x+2+lw-cx), on(s.st), x+2+lw-cx)
+		}
+		if row.rule {
+			for k := cx + 1; k < x+2+inner; k++ {
+				cv.Set(k, yy, '─', fg(cLine).Bg(bg))
+			}
 		}
 		if rw > 0 {
 			rx := x + 2 + inner - rw
