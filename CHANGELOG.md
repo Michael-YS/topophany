@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
 ### Added
 
 - About links to the homepage, topophany.com, and to the source on GitHub,
@@ -46,9 +48,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PTY acceptance reconstructs the terminal screen before checking state, so
+  incremental redraws correctly verify collector failover. CI fuzz suites use
+  an execution budget instead of a short wall-clock deadline.
+- Large topology diagrams have bounded layout work and an explicit fallback;
+  ordinary dense diagrams retain their routing and ordering quality.
+- Notices fade out, and the evidence footer identifies Enter as the back action.
 - On narrow terminals the header's project and view no longer run into
   the live indicator: they end in an ellipsis before it. Before the first
   snapshot the header no longer says it was updated "never".
+
+### Security
+
+- Enforce per-source collector connection quotas and absolute connection lifetimes;
+  close unauthenticated HTTP/1 connections while preserving authenticated reuse.
+- Give viewers a public topology revision that excludes private execution settings,
+  including revisions embedded in snapshots and observation history. Workers keep
+  the private execution revision contract.
 
 ## [0.2.0] - 2026-10-13
 
@@ -154,6 +170,7 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/WhitenWhiten/topophany/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/WhitenWhiten/topophany/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/WhitenWhiten/topophany/releases/tag/v0.1.0
