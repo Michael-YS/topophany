@@ -87,6 +87,7 @@ type Server struct {
 	Ledger             *ledger.Ledger // what snapshots carry of past incidents; nil for none
 	Auth               Auth
 	configMu           sync.RWMutex
+	gen                *generation // what Config gives every request; nil until first asked
 	MaxSampleAge       time.Duration
 	Now                func() time.Time
 	mu                 sync.Mutex
@@ -131,13 +132,59 @@ func (s *Server) current() (model.Config, Auth) {
 	return s.Config, s.Auth
 }
 
+// A generation is what every request served under one topology shares,
+// worked out once when the topology is loaded rather than by each
+// request: its revision, its checks and their contracts, and what viewers
+// may see of them. Nothing in it is changed after it is made.
+type generation struct {
+	config          model.Config
+	revision        string
+	checks          map[string]model.Check
+	contracts       map[string]string // by check
+	publicRevision  string
+	publicContracts map[string]string // by check
+	topology        []byte            // the body GET /v1/config answers with
+}
+
+func newGeneration(c model.Config) *generation {
+	public := config.Public(c)
+	g := &generation{config: c, revision: config.Revision(c), checks: make(map[string]model.Check, len(c.Checks)), contracts: config.Contracts(c), publicRevision: config.Revision(public), publicContracts: config.Contracts(public)}
+	for _, x := range c.Checks {
+		g.checks[x.ID] = x
+	}
+	g.topology, _ = json.Marshal(struct {
+		Project  string       `json:"project"`
+		Revision string       `json:"revision"`
+		Topology model.Config `json:"topology"`
+	}{c.Project, g.publicRevision, public})
+	g.topology = append(g.topology, '\n')
+	return g
+}
+
+// generation is the generation of the topology a request is served under.
+func (s *Server) generation() *generation {
+	s.configMu.RLock()
+	g := s.gen
+	s.configMu.RUnlock()
+	if g != nil {
+		return g
+	}
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	if s.gen == nil {
+		s.gen = newGeneration(s.Config)
+	}
+	return s.gen
+}
+
 // Reload makes c and a the collector's topology and tokens, as on SIGHUP.
 // Requests already past authorization finish under the old ones. The store
 // counts samples under c from now on, and no snapshot built before is
 // served again.
 func (s *Server) Reload(c model.Config, a Auth) {
+	g := newGeneration(c)
 	s.configMu.Lock()
-	s.Config, s.Auth = c, a
+	s.Config, s.Auth, s.gen = c, a, g
 	s.configMu.Unlock()
 	if s.Store != nil {
 		ids := make([]string, 0, len(c.Observers))
@@ -145,7 +192,7 @@ func (s *Server) Reload(c model.Config, a Auth) {
 			ids = append(ids, o.ID)
 		}
 		s.Store.SetObservers(ids)
-		s.Store.SetCurrent(config.Revision(c), config.Contracts(c), config.Stale(c))
+		s.Store.SetCurrent(g.revision, g.contracts, config.Stale(c))
 	}
 	s.snapshotMu.Lock()
 	s.snapshotCache = nil
@@ -156,7 +203,7 @@ func (s *Server) Reload(c model.Config, a Auth) {
 // them would, and records in the ledger the incidents that open, recover
 // and close (see ledger.Observe). It returns that snapshot too.
 func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.Change, error) {
-	c, _ := s.current()
+	c := s.generation().config
 	rows, carries, beats := s.Store.StateView()
 	snap := engine.BuildCarried(c, s.Instance, "", rows, carries, beats, now)
 	if s.Ledger == nil {
@@ -283,8 +330,7 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, p Principal) {
 	view := r.URL.Query().Get("observer")
 	if view != "" {
 		exists := false
-		c, _ := s.current()
-		for _, o := range c.Observers {
+		for _, o := range s.generation().config.Observers {
 			exists = exists || o.ID == view
 		}
 		if !exists {
@@ -295,17 +341,14 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, p Principal) {
 	s.writeSnapshot(w, view, p.TokenSHA256)
 }
 func (s *Server) topology(w http.ResponseWriter, r *http.Request, _ Principal) {
-	c, _ := s.current()
-	writeJSON(w, 200, struct {
-		Project  string       `json:"project"`
-		Revision string       `json:"revision"`
-		Topology model.Config `json:"topology"`
-	}{c.Project, config.PublicRevision(c), config.Public(c)})
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(s.generation().topology)
 }
 func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
-	c, _ := s.current()
+	g := s.generation()
 	id := r.URL.Query().Get("check")
-	if _, ok := config.Check(c, id); !ok {
+	if _, ok := g.checks[id]; !ok {
 		writeError(w, 404, "unknown_check")
 		return
 	}
@@ -318,9 +361,8 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 		}
 		n = v
 	}
-	x, _ := config.Check(c, id)
-	contract := config.PublicContracts(c)[id]
-	entries := s.Store.History(id, map[string]string{id: config.Contract(c, x)}, config.Revision(c), n)
+	contract := g.publicContracts[id]
+	entries := s.Store.History(id, map[string]string{id: g.contracts[id]}, g.revision, n)
 	for i := range entries {
 		entries[i].Contract, entries[i].Revision = contract, ""
 	}
@@ -330,17 +372,16 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 		Check    string              `json:"check"`
 		Contract string              `json:"contract"`
 		Entries  []model.Observation `json:"entries"`
-	}{c.Project, config.PublicRevision(c), id, contract, entries})
+	}{g.config.Project, g.publicRevision, id, contract, entries})
 }
 
 // rollups lays a check's rollups under its current contract out in slots
 // of step (5m, 1h or 1d) over the span before now, with their total.
 func (s *Server) rollups(w http.ResponseWriter, r *http.Request, _ Principal) {
-	c, _ := s.current()
+	g := s.generation()
 	q := r.URL.Query()
 	id := q.Get("check")
-	x, ok := config.Check(c, id)
-	if !ok {
+	if _, ok := g.checks[id]; !ok {
 		writeError(w, 404, "unknown_check")
 		return
 	}
@@ -366,7 +407,7 @@ func (s *Server) rollups(w http.ResponseWriter, r *http.Request, _ Principal) {
 		return
 	}
 	now := s.Now().UTC()
-	total, slots, since := s.Store.Rollups(id, config.Contract(c, x), now.Add(-span).Truncate(step), step, now)
+	total, slots, since := s.Store.Rollups(id, g.contracts[id], now.Add(-span).Truncate(step), step, now)
 	writeJSON(w, 200, struct {
 		Project     string         `json:"project"`
 		Revision    string         `json:"revision"`
@@ -377,7 +418,7 @@ func (s *Server) rollups(w http.ResponseWriter, r *http.Request, _ Principal) {
 		Since       time.Time      `json:"since,omitzero"`
 		Total       model.Rollup   `json:"total"`
 		Slots       []model.Rollup `json:"slots"`
-	}{c.Project, config.PublicRevision(c), id, config.PublicContracts(c)[id], now, int64(step / time.Second), since, total, slots})
+	}{g.config.Project, g.publicRevision, id, g.publicContracts[id], now, int64(step / time.Second), since, total, slots})
 }
 func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 	if ct, _, e := mime.ParseMediaType(r.Header.Get("Content-Type")); e != nil || ct != "application/json" {
@@ -417,13 +458,13 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 	writeJSON(w, 202, map[string]any{"project": b.Project, "revision": b.Revision, "accepted": len(b.Observations)})
 }
 func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
-	c, _ := s.current()
-	if b.Project != c.Project {
+	g := s.generation()
+	if b.Project != g.config.Project {
 		return "project_mismatch", 409
 	}
 	// A schema 1 batch counts only under the very topology it was taken
 	// with; a schema 2 observation, under its check's contract.
-	revision := config.Revision(c)
+	revision := g.revision
 	legacy := b.Schema == 0 || b.Schema == 1
 	switch {
 	case !legacy && b.Schema != model.BatchSchema:
@@ -433,7 +474,6 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 	case legacy && b.Revision != revision:
 		return "revision_mismatch", 409
 	}
-	contracts := map[string]string{}
 	if len(b.Observations) > 100 || len(b.Observations) == 0 && b.Heartbeat == nil {
 		return "invalid_batch_size", 400
 	}
@@ -441,12 +481,8 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 	validTime := func(t time.Time) bool {
 		return !t.IsZero() && !t.After(now.Add(30*time.Second)) && !t.Before(now.Add(-s.MaxSampleAge))
 	}
-	checks := make(map[string]model.Check, len(c.Checks))
-	for _, x := range c.Checks {
-		checks[x.ID] = x
-	}
 	for _, v := range b.Observations {
-		x, ok := checks[v.Check]
+		x, ok := g.checks[v.Check]
 		if !ok || x.Observer != observer || v.Observer != observer {
 			return "observer_scope_violation", 403
 		}
@@ -454,10 +490,7 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 			return "observation_contract_mismatch", 409
 		}
 		if !legacy {
-			if _, ok := contracts[x.ID]; !ok {
-				contracts[x.ID] = config.Contract(c, x)
-			}
-			if v.Revision != "" || v.Contract != contracts[x.ID] {
+			if v.Revision != "" || v.Contract != g.contracts[x.ID] {
 				return "contract_mismatch", 409
 			}
 		}

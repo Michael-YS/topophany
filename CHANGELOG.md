@@ -276,6 +276,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   waits on, 30 times a second per token, while changing nothing. A
   heartbeat that would change nothing is now acknowledged without being
   written.
+- A viewer token can no longer make a collector redo work over the whole
+  topology with each request. `/v1/config` made the public topology
+  twice, and `/v1/history` and `/v1/rollups` the public topology and the
+  contract of every check to answer for one, as HEAD requests did too,
+  and every worker batch hashed the whole topology. What requests need of
+  a topology is now worked out once when it is loaded or reloaded.
 
 ## [0.3.0] - 2026-10-14
 

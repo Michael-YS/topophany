@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -112,11 +114,17 @@ func TestViewerContractsDoNotExposePrivateExecutionIdentity(t *testing.T) {
 		t.Fatal("public contract accepted as private execution identity")
 	}
 	// Notes measure nothing; a private-only change still invalidates old work.
-	srv.Config.Checks[0].Notes = "edited"
+	edited := srv.Config
+	edited.Checks = slices.Clone(edited.Checks)
+	edited.Checks[0].Notes = "edited"
+	srv.Reload(edited, srv.Auth)
 	if code, _ := srv.ValidateBatch(b, "home"); code != "" {
 		t.Fatalf("a note edit invalidated in-flight samples: %s", code)
 	}
-	srv.Config.Checks[0].HTTP.RequestHeaders["X-Private"] = "low-entropy-secret-b"
+	edited.Checks = slices.Clone(edited.Checks)
+	edited.Checks[0].HTTP.RequestHeaders = maps.Clone(edited.Checks[0].HTTP.RequestHeaders)
+	edited.Checks[0].HTTP.RequestHeaders["X-Private"] = "low-entropy-secret-b"
+	srv.Reload(edited, srv.Auth)
 	if config.PublicContracts(srv.Config)[x.ID] != public {
 		t.Fatal("private-only change affected the public contract")
 	}

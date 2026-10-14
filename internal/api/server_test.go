@@ -3,10 +3,12 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -313,7 +315,10 @@ func TestSchemaOneBatchCountsWhileItsRevisionIsCurrent(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	// Once the topology changes, a schema 1 batch no longer counts at all.
-	srv.Config.Nodes[0].Notes = "edited"
+	edited := srv.Config
+	edited.Nodes = slices.Clone(edited.Nodes)
+	edited.Nodes[0].Notes = "edited"
+	srv.Reload(edited, srv.Auth)
 	if code, status := srv.ValidateBatch(b, "home"); code != "revision_mismatch" || status != 409 {
 		t.Fatal(code, status)
 	}
@@ -500,5 +505,36 @@ func TestSnapshotsAndRollupsSayHowChecksFared(t *testing.T) {
 	}
 	if w := request(h, "GET", "/v1/rollups?check=home-http", workerToken, "", nil); w.Code != 403 {
 		t.Fatal("a worker read rollups", w.Code)
+	}
+}
+
+// Viewer reads are served from what a topology gives once, when it is
+// loaded: however large the topology, a request, HEAD included, does not
+// project it, hash it or derive its contracts again.
+func TestViewerReadsDoNotDeriveTheTopologyAgain(t *testing.T) {
+	srv, _, _ := fixture(t)
+	c := srv.Config
+	c.Checks = slices.Clone(c.Checks)
+	for i := range 400 {
+		x := c.Checks[0]
+		x.ID = fmt.Sprintf("extra-%d", i)
+		c.Checks = append(c.Checks, x)
+	}
+	srv.Reload(c, srv.Auth)
+	h := srv.Handler()
+	now := srv.Now()
+	srv.Now = func() time.Time { now = now.Add(time.Second); return now }
+	derive := testing.AllocsPerRun(3, func() { config.PublicContracts(c) })
+	for _, path := range []string{"/v1/config", "/v1/history?check=home-http", "/v1/rollups?check=home-http&step=1h"} {
+		for _, method := range []string{"GET", "HEAD"} {
+			allocs := testing.AllocsPerRun(20, func() {
+				if w := request(h, method, path, viewerToken, "", nil); w.Code != 200 {
+					t.Fatal(method, path, w.Code)
+				}
+			})
+			if allocs > derive/20 {
+				t.Fatalf("%s %s: %.0f allocations, as many as deriving the topology (%.0f)", method, path, allocs, derive)
+			}
+		}
 	}
 }

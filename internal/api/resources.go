@@ -82,15 +82,15 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	}
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
-	c, _ := s.current()
-	snap := engine.BuildCarried(c, s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
+	g := s.generation()
+	snap := engine.BuildCarried(g.config, s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
 	}
 	if s.snapshotAvailable == nil {
 		// Every view of this moment shares one reading of the rollups.
 		s.snapshotAvailable = map[string][]model.Availability{}
-		for id, contract := range config.Contracts(c) {
+		for id, contract := range g.contracts {
 			s.snapshotAvailable[id] = s.Store.Availability(id, contract, s.snapshotAt)
 		}
 	}
