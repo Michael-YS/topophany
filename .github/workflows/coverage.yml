@@ -1,0 +1,37 @@
+name: Coverage
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Source snapshot for baseline reproduction
+        run: |
+          mkdir -p "${{ runner.temp }}/coverage"
+          git archive --format=tar HEAD > "${{ runner.temp }}/coverage/source.tar"
+      - name: Coverage with race detection
+        run: |
+          go test -race -count=1 -covermode=atomic -coverprofile="${{ runner.temp }}/coverage/coverage.out" ./...
+          go tool cover -func="${{ runner.temp }}/coverage/coverage.out" | tee "${{ runner.temp }}/coverage/summary.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: ${{ runner.temp }}/coverage/
+          retention-days: 7
