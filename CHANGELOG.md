@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `topo show map` lists the map's nodes and edges with what each may
   claim. `topo history CHECK` reads a check's recent samples. Each takes
   `--json`, `--observer` and the connection flags of `topo`.
+- Collectors and workers reload on `SIGHUP` (`systemctl reload` with the
+  shipped units): a collector rereads its topology and `auth.json`, a
+  worker its topology. A file that fails validation, names another
+  project or drops the process's own observer is refused and logged, and
+  the running topology kept; a reload logs which checks measure something
+  new and so start afresh. Windows has no `SIGHUP`; restart there.
 - `topo preview [--scenario N] status` (or `show`, `history`) reads the
   synthetic evidence, and `topo preview scenarios` lists the scenarios, so
   scripts and agents can be rehearsed on a simulated outage.
@@ -42,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A worker no longer backs off after quarantining a sample a collector
+  refused, and returns to batching with the first sample accepted; it
+  used to slow to one sample per tick, with growing pauses, until its
+  queue was empty.
 - Endpoints are judged by the same rule as services and nodes. One whose
   checks are degraded reads degraded rather than unknown on the Topology
   tab and its server's card, and one with a confirmed failure while its

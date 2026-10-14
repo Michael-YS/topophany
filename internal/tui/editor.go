@@ -100,7 +100,7 @@ func (m *Model) save() {
 		m.say("Save failed: "+err.Error(), true)
 		return
 	}
-	m.say("Saved "+m.Edit.Path+" · revision "+rev[:12]+" · restart the collector and workers to apply", false)
+	m.say("Saved "+m.Edit.Path+" · revision "+rev[:12]+" · reload the collector and workers (SIGHUP) to apply", false)
 }
 
 // --- modals ------------------------------------------------------------------
@@ -172,7 +172,8 @@ func (m *Model) editKey(k string) {
 			"",
 			"The editor has the same views, plus a / e / d to add, edit and",
 			"delete, validation on every change, u to undo and ^S to save.",
-			"Then restart the collector and workers with the same file.")
+			"Then reload the collector and workers with the same file",
+			"(SIGHUP, or systemctl reload; a restart does the same).")
 		return
 	}
 	switch k {

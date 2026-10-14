@@ -35,6 +35,7 @@ type App struct {
 	Out, Err                io.Writer
 	TerminalIn, TerminalOut *os.File
 	Now                     func() time.Time // the clock the read commands judge freshness by
+	Reload                  <-chan os.Signal // stands in for SIGHUP when set
 }
 
 func New() *App {
@@ -235,14 +236,18 @@ func (a *App) serve(parent context.Context, args []string) error {
 	backend := api.New(c, *instance, st, auth)
 	backend.MaxSampleAge = *retention
 	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
-	var scheduler *runner.Scheduler
-	if *observer != "" {
-		scheduler, e = runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
+	// Local checks, if any, under a topology; reloads replace them.
+	local := func(c model.Config) (*runner.Scheduler, error) {
+		if *observer == "" {
+			return nil, nil
+		}
+		return runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
 			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}})
 		})
-		if e != nil {
-			return e
-		}
+	}
+	scheduler, e := local(c)
+	if e != nil {
+		return e
 	}
 	ln, e := net.Listen("tcp", *listen)
 	if e != nil {
@@ -265,26 +270,53 @@ func (a *App) serve(parent context.Context, args []string) error {
 			}
 		}
 	}()
+	var running *probing
 	if scheduler != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if e := scheduler.Run(ctx); e != nil {
-				select {
-				case failures <- e:
-				default:
-				}
-			}
-		}()
+		running = background(ctx, &wg, scheduler, failures)
 	}
+	hup, stopHup := a.hangups()
+	defer stopHup()
 	fmt.Fprintf(a.Err, "Topophany %s collector %s listening on %s; project=%s revision=%s\n", model.Version, *instance, ln.Addr(), c.Project, config.Revision(c)[:12])
 	if *insecure && *cert == "" {
 		fmt.Fprintln(a.Err, "WARNING: plaintext HTTP explicitly enabled; use only inside a trusted encrypted tunnel")
 	}
+	// reload reads the topology and tokens again; on any error the
+	// collector keeps what it runs.
+	reload := func() error {
+		next, e := reloaded(*path, c, *observer)
+		if e != nil {
+			return e
+		}
+		auth, e := api.LoadAuth(*authPath, next)
+		if e != nil {
+			return fmt.Errorf("%s: %w", *authPath, e)
+		}
+		scheduler, e := local(next)
+		if e != nil {
+			return e
+		}
+		running.stop()
+		backend.Reload(next, auth)
+		if scheduler != nil {
+			running = background(ctx, &wg, scheduler, failures)
+		}
+		fmt.Fprintf(a.Err, "reloaded topology revision %s → %s and tokens; %s\n", config.Revision(c)[:12], config.Revision(next)[:12], changes(c, next))
+		c = next
+		return nil
+	}
 	var result error
-	select {
-	case <-ctx.Done():
-	case result = <-failures:
+wait:
+	for {
+		select {
+		case <-ctx.Done():
+			break wait
+		case result = <-failures:
+			break wait
+		case <-hup:
+			if e := reload(); e != nil {
+				fmt.Fprintf(a.Err, "reload refused; still serving revision %s: %v\n", config.Revision(c)[:12], e)
+			}
+		}
 	}
 	cancel()
 	shutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
@@ -335,21 +367,44 @@ func (a *App) worker(parent context.Context, args []string) error {
 	ctx, cancel := context.WithCancel(parent)
 	var wg sync.WaitGroup
 	defer func() { cancel(); wg.Wait() }()
-	s, e := runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
-		err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, d.Recipients())
-		var degraded *outbox.DegradedError
-		if errors.As(err, &degraded) {
-			fmt.Fprintln(a.Err, degraded)
-			return nil
-		}
-		return err
-	})
+	// The checks under a topology; a reload replaces them.
+	local := func(c model.Config) (*runner.Scheduler, error) {
+		return runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
+			err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, d.Recipients())
+			var degraded *outbox.DegradedError
+			if errors.As(err, &degraded) {
+				fmt.Fprintln(a.Err, degraded)
+				return nil
+			}
+			return err
+		})
+	}
+	s, e := local(c)
 	if e != nil {
 		return e
 	}
 	failed := make(chan error, 1)
-	wg.Add(1)
-	go func() { defer wg.Done(); failed <- s.Run(ctx) }()
+	running := background(ctx, &wg, s, failed)
+	hup, stopHup := a.hangups()
+	defer stopHup()
+	// reload reads the topology again; samples already queued keep the
+	// contracts they were taken under, and collectors judge them by those.
+	reload := func() error {
+		next, e := reloaded(*path, c, *observer)
+		if e != nil {
+			return e
+		}
+		s, e := local(next)
+		if e != nil {
+			return e
+		}
+		running.stop()
+		running = background(ctx, &wg, s, failed)
+		d.Revision = config.Revision(next)
+		fmt.Fprintf(a.Err, "reloaded topology revision %s → %s; %s\n", config.Revision(c)[:12], config.Revision(next)[:12], changes(c, next))
+		c = next
+		return nil
+	}
 	fmt.Fprintf(a.Err, "Topophany worker observer=%s project=%s revision=%s; %d collectors\n", *observer, c.Project, config.Revision(c)[:12], len(p.Servers))
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
@@ -359,8 +414,12 @@ func (a *App) worker(parent context.Context, args []string) error {
 			return nil
 		case e := <-failed:
 			return e
+		case <-hup:
+			if e := reload(); e != nil {
+				fmt.Fprintf(a.Err, "reload refused; still running revision %s: %v\n", config.Revision(c)[:12], e)
+			}
 		case <-tick.C:
-			hb := &model.Heartbeat{Observer: *observer, Boot: s.Boot, SampledAt: time.Now().UTC()}
+			hb := &model.Heartbeat{Observer: *observer, Boot: running.Boot, SampledAt: time.Now().UTC()}
 			for _, r := range d.Tick(ctx, q, hb) {
 				if r.Error != "" {
 					fmt.Fprintf(a.Err, "collector=%s accepted=%d quarantined=%d: %s; %s\n", r.Recipient, r.Accepted, r.Quarantined, r.Error, q)

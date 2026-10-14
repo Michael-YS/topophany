@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -236,6 +237,29 @@ func (s *Store) current(v model.Observation) bool {
 	return config.Counted(v, s.options.Contracts, s.options.Revision)
 }
 
+// SetCurrent tells the store the topology it now counts samples under, as
+// after a reload: tails of series no longer counted go, and those counted
+// again are rebuilt from the history still held.
+func (s *Store) SetCurrent(revision string, contracts map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.options.Revision = revision
+	s.options.Contracts = maps.Clone(contracts)
+	rows := s.allRows()
+	s.tails = map[string][]model.Observation{}
+	for _, v := range rows {
+		if s.current(v) {
+			key := tailKey(v)
+			s.tails[key] = append(s.tails[key], v)
+		}
+	}
+	for key, tail := range s.tails {
+		if len(tail) > 40 {
+			s.tails[key] = tail[len(tail)-40:]
+		}
+	}
+	s.prune()
+}
 func (s *Store) addRow(v model.Observation) {
 	if _, ok := s.rowSizes[v.ID]; !ok {
 		b, _ := json.Marshal(v)

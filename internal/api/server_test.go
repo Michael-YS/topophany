@@ -317,3 +317,32 @@ func TestSchemaOneBatchCountsWhileItsRevisionIsCurrent(t *testing.T) {
 		t.Fatal(code, status)
 	}
 }
+
+// Reload swaps the topology and the tokens at once: a sample of a check
+// that now measures something else is refused, a new token is admitted
+// and a removed one is not, and no snapshot built before is served again.
+func TestReloadSwapsTopologyAndTokens(t *testing.T) {
+	srv, h, b := fixture(t)
+	if w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	next := testkit.Config()
+	next.Checks[0].HTTP.Status = []int{204}
+	next.Nodes[0].Name = "Renamed"
+	newViewer := strings.Repeat("e", 64)
+	srv.Reload(next, Auth{Schema: 1, Tokens: []Principal{{secure.Hash(newViewer), "viewer", ""}, {secure.Hash(workerToken), "worker", "home"}}})
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 409 || !strings.Contains(w.Body.String(), "contract_mismatch") {
+		t.Fatal("a sample of the old contract was accepted", w.Code, w.Body.String())
+	}
+	b.Observations[0] = testkit.Observation(next, "home-http", 2, srv.Now().Add(-time.Second), "ok")
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal("a sample of the new contract was refused", w.Code, w.Body.String())
+	}
+	if w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil); w.Code != 401 {
+		t.Fatal("a removed token was admitted", w.Code)
+	}
+	w := request(h, "GET", "/v1/snapshot", newViewer, "", nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Renamed") {
+		t.Fatal("the new token or the new topology is not served", w.Code)
+	}
+}

@@ -409,3 +409,47 @@ func TestQueuedSchemaOneItemsTravelApart(t *testing.T) {
 		t.Fatal(accepted, len(rows))
 	}
 }
+
+// Samples queued under a contract the collector no longer counts, as after
+// a reload, are refused and set aside one per tick without backing off,
+// and the samples behind them then travel together again.
+func TestRefusedItemsDrainWithoutStallingDelivery(t *testing.T) {
+	old := testkit.Config()
+	next := testkit.Config()
+	next.Checks[0].HTTP.Status = []int{204}
+	srv, st := collector(t, next, nil)
+	d, e := NewDelivery(client.Profile{Project: "lab", Servers: []client.Endpoint{{URL: srv.URL, Token: workerToken}}}, config.Revision(next))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	now := time.Now()
+	d.Now = func() time.Time { return now } // no backoff can expire
+	q := queue(t)
+	sample := func(c model.Config, seq uint64) model.Batch {
+		return model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", seq, now.Add(-time.Minute), "ok")}}
+	}
+	for seq := uint64(1); seq <= 3; seq++ {
+		q.Add(sample(old, seq), d.Recipients())
+	}
+	for seq := uint64(4); seq <= 6; seq++ {
+		q.Add(sample(next, seq), d.Recipients())
+	}
+	// Pending items come in no particular order, so refused and countable
+	// ones interleave; every tick must still make progress.
+	quarantined := 0
+	for i := 0; i < 12; i++ {
+		if n, _ := q.Stats(); n == 0 {
+			break
+		}
+		r := d.Tick(context.Background(), q, nil)
+		if r[0].Accepted == 0 && r[0].Quarantined == 0 && !strings.Contains(r[0].Error, "retrying individual") {
+			t.Fatalf("tick %d made no progress: %+v", i, r[0])
+		}
+		quarantined += r[0].Quarantined
+	}
+	rows, _ := st.View()
+	if n, _ := q.Stats(); n != 0 || quarantined != 3 || len(rows) != 3 {
+		t.Fatalf("pending %d, quarantined %d, delivered %d", n, quarantined, len(rows))
+	}
+}

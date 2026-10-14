@@ -296,3 +296,29 @@ func FuzzEnvelope(f *testing.F) {
 		}
 	})
 }
+
+// After a reload the store keeps state only for the series it now counts,
+// and a series counted again, as when an edit is undone, has its tail
+// back from the history still held.
+func TestSetCurrentFollowsAReload(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	s := openTest(t, t.TempDir(), Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Now: func() time.Time { return now }})
+	v := testkit.Observation(c, "home-http", 1, now.Add(-time.Second), "fail")
+	if e := s.Put(batch(c, v)); e != nil {
+		t.Fatal(e)
+	}
+	edited := testkit.Config()
+	edited.Checks[0].HTTP.Status = []int{204}
+	s.SetCurrent(config.Revision(edited), config.Contracts(edited))
+	if len(s.tails) != 0 || len(s.History("home-http", config.Contracts(edited), config.Revision(edited), 10)) != 0 {
+		t.Fatal("a series no longer counted kept its tail or history", len(s.tails))
+	}
+	s.SetCurrent(config.Revision(c), config.Contracts(c))
+	if n := len(s.tails[tailKey(v)]); n != 1 {
+		t.Fatal("undoing the edit did not bring the tail back", n)
+	}
+	if rows, _ := s.StateView(); len(rows) != 1 {
+		t.Fatal("history lost across reloads", len(rows))
+	}
+}

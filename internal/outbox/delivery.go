@@ -123,8 +123,11 @@ func (d *Delivery) Tick(ctx context.Context, q *Queue, hb *model.Heartbeat) []Re
 					result.Error = "local acknowledgement persistence failed"
 					return
 				}
+				// Accepted: whatever was refused before has been dealt
+				// with, so items travel together again.
 				dest.failures = 0
 				dest.next = time.Time{}
+				dest.isolating = false
 				result.Accepted = len(batch.Observations)
 				return
 			}
@@ -142,8 +145,15 @@ func (d *Delivery) Tick(ctx context.Context, q *Queue, hb *model.Heartbeat) []Re
 				if qe := q.Quarantine(ids, rid, he.Error()); qe != nil {
 					result.Error = "quarantine persistence failed"
 				} else {
+					// The collector answered and the refused item is set
+					// aside: that is progress, not an outage, so the next
+					// item goes at the next tick rather than after a backoff
+					// (a reload can leave many samples of an old contract).
 					result.Quarantined = len(batch.Observations)
 					result.Error = he.Error()
+					dest.failures = 0
+					dest.next = time.Time{}
+					return
 				}
 			} else {
 				result.Error = "collector unavailable or acknowledgement invalid"

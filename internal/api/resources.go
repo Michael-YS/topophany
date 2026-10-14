@@ -81,7 +81,8 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	}
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
-	snap := engine.Build(s.Config, s.Instance, view, s.snapshotRows, s.snapshotBeats, s.snapshotAt)
+	c, _ := s.current()
+	snap := engine.Build(c, s.Instance, view, s.snapshotRows, s.snapshotBeats, s.snapshotAt)
 	raw, err := summaryJSON(snap)
 	if err != nil {
 		return nil, 503, "snapshot_budget_exceeded"

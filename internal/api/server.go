@@ -75,11 +75,14 @@ func ValidateAuth(a Auth, c model.Config) error {
 	return nil
 }
 
+// Server is a collector's API. Config and Auth may be set before it serves;
+// afterwards only Reload changes them.
 type Server struct {
 	Config             model.Config
 	Instance           string
 	Store              *store.Store
 	Auth               Auth
+	configMu           sync.RWMutex
 	MaxSampleAge       time.Duration
 	Now                func() time.Time
 	mu                 sync.Mutex
@@ -114,6 +117,35 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 	}
 	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
 }
+
+// current is the topology and tokens a request is served under.
+func (s *Server) current() (model.Config, Auth) {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.Config, s.Auth
+}
+
+// Reload makes c and a the collector's topology and tokens, as on SIGHUP.
+// Requests already past authorization finish under the old ones. The store
+// counts samples under c from now on, and no snapshot built before is
+// served again.
+func (s *Server) Reload(c model.Config, a Auth) {
+	s.configMu.Lock()
+	s.Config, s.Auth = c, a
+	s.configMu.Unlock()
+	if s.Store != nil {
+		ids := make([]string, 0, len(c.Observers))
+		for _, o := range c.Observers {
+			ids = append(ids, o.ID)
+		}
+		s.Store.SetObservers(ids)
+		s.Store.SetCurrent(config.Revision(c), config.Contracts(c))
+	}
+	s.snapshotMu.Lock()
+	s.snapshotCache = nil
+	s.snapshotMu.Unlock()
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
@@ -164,7 +196,8 @@ func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Req
 		hash := secure.Hash(token)
 		var found Principal
 		ok := false
-		for _, p := range s.Auth.Tokens {
+		_, auth := s.current()
+		for _, p := range auth.Tokens {
 			if subtle.ConstantTimeCompare([]byte(strings.ToLower(p.TokenSHA256)), []byte(hash)) == 1 {
 				found = p
 				ok = true
@@ -216,7 +249,8 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, p Principal) {
 	view := r.URL.Query().Get("observer")
 	if view != "" {
 		exists := false
-		for _, o := range s.Config.Observers {
+		c, _ := s.current()
+		for _, o := range c.Observers {
 			exists = exists || o.ID == view
 		}
 		if !exists {
@@ -227,15 +261,17 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, p Principal) {
 	s.writeSnapshot(w, view, p.TokenSHA256)
 }
 func (s *Server) topology(w http.ResponseWriter, r *http.Request, _ Principal) {
+	c, _ := s.current()
 	writeJSON(w, 200, struct {
 		Project  string       `json:"project"`
 		Revision string       `json:"revision"`
 		Topology model.Config `json:"topology"`
-	}{s.Config.Project, config.PublicRevision(s.Config), config.Public(s.Config)})
+	}{c.Project, config.PublicRevision(c), config.Public(c)})
 }
 func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
+	c, _ := s.current()
 	id := r.URL.Query().Get("check")
-	if _, ok := config.Check(s.Config, id); !ok {
+	if _, ok := config.Check(c, id); !ok {
 		writeError(w, 404, "unknown_check")
 		return
 	}
@@ -248,9 +284,9 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 		}
 		n = v
 	}
-	x, _ := config.Check(s.Config, id)
-	contract := config.PublicContracts(s.Config)[id]
-	entries := s.Store.History(id, map[string]string{id: config.Contract(s.Config, x)}, config.Revision(s.Config), n)
+	x, _ := config.Check(c, id)
+	contract := config.PublicContracts(c)[id]
+	entries := s.Store.History(id, map[string]string{id: config.Contract(c, x)}, config.Revision(c), n)
 	for i := range entries {
 		entries[i].Contract, entries[i].Revision = contract, ""
 	}
@@ -260,7 +296,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 		Check    string              `json:"check"`
 		Contract string              `json:"contract"`
 		Entries  []model.Observation `json:"entries"`
-	}{s.Config.Project, config.PublicRevision(s.Config), id, contract, entries})
+	}{c.Project, config.PublicRevision(c), id, contract, entries})
 }
 func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 	if ct, _, e := mime.ParseMediaType(r.Header.Get("Content-Type")); e != nil || ct != "application/json" {
@@ -297,15 +333,16 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 	}
 	// The acknowledgement echoes the batch's revision: under schema 2 it
 	// describes the sender, not what the collector counts.
-	writeJSON(w, 202, map[string]any{"project": s.Config.Project, "revision": b.Revision, "accepted": len(b.Observations)})
+	writeJSON(w, 202, map[string]any{"project": b.Project, "revision": b.Revision, "accepted": len(b.Observations)})
 }
 func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
-	if b.Project != s.Config.Project {
+	c, _ := s.current()
+	if b.Project != c.Project {
 		return "project_mismatch", 409
 	}
 	// A schema 1 batch counts only under the very topology it was taken
 	// with; a schema 2 observation, under its check's contract.
-	revision := config.Revision(s.Config)
+	revision := config.Revision(c)
 	legacy := b.Schema == 0 || b.Schema == 1
 	switch {
 	case !legacy && b.Schema != model.BatchSchema:
@@ -323,8 +360,8 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 	validTime := func(t time.Time) bool {
 		return !t.IsZero() && !t.After(now.Add(30*time.Second)) && !t.Before(now.Add(-s.MaxSampleAge))
 	}
-	checks := make(map[string]model.Check, len(s.Config.Checks))
-	for _, x := range s.Config.Checks {
+	checks := make(map[string]model.Check, len(c.Checks))
+	for _, x := range c.Checks {
 		checks[x.ID] = x
 	}
 	for _, v := range b.Observations {
@@ -337,7 +374,7 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 		}
 		if !legacy {
 			if _, ok := contracts[x.ID]; !ok {
-				contracts[x.ID] = config.Contract(s.Config, x)
+				contracts[x.ID] = config.Contract(c, x)
 			}
 			if v.Revision != "" || v.Contract != contracts[x.ID] {
 				return "contract_mismatch", 409
