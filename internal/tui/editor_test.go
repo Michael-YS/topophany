@@ -262,7 +262,8 @@ func TestAboutAnimatesAndNamesTheEtymology(t *testing.T) {
 }
 
 // About says where Topophany lives, as text anyone can copy and, where the
-// terminal takes them, as hyperlinks; small screens close up to keep them.
+// terminal takes them, as hyperlinks; small screens close up to keep them,
+// and big ones add the keys.
 func TestAboutLinksTheHomepageAndTheSource(t *testing.T) {
 	m := homelabModel(t)
 	m.setTab(tabAbout)
@@ -276,6 +277,10 @@ func TestAboutLinksTheHomepageAndTheSource(t *testing.T) {
 		if strings.Contains(strings.Join(m.Render(), ""), "\x1b]8;") {
 			t.Fatal("hyperlinks written to a terminal that did not ask for them")
 		}
+	}
+	// With room to spare, About also lists the keys.
+	if out := visible(&m); !strings.Contains(out, " evidence") || !strings.Contains(out, " quit") {
+		t.Fatal("About lacks the keys", out)
 	}
 	m.Hyperlinks = true
 	raw := ansi.ReplaceAllString(strings.Join(m.Render(), "\n"), "")

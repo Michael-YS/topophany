@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written as OSC 8 hyperlinks where the terminal takes them
   (`TOPO_HYPERLINKS=0` or `1` decides outright). On short screens the
   blank rows between its paragraphs close up so the links stay.
+- Where there is room, About lists the keys of the mode the UI is in
+  (viewer, preview or editor) as keycaps, so `?` doubles as help.
 
 ### Changed
 

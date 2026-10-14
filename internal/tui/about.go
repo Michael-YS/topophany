@@ -383,6 +383,7 @@ func (m *Model) drawWordmark(cv *Canvas, x, y int, t float64) int {
 type aboutLine struct {
 	parts []span
 	url   string // the last part is a link to url
+	drop  int    // when rows are short, 2 goes first, then 1; 0 stays
 }
 
 // Where Topophany lives.
@@ -398,7 +399,7 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 	sp := func(s string, st Style) span { return span{s, st} }
 	greek, latin, gloss := fg(cAccent).bold(), fg(cMuted).italic(), fg(cText)
 	link := func(label, url string) aboutLine {
-		return aboutLine{[]span{sp("↗ ", fg(cAccent)), sp(fit(label, 10), latin), sp(strings.TrimPrefix(url, "https://"), fg(cAccent2).With(Underline))}, url}
+		return aboutLine{parts: []span{sp("↗ ", fg(cAccent)), sp(fit(label, 10), latin), sp(strings.TrimPrefix(url, "https://"), fg(cAccent2).With(Underline))}, url: url}
 	}
 	lines := []aboutLine{
 		{parts: []span{sp("τόπος", greek), sp("   tópos    ", latin), sp("place", gloss)}},
@@ -418,15 +419,57 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 	if c.Project != "" {
 		lines = append(lines, aboutLine{parts: []span{sp(c.Project, fg(cText)), sp("  ·  "+plural(len(c.Nodes), "node")+"  ·  "+plural(len(c.Links), "link")+"  ·  "+plural(len(c.Checks), "check"), fg(cMuted))}})
 	}
+	lines = append(lines, m.aboutKeys()...)
 	if globe {
-		lines = append(lines, aboutLine{}, aboutLine{parts: []span{sp("Each lit point on the globe is a place you declared.", fg(cFaint).italic())}})
+		lines = append(lines, aboutLine{drop: 2}, aboutLine{parts: []span{sp("Each lit point on the globe is a place you declared.", fg(cFaint).italic())}, drop: 2})
 	}
 	return lines
 }
 
-// fitAbout closes up the column to n rows: the blank rows between its
-// paragraphs go first, from the bottom up.
+// aboutKeys is a reference to the keys of the mode the UI is in, as
+// keycaps three to a row.
+func (m *Model) aboutKeys() []aboutLine {
+	keys := [][2]string{{"1–9", "tabs"}, {"↑↓", "move"}, {"↵", "evidence"}, {"/", "filter"}, {"v", "vantage"}, {"m", "map"}, {"z", "zoom"}}
+	switch {
+	case m.Edit != nil:
+		keys = append(keys, [2]string{"a", "add"}, [2]string{"e", "edit"}, [2]string{"d", "delete"}, [2]string{"u", "undo"}, [2]string{"^S", "save"})
+	case m.Preview != nil:
+		keys = append(keys, [2]string{"r", "refresh"}, [2]string{"x", "scenario"}, [2]string{"D", "debug"})
+	default:
+		keys = append(keys, [2]string{"r", "refresh"})
+	}
+	keys = append(keys, [2]string{"?", "back"}, [2]string{"q", "quit"})
+	lines := []aboutLine{{drop: 1}}
+	for i := 0; i < len(keys); i += 3 {
+		l := aboutLine{drop: 1}
+		for _, k := range keys[i:min(i+3, len(keys))] {
+			pad := 3 - width(k[0])
+			cap := strings.Repeat(" ", pad/2+1) + k[0] + strings.Repeat(" ", pad-pad/2+1)
+			if m.NoColor {
+				cap = "[" + k[0] + "]" + strings.Repeat(" ", pad)
+			}
+			l.parts = append(l.parts, span{cap, fg(cAccent).Bg(cKeyBG).bold()}, span{" " + fit(k[1], 13), fg(cMuted)})
+		}
+		lines = append(lines, l)
+	}
+	return lines
+}
+
+// fitAbout fits the column into n rows: the globe's caption goes first,
+// then the keys, then the blank rows between paragraphs, from the bottom up.
 func fitAbout(lines []aboutLine, n int) []aboutLine {
+	for _, drop := range []int{2, 1} {
+		if len(lines) <= n {
+			return lines
+		}
+		kept := []aboutLine{}
+		for _, l := range lines {
+			if l.drop != drop {
+				kept = append(kept, l)
+			}
+		}
+		lines = kept
+	}
 	for i := len(lines) - 1; i >= 0 && len(lines) > n; i-- {
 		if len(lines[i].parts) == 0 {
 			lines = append(lines[:i:i], lines[i+1:]...)
@@ -439,7 +482,7 @@ const aboutTextW = 58
 
 // drawAbout composes the globe and the text for the space available:
 // side by side and centred when wide, the globe over the text when tall,
-// the text alone when small.
+// the text alone when small. The text fits the rows it is given.
 func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 	t := m.Now.Sub(m.aboutAt).Seconds()
 	if m.aboutAt.IsZero() || t < 0 {
@@ -447,10 +490,16 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 	}
 	spin := m.aboutSpin
 	lines := m.aboutText(true)
-	textH := len(lines) + 5 // wordmark and a blank row
 	big := w >= aboutTextW+4
+	head := 5 // the wordmark and a blank row
 	if !big {
-		textH = len(lines) + 2
+		head = 2
+	}
+	core := 0 // the rows that always stay
+	for _, l := range lines {
+		if l.drop == 0 {
+			core++
+		}
 	}
 	tw := min(aboutTextW, w-2)
 	var gx, gy, gw, gh, tx, ty int
@@ -465,23 +514,27 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 		gx = x + max(0, (w-total)/2)
 		gy = y + (h-gh)/2
 		tx = gx + gw + 6
-		ty = y + max(0, (h-textH)/2)
-	case h >= textH+12 && w >= 30:
-		// Stacked: the globe above, the text below, both centred.
-		gh = min(h-textH-1, w/2)
+		lines = fitAbout(lines, h-head)
+		ty = y + max(0, (h-len(lines)-head)/2)
+	case h >= core+head+12 && w >= 30:
+		// Stacked: the globe above, the text below, both centred; the
+		// globe takes its rows before the keys do.
+		gh = min(h-core-head-1, w/2)
 		gw = min(w, gh*2+2)
+		lines = fitAbout(lines, h-gh-1-head)
 		gx = x + (w-gw)/2
-		gy = y + max(0, (h-gh-textH-1)/2)
+		gy = y + max(0, (h-gh-len(lines)-head-1)/2)
 		tx = x + max(1, (w-tw)/2)
 		ty = gy + gh + 1
 	default:
+		lines = fitAbout(m.aboutText(false), h-head)
 		tx = x + max(1, (w-tw)/2)
-		ty = y + max(0, (h-textH)/2)
+		ty = y + max(0, (h-len(lines)-head)/2)
 	}
 	if gw >= 16 && gh >= 7 {
 		m.drawGlobe(cv, gx, gy, gw, gh, t, spin)
-	} else {
-		lines = m.aboutText(false)
+	} else if gw > 0 {
+		lines = fitAbout(m.aboutText(false), y+h-ty-head)
 	}
 	if big && ty+5 < y+h {
 		ty += m.drawWordmark(cv, tx, ty, t) + 1
@@ -490,7 +543,7 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 		ty += 2
 	}
 	// Lines fade up one after another on opening.
-	for i, l := range fitAbout(lines, y+h-ty) {
+	for i, l := range lines {
 		if ty >= y+h {
 			break
 		}
@@ -499,6 +552,9 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 		for j, s := range l.parts {
 			st := s.st
 			st.FG = Mix(cInk, st.FG, k)
+			if st.BG != 0 {
+				st.BG = Mix(cInk, st.BG, k)
+			}
 			n := cv.Text(cx, ty, s.s, st, tx+tw-cx)
 			if l.url != "" && j == len(l.parts)-1 {
 				cv.Link(cx, ty, n, l.url)
