@@ -138,6 +138,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A collector slow to answer no longer delays a worker's delivery to its
+  other collector. Each round went to both at once but waited for both,
+  so one that took eight seconds to time out, or answered slowly without
+  failing and so was never backed off, held every round to the other as
+  long. Each collector now has a delivery loop of its own, and a backoff
+  counts from when a failed attempt ended rather than when it began. A
+  worker with a long backlog picks each round's samples without sorting
+  all of it: on 45,000 queued samples a round takes 1.7ms and 170KB
+  rather than 24ms and 34MB.
 - A confirmed failure stays confirmed until its check recovers, however
   long ago the samples that confirmed it were taken. A check was judged
   from the samples a collector still held, so once those that confirmed

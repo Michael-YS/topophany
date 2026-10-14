@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -232,33 +233,41 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 	}
 	return nil
 }
+
+// Pending is the earliest sampled items still owed to recipient, at most
+// limit of them (all when limit is not positive). It keeps the earliest as
+// it finds them rather than sorting the whole backlog, which a long outage
+// can make tens of thousands of items, every round.
 func (q *Queue) Pending(recipient string, limit int) []Item {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	out := []Item{}
 	for _, v := range q.items {
-		for _, r := range v.Pending {
-			if r == recipient {
-				out = append(out, v)
-				break
-			}
+		switch {
+		case !slices.Contains(v.Pending, recipient):
+		case limit <= 0:
+			out = append(out, v)
+		case len(out) < limit || pendingOrder(v, out[limit-1]) < 0:
+			i, _ := slices.BinarySearchFunc(out, v, pendingOrder)
+			out = slices.Insert(out, i, v)
+			out = out[:min(len(out), limit)]
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		a := out[i].Batch.Observations[0]
-		b := out[j].Batch.Observations[0]
-		if a.SampledAt.Equal(b.SampledAt) {
-			return out[i].ID < out[j].ID
-		}
-		return a.SampledAt.Before(b.SampledAt)
-	})
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
+	if limit <= 0 {
+		slices.SortFunc(out, pendingOrder)
 	}
 	b, _ := json.Marshal(out)
 	var detached []Item
 	_ = json.Unmarshal(b, &detached)
 	return detached
+}
+
+// pendingOrder orders items by when their first sample was taken, then by ID.
+func pendingOrder(a, b Item) int {
+	if c := a.Batch.Observations[0].SampledAt.Compare(b.Batch.Observations[0].SampledAt); c != 0 {
+		return c
+	}
+	return strings.Compare(a.ID, b.ID)
 }
 func (q *Queue) Ack(ids []string, recipient string) error {
 	q.mu.Lock()

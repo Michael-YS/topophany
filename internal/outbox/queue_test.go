@@ -38,6 +38,50 @@ func queue(t *testing.T) *Queue {
 	t.Cleanup(func() { q.Close() })
 	return q
 }
+
+// Pending gives the earliest sampled items still owed to a recipient, in
+// that order, however the backlog is laid out and however much is asked.
+func TestPendingIsTheEarliestInOrder(t *testing.T) {
+	c := testkit.Config()
+	q := queue(t)
+	a, b := Recipient("a"), Recipient("b")
+	start := time.Now().UTC().Add(-time.Hour)
+	for i := 0; i < 150; i++ {
+		v := testkit.Observation(c, "home-http", uint64(i+1), start.Add(time.Duration(i*37%150)*time.Second), "ok")
+		if e := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{v}}, []string{a, b}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	all := q.Pending(a, 0)
+	if len(all) != 150 {
+		t.Fatal(len(all))
+	}
+	for i := 1; i < len(all); i++ {
+		if !all[i-1].Batch.Observations[0].SampledAt.Before(all[i].Batch.Observations[0].SampledAt) {
+			t.Fatal("pending items out of order at", i)
+		}
+	}
+	// Acknowledged by a, still owed to b.
+	if e := q.Ack([]string{all[0].ID, all[5].ID}, a); e != nil {
+		t.Fatal(e)
+	}
+	owed := append(append([]Item{}, all[1:5]...), all[6:]...)
+	for _, limit := range []int{1, 7, 100, 1000} {
+		got := q.Pending(a, limit)
+		want := owed[:min(limit, len(owed))]
+		if len(got) != len(want) {
+			t.Fatal(limit, len(got))
+		}
+		for i := range got {
+			if got[i].ID != want[i].ID {
+				t.Fatalf("limit %d: item %d is %s, want %s", limit, i, got[i].ID, want[i].ID)
+			}
+		}
+	}
+	if got := q.Pending(b, 1); got[0].ID != all[0].ID {
+		t.Fatal("an acknowledgement by one recipient moved another's queue", got[0].ID)
+	}
+}
 func TestDurablePartialAcknowledgementAndOwnership(t *testing.T) {
 	dir := t.TempDir()
 	q, e := Open(dir, "lab", 1<<20)

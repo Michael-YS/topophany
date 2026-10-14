@@ -2,6 +2,8 @@ package outbox
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
 	"slices"
 	"sync/atomic"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
@@ -73,5 +76,57 @@ func TestDeliveryConcurrentMetadataAccess(t *testing.T) {
 				t.Fatal("acknowledged data still pending", n)
 			}
 		})
+	}
+}
+
+// A collector that takes its time answering holds up only its own next
+// round: the other receives each batch as it is queued.
+func TestASlowCollectorDelaysNoOther(t *testing.T) {
+	c := testkit.Config()
+	healthy, s := collector(t, c, nil)
+	arrived, release := make(chan struct{}, 8), make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		arrived <- struct{}{}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+		http.Error(w, "too late", 503)
+	}))
+	defer slow.Close()
+	defer close(release)
+	d, e := NewDelivery(client.Profile{Project: c.Project, Servers: []client.Endpoint{{URL: healthy.URL, Token: workerToken}, {URL: slow.URL, Token: workerToken}}}, config.Revision(c))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	q := queue(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		d.Run(ctx, q, 50*time.Millisecond, func() *model.Heartbeat { return nil }, func(Result) {})
+	}()
+	defer func() { cancel(); <-done }()
+	for seq := uint64(1); seq <= 3; seq++ {
+		if e := q.Add(makeBatch(seq), d.Recipients()); e != nil {
+			t.Fatal(e)
+		}
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			if rows, _ := s.View(); len(rows) == int(seq) {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("batch %d did not reach the healthy collector while the other was answering", seq)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if seq == 1 {
+			<-arrived
+		}
+	}
+	if len(arrived) != 0 {
+		t.Fatal("the slow collector was sent another round before it answered the first")
 	}
 }

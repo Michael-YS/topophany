@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -487,13 +488,28 @@ func (a *App) worker(parent context.Context, args []string) error {
 		}
 		running.stop()
 		running = background(ctx, &wg, s, failed)
-		d.Revision = config.Revision(next)
+		d.SetRevision(config.Revision(next))
 		fmt.Fprintf(a.Err, "reloaded topology revision %s → %s; %s\n", config.Revision(c)[:12], config.Revision(next)[:12], changes(c, next))
 		c = next
 		return nil
 	}
 	fmt.Fprintf(a.Err, "Topophany worker observer=%s project=%s revision=%s; %d collectors\n", *observer, c.Project, config.Revision(c)[:12], len(p.Servers))
-	tick := time.NewTicker(2 * time.Second)
+	// Each collector is delivered to from a loop of its own, so one that is
+	// slow to answer delays no other. The heartbeat they send is the one
+	// this loop last made, of the topology it runs now.
+	var beat atomic.Pointer[model.Heartbeat]
+	heartbeat := func() {
+		beat.Store(&model.Heartbeat{Observer: *observer, Boot: running.Boot, SampledAt: time.Now().UTC(), Contracts: config.ObserverContracts(c, *observer)})
+	}
+	heartbeat()
+	wg.Go(func() {
+		d.Run(ctx, q, 2*time.Second, beat.Load, func(r outbox.Result) {
+			if r.Error != "" {
+				fmt.Fprintf(a.Err, "collector=%s accepted=%d quarantined=%d: %s; %s\n", r.Recipient, r.Accepted, r.Quarantined, r.Error, q)
+			}
+		})
+	})
+	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
 		select {
@@ -505,13 +521,9 @@ func (a *App) worker(parent context.Context, args []string) error {
 			if e := reload(); e != nil {
 				fmt.Fprintf(a.Err, "reload refused; still running revision %s: %v\n", config.Revision(c)[:12], e)
 			}
+			heartbeat()
 		case <-tick.C:
-			hb := &model.Heartbeat{Observer: *observer, Boot: running.Boot, SampledAt: time.Now().UTC(), Contracts: config.ObserverContracts(c, *observer)}
-			for _, r := range d.Tick(ctx, q, hb) {
-				if r.Error != "" {
-					fmt.Fprintf(a.Err, "collector=%s accepted=%d quarantined=%d: %s; %s\n", r.Recipient, r.Accepted, r.Quarantined, r.Error, q)
-				}
-			}
+			heartbeat()
 		}
 	}
 }
