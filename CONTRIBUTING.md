@@ -32,8 +32,15 @@ never the pages in `site/public/`. Its terminal replays
 the TUI's own renderer. Run `make site` after changing the TUI, the templates or
 the words to write them again; `scripts/test_site.py` fails while they are stale.
 
+The TUI stills in `docs/assets` (`<name>.<language>.png`) are captured from the
+preview the same way: the README's in every language, the guide's in English.
+Run `make captures` after changing what they show. It needs a Chromium (found on
+`PATH`, or given as `CHROME`), and Japanese wants a font with Japanese glyph
+forms; `make captures FONTS=dir` adds a directory of fonts, such as Noto Sans
+JP, for that run only.
+
 Words a reader sees go in catalogs, never in code. The preview's built-in
 topology refers to its names, notes and places as `@key`, and each language's
 text for them and for the scenarios is in `internal/preview/locales/`. To add a
 language, add a catalog there and in `site/src/locales/`, a `README.<language>.md`,
-and run `make site`; the tests list what is still missing.
+and run `make site` and `make captures`; the tests list what is still missing.

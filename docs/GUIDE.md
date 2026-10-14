@@ -58,8 +58,8 @@ Tabs count what in them needs a look: servers, services and paths that are down,
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/network.png" alt="The Topology tab with the network graph: chips in columns joined by box-drawing wires, the affected route in amber"></td>
-    <td width="50%"><img src="assets/incident.png" alt="The Incidents tab: open incidents beside the evidence for the selected one, with failed checks, other observers' evidence and a hypothesis marked as not a finding"></td>
+    <td width="50%"><img src="assets/network.en.png" alt="The Topology tab with the network graph: chips in columns joined by box-drawing wires, the affected route in amber"></td>
+    <td width="50%"><img src="assets/incident.en.png" alt="The Incidents tab: open incidents beside the evidence for the selected one, with failed checks, other observers' evidence and a hypothesis marked as not a finding"></td>
   </tr>
   <tr>
     <td align="center"><sub>Topology as a network graph</sub></td>

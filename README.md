@@ -10,6 +10,8 @@
   <a href="docs/GUIDE.md">User guide</a>
 </p>
 
+<p align="center"><sub><b>English</b> · <a href="README.ja.md">日本語</a> · <a href="README.zh.md">简体中文</a></sub></p>
+
 <p align="center">
   <a href="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml"><img src="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pkg.go.dev/github.com/WhitenWhiten/topophany"><img src="https://pkg.go.dev/badge/github.com/WhitenWhiten/topophany.svg" alt="Go Reference"></a>
@@ -19,8 +21,8 @@
 **Topophany** is a self-hosted monitor for your network and the services on it, read in a terminal UI. It is one Go binary, `topo`, that you run in three roles: **workers** measure from where they are, **collectors** store the evidence, and the **TUI** shows what is wrong and where.
 
 <p align="center">
-  <img src="docs/assets/overview.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
-  <br><sub>The Overview during a simulated outage, from <code>topo preview --lang zh --scenario 1</code>.</sub>
+  <img src="docs/assets/overview.en.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
+  <br><sub>The Overview during a simulated outage, from <code>topo preview --lang en --scenario 1</code>.</sub>
 </p>
 
 ## Why Topophany

@@ -2,6 +2,7 @@
 import hashlib
 import os
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -11,9 +12,13 @@ ALLOWED_ROOT_DIRS = {"cmd", "internal", "scripts", "docs", "deploy", "examples",
 EXCLUDED_PARTS = {"__pycache__", ".git", ".verify-build", "bin", "dist", "demo"}
 
 
+# The README in another language: README.<language>.md.
+TRANSLATED_README = re.compile(r"README\.[a-z]{2,3}(-[A-Za-z0-9]+)*\.md")
+
+
 def accepted(rel: Path) -> bool:
     return not any(part in EXCLUDED_PARTS for part in rel.parts) and (
-        len(rel.parts) == 1 and rel.name in ALLOWED_ROOT_FILES or
+        len(rel.parts) == 1 and (rel.name in ALLOWED_ROOT_FILES or TRANSLATED_README.fullmatch(rel.name)) or
         len(rel.parts) > 1 and rel.parts[0] in ALLOWED_ROOT_DIRS)
 
 

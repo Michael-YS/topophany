@@ -76,6 +76,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   language. The pages are written by `scripts/build_site.py` from one
   template per page in `site/src` and one catalog per language, and each
   language replays a TUI recording of its own preview.
+- The README is translated into Japanese (`README.ja.md`) and Chinese
+  (`README.zh.md`); a test keeps their commands, links and sections those
+  of the original, and each shows the TUI in its own language.
+- `make captures` captures the TUI stills in `docs/assets` from the
+  preview, painted by the homepage's terminal renderer: the README's in
+  every language, the guide's in English. They now show the current TUI.
 
 ### Changed
 

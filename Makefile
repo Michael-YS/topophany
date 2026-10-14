@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt fmt-check lint cover verify banner site clean
+.PHONY: build test race vet fmt fmt-check lint cover verify banner site captures clean
 build:
 	mkdir -p bin
 	go build -trimpath -o bin/topo ./cmd/topo
@@ -23,5 +23,7 @@ banner:
 site:
 	TOPO_SITE=$(CURDIR)/site/public/data go test -count=1 -run '^TestSite$$' ./internal/tui
 	python3 scripts/build_site.py
+captures:
+	python3 scripts/capture.py $(if $(FONTS),--fonts $(FONTS))
 clean:
 	rm -rf bin dist .verify-build coverage.out
