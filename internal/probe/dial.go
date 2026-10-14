@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,35 @@ func fail(stage string, e error) error {
 	return &failure{stage: stage, code: secure.ErrorCode(e)}
 }
 func local(stage, code string) error { return &failure{stage: stage, code: code, local: true} }
+
+// bindAddr is the local address bind_ip names, zone and all. A zone must
+// name an interface this host has: the kernel would bind without one it
+// cannot find. An address that cannot be read is refused, never left to
+// the kernel to choose, so a bound check measures from where it says.
+func bindAddr(s string) (netip.AddrPort, error) {
+	a, e := netip.ParseAddr(s)
+	if e != nil {
+		return netip.AddrPort{}, local("setup", "invalid_bind_ip")
+	}
+	if z := a.Zone(); z != "" && !hasInterface(z) {
+		return netip.AddrPort{}, local("setup", "local_bind_interface_unavailable")
+	}
+	return netip.AddrPortFrom(a, 0), nil
+}
+
+// hasInterface reports whether an IPv6 zone names an interface here, by
+// name or by index.
+func hasInterface(zone string) bool {
+	if _, e := net.InterfaceByName(zone); e == nil {
+		return true
+	}
+	n, e := strconv.Atoi(zone)
+	if e != nil || n < 1 {
+		return false
+	}
+	_, e = net.InterfaceByIndex(n)
+	return e == nil
+}
 func TLSConfig(name, caFile string) (*tls.Config, error) {
 	c := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: name}
 	if caFile != "" {
@@ -84,7 +114,11 @@ func (d Dialer) DialContext(ctx context.Context, network, address string) (net.C
 	}
 	nd := net.Dialer{}
 	if d.BindIP != "" {
-		nd.LocalAddr = &net.TCPAddr{IP: net.ParseIP(d.BindIP)}
+		a, e := bindAddr(d.BindIP)
+		if e != nil {
+			return nil, e
+		}
+		nd.LocalAddr = net.TCPAddrFromAddrPort(a)
 	}
 	first := address
 	if len(d.Proxies) > 0 {

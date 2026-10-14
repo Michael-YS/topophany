@@ -38,7 +38,7 @@ Defaults: `interval_seconds=60`, `timeout_seconds=8`, `stale_seconds=3*interval`
 
 `disabled` pauses execution and `maintenance` flags planned work; neither state executes active probes or emits actionable incident alerts. Supported ranges: `interval_seconds` in 1..86400, `timeout_seconds` in 1..300. (The 1-second interval used in test suites is not recommended for production). Probes run with random jitter, non-overlapping executions per target, and a default global worker concurrency limit of 4.
 
-`bind_ip` specifies local source IP binding; `resolve_ip` pins dial destination IP while preserving the original HTTP `Host` header and TLS `ServerName`. These options do not guarantee bypassing host-level virtual network adapters. DNS probe target resolvers may also be pinned, while remote domain resolution over proxies depends on SOCKS/CONNECT target hostnames. ICMP requires explicit IPv4 literals and rejects `resolve_ip`. Tailscale and WireGuard adapters read local status and reject dial/bind/target overrides.
+`bind_ip` specifies local source IP binding. An IPv6 address may carry a zone (`fe80::1%eth0`), which must name an interface the observer has; a check bound to an address or interface it cannot use reports a monitor error and never measures from another. `resolve_ip` pins dial destination IP while preserving the original HTTP `Host` header and TLS `ServerName`. These options do not guarantee bypassing host-level virtual network adapters. DNS probe target resolvers may also be pinned, while remote domain resolution over proxies depends on SOCKS/CONNECT target hostnames. ICMP requires explicit IPv4 literals, binds only an IPv4 `bind_ip` and rejects `resolve_ip`. Tailscale and WireGuard adapters read local status and reject dial/bind/target overrides.
 
 | Kind | Target / Options | Operational Meaning of Success |
 |---|---|---|
@@ -55,7 +55,7 @@ Defaults: `interval_seconds=60`, `timeout_seconds=8`, `stale_seconds=3*interval`
 
 ### HTTP Probe Specifications
 
-`http.method` supports `GET` and `HEAD` (defaults to `GET`). `status` accepts an array of expected HTTP status codes; defaults to 2xx when omitted. `contains`, `body_regex`, and `headers` define response body and header assertions. `request_headers` defines static non-sensitive headers; `Authorization` and `Cookie` headers are prohibited; bearer tokens must be referenced via `bearer_env`.
+`http.method` supports `GET` and `HEAD` (defaults to `GET`). `status` accepts an array of expected HTTP status codes; defaults to 2xx when omitted. `contains`, `body_regex`, and `headers` define response body and header assertions. `request_headers` defines static non-sensitive headers, each named once whatever its case; `Host` (a host or `host:port`) sets the Host the request carries, for a virtual host the URL does not name, while TLS still names the URL's host unless `server_name` says otherwise; `Authorization` and `Cookie` headers are prohibited; bearer tokens must be referenced via `bearer_env`.
 
 `expected_exit` accepts an array of expected IP addresses or CIDR blocks. `exit_format` supports `plain`, `trace`, and `json` (with `exit_json_key`, default `ip`). When the observed egress IP violates constraints, `outcome` is set to `policy` while connectivity facts are preserved. Timestamps and configuration revisions are bound to measurements, preventing metric mixing across target changes.
 

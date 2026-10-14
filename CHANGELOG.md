@@ -138,6 +138,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `Host` in an HTTP check's `request_headers` is sent. It was accepted
+  and then dropped, since Go's client sends the URL's host whatever a
+  Host header says, so a check meant for a virtual host measured the
+  URL's site. A Host value that is not a host or `host:port`, and a
+  header named twice in different cases, are refused.
+- A `bind_ip` with an IPv6 zone (`fe80::1%eth0`) binds to it. The zone
+  was validated and then lost, leaving the kernel to choose the source,
+  so such a check measured from whatever address it picked. A zone that
+  names no interface on the observer is now a monitor error,
+  `local_bind_interface_unavailable`, and an ICMP check refuses an IPv6
+  `bind_ip`, since it sends IPv4 only.
 - Collectors no longer stop accepting an observer's samples once it has
   delivered its share of receipts. Receipts were kept until
   administrative archival, so of two observers, one sampling once a

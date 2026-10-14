@@ -354,12 +354,21 @@ func Validate(c model.Config) error {
 			if _, e := regexp.Compile(x.HTTP.BodyRegex); e != nil {
 				return fmt.Errorf("check %s: invalid response regex", x.ID)
 			}
+			named := map[string]bool{}
 			for k, v := range x.HTTP.RequestHeaders {
 				if strings.ContainsAny(k+v, "\r\n") {
 					return errors.New("invalid HTTP header")
 				}
 				if strings.EqualFold(k, "Authorization") || strings.EqualFold(k, "Cookie") {
 					return errors.New("use bearer_env; literal Authorization/Cookie forbidden")
+				}
+				// Header names ignore case, and only one of two can be sent.
+				if named[strings.ToLower(k)] {
+					return fmt.Errorf("check %s: HTTP header %s given twice", x.ID, k)
+				}
+				named[strings.ToLower(k)] = true
+				if strings.EqualFold(k, "Host") && !hostHeader(v) {
+					return fmt.Errorf("check %s: Host header must be a host or host:port", x.ID)
 				}
 			}
 			for _, v := range x.HTTP.ExpectedExit {
@@ -389,6 +398,9 @@ func Validate(c model.Config) error {
 		case "icmp":
 			if ip, e := netip.ParseAddr(t); e != nil || !ip.Is4() {
 				return errors.New("ICMP currently requires an explicit IPv4 target")
+			}
+			if ip, _ := netip.ParseAddr(x.BindIP); x.BindIP != "" && !ip.Is4() {
+				return fmt.Errorf("check %s: ICMP binds only an IPv4 address", x.ID)
 			}
 		case "tailscale":
 			if x.Adapter.Peer == "" {
@@ -479,6 +491,13 @@ func HostPort(s string) error {
 		return errors.New("invalid port")
 	}
 	return nil
+}
+
+// hostHeader reports whether v can stand as a request's Host: a name or
+// an address, with or without a port, and nothing more.
+func hostHeader(v string) bool {
+	u, e := url.Parse("http://" + v)
+	return e == nil && u.Host == v && u.Hostname() != "" && !strings.HasPrefix(v, "-")
 }
 func Target(c model.Config, x model.Check) string {
 	if x.Target != "" {

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -234,6 +235,55 @@ func TestLocalBindFailureIsMonitorError(t *testing.T) {
 	o := (Runner{}).Run(context.Background(), testkit.Config(), x)
 	if o.Outcome != "error" || o.Code != "local_bind_failed" {
 		t.Fatal("unconfigured local bind called target outage", o)
+	}
+}
+
+func TestBindToAMissingInterfaceNeverProbesFromAnother(t *testing.T) {
+	tcp, e := net.Listen("tcp", "127.0.0.1:0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tcp.Close()
+	udp, e := net.ListenPacket("udp", "127.0.0.1:0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer udp.Close()
+	for kind, target := range map[string]string{"http": "http://" + tcp.Addr().String() + "/", "tcp": tcp.Addr().String(), "udp-echo": udp.LocalAddr().String(), "dns": udp.LocalAddr().String()} {
+		x := httpCheck(target)
+		x.Kind = kind
+		x.DNS = model.DNSOptions{Name: "example.invalid", Type: "A"}
+		x.BindIP = "::1%topo-missing0"
+		o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+		if o.Outcome != "error" || o.Code != "local_bind_interface_unavailable" {
+			t.Fatal(kind, "bound to a missing interface", o)
+		}
+	}
+	_ = tcp.(*net.TCPListener).SetDeadline(time.Now().Add(50 * time.Millisecond))
+	if c, e := tcp.Accept(); e == nil {
+		c.Close()
+		t.Fatal("a check bound to a missing interface connected from another")
+	}
+	_ = udp.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+	if _, _, e := udp.ReadFrom(make([]byte, 512)); e == nil {
+		t.Fatal("a check bound to a missing interface sent from another")
+	}
+}
+func TestBindKeepsTheZone(t *testing.T) {
+	ifs, e := net.Interfaces()
+	if e != nil || len(ifs) == 0 {
+		t.Skip("no interfaces to bind to")
+	}
+	for _, zone := range []string{ifs[0].Name, strconv.Itoa(ifs[0].Index)} {
+		a, e := bindAddr("fe80::1%" + zone)
+		if e != nil || a.Addr().Zone() != zone || net.TCPAddrFromAddrPort(a).Zone != zone || net.UDPAddrFromAddrPort(a).Zone != zone {
+			t.Fatal(zone, a, e)
+		}
+	}
+	for _, s := range []string{"fe80::1%topo-missing0", "fe80::1%0", "not-an-ip"} {
+		if _, e := bindAddr(s); e == nil {
+			t.Fatal("bound", s)
+		}
 	}
 }
 

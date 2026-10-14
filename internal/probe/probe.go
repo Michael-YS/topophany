@@ -226,6 +226,11 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		return local("setup", "invalid_request")
 	}
 	for k, v := range x.HTTP.RequestHeaders {
+		// The client sends Request.Host and ignores a Host header.
+		if strings.EqualFold(k, "Host") {
+			req.Host = v
+			continue
+		}
 		req.Header.Set(k, v)
 	}
 	token, e := secure.SecretEnv(x.HTTP.BearerEnv)

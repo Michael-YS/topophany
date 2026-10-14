@@ -75,6 +75,21 @@ func TestHTTPAssertionsAndExitPolicy(t *testing.T) {
 		})
 	}
 }
+func TestHTTPSendsTheConfiguredHost(t *testing.T) {
+	hosts := make(chan string, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hosts <- r.Host }))
+	defer srv.Close()
+	for _, key := range []string{"Host", "host"} {
+		x := httpCheck(srv.URL + "/")
+		x.HTTP.RequestHeaders = map[string]string{key: "blog.example.invalid"}
+		if o := (Runner{}).Run(context.Background(), testkit.Config(), x); o.Outcome != "ok" {
+			t.Fatal(o)
+		}
+		if got := <-hosts; got != "blog.example.invalid" {
+			t.Fatalf("%s header: server saw Host %q", key, got)
+		}
+	}
+}
 func TestHTTPRedirectNeverForwardsCredentials(t *testing.T) {
 	t.Setenv("TOPH_TEST_TOKEN", "secret-bearer-value")
 	var reached atomic.Int32

@@ -32,9 +32,13 @@ func dns(ctx context.Context, x model.Check, target string, o *model.Observation
 	if e != nil {
 		return local("setup", "invalid_dns_question")
 	}
+	var bind netip.AddrPort
 	nd := net.Dialer{}
 	if x.BindIP != "" {
-		nd.LocalAddr = &net.UDPAddr{IP: net.ParseIP(x.BindIP)}
+		if bind, e = bindAddr(x.BindIP); e != nil {
+			return e
+		}
+		nd.LocalAddr = net.UDPAddrFromAddrPort(bind)
 	}
 	conn, e := nd.DialContext(ctx, "udp", target)
 	if e != nil {
@@ -58,8 +62,8 @@ func dns(ctx context.Context, x model.Check, target string, o *model.Observation
 	o.Facts["dns_transport"] = "udp"
 	if len(b) >= 4 && binary.BigEndian.Uint16(b) == id && b[2]&2 != 0 {
 		td := net.Dialer{}
-		if x.BindIP != "" {
-			td.LocalAddr = &net.TCPAddr{IP: net.ParseIP(x.BindIP)}
+		if bind.IsValid() {
+			td.LocalAddr = net.TCPAddrFromAddrPort(bind)
 		}
 		tcp, e := td.DialContext(ctx, "tcp", target)
 		if e != nil {
@@ -265,7 +269,11 @@ func udpEcho(ctx context.Context, x model.Check, target string, o *model.Observa
 	target = pinned(target, x.ResolveIP)
 	d := net.Dialer{}
 	if x.BindIP != "" {
-		d.LocalAddr = &net.UDPAddr{IP: net.ParseIP(x.BindIP)}
+		a, e := bindAddr(x.BindIP)
+		if e != nil {
+			return e
+		}
+		d.LocalAddr = net.UDPAddrFromAddrPort(a)
 	}
 	c, e := d.DialContext(ctx, "udp", target)
 	if e != nil {

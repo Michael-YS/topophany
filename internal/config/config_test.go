@@ -73,10 +73,19 @@ func TestConfigRejectsBrokenTopology(t *testing.T) {
 		"header injection": func(c *model.Config) {
 			c.Checks[0].HTTP.RequestHeaders = map[string]string{"X-Test": "x\r\nInjected: x"}
 		},
-		"HTTP userinfo":       func(c *model.Config) { c.Checks[0].Target = "http://user:password@127.0.0.1/" },
-		"invalid regex":       func(c *model.Config) { c.Checks[0].HTTP.BodyRegex = "[" },
-		"invalid CIDR":        func(c *model.Config) { c.Checks[0].HTTP.ExpectedExit = []string{"1.2.3.4/90"} },
-		"invalid binding":     func(c *model.Config) { c.Checks[0].BindIP = "not-an-ip" },
+		"HTTP userinfo":   func(c *model.Config) { c.Checks[0].Target = "http://user:password@127.0.0.1/" },
+		"invalid regex":   func(c *model.Config) { c.Checks[0].HTTP.BodyRegex = "[" },
+		"invalid CIDR":    func(c *model.Config) { c.Checks[0].HTTP.ExpectedExit = []string{"1.2.3.4/90"} },
+		"invalid binding": func(c *model.Config) { c.Checks[0].BindIP = "not-an-ip" },
+		"Host that is not a host": func(c *model.Config) {
+			c.Checks[0].HTTP.RequestHeaders = map[string]string{"Host": "www.example.invalid/admin"}
+		},
+		"one header given twice": func(c *model.Config) {
+			c.Checks[0].HTTP.RequestHeaders = map[string]string{"Host": "a.example.invalid", "host": "b.example.invalid"}
+		},
+		"ICMP bound to IPv6": func(c *model.Config) {
+			c.Checks[1].Kind, c.Checks[1].Endpoint, c.Checks[1].Target, c.Checks[1].BindIP = "icmp", "", "192.0.2.10", "fe80::1%eth0"
+		},
 		"unbounded timeout":   func(c *model.Config) { c.Checks[0].TimeoutSeconds = 9999 },
 		"too-short freshness": func(c *model.Config) { c.Checks[0].StaleSeconds = 1 },
 		"zero confirmation":   func(c *model.Config) { c.Checks[0].FailureThreshold = 0 },
@@ -95,6 +104,15 @@ func TestConfigRejectsBrokenTopology(t *testing.T) {
 				t.Fatal("invalid contract accepted")
 			}
 		})
+	}
+}
+func TestRequestSettingsAreAcceptedAsWritten(t *testing.T) {
+	c := testkit.Config()
+	c.Checks[0].HTTP.RequestHeaders = map[string]string{"Host": "www.example.invalid:8443", "X-Test": "a"}
+	c.Checks[0].BindIP = "fe80::1%eth0"
+	c.Checks[1].Kind, c.Checks[1].Endpoint, c.Checks[1].Target, c.Checks[1].BindIP = "icmp", "", "192.0.2.10", "192.0.2.1"
+	if e := config.Validate(c); e != nil {
+		t.Fatal(e)
 	}
 }
 func TestRedactionIsDetachedAndRevisionChangesWithMeasurement(t *testing.T) {
