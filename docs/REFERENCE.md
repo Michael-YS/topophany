@@ -163,3 +163,16 @@ A collector rolls every sample it accepts up into its check's rollups (see [oper
 `/v1/rollups` lays them out in slots of `step`: `5m`, `1h` (the default) or `1d`, aligned to UTC, over `span` before now, written as minutes, hours or days such as `90m`, `24h` or `30d` (by default a day of `5m`, a week of `1h` or 90 days of `1d`; at most 800 days and 999 steps). A collector keeps rollups five minutes wide for 48 hours, an hour wide for 32 days and a day wide after that; where they are wider than `step`, a slot is as wide as what is kept, so slots may grow wider into the past. The first slot holds the start of the span and the last ends now. `step_seconds` and `generated_at` say how it was laid out. A step or span outside these bounds is refused with `400 invalid_step` or `400 invalid_span`.
 
 Each check in a snapshot may carry `availability`: its rollups over each `window` ending when the snapshot was generated, `24h`, `7d` and `30d`, in the fields above, with `since` when the rollups begin inside the window. A check the collector holds no rollups of has none, and a snapshot over its budget leaves them out before it leaves out last observations.
+
+## Environment Variables
+
+The terminal interface (`topo`, `topo edit` and `topo preview`) reads these.
+
+| Variable | Effect |
+|---|---|
+| `NO_COLOR` | Any non-empty value turns color off, as `--no-color` does: no escape for color is written and selection is shown with plain glyphs such as `›` and `[a]` |
+| `COLORTERM` | `truecolor` or `24bit` turns on 24-bit color. Windows Terminal, iTerm2, WezTerm, VS Code, Ghostty, Hyper, Tabby and kitty are recognized without it; other terminals get xterm-256 |
+| `TOPO_BACKGROUND` | `terminal` (or `none`, `transparent`) keeps the terminal's own background instead of the UI's dark ink |
+| `TOPO_HYPERLINKS` | `1` (`yes`, `on`, `true`) or `0` (`no`, `off`, `false`) decides whether links are written as OSC 8 hyperlinks; by default they are, except on the Linux console, a dumb terminal and GNU screen outside tmux |
+| `TOPO_CELL_ASPECT` | A character cell's height over its width, such as `2.6`, for drawing the About globe and the geographic map in their true shape. When unset, the shape comes from the pixel size the terminal reports, else from its answer to `CSI 16 t`, else is taken as `2`. Windows Terminal answers with a fixed 10×20 cell whatever its font and line height, so it needs this where its cells are not 2:1. Values outside 1 to 4 count as `2` |
+| `LC_ALL`, `LC_MESSAGES`, `LANG` | The first that is set chooses the language of `topo preview`'s built-in topology and scenarios; `--lang` overrides it |
