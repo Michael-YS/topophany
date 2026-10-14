@@ -226,16 +226,20 @@ func TestWebhookFormats(t *testing.T) {
 
 // An alert a webhook fails to take is tried again; one it refuses, or
 // answers with a redirect, which is not followed, is dropped; one it never
-// takes is dropped after six tries. The log names the webhook, never its
-// URL.
+// takes is dropped once it has waited too long. The log names the
+// webhook, never its URL.
 func TestDeliveryRetriesAndDrops(t *testing.T) {
 	snap, changes := failing(t)
 	flaky := newEndpoint(t, 503, 500, 429)
 	refusing := newEndpoint(t, 404)
 	moved := newEndpoint(t, 302)
-	down := newEndpoint(t, 503, 503, 503, 503, 503, 503, 503)
+	never := make([]int, 10000)
+	for i := range never {
+		never[i] = 503
+	}
+	down := newEndpoint(t, never...)
 	l := &logs{}
-	n := &Notifier{Project: "lab", Instance: "primary", Log: l.log, Backoff: func(int) time.Duration { return time.Millisecond }}
+	n := &Notifier{Project: "lab", Instance: "primary", Log: l.log, Backoff: func(int) time.Duration { return time.Millisecond }, MaxAge: 300 * time.Millisecond}
 	n.Configure(Config{Schema: 1, Webhooks: []Webhook{
 		{ID: "flaky", Format: "json", URL: flaky.srv.URL + "/a?key=hidden"},
 		{ID: "refusing", Format: "json", URL: refusing.srv.URL},
@@ -246,11 +250,11 @@ func TestDeliveryRetriesAndDrops(t *testing.T) {
 	n.Observe(snap, changes, false)
 	wait(t, func() bool { return len(flaky.received()) == 1 })
 	wait(t, func() bool { return strings.Count(l.String(), "\n") >= 2 })
-	if flaky.hits.Load() != 4 || refusing.hits.Load() != 1 || moved.hits.Load() != 1 || down.hits.Load() != 6 {
+	if flaky.hits.Load() != 4 || refusing.hits.Load() != 1 || moved.hits.Load() != 1 || down.hits.Load() < 2 {
 		t.Fatalf("tries: flaky %d, refusing %d, moved %d, down %d", flaky.hits.Load(), refusing.hits.Load(), moved.hits.Load(), down.hits.Load())
 	}
 	log := l.String()
-	for _, want := range []string{"webhook refusing refused with HTTP 404; dropped", "webhook moved refused with HTTP 302; dropped", "webhook down failed 6 times, last HTTP 503; dropped"} {
+	for _, want := range []string{"webhook refusing refused with HTTP 404; dropped", "webhook moved refused with HTTP 302; dropped", "to webhook down dropped after waiting", "last HTTP 503"} {
 		if !strings.Contains(log, want) {
 			t.Fatalf("log lacks %q:\n%s", want, log)
 		}

@@ -60,8 +60,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JSON or in the formats of ntfy, Slack and Discord, filtered by event
   and observer. The file names secrets, so it is private to the
   collector like `auth.json` and reloads with it on `SIGHUP`. Each
-  webhook has a bounded queue delivered in order, with retries for
-  failures, 408, 429 and 5xx; logs name webhooks by ID, never by URL.
+  webhook has a bounded queue delivered in order, at least once, with
+  retries for failures, 408, 429 and 5xx until an alert has waited a
+  day. What waits is kept in the data directory as `alert-queue.json`,
+  so a collector that stops or reloads loses none of it, and each
+  webhook's sent and dropped alerts are counted there and logged at
+  start; logs name webhooks by ID, never by URL.
 - Everything the TUI shows can be read from the command line. `topo status`
   prints the Overview (verdict, check and tab counts, what needs attention,
   services and observers) and says it in its exit status: 0 all clear,

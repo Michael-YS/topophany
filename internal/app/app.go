@@ -258,7 +258,10 @@ func (a *App) serve(parent context.Context, args []string) error {
 	backend.Ledger = book
 	var notifier *alert.Notifier
 	if *alertsPath != "" {
-		notifier = &alert.Notifier{Project: c.Project, Instance: *instance, Log: func(format string, args ...any) { fmt.Fprintf(a.Err, format+"\n", args...) }}
+		notifier = &alert.Notifier{Project: c.Project, Instance: *instance, Path: filepath.Join(*dir, "alert-queue.json"), Log: func(format string, args ...any) { fmt.Fprintf(a.Err, format+"\n", args...) }}
+		if e = notifier.Load(); e != nil {
+			return e
+		}
 		notifier.Configure(alerts)
 		defer notifier.Close()
 	}

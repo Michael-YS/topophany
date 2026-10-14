@@ -3,8 +3,9 @@
 // to the webhooks named in the collector's private alerts file, outbound
 // only, as generic JSON or in the formats of ntfy, Slack and Discord. An
 // alert is what the collector concluded, never more evidence than its
-// snapshot holds. Alerts wait in memory, a bounded queue per webhook: a
-// collector that stops loses those it has not sent.
+// snapshot holds. Alerts wait in a bounded queue per webhook, kept in the
+// collector's data directory, so one that stops or reloads sends them
+// still, at least once.
 package alert
 
 import (
