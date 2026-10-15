@@ -39,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `peer_text: withheld_secret_request`. A topology with a query in a
   plain `http://` URL to anywhere else is refused; use HTTPS, or move
   the token to `bearer_env`.
+- A worker changing its boot ID without end can no longer slow every
+  observer's ingestion. Each boot whose receipts expire leaves a floor,
+  up to an eighth of its observer's share, 131,072 with one observer by
+  default, and every write counted them all, twice, under the lock all
+  ingestion waits on, sorting the observer's floors whenever one had to
+  go. Each observer's floors are now kept oldest first, so a write
+  counts them and sheds the oldest without visiting the rest; with a
+  full share of floors, a write prunes them about as fast as with a
+  thousand.
 
 ## [0.8.1] - 2026-10-14
 

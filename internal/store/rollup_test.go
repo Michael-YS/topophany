@@ -289,3 +289,49 @@ func TestBootRotationCannotFillAnObserversShare(t *testing.T) {
 		t.Fatal("ordinary samples refused", e)
 	}
 }
+
+// A worker picks its boot IDs, so it can have the store hold as many
+// floors as its observer's share allows, and every write prunes them
+// under the lock all observers' ingestion waits on. Counting them, and
+// shedding the oldest as another boot's receipt expires, costs about the
+// same with a full share of floors as with a few: no write visits each
+// floor or sorts them all.
+func TestFloorsAreKeptWithoutVisitingThemAll(t *testing.T) {
+	now := time.Now().UTC()
+	cost := func(n int) time.Duration {
+		s := openTest(t, t.TempDir(), Options{Observers: []string{"home"}, MaxStateBytes: int64(n) * floorShare * floorBytes, Now: func() time.Time { return now }})
+		if s.floorLimit() != n {
+			t.Fatal(s.floorLimit(), n)
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for i := range n {
+			s.raiseFloor(fmt.Sprintf("home.old%d", i), 1, now.Add(time.Duration(i-n)*time.Second))
+		}
+		s.prune()
+		best := time.Duration(1 << 62)
+		for i := range 64 {
+			start := time.Now()
+			s.raiseFloor(fmt.Sprintf("home.new%d", i), 1, now)
+			s.prune()
+			best = min(best, time.Since(start))
+		}
+		if len(s.floors) != n || s.scopeBytes["home"] != int64(n)*floorBytes {
+			t.Fatal("floors held", len(s.floors), s.scopeBytes)
+		}
+		if _, ok := s.floors["home.old63"]; ok {
+			t.Fatal("an old floor outlived the ones shed for new boots")
+		}
+		if _, ok := s.floors["home.old64"]; !ok {
+			t.Fatal("a floor was shed before older ones")
+		}
+		if _, ok := s.floors["home.new63"]; !ok {
+			t.Fatal("the newest floor was shed")
+		}
+		return best
+	}
+	few, full := cost(1<<10), cost(1<<17)
+	if full > 8*few+100*time.Microsecond {
+		t.Fatalf("a write with %d floors held took %v to prune them, with %d %v", 1<<17, full, 1<<10, few)
+	}
+}
