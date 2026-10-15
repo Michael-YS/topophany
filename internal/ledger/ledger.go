@@ -48,9 +48,10 @@ type Change struct {
 // Ledger is safe for concurrent use. A ledger without a path keeps its
 // records in memory only.
 type Ledger struct {
-	mu      sync.Mutex
-	path    string
-	records []model.IncidentRecord // in the order they opened
+	mu        sync.Mutex
+	path      string
+	records   []model.IncidentRecord // in the order they opened
+	unwritten bool                   // the records changed since the last write that succeeded
 }
 
 type disk struct {
@@ -124,7 +125,9 @@ func Valid(r model.IncidentRecord) error { return valid(r) }
 // recovers or closes. Until settled, a record whose evidence lapsed stays
 // open: a collector that just started has not yet heard from its workers.
 // It returns what changed; an error says only that the ledger could not
-// be written, and the records are kept in memory regardless.
+// be written, and the records are kept in memory regardless and written
+// at the next call, whether or not anything changes by then, so that no
+// error means they are on disk.
 func (l *Ledger) Observe(snap model.Snapshot, now time.Time, settled bool) ([]Change, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -196,14 +199,16 @@ func (l *Ledger) Observe(snap model.Snapshot, now time.Time, settled bool) ([]Ch
 			changes = append(changes, Change{"closed", *r})
 		}
 	}
-	dirty = dirty || len(changes) > 0
+	dirty = dirty || len(changes) > 0 || l.unwritten
 	if l.prune(now) {
 		dirty = true
 	}
 	if !dirty || l.path == "" {
 		return changes, nil
 	}
-	return changes, l.write()
+	e := l.write()
+	l.unwritten = e != nil
+	return changes, e
 }
 
 // judge says how a record whose incident is gone ended, or that it is

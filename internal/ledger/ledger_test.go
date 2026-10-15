@@ -246,3 +246,43 @@ func TestSettleWaitsForTheStalestCheck(t *testing.T) {
 		t.Fatalf("settle %s", got)
 	}
 }
+
+// A ledger that could not be written is written at its next chance, even
+// when nothing changed by then, so that a nil error means it is on disk;
+// once it is, an unchanged ledger is not written again.
+func TestAFailedWriteIsTriedAgain(t *testing.T) {
+	c := testkit.Config()
+	path := filepath.Join(t.TempDir(), "incidents.json")
+	l, e := Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	h := &history{t: t, c: c, l: l, clock: time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)}
+	h.sample("home-http", "fail", "fail", "fail")
+	snap := engine.Build(c, "test", "", h.rows, nil, h.clock)
+	if e = os.Mkdir(path, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if changes, e := l.Observe(snap, h.clock, true); e == nil || kinds(changes) != "opened" {
+		t.Fatal("a write in the way of a directory succeeded", kinds(changes), e)
+	}
+	if e = os.Remove(path); e != nil {
+		t.Fatal(e)
+	}
+	if changes, e := l.Observe(snap, h.clock, true); e != nil || len(changes) != 0 {
+		t.Fatal(changes, e)
+	}
+	again, e := Open(path)
+	if e != nil || len(again.Records()) != 1 {
+		t.Fatal("the incident that opened was never written", e)
+	}
+	if e = os.Remove(path); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = l.Observe(snap, h.clock, true); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = os.Stat(path); !os.IsNotExist(e) {
+		t.Fatal("an unchanged ledger was written again", e)
+	}
+}

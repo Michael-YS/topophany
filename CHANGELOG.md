@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   room at no collector a worker now stops with the outbox's capacity
   error, as one with a single collector always did, and keeps what it
   queued.
+- An incident ledger that could not be written is written at the next
+  judgement, two seconds on, whether or not anything changed by then. A
+  failed write was tried again only once something else changed, yet the
+  collector logged "incident ledger written again" at the next judgement
+  that changed nothing, and a crash before the next change lost the
+  incidents that write held. The log now follows a write that succeeded.
 
 ### Security
 
