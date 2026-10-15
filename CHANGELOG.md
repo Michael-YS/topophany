@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to find them by. Each is now synced into its parent as it is made,
   before the collector opens, and so is any directory made to write a
   file into, such as a credentials file's.
+- A worker starting on a new outbox makes it durably. Its directories
+  were never synced into their parents, and each record was synced into
+  `pending` but `pending` into nothing, so a power loss could lose the
+  samples a worker had queued before any collector took them. The
+  outbox's directories are now synced as they are made, before the
+  worker opens it.
 
 ### Security
 

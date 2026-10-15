@@ -54,10 +54,13 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 	if maxBytes < 1024 {
 		return nil, errors.New("outbox budget must be at least 1024 bytes")
 	}
-	if e := os.MkdirAll(filepath.Join(dir, "pending"), 0700); e != nil {
+	// A record is queued once it and pending are synced, which makes
+	// neither pending nor the directories above it durable: those are
+	// synced as they are made.
+	if e := secure.MkdirAll(filepath.Join(dir, "pending"), 0700); e != nil {
 		return nil, e
 	}
-	if e := os.MkdirAll(filepath.Join(dir, "quarantine"), 0700); e != nil {
+	if e := secure.MkdirAll(filepath.Join(dir, "quarantine"), 0700); e != nil {
 		return nil, e
 	}
 	unlock, e := secure.Lock(filepath.Join(dir, "writer.lock"))

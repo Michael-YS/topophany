@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -530,5 +532,36 @@ func TestNoRecipientWithRoomIsFull(t *testing.T) {
 	}
 	if !full {
 		t.Fatal("two recipients that never acknowledge filled nothing")
+	}
+}
+
+// An outbox made afresh is found after a power loss once a sample is
+// queued: the directories it made are synced into their parents before it
+// opens, and each record into pending as it is written.
+func TestANewOutboxIsDurablyMade(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not sync directories")
+	}
+	base := t.TempDir()
+	dir := filepath.Join(base, "worker", "outbox")
+	var synced []string
+	stop := secure.WatchSyncs(func(d string) { synced = append(synced, d) })
+	defer stop()
+	q, e := Open(dir, "lab", 8000)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer q.Close()
+	for _, want := range []string{base, filepath.Join(base, "worker"), dir} {
+		if !slices.Contains(synced, want) {
+			t.Fatal("not synced:", want, synced)
+		}
+	}
+	synced = nil
+	if e = q.Add(makeBatch(1), []string{Recipient("one")}); e != nil {
+		t.Fatal(e)
+	}
+	if !slices.Equal(synced, []string{filepath.Join(dir, "pending")}) {
+		t.Fatal("a queued record", synced)
 	}
 }
