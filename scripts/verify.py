@@ -116,6 +116,7 @@ def main() -> int:
             ("probe", "FuzzSOCKSAddress"),
             ("probe", "FuzzDNSPacket"),
             ("probe", "FuzzICMPChecksum"),
+            ("rollup", "FuzzLateSampleOrder"),
         ]
         for package, target in fuzz:
             run("fuzz-" + target, ["go", "test", "./internal/" + package, "-run=^$",
@@ -124,7 +125,7 @@ def main() -> int:
         run("build-native", ["go", "build", "-trimpath", "-o", str(binary), "./cmd/topo"],
             overrides={"CGO_ENABLED": "0"}, timeout=300)
         targets = [("linux", "amd64"), ("linux", "arm64"), ("windows", "amd64"),
-                   ("darwin", "amd64"), ("darwin", "arm64")]
+                   ("darwin", "amd64"), ("darwin", "arm64"), ("windows", "arm64")]
         for goos, goarch in targets:
             target = build_dir / ("topo-" + goos + "-" + goarch + (".exe" if goos == "windows" else ""))
             run("build-" + goos + "-" + goarch,
@@ -220,7 +221,7 @@ Full module statement coverage: **{summary['coverage_statement_percent']}%**; pe
 Skipped items: {", ".join(event["Test"] for event in summary["skipped_tests"]) or "None"}. `TestICMPRealLoopback` runs only when raw socket permissions are available; explicitly skipped when unprivileged/unavailable. ICMP correlation, checksums, permission classification, and packet budgets remain verified by deterministic unit tests. Skipped items are never counted as real-network passes.
 
 Environment: `{summary['go_version']}`; `{summary['host_platform']}`. Go module network disabled, zero external Go modules.
-Race detector, 3x repeat tests, {len(fuzz)} fuzz suites (budget {fuzz_time} each), native build, and 5 cross-compilation targets are detailed in the table below. Bounded fuzzing is budgeted exploration, not proof of zero defects.
+Race detector, 3x repeat tests, {len(fuzz)} fuzz suites (budget {fuzz_time} each), native build, and {len(targets)} cross-compilation targets are detailed in the table below. Bounded fuzzing is budgeted exploration, not proof of zero defects.
 
 ## Real Process and Terminal Acceptance
 

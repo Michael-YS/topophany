@@ -166,6 +166,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	}
 	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
 	s.rollups.SetCurrent(s.currentKey)
+	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
 	defer func() {
 		if err != nil {

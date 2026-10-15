@@ -114,6 +114,8 @@ func NeedsAttention(r Row) bool {
 		return true
 	case r.Kind == "observer":
 		return r.Health != "up" || r.Note == "outdated"
+	case r.Kind == "check":
+		return r.Health == "unknown" && r.Note != "paused" && r.Note != "maintenance"
 	}
 	return false
 }
@@ -242,7 +244,7 @@ func (v View) Live() (live, all int) {
 
 // Verdict is the one-line answer at the top of the Overview. State is one
 // of draft, cached, no-checks, incidents, down, degraded, no-evidence and
-// clear.
+// incomplete and clear.
 type Verdict struct {
 	State string `json:"state"`
 	Glyph string `json:"glyph"`
@@ -268,6 +270,11 @@ func (v View) Verdict() Verdict {
 	case c.Up == 0:
 		return Verdict{"no-evidence", "○", "NO EVIDENCE"}
 	}
+	for _, s := range v.Snapshot.Checks {
+		if s.Health == "unknown" && s.Freshness != "paused" && s.Freshness != "maintenance" {
+			return Verdict{"incomplete", "○", "INCOMPLETE EVIDENCE"}
+		}
+	}
 	return Verdict{"clear", "●", "ALL CLEAR"}
 }
 
@@ -281,8 +288,10 @@ func (v View) Calm() (state, headline, more string) {
 		return "cached", "◌ Status not established", "Showing the last snapshot; nothing current is known."
 	case len(v.Snapshot.Checks) == 0:
 		return "no-checks", "○ No checks in this view", "Nothing is measured from here yet."
+	case v.Verdict().State == "incomplete" || v.Verdict().State == "no-evidence":
+		return "incomplete", "○ Evidence incomplete", "Some active checks have no current conclusive evidence."
 	}
-	return "clear", "✓ Nothing needs attention", "Every check in this view passes; no incidents."
+	return "clear", "✓ Nothing needs attention", "Every active check in this view passes; no incidents."
 }
 
 // Badge is what a tab counts beside its name: the entries in it that need
@@ -325,7 +334,7 @@ func (v View) Badge(tab int) (n int, down bool) {
 		}
 	case Checks:
 		for _, c := range s.Checks {
-			look(c.Health, false)
+			look(c.Health, c.Health == "unknown" && c.Freshness != "paused" && c.Freshness != "maintenance")
 		}
 	case Incidents:
 		n, down = len(s.Incidents), len(s.Incidents) > 0

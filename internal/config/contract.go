@@ -39,7 +39,11 @@ type contract struct {
 // and collectors store and count samples by it; like Revision, it is never
 // shown to viewers, who see PublicContract.
 func Contract(c model.Config, x model.Check) string {
-	b, _ := json.Marshal(contract{Schema: 2, Project: c.Project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: Target(c, x), Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: x.HTTP, DNS: x.DNS, Adapter: x.Adapter, Proxies: Path(c, x.Path).Proxies})
+	return measurement(c.Project, x, Target(c, x), Path(c, x.Path).Proxies)
+}
+
+func measurement(project string, x model.Check, target string, proxies []model.Proxy) string {
+	b, _ := json.Marshal(contract{Schema: 2, Project: project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: target, Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: x.HTTP, DNS: x.DNS, Adapter: x.Adapter, Proxies: proxies})
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
@@ -47,8 +51,19 @@ func Contract(c model.Config, x model.Check) string {
 // Contracts are the contracts of every check in c, by check ID.
 func Contracts(c model.Config) map[string]string {
 	out := make(map[string]string, len(c.Checks))
+	endpoints, paths := map[string]string{}, map[string][]model.Proxy{}
+	for _, e := range c.Endpoints {
+		endpoints[e.ID] = e.Address
+	}
+	for _, p := range c.Paths {
+		paths[p.ID] = p.Proxies
+	}
 	for _, x := range c.Checks {
-		out[x.ID] = Contract(c, x)
+		target := x.Target
+		if target == "" {
+			target = endpoints[x.Endpoint]
+		}
+		out[x.ID] = measurement(c.Project, x, target, paths[x.Path])
 	}
 	return out
 }
@@ -70,12 +85,30 @@ func PublicContracts(c model.Config) map[string]string { return Contracts(Public
 // ObserverContracts digests the contracts of an observer's checks, so a
 // collector can tell whether an executor measures what it would count.
 func ObserverContracts(c model.Config, observer string) string {
-	pairs := []string{}
-	for _, x := range c.Checks {
-		if x.Observer == observer {
-			pairs = append(pairs, x.ID+"="+Contract(c, x))
-		}
+	if digest, ok := ObserverDigests(c, Contracts(c))[observer]; ok {
+		return digest
 	}
+	return observerDigest([]string{})
+}
+
+// ObserverDigests reuses a generation's contracts to identify each observer's
+// measurements, including observers with no checks.
+func ObserverDigests(c model.Config, contracts map[string]string) map[string]string {
+	byObserver := make(map[string][]string, len(c.Observers))
+	for _, o := range c.Observers {
+		byObserver[o.ID] = []string{}
+	}
+	for _, x := range c.Checks {
+		byObserver[x.Observer] = append(byObserver[x.Observer], x.ID+"="+contracts[x.ID])
+	}
+	out := make(map[string]string, len(byObserver))
+	for id, pairs := range byObserver {
+		out[id] = observerDigest(pairs)
+	}
+	return out
+}
+
+func observerDigest(pairs []string) string {
 	sort.Strings(pairs)
 	b, _ := json.Marshal(pairs)
 	h := sha256.Sum256(b)

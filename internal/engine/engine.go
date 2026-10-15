@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -22,6 +23,16 @@ func Evaluate(x model.Check, rows []model.Observation, now time.Time) model.Chec
 // EvaluateCarried judges x from rows after those folded into carry, as
 // Evaluate would from all of them; rows that carry holds are passed over.
 func EvaluateCarried(x model.Check, carry *Carry, rows []model.Observation, now time.Time) model.CheckState {
+	refs := make([]*model.Observation, len(rows))
+	for i := range rows {
+		refs[i] = &rows[i]
+	}
+	return evaluate(x, carry, refs, now)
+}
+
+// evaluate owns only the index slice. Sorting pointers avoids copying entire
+// observations and never changes the input order or its diagnostic maps.
+func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.Time) model.CheckState {
 	s := model.CheckState{ID: x.ID, Observer: x.Observer, Health: "unknown", Freshness: "never", Evidence: "unknown", Reason: "not yet measured"}
 	if x.Disabled {
 		s.Freshness = "paused"
@@ -37,18 +48,18 @@ func EvaluateCarried(x model.Check, carry *Carry, rows []model.Observation, now 
 	if carry != nil {
 		k = *carry
 	}
-	rows = slices.DeleteFunc(slices.Clone(rows), k.Holds)
+	rows = slices.DeleteFunc(rows, func(v *model.Observation) bool { return k.Holds(*v) })
 	if len(rows) == 0 {
 		return s
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		a := rows[i]
-		return earlier(a.SampledAt, a.Boot, a.Sequence, a.ID, rows[j])
+		return earlier(a.SampledAt, a.Boot, a.Sequence, a.ID, *rows[j])
 	})
 	for _, v := range rows {
-		k.Fold(v, time.Duration(x.StaleSeconds)*time.Second)
+		k.Fold(*v, time.Duration(x.StaleSeconds)*time.Second)
 	}
-	last := rows[len(rows)-1]
+	last := *rows[len(rows)-1]
 	s.Last = &last
 	s.Evidence = last.Evidence
 	s.Reason = last.Detail
@@ -104,14 +115,16 @@ func Build(c model.Config, instance, view string, rows []model.Observation, beat
 // left behind: each check is judged from its carry under its contract in
 // c, if it has one, and the samples after it.
 func BuildCarried(c model.Config, instance, view string, rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
-	revision := config.Revision(c)
-	contracts, public := config.Contracts(c), config.PublicContracts(c)
-	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: config.PublicRevision(c), GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Public(c), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Endpoints: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
-	checkDefs := map[string]model.Check{}
-	for _, x := range c.Checks {
-		checkDefs[x.ID] = x
-	}
-	histories := map[string][]model.Observation{}
+	return NewPlan(c).Build(instance, view, rows, carries, beats, now)
+}
+
+// Build evaluates a snapshot under this plan. Concurrent calls are safe.
+func (p *Plan) Build(instance, view string, rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
+	c := p.config
+	revision, contracts, public := p.revision, p.contracts, p.publicContracts
+	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: p.publicRevision, GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Clone(p.public), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Endpoints: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
+	checkDefs := p.checks
+	histories := make(map[string][]*model.Observation, len(c.Checks))
 	lastSeen := map[string]time.Time{}
 	// An executor is alive whatever topology it runs; whether its samples
 	// count is decided sample by sample.
@@ -127,13 +140,14 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		// schema 1 one counts only under the very revision it runs.
 		switch {
 		case h.Contracts != "":
-			reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Contracts == config.ObserverContracts(c, id)]
+			reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Contracts == p.observers[id]]
 		case h.Revision != "":
 			reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Revision == revision]
 		}
 	}
-	for _, v := range rows {
-		if v.Project != c.Project || !config.Counted(v, contracts, revision) {
+	for i := range rows {
+		v := &rows[i]
+		if v.Project != c.Project || !config.Counted(*v, contracts, revision) {
 			continue
 		}
 		x, ok := checkDefs[v.Check]
@@ -152,13 +166,13 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		}
 	}
 	allStates := map[string]model.CheckState{}
-	checks := map[string]model.Check{}
+	checks := p.checks
 	for _, x := range c.Checks {
-		checks[x.ID] = x
-		st := EvaluateCarried(x, carried[x.ID], histories[x.ID], now)
+		st := evaluate(x, carried[x.ID], histories[x.ID], now)
 		st.Contract = public[x.ID]
 		if st.Last != nil {
 			last := *st.Last
+			last.Facts, last.Timings = maps.Clone(last.Facts), maps.Clone(last.Timings)
 			last.Contract, last.Revision = st.Contract, ""
 			st.Last = &last
 		}
@@ -179,26 +193,20 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		out.Observers = append(out.Observers, s)
 	}
 	relevant := func(x model.Check) bool { return view == "" || x.Observer == view }
-	group := func(match func(model.Check) bool) []model.CheckState {
-		r := []model.CheckState{}
-		for _, x := range c.Checks {
-			if relevant(x) && match(x) {
-				r = append(r, allStates[x.ID])
+	group := func(ids []string) []model.CheckState {
+		r := make([]model.CheckState, 0, len(ids))
+		for _, id := range ids {
+			if relevant(checks[id]) {
+				r = append(r, allStates[id])
 			}
 		}
 		return r
 	}
-	endpoints := map[string]model.Endpoint{}
-	for _, e := range c.Endpoints {
-		endpoints[e.ID] = e
-	}
+	endpoints := p.endpoints
 	for _, n := range c.Nodes {
 		// A node's evidence comes from checks on its own endpoints and on
 		// endpoints reached through it as an edge or proxy.
-		states := group(func(x model.Check) bool {
-			ep, ok := endpoints[x.Endpoint]
-			return ok && (ep.Node == n.ID || slices.Contains(ep.Via, n.ID))
-		})
+		states := group(p.nodeChecks[n.ID])
 		s := model.EntityState{ID: n.ID, Health: "unknown", Evidence: "unknown", Reason: "no fresh remote-response evidence"}
 		failures := 0
 		proof := []string{}
@@ -237,23 +245,20 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 	}
 	// An endpoint is judged from the checks that target it.
 	for _, e := range c.Endpoints {
-		out.Endpoints = append(out.Endpoints, Aggregate(e.ID, group(func(x model.Check) bool { return x.Endpoint == e.ID }), "no check targets this endpoint in this view"))
+		out.Endpoints = append(out.Endpoints, Aggregate(e.ID, group(p.endpointChecks[e.ID]), "no check targets this endpoint in this view"))
 	}
 	pathStates := map[string]model.EntityState{}
-	pathDefs := map[string]model.Path{}
-	for _, p := range c.Paths {
-		pathDefs[p.ID] = p
-	}
+	pathDefs := p.paths
 	var evalPath func(string) model.EntityState
 	evalPath = func(id string) model.EntityState {
 		if s, ok := pathStates[id]; ok {
 			return s
 		}
-		p := pathDefs[id]
-		s := Aggregate(id, pathEvidenceStates(group(func(x model.Check) bool { return x.Path == id })), "no endpoint-to-endpoint check; segment health unknown")
-		if len(p.Candidates) > 0 {
+		path := pathDefs[id]
+		s := Aggregate(id, pathEvidenceStates(group(p.pathChecks[id])), "no endpoint-to-endpoint check; segment health unknown")
+		if len(path.Candidates) > 0 {
 			up, down, unknown := 0, 0, 0
-			for _, q := range p.Candidates {
+			for _, q := range path.Candidates {
 				cs := evalPath(q)
 				s.Checks = boundedChecks(s.Checks, cs.Checks)
 				switch cs.Health {
@@ -267,13 +272,13 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 			}
 			s.Evidence = "inferred"
 			switch {
-			case up == len(p.Candidates):
+			case up == len(path.Candidates):
 				s.Health = "up"
 				s.Reason = "all candidates available; active request selection not inferred"
 			case up > 0:
 				s.Health = "degraded"
 				s.Reason = "usable candidate exists, redundancy reduced; actual failover not verified"
-			case down == len(p.Candidates):
+			case down == len(path.Candidates):
 				s.Health = "down"
 				s.Reason = "all configured candidates failed"
 			default:
@@ -281,7 +286,7 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 				s.Reason = fmt.Sprintf("no confirmed available candidate (%d unknown/degraded)", unknown)
 			}
 		}
-		for _, dep := range p.DependsOn {
+		for _, dep := range path.DependsOn {
 			v := evalPath(dep)
 			if v.Health == "down" || v.Affected {
 				s.Affected = true
@@ -297,15 +302,10 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		}
 	}
 	for _, l := range c.Links {
-		s := Aggregate(l.ID, pathEvidenceStates(group(func(x model.Check) bool { return x.Link == l.ID })), "segment not independently measured")
-		for _, p := range c.Paths {
-			if !relevant(model.Check{Observer: p.Observer}) {
-				continue
-			}
-			for _, id := range p.Links {
-				if id == l.ID && evalPath(p.ID).Health == "down" {
-					s.Affected = true
-				}
+		s := Aggregate(l.ID, pathEvidenceStates(group(p.linkChecks[l.ID])), "segment not independently measured")
+		for _, id := range p.linkPaths[l.ID] {
+			if relevant(model.Check{Observer: p.paths[id].Observer}) && evalPath(id).Health == "down" {
+				s.Affected = true
 			}
 		}
 		if s.Affected && len(s.Checks) == 0 {
@@ -314,18 +314,15 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		}
 		out.Links = append(out.Links, s)
 	}
-	serviceDefs := map[string]model.Service{}
+	serviceDefs := p.services
 	serviceStates := map[string]model.EntityState{}
-	for _, s := range c.Services {
-		serviceDefs[s.ID] = s
-	}
 	var evalService func(string) model.EntityState
 	evalService = func(id string) model.EntityState {
 		if s, ok := serviceStates[id]; ok {
 			return s
 		}
 		def := serviceDefs[id]
-		s := Aggregate(id, group(func(x model.Check) bool { return x.Service == id }), "registered, not monitored")
+		s := Aggregate(id, group(p.serviceChecks[id]), "registered, not monitored")
 		for _, dep := range def.DependsOn {
 			v := evalService(dep)
 			if v.Health == "down" || v.Affected {
@@ -333,7 +330,8 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 				s.Reason += "; dependency affected: " + dep
 			}
 		}
-		for _, x := range c.Checks {
+		for _, check := range p.serviceChecks[id] {
+			x := checks[check]
 			if x.Service == id && x.Path != "" && relevant(x) && evalPath(x.Path).Health == "down" {
 				if !strings.HasSuffix(s.Reason, unavailable) {
 					s.Reason += unavailable
@@ -349,21 +347,6 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 	}
 	// Incidents aggregate only confirmed failures in the same observer/endpoint
 	// scope. They do not diagnose an IP-wide ban, GFW, or untested UDP behavior.
-	scopeOf := func(x model.Check) string {
-		switch {
-		case x.Path != "":
-			return x.Observer + "/path/" + x.Path
-		case x.Endpoint != "":
-			return x.Observer + "/asset/" + endpoints[x.Endpoint].Node
-		}
-		return x.Observer + "/" + x.ID
-	}
-	// An incident's ID names its scope after what the checks in that scope
-	// measure, so it holds across edits that change nothing measured.
-	measured := map[string][]string{}
-	for _, x := range c.Checks {
-		measured[scopeOf(x)] = append(measured[scopeOf(x)], public[x.ID])
-	}
 	incidents := map[string]*model.Incident{}
 	for _, x := range c.Checks {
 		if !relevant(x) {
@@ -377,14 +360,14 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		if s.Health != "down" && !policy {
 			continue
 		}
-		base := scopeOf(x)
+		base := p.scope(x)
 		scope := base
 		if policy {
 			scope += "/policy"
 		}
 		inc := incidents[scope]
 		if inc == nil {
-			inc = &model.Incident{ID: digest(measured[base])[:12] + "/" + scope, Scope: scope, Summary: "confirmed failure of the listed checks from this observer", Checks: []string{}, CounterEvidence: []string{}, Since: s.Since}
+			inc = &model.Incident{ID: p.incidents[base] + "/" + scope, Scope: scope, Summary: "confirmed failure of the listed checks from this observer", Checks: []string{}, CounterEvidence: []string{}, Since: s.Since}
 			if policy {
 				inc.Summary = "observed policy constraint violation"
 			}
@@ -396,7 +379,8 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		}
 		if !policy && x.Endpoint != "" {
 			ep := endpoints[x.Endpoint]
-			for _, other := range c.Checks {
+			for _, id := range p.nodeChecks[ep.Node] {
+				other := checks[id]
 				cs := allStates[other.ID]
 				oe, ok := endpoints[other.Endpoint]
 				if other.Observer != x.Observer && ok && (oe.Node == ep.Node || slices.Contains(oe.Via, ep.Node)) && cs.Freshness == "fresh" && cs.Last != nil && answered(oe, ep.Node, cs.Last) {
@@ -487,9 +471,13 @@ func Aggregate(id string, states []model.CheckState, empty string) model.EntityS
 	if len(states) == 0 {
 		return s
 	}
-	up, down, degraded, unknown := 0, 0, 0, 0
+	up, down, degraded, unknown, active := 0, 0, 0, 0, 0
 	for _, v := range states {
 		s.Checks = append(s.Checks, v.ID)
+		if v.Freshness == "paused" || v.Freshness == "maintenance" {
+			continue
+		}
+		active++
 		if v.Freshness != "fresh" {
 			unknown++
 			continue
@@ -505,15 +493,19 @@ func Aggregate(id string, states []model.CheckState, empty string) model.EntityS
 			unknown++
 		}
 	}
+	if active == 0 {
+		s.Reason = "checks paused or in maintenance; no active evidence"
+		return s
+	}
 	s.Evidence = "inferred"
 	switch {
-	case up == len(states):
+	case up == active:
 		s.Health = "up"
 		s.Reason = "all checks in this view pass"
 	case up > 0:
 		s.Health = "degraded"
 		s.Reason = "some access checks pass; others fail, degrade or lack current evidence"
-	case down == len(states):
+	case down == active:
 		s.Health = "down"
 		s.Reason = "all access checks in this view have confirmed failures"
 	case degraded > 0:

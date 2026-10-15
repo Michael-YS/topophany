@@ -136,6 +136,14 @@ func (v View) Rows(tab int) []Row {
 			r.Cols = []string{"incident"}
 			rows = append(rows, r)
 		}
+		// A monitor error or missing evidence can have no service or path
+		// to draw attention to it. Keep the check itself visible.
+		for _, r := range v.Rows(Checks) {
+			if r.Health == "unknown" && NeedsAttention(r) {
+				r.Cols = []string{"check"}
+				rows = append(rows, r)
+			}
+		}
 		kinds := map[int]string{Services: "service", Paths: "path", Topology: "node", Observers: "observer"}
 		for _, t := range []int{Services, Paths, Topology, Observers} {
 			if t == Observers && v.Draft {

@@ -141,6 +141,7 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 // request: its revision, its checks and their contracts, and what viewers
 // may see of them. Nothing in it is changed after it is made.
 type generation struct {
+	engine          *engine.Plan
 	config          model.Config
 	auth            Auth
 	revision        string
@@ -154,6 +155,7 @@ type generation struct {
 func newGeneration(c model.Config, a Auth) *generation {
 	public := config.Public(c)
 	g := &generation{config: c, auth: a, revision: config.Revision(c), checks: make(map[string]model.Check, len(c.Checks)), contracts: config.Contracts(c), publicRevision: config.Revision(public), publicContracts: config.Contracts(public)}
+	g.engine = engine.NewPlan(c)
 	for _, x := range c.Checks {
 		g.checks[x.ID] = x
 	}
@@ -212,9 +214,9 @@ func (s *Server) Reload(c model.Config, a Auth) {
 // them would, and records in the ledger the incidents that open, recover
 // and close (see ledger.Observe). It returns that snapshot too.
 func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.Change, error) {
-	c := s.generation().config
+	g := s.generation()
 	rows, carries, beats := s.Store.StateView()
-	snap := engine.BuildCarried(c, s.Instance, "", rows, carries, beats, now)
+	snap := g.engine.Build(s.Instance, "", rows, carries, beats, now)
 	if s.Ledger == nil {
 		return snap, nil, nil
 	}

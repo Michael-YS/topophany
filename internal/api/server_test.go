@@ -614,16 +614,23 @@ func TestViewerReadsDoNotDeriveTheTopologyAgain(t *testing.T) {
 	h := srv.Handler()
 	now := srv.Now()
 	srv.Now = func() time.Time { now = now.Add(time.Second); return now }
-	derive := testing.AllocsPerRun(3, func() { config.PublicContracts(c) })
+	small, _, _ := fixture(t)
+	small.Now = srv.Now
+	smallHandler := small.Handler()
 	for _, path := range []string{"/v1/config", "/v1/history?check=home-http", "/v1/rollups?check=home-http&step=1h"} {
 		for _, method := range []string{"GET", "HEAD"} {
+			baseline := testing.AllocsPerRun(20, func() {
+				if w := request(smallHandler, method, path, viewerToken, "", nil); w.Code != 200 {
+					t.Fatal(method, path, w.Code)
+				}
+			})
 			allocs := testing.AllocsPerRun(20, func() {
 				if w := request(h, method, path, viewerToken, "", nil); w.Code != 200 {
 					t.Fatal(method, path, w.Code)
 				}
 			})
-			if allocs > derive/20 {
-				t.Fatalf("%s %s: %.0f allocations, as many as deriving the topology (%.0f)", method, path, allocs, derive)
+			if allocs > baseline+32 {
+				t.Fatalf("%s %s: allocations grew with topology size: %.0f -> %.0f", method, path, baseline, allocs)
 			}
 		}
 	}

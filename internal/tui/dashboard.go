@@ -75,7 +75,7 @@ func (m *Model) verdict() (string, Color) {
 	return v.Glyph + " " + v.Text, verdictColors[v.State]
 }
 
-var verdictColors = map[string]Color{"draft": cEdit, "cached": cWarn, "no-checks": cUnknown, "incidents": cDown, "down": cDown, "degraded": cWarn, "no-evidence": cUnknown, "clear": cUp}
+var verdictColors = map[string]Color{"draft": cEdit, "cached": cWarn, "no-checks": cUnknown, "incidents": cDown, "down": cDown, "degraded": cWarn, "no-evidence": cUnknown, "incomplete": cWarn, "clear": cUp}
 
 func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 	up, down, warn, unk := m.counts()

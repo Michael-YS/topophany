@@ -147,10 +147,10 @@ Each takes `--json` for the same view as data (rows keep their state, columns an
 
 | Exit | Meaning |
 |---|---|
-| 0 | All clear: every check in the view passes and nothing needs attention |
+| 0 | All clear: every active check in the view passes and nothing needs attention (paused and maintenance checks are excluded) |
 | 1 | The command failed (bad arguments, credentials, a collector's refusal) |
 | 2 | Something needs attention: an incident, a failing or degraded check, a service on a failing path, a silent observer |
-| 3 | Nothing current is known: no checks in the view, no current evidence, or only an expired snapshot |
+| 3 | Evidence is incomplete: no checks, no current evidence, an expired snapshot, or an active check with unknown/stale evidence even if other checks pass |
 | 4 | No collector answered (also for `show` and `history`) |
 
 The same commands read the preview's synthetic evidence, which makes a safe rehearsal for an agent: `topo preview scenarios` lists the scenarios, and `topo preview --scenario 10 status` (or `show`, `history`) reads one in its settled state without a collector.

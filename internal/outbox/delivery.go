@@ -21,6 +21,8 @@ type destination struct {
 	next      time.Time
 	failures  int
 	isolating bool
+	// Storage backpressure delays samples, not the executor's liveness.
+	separateBeat bool
 }
 type Delivery struct {
 	destinations []destination
@@ -129,6 +131,12 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	revision := d.currentRevision()
 	now := d.Now()
 	if now.Before(dest.next) {
+		if dest.separateBeat && hb != nil {
+			if e := d.heartbeat(ctx, dest, revision, hb); e != nil {
+				dest.separateBeat = false // an outage follows the normal retry clock
+				result.Error = "collector heartbeat unavailable"
+			}
+		}
 		return
 	}
 	itemLimit := 100
@@ -138,6 +146,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	items := q.Pending(rid, itemLimit)
 	if len(items) == 0 {
 		dest.isolating = false
+		dest.separateBeat = false
 	}
 	batch := model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: revision, Observations: []model.Observation{}}
 	ids := []string{}
@@ -180,10 +189,17 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		dest.failures = 0
 		dest.next = time.Time{}
 		dest.isolating = false
+		dest.separateBeat = false
 		result.Accepted = len(batch.Observations)
 		return
 	}
 	var he *client.HTTPError
+	dest.separateBeat = errors.As(e, &he) && (he.Status == 429 && he.Code == "observer_storage_quota" || he.Status == 503 && he.Code == "storage_receipt_capacity")
+	if dest.separateBeat && hb != nil {
+		if d.heartbeat(ctx, dest, revision, hb) != nil {
+			dest.separateBeat = false
+		}
+	}
 	if errors.As(e, &he) && he.Permanent() {
 		if len(ids) > 1 {
 			// A single expired or invalid item rejects the entire request.
@@ -209,6 +225,9 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		}
 	} else {
 		result.Error = "collector unavailable or acknowledgement invalid"
+		if he != nil {
+			result.Error = he.Error()
+		}
 	}
 	dest.failures++
 	n := dest.failures
@@ -220,4 +239,11 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	delay := time.Duration(1<<n) * time.Second
 	dest.next = d.Now().Add(delay + time.Duration(rand.IntN(1000))*time.Millisecond)
 	return
+}
+
+// heartbeat consumes no pending item and never acknowledges observations.
+// It always describes the current worker, even while old samples wait.
+func (d *Delivery) heartbeat(ctx context.Context, dest *destination, revision string, hb *model.Heartbeat) error {
+	h := *hb
+	return client.PostBatch(ctx, dest.http, dest.endpoint, model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: revision, Heartbeat: &h})
 }

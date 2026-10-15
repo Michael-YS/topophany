@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
@@ -27,7 +28,7 @@ const token = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 func snapshot() model.Snapshot {
 	c := testkit.Config()
-	return model.Snapshot{Schema: model.SnapshotSchema, Project: c.Project, Revision: config.PublicRevision(c), Instance: "fixture", GeneratedAt: time.Now().UTC(), Topology: config.Public(c)}
+	return engine.Build(c, "fixture", "", nil, nil, time.Now().UTC())
 }
 func newClient(t *testing.T, urls ...string) *Client {
 	t.Helper()
@@ -179,8 +180,7 @@ func TestSnapshotWireContractAndCancellation(t *testing.T) {
 		path = r.URL.Path
 		auth = r.Header.Get("Authorization")
 		query = r.URL.Query().Get("observer")
-		v := snapshot()
-		v.ViewObserver = query
+		v := engine.Build(testkit.Config(), "fixture", query, nil, nil, time.Now().UTC())
 		json.NewEncoder(w).Encode(v)
 	}))
 	defer s.Close()
@@ -442,7 +442,7 @@ func TestSnapshotSamplesAreChecked(t *testing.T) {
 			v.Contract = contract
 			mutate(&v)
 			s := snapshot()
-			s.Checks = []model.CheckState{{ID: "home-http", Contract: contract, Observer: "home", Health: "up", Freshness: "fresh", Last: &v}}
+			s.Checks[0] = model.CheckState{ID: "home-http", Contract: contract, Observer: "home", Health: "up", Freshness: "fresh", Last: &v}
 			if _, _, e := newClient(t, jsonServer(t, 200, s).URL).Snapshot(context.Background(), ""); (e == nil) != (name == "valid") {
 				t.Fatal(e)
 			}
@@ -459,24 +459,25 @@ func TestAvailabilityAndRollupsAreChecked(t *testing.T) {
 	contract := config.PublicContracts(c)["home-http"]
 	day := model.Rollup{Start: now.Add(-24 * time.Hour), Seconds: 86400, Up: 80000, Down: 400, Unmeasured: 6000, Samples: 3, Outcomes: map[string]int64{"ok": 2, "fail": 1}, Latency: &model.Latency{Samples: 2, P50: 40, P95: 90, Max: 90}}
 	valid := snapshot()
-	valid.Checks = []model.CheckState{{ID: "home-http", Contract: contract, Observer: "home", Health: "up", Freshness: "fresh", Availability: []model.Availability{{Window: "24h", Rollup: day}}}}
+	valid.Checks[0].Availability = []model.Availability{{Window: "24h", Rollup: day}}
 	if s, _, e := newClient(t, jsonServer(t, 200, valid).URL).Snapshot(context.Background(), ""); e != nil || s.Checks[0].Availability[0].Up != 80000 {
 		t.Fatal("valid availability refused:", e)
 	}
 	for name, mutate := range map[string]func(*model.Rollup){
-		"negative":     func(r *model.Rollup) { r.Down, r.Unmeasured = -1, 6401 },
-		"overrun":      func(r *model.Rollup) { r.Up = 86400 },
-		"miscounted":   func(r *model.Rollup) { r.Samples = 7 },
-		"percentiles":  func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 2, P50: 100, P95: 90, Max: 90} },
-		"more_passing": func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 4, P50: 1, P95: 2, Max: 3} },
-		"control":      func(r *model.Rollup) { r.Outcomes = map[string]int64{"ok": 2, "\u009b2J": 1} },
-		"unnamed":      func(r *model.Rollup) { r.Outcomes = map[string]int64{"ok": 2, "": 1} },
+		"negative":      func(r *model.Rollup) { r.Down, r.Unmeasured = -1, 6401 },
+		"overrun":       func(r *model.Rollup) { r.Up = 86400 },
+		"miscounted":    func(r *model.Rollup) { r.Samples = 7 },
+		"percentiles":   func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 2, P50: 100, P95: 90, Max: 90} },
+		"more_passing":  func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 4, P50: 1, P95: 2, Max: 3} },
+		"control":       func(r *model.Rollup) { r.Outcomes = map[string]int64{"ok": 2, "\u009b2J": 1} },
+		"unnamed":       func(r *model.Rollup) { r.Outcomes = map[string]int64{"ok": 2, "": 1} },
+		"late_negative": func(r *model.Rollup) { r.Unreconciled = -1 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := snapshot()
 			r := day
 			mutate(&r)
-			s.Checks = []model.CheckState{{ID: "home-http", Contract: contract, Observer: "home", Health: "up", Freshness: "fresh", Availability: []model.Availability{{Window: "24h", Rollup: r}}}}
+			s.Checks[0].Availability = []model.Availability{{Window: "24h", Rollup: r}}
 			if _, _, e := newClient(t, jsonServer(t, 200, s).URL).Snapshot(context.Background(), ""); e == nil {
 				t.Fatal("invalid availability accepted")
 			}

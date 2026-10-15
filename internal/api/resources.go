@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
-	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -87,7 +86,7 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 	}
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
-	snap := engine.BuildCarried(g.config, s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
+	snap := g.engine.Build(s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
 	}

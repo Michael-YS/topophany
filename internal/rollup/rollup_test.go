@@ -74,17 +74,16 @@ func TestTimeStandsForTheNewestCurrentSample(t *testing.T) {
 	}
 }
 
-// A sample no newer than the newest is counted, but the time it would
-// stand for is already the newest's and the ones before it.
-func TestLateSamplesCountWithoutTime(t *testing.T) {
+// A late sample fills an unmeasured gap as if it arrived in order.
+func TestLateSamplesCorrectTime(t *testing.T) {
 	r := New(MaxLimit)
 	now := t0.Add(10 * time.Minute)
 	r.Add("c", "", t0, "ok", 10, time.Minute, now)
 	r.Add("c", "", t0.Add(5*time.Minute), "ok", 10, time.Minute, now)
 	r.Add("c", "", t0.Add(2*time.Minute), "fail", 10, time.Minute, now)
 	got, _ := r.Window("c", t0, now, now)
-	if got.Up != 120 || got.Down != 0 || got.Samples != 3 || got.Outcomes["fail"] != 1 {
-		t.Fatalf("late sample changed the time: %+v", got)
+	if got.Up != 120 || got.Down != 60 || got.Samples != 3 || got.Outcomes["fail"] != 1 || got.Unreconciled != 0 {
+		t.Fatalf("late sample did not correct the time: %+v", got)
 	}
 }
 
@@ -204,7 +203,8 @@ func TestStoreShedsUnderItsCap(t *testing.T) {
 	if keys := r.Keys(); !slices.Equal(keys, []string{"cur/b", "cur/c"}) {
 		t.Fatal("kept", keys)
 	}
-	r.limit = r.Size() - 2*160
+	// Drop one bucket and its expired sample boundaries from each series.
+	r.limit = r.Size() - 2*(192+4*boundaryBytes)
 	r.Settle(now)
 	if !r.Since("cur/b").Equal(t0.Add(5*time.Minute)) || !r.Since("cur/c").Equal(t0.Add(5*time.Minute)) {
 		t.Fatal("did not shed the oldest bucket of each", r.Since("cur/b"), r.Since("cur/c"))

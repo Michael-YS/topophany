@@ -230,16 +230,20 @@ type CheckState struct {
 // up or down. Samples and Outcomes count the samples taken in the span,
 // and Latency is what the passing ones took.
 type Rollup struct {
-	Start      time.Time        `json:"start"`
-	Seconds    int64            `json:"seconds"`
-	Up         int64            `json:"up_seconds"`
-	Degraded   int64            `json:"degraded_seconds"`
-	Down       int64            `json:"down_seconds"`
-	Unknown    int64            `json:"unknown_seconds"`
-	Unmeasured int64            `json:"unmeasured_seconds"`
-	Samples    int64            `json:"samples"`
-	Outcomes   map[string]int64 `json:"outcomes,omitempty"`
-	Latency    *Latency         `json:"latency,omitempty"`
+	Start      time.Time `json:"start"`
+	Seconds    int64     `json:"seconds"`
+	Up         int64     `json:"up_seconds"`
+	Degraded   int64     `json:"degraded_seconds"`
+	Down       int64     `json:"down_seconds"`
+	Unknown    int64     `json:"unknown_seconds"`
+	Unmeasured int64     `json:"unmeasured_seconds"`
+	Samples    int64     `json:"samples"`
+	// Unreconciled counts samples with unavailable or ambiguous interval
+	// boundaries in buckets touching the window. This can exceed Samples
+	// when a partial bucket's counts are omitted; time totals are incomplete.
+	Unreconciled int64            `json:"unreconciled_samples,omitempty"`
+	Outcomes     map[string]int64 `json:"outcomes,omitempty"`
+	Latency      *Latency         `json:"latency,omitempty"`
 }
 
 // Measured is how long a rollup's samples said whether the check passed:

@@ -67,7 +67,7 @@ func ProxyCredentials(p model.Proxy, index int) error {
 // adapter token or a target's query, where a hop it was not meant for can
 // read it.
 func HTTPCredentials(c model.Config, x model.Check) error {
-	if x.HTTP.BearerEnv == "" && x.Adapter.TokenEnv == "" && !TargetQuery(c, x) {
+	if x.HTTP.BearerEnv == "" && x.Adapter.TokenEnv == "" && len(x.HTTP.RequestHeaders) == 0 && !TargetQuery(c, x) {
 		return nil
 	}
 	u, err := url.Parse(Target(c, x))
@@ -139,14 +139,7 @@ const MaxTimeoutSeconds = 300
 // owned copy; the public topology is never executable and must still pass all
 // graph checks.
 func ValidatePublic(c model.Config) error {
-	raw, err := json.Marshal(c)
-	if err != nil {
-		return err
-	}
-	var copy model.Config
-	if err := json.Unmarshal(raw, &copy); err != nil {
-		return err
-	}
+	copy := Clone(c)
 	for i := range copy.Paths {
 		for j := range copy.Paths[i].Proxies {
 			p := &copy.Paths[i].Proxies[j]

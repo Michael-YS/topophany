@@ -354,22 +354,8 @@ func Validate(c model.Config) error {
 			if _, e := regexp.Compile(x.HTTP.BodyRegex); e != nil {
 				return fmt.Errorf("check %s: invalid response regex", x.ID)
 			}
-			named := map[string]bool{}
-			for k, v := range x.HTTP.RequestHeaders {
-				if strings.ContainsAny(k+v, "\r\n") {
-					return errors.New("invalid HTTP header")
-				}
-				if strings.EqualFold(k, "Authorization") || strings.EqualFold(k, "Cookie") {
-					return errors.New("use bearer_env; literal Authorization/Cookie forbidden")
-				}
-				// Header names ignore case, and only one of two can be sent.
-				if named[strings.ToLower(k)] {
-					return fmt.Errorf("check %s: HTTP header %q given twice", x.ID, k)
-				}
-				named[strings.ToLower(k)] = true
-				if strings.EqualFold(k, "Host") && !hostHeader(v) {
-					return fmt.Errorf("check %s: Host header must be a host or host:port", x.ID)
-				}
+			if e := HTTPHeaders(x.HTTP.RequestHeaders); e != nil {
+				return fmt.Errorf("check %s: %w", x.ID, e)
 			}
 			for _, v := range x.HTTP.ExpectedExit {
 				if _, e := netip.ParseAddr(v); e != nil {
@@ -556,9 +542,7 @@ func PublicURL(s string) string {
 
 // Public returns a deep copy; redaction never modifies executor configuration.
 func Public(c model.Config) model.Config {
-	b, _ := json.Marshal(c)
-	var out model.Config
-	_ = json.Unmarshal(b, &out)
+	out := Clone(c)
 	for i := range out.Endpoints {
 		out.Endpoints[i].Address = PublicURL(out.Endpoints[i].Address)
 	}

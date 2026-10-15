@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Custom HTTP request headers, including API keys, require HTTPS or direct
+  literal loopback. Invalid header names and values are rejected before
+  execution, and incomplete collector snapshots are refused by clients.
 - A worker token revoked by a reload can no longer store a sample. A
   collector found a request's token among those in force when the
   request arrived, but judged its batch under the topology in force once
@@ -92,6 +95,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Snapshot evaluation reuses an immutable plan per topology generation,
+  indexes entity/check relationships and sorts sample references instead
+  of copying observations. Configuration cloning no longer serializes JSON.
+- CLI commands, virtual-map rendering/layout/routing and rollup
+  persistence/query/histogram code are separated into focused files.
+- Late samples correct retained time intervals, including after restart.
+  Correction boundaries share the rollup budget; missing or ambiguous
+  boundaries produce `unreconciled_samples` and an incomplete uptime label.
+  Existing checkpoints remain readable.
 - The homepage's "The edge answered" panel draws the exchange it is
   about, as a sequence diagram played once as it comes into view: a
   check from Frankfurt asks Cloudflare for the site, the edge cannot
@@ -104,6 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Active unknown or stale checks can no longer produce `ALL CLEAR` or
+  `topo status` exit 0. Paused and maintenance checks remain excluded.
+- Workers keep sending heartbeats during collector storage backpressure,
+  while observations remain queued for retry without false acknowledgements.
+- Rollup budgets include active-series metadata and sample boundaries,
+  even when there are no historical buckets left to evict.
 - A new version of the homepage shows without a forced refresh. Its
   styles, scripts and data were kept for an hour and then served stale
   for a day while they were checked, so a returning visitor got the new

@@ -17,10 +17,12 @@ import (
 
 // UpShare is the share of a rollup's measured time that was up, never
 // rounded up: 99.96% reads "99.9%", and only all of it reads "100%". It is
-// "" when nothing was measured.
+// "" when nothing was measured, or "incomplete" for unreconciled intervals.
 func UpShare(r model.Rollup) string {
 	m := r.Measured()
 	switch {
+	case r.Unreconciled > 0:
+		return "incomplete"
 	case m <= 0:
 		return ""
 	case r.Up >= m:
@@ -58,7 +60,9 @@ const SinceLayout = "2006-01-02 15:04"
 // not tell; "not measured" when no current sample stood for any of it.
 func RollupLine(r model.Rollup) string {
 	parts := []string{"not measured"}
-	if r.Measured() > 0 {
+	if r.Unreconciled > 0 {
+		parts = []string{"incomplete time totals (" + strconv.FormatInt(r.Unreconciled, 10) + " late samples not reconciled)"}
+	} else if r.Measured() > 0 {
 		parts = []string{UpShare(r) + " up over " + MeasuredShare(r) + " measured"}
 	}
 	for _, p := range []struct {

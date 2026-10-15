@@ -73,7 +73,15 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 			}
 		}
 	}
+	for id, def := range checks {
+		if (s.ViewObserver == "" || def.Observer == s.ViewObserver) && !seen[id] {
+			return errors.New("incomplete snapshot checks")
+		}
+	}
 	validate := func(states []model.EntityState, ids map[string]bool) error {
+		if len(states) != len(ids) {
+			return errors.New("incomplete snapshot entities")
+		}
 		seen := map[string]bool{}
 		for _, state := range states {
 			if !ids[state.ID] || seen[state.ID] {
@@ -101,7 +109,9 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 		services[v.ID] = true
 	}
 	for _, v := range s.Topology.Paths {
-		paths[v.ID] = true
+		if s.ViewObserver == "" || v.Observer == s.ViewObserver {
+			paths[v.ID] = true
+		}
 	}
 	for _, v := range s.Topology.Links {
 		links[v.ID] = true
@@ -118,6 +128,9 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 		}
 	}
 	seen = map[string]bool{}
+	if len(s.Observers) != len(observers) {
+		return errors.New("incomplete snapshot observers")
+	}
 	for _, v := range s.Observers {
 		if !observers[v.ID] || seen[v.ID] || v.Contracts != "" && v.Contracts != "current" && v.Contracts != "outdated" {
 			return errors.New("invalid snapshot observer")
@@ -170,7 +183,7 @@ func validEvidence(v model.Observation) bool {
 // no time or count below zero, time that adds up to its span, and
 // outcomes named in plain text.
 func validRollup(r model.Rollup) bool {
-	if r.Seconds < 0 || r.Seconds > 1000*24*3600 || r.Samples < 0 || len(r.Outcomes) > 8 {
+	if r.Seconds < 0 || r.Seconds > 1000*24*3600 || r.Samples < 0 || r.Unreconciled < 0 || len(r.Outcomes) > 8 {
 		return false
 	}
 	for _, v := range []int64{r.Up, r.Degraded, r.Down, r.Unknown, r.Unmeasured} {

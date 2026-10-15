@@ -1,0 +1,134 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/client"
+	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/outbox"
+	"github.com/WhitenWhiten/topophany/internal/probe"
+	"github.com/WhitenWhiten/topophany/internal/runner"
+)
+
+func (a *App) worker(parent context.Context, args []string) error {
+	f := a.flags("worker")
+	path := f.String("config", "topology.json", "reviewed LOCAL topology; never downloaded as executable work")
+	observer := f.String("observer", "", "this executor's observer identity")
+	credPath := f.String("credentials", "worker-credentials.json", "0600 worker credential file")
+	profileName := f.String("profile", "", "credential profile (default active)")
+	dir := f.String("data", "./worker-data", "exclusive durable outbox directory")
+	budget := f.Int64("outbox-bytes", 32<<20, "hard budget for pending observations; quarantine has its own, at least as large")
+	workers := f.Int("concurrency", 4, "bounded probe concurrency (1..32)")
+	if e := parsed(f, args); e != nil {
+		return e
+	}
+	c, e := config.Load(*path)
+	if e != nil {
+		return e
+	}
+	creds, e := client.Load(*credPath)
+	if e != nil {
+		return e
+	}
+	name := *profileName
+	if name == "" {
+		name = creds.Active
+	}
+	p, ok := creds.Profiles[name]
+	if !ok || p.Project != c.Project {
+		return errors.New("worker credentials project/profile mismatch")
+	}
+	d, e := outbox.NewDelivery(p, config.Revision(c))
+	if e != nil {
+		return e
+	}
+	defer d.Close()
+	q, e := outbox.Open(*dir, c.Project, *budget)
+	if e != nil {
+		return e
+	}
+	defer q.Close()
+	ctx, cancel := context.WithCancel(parent)
+	var wg sync.WaitGroup
+	defer func() { cancel(); wg.Wait() }()
+	// The checks under a topology; a reload replaces them.
+	local := func(c model.Config) (*runner.Scheduler, error) {
+		revision := config.Revision(c)
+		return runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
+			err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}}, d.Recipients())
+			var degraded *outbox.DegradedError
+			if errors.As(err, &degraded) {
+				fmt.Fprintln(a.Err, degraded)
+				return nil
+			}
+			return err
+		})
+	}
+	s, e := local(c)
+	if e != nil {
+		return e
+	}
+	failed := make(chan error, 1)
+	running := background(ctx, &wg, s, failed)
+	contractsDigest := config.ObserverContracts(c, *observer)
+	hup, stopHup := a.hangups()
+	defer stopHup()
+	// reload reads the topology again; samples already queued keep the
+	// contracts they were taken under, and collectors judge them by those.
+	reload := func() error {
+		next, e := reloaded(*path, c, *observer)
+		if e != nil {
+			return e
+		}
+		s, e := local(next)
+		if e != nil {
+			return e
+		}
+		running.stop()
+		running = background(ctx, &wg, s, failed)
+		d.SetRevision(config.Revision(next))
+		contractsDigest = config.ObserverContracts(next, *observer)
+		fmt.Fprintf(a.Err, "reloaded topology revision %s → %s; %s\n", config.Revision(c)[:12], config.Revision(next)[:12], changes(c, next))
+		c = next
+		return nil
+	}
+	fmt.Fprintf(a.Err, "Topophany worker observer=%s project=%s revision=%s; %d collectors\n", *observer, c.Project, config.Revision(c)[:12], len(p.Servers))
+	// Each collector is delivered to from a loop of its own, so one that is
+	// slow to answer delays no other. The heartbeat they send is the one
+	// this loop last made, of the topology it runs now.
+	var beat atomic.Pointer[model.Heartbeat]
+	heartbeat := func() {
+		beat.Store(&model.Heartbeat{Observer: *observer, Boot: running.Boot, SampledAt: time.Now().UTC(), Contracts: contractsDigest})
+	}
+	heartbeat()
+	wg.Go(func() {
+		d.Run(ctx, q, 2*time.Second, beat.Load, func(r outbox.Result) {
+			if r.Error != "" {
+				fmt.Fprintf(a.Err, "collector=%s accepted=%d quarantined=%d: %s; %s\n", r.Recipient, r.Accepted, r.Quarantined, r.Error, q)
+			}
+		})
+	})
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case e := <-failed:
+			return e
+		case <-hup:
+			if e := reload(); e != nil {
+				fmt.Fprintf(a.Err, "reload refused; still running revision %s: %v\n", config.Revision(c)[:12], e)
+			}
+			heartbeat()
+		case <-tick.C:
+			heartbeat()
+		}
+	}
+}

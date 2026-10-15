@@ -1,0 +1,319 @@
+package app
+
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/alert"
+	"github.com/WhitenWhiten/topophany/internal/api"
+	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/ledger"
+	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/probe"
+	"github.com/WhitenWhiten/topophany/internal/rollup"
+	"github.com/WhitenWhiten/topophany/internal/runner"
+	"github.com/WhitenWhiten/topophany/internal/secure"
+	"github.com/WhitenWhiten/topophany/internal/store"
+)
+
+func (a *App) serve(parent context.Context, args []string) error {
+	f := a.flags("serve")
+	path := f.String("config", "topology.json", "reviewed local topology JSON")
+	authPath := f.String("auth", "auth.json", "0600 collector token-hash configuration")
+	alertsPath := f.String("alerts", "", "0600 webhook configuration; no alerts when empty")
+	dir := f.String("data", "./collector-data", "exclusive local journal directory")
+	listen := f.String("listen", "127.0.0.1:7447", "collector listen address")
+	instance := f.String("instance", "collector", "visible collector instance ID")
+	observer := f.String("observer", "", "optional local observer ID; otherwise collect only")
+	workers := f.Int("concurrency", 4, "bounded local probe concurrency (1..32)")
+	cert := f.String("tls-cert", "", "PEM server certificate")
+	key := f.String("tls-key", "", "PEM server private key")
+	insecure := f.Bool("allow-insecure", false, "explicitly allow plaintext non-loopback HTTP (unsafe without a secure tunnel)")
+	retention := f.Duration("retention", 24*time.Hour, "raw history/receipt retention and maximum accepted sample age")
+	maxHistory := f.Int("max-history", 20000, "maximum retained raw history rows; per-check state tails retained separately")
+	rollupBytes := f.Int64("rollup-bytes", 32<<20, "hard cap on long-term rollups, in encoded bytes (64 KiB..64 MiB)")
+	if e := parsed(f, args); e != nil {
+		return e
+	}
+	if !config.ID(*instance) {
+		return errors.New("invalid instance ID")
+	}
+	if (*cert == "") != (*key == "") {
+		return errors.New("both tls-cert and tls-key required")
+	}
+	tc, e := serverTLS(*cert, *key)
+	if e != nil {
+		return e
+	}
+	host, _, e := net.SplitHostPort(*listen)
+	if e != nil {
+		return errors.New("listen must be host:port")
+	}
+	ip := net.ParseIP(host)
+	if tc == nil && !*insecure && (ip == nil || !ip.IsLoopback()) {
+		return errors.New("non-loopback collectors require TLS, or explicit --allow-insecure")
+	}
+	if *retention < time.Minute || *retention > 30*24*time.Hour {
+		return errors.New("retention must be 1m..720h")
+	}
+	if *rollupBytes < rollup.MinLimit || *rollupBytes > rollup.MaxLimit {
+		return errors.New("rollup-bytes must be 64 KiB..64 MiB")
+	}
+	c, e := config.Load(*path)
+	if e != nil {
+		return e
+	}
+	auth, e := api.LoadAuth(*authPath, c)
+	if e != nil {
+		return e
+	}
+	alerts, e := loadAlerts(*alertsPath, c)
+	if e != nil {
+		return e
+	}
+	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory, RollupBytes: *rollupBytes})
+	if e != nil {
+		return e
+	}
+	defer st.Close()
+	book, e := ledger.Open(filepath.Join(*dir, "incidents.json"))
+	if e != nil {
+		return e
+	}
+	ctx, cancel := context.WithCancel(parent)
+	var wg sync.WaitGroup
+	defer func() { cancel(); wg.Wait() }()
+	failures := make(chan error, 2)
+	backend := api.New(c, *instance, st, auth)
+	backend.MaxSampleAge = *retention
+	backend.Ledger = book
+	var notifier *alert.Notifier
+	if *alertsPath != "" {
+		notifier = &alert.Notifier{Project: c.Project, Instance: *instance, Path: filepath.Join(*dir, "alert-queue.json"), Log: func(format string, args ...any) { fmt.Fprintf(a.Err, format+"\n", args...) }}
+		if e = notifier.Load(); e != nil {
+			return e
+		}
+		notifier.Configure(alerts)
+		defer notifier.Close()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		a.watch(ctx, backend, ledger.Settle(c), notifier)
+	}()
+	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
+	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	// Local checks, if any, under a topology; reloads replace them.
+	local := func(c model.Config) (*runner.Scheduler, error) {
+		if *observer == "" {
+			return nil, nil
+		}
+		revision := config.Revision(c)
+		return runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
+			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}})
+		})
+	}
+	scheduler, e := local(c)
+	if e != nil {
+		return e
+	}
+	ln, e := net.Listen("tcp", *listen)
+	if e != nil {
+		return e
+	}
+	defer ln.Close()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var e error
+		if tc != nil {
+			e = srv.ServeTLS(api.LimitListener(ln, 128), "", "")
+		} else {
+			e = srv.Serve(api.LimitListener(ln, 128))
+		}
+		if e != nil && !errors.Is(e, http.ErrServerClosed) {
+			select {
+			case failures <- e:
+			default:
+			}
+		}
+	}()
+	var running *probing
+	if scheduler != nil {
+		running = background(ctx, &wg, scheduler, failures)
+	}
+	hup, stopHup := a.hangups()
+	defer stopHup()
+	fmt.Fprintf(a.Err, "Topophany %s collector %s listening on %s; project=%s revision=%s\n", model.Version, *instance, ln.Addr(), c.Project, config.Revision(c)[:12])
+	if *insecure && *cert == "" {
+		fmt.Fprintln(a.Err, "WARNING: plaintext HTTP explicitly enabled; use only inside a trusted encrypted tunnel")
+	}
+	// reload reads the topology, tokens and alerts again; on any error the
+	// collector keeps what it runs.
+	reload := func() error {
+		next, e := reloaded(*path, c, *observer)
+		if e != nil {
+			return e
+		}
+		auth, e := api.LoadAuth(*authPath, next)
+		if e != nil {
+			return fmt.Errorf("%s: %w", *authPath, e)
+		}
+		alerts, e := loadAlerts(*alertsPath, next)
+		if e != nil {
+			return e
+		}
+		scheduler, e := local(next)
+		if e != nil {
+			return e
+		}
+		running.stop()
+		backend.Reload(next, auth)
+		if notifier != nil {
+			notifier.Configure(alerts)
+		}
+		if scheduler != nil {
+			running = background(ctx, &wg, scheduler, failures)
+		}
+		also := " and tokens"
+		if notifier != nil {
+			also = ", tokens and alerts"
+		}
+		fmt.Fprintf(a.Err, "reloaded topology revision %s → %s%s; %s\n", config.Revision(c)[:12], config.Revision(next)[:12], also, changes(c, next))
+		c = next
+		return nil
+	}
+	var result error
+wait:
+	for {
+		select {
+		case <-ctx.Done():
+			break wait
+		case result = <-failures:
+			break wait
+		case <-hup:
+			if e := reload(); e != nil {
+				fmt.Fprintf(a.Err, "reload refused; still serving revision %s: %v\n", config.Revision(c)[:12], e)
+			}
+		}
+	}
+	cancel()
+	shutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+	if e = srv.Shutdown(shutdown); e != nil {
+		_ = srv.Close()
+	}
+	return result
+}
+
+// serverTLS loads a collector's certificate and key, if it has them. The
+// key is read as a credential, like auth.json: a regular file, not a
+// link, that no other user can read on POSIX.
+func serverTLS(cert, key string) (*tls.Config, error) {
+	if cert == "" {
+		return nil, nil
+	}
+	c, e := secure.ReadBounded(cert, 1<<20)
+	if e != nil {
+		return nil, fmt.Errorf("tls-cert %s: %w", cert, e)
+	}
+	k, e := secure.PrivateRead(key)
+	if e != nil {
+		return nil, fmt.Errorf("tls-key %s: %w", key, e)
+	}
+	pair, e := tls.X509KeyPair(c, k)
+	if e != nil {
+		return nil, fmt.Errorf("tls-cert and tls-key: %w", e)
+	}
+	return &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12}, nil
+}
+
+// loadAlerts reads a collector's alerts file, if it has one.
+func loadAlerts(path string, c model.Config) (alert.Config, error) {
+	if path == "" {
+		return alert.Config{}, nil
+	}
+	a, e := alert.Load(path, c)
+	if e != nil {
+		return a, fmt.Errorf("%s: %w", path, e)
+	}
+	return a, nil
+}
+
+// watchStorage logs what a collector's store holds when it starts and then
+// says, once each time it happens, when an observer's receipts are set to
+// fill its share at the last hour's rate, and when they no longer are.
+func (a *App) watchStorage(ctx context.Context, st *store.Store, every time.Duration) {
+	fmt.Fprintln(a.Err, st.Usage())
+	warned := map[string]bool{}
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		for _, o := range st.Usage().Observers {
+			name := o.Observer
+			if name == "" {
+				name = "all"
+			}
+			switch {
+			case o.Fills && !warned[name]:
+				fmt.Fprintf(a.Err, "storage: observer %s fills its share in about %s at the last hour's %d receipts, and its samples are refused from then; sample less often or shorten --retention\n", name, o.FullIn.Round(time.Minute), o.LastHour)
+			case !o.Fills && warned[name]:
+				fmt.Fprintf(a.Err, "storage: observer %s settles within its share again\n", name)
+			}
+			warned[name] = o.Fills
+		}
+	}
+}
+
+// watch keeps a collector's incident ledger until ctx ends, judging the
+// evidence every two seconds, logging what opens and closes and, with a
+// notifier, alerting on it. For settle after it starts, a record whose
+// evidence lapsed stays open and no observer is called silent.
+func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Duration, notifier *alert.Notifier) {
+	started := time.Now()
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	failing := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-tick.C:
+			settled := now.Sub(started) >= settle
+			snap, changes, e := backend.Observe(now.UTC(), settled)
+			for _, ch := range changes {
+				fmt.Fprintln(a.Err, ch.Line())
+			}
+			if notifier != nil {
+				notifier.Observe(snap, changes, settled)
+			}
+			switch {
+			case e != nil && !failing:
+				fmt.Fprintf(a.Err, "incident ledger not written; keeping it in memory: %v\n", e)
+			case e == nil && failing:
+				fmt.Fprintln(a.Err, "incident ledger written again")
+			}
+			failing = e != nil
+		}
+	}
+}
+
+func observerIDs(c model.Config) []string {
+	ids := make([]string, 0, len(c.Observers))
+	for _, o := range c.Observers {
+		ids = append(ids, o.ID)
+	}
+	return ids
+}
