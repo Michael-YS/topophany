@@ -14,16 +14,18 @@ import (
 // HostSample contains bounded aggregate counters, never process arguments,
 // environment variables, user names or a process inventory.
 type HostSample struct {
+	OS                           string
+	LogicalCPUs                  int
 	CPUPercent                   float64
 	CPUSampleMS                  int64
 	MemoryTotal, MemoryAvailable uint64
 	MemoryBasis                  string
-	Disk                         hostDisk
+	Disk                         HostDisk
 	Processes, Zombies, Matching int
 	MatchingRSS                  uint64
 }
 
-type hostDisk struct {
+type HostDisk struct {
 	Total, Free, Available uint64
 	Inodes, InodesFree     uint64
 }
@@ -47,9 +49,23 @@ func (r Runner) host(ctx context.Context, x model.Check, o *model.Observation) e
 	if ctx.Err() != nil {
 		return local("host", "host_sampling_canceled")
 	}
+	s.OS, s.LogicalCPUs = runtime.GOOS, runtime.NumCPU()
+	return ApplyHostSample(o, h, s)
+}
+
+// ApplyHostSample records counters and evaluates resource assertions without
+// reading the host. Real probes and preview use the same accounting and policy.
+func ApplyHostSample(o *model.Observation, h model.HostOptions, s HostSample) error {
+	if h.DiskPath == "" {
+		h.DiskPath = "/"
+	}
 	if math.IsNaN(s.CPUPercent) || math.IsInf(s.CPUPercent, 0) || s.CPUPercent < 0 || s.CPUPercent > 100 || s.MemoryTotal == 0 || s.MemoryAvailable > s.MemoryTotal || s.Disk.Total == 0 || s.Disk.Free > s.Disk.Total || s.Disk.Available > s.Disk.Free || s.Disk.InodesFree > s.Disk.Inodes {
 		return local("host", "invalid_host_counters")
 	}
+	if o.Facts == nil {
+		o.Facts = map[string]string{}
+	}
+	o.Evidence, o.PathEvidence, o.Connectivity = "reported", "local_host_runtime_reported", false
 	memoryUsed := s.MemoryTotal - s.MemoryAvailable
 	diskUsed := s.Disk.Total - s.Disk.Free
 	memoryPercent := percentage(memoryUsed, s.MemoryTotal)
@@ -57,10 +73,10 @@ func (r Runner) host(ctx context.Context, x model.Check, o *model.Observation) e
 	diskPercent := percentage(diskUsed, diskUsed+s.Disk.Available)
 	put := func(k string, n uint64) { o.Facts[k] = strconv.FormatUint(n, 10) }
 	pct := func(k string, n float64) { o.Facts[k] = strconv.FormatFloat(n, 'f', 2, 64) }
-	o.Facts["os"] = runtime.GOOS
+	o.Facts["os"] = s.OS
 	o.Facts["resource_scope"] = "worker_OS_view; not_container_quota"
 	pct("cpu_used_percent", s.CPUPercent)
-	o.Facts["cpu_logical_count"] = strconv.Itoa(runtime.NumCPU())
+	o.Facts["cpu_logical_count"] = strconv.Itoa(s.LogicalCPUs)
 	o.Facts["cpu_sample_ms"] = strconv.FormatInt(s.CPUSampleMS, 10)
 	put("memory_total_bytes", s.MemoryTotal)
 	put("memory_available_bytes", s.MemoryAvailable)

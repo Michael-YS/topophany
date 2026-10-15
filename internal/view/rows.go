@@ -48,6 +48,10 @@ func (v View) Rows(tab int) []Row {
 		return out
 	}
 	nodeStates, endpointStates, linkStates := index(s.Nodes), index(s.Endpoints), index(s.Links)
+	resources := map[string][]CardResource{}
+	if tab == Servers || tab == Topology {
+		resources = v.HostResources()
+	}
 	find := func(list map[string]model.EntityState, id string) model.EntityState {
 		if e, ok := list[id]; ok {
 			return e
@@ -64,7 +68,14 @@ func (v View) Rows(tab int) []Row {
 		case n.Kind == "edge":
 			place = "Location: anycast edge — answers from many places"
 		}
-		details := []string{"", "Node identity: " + n.ID, "Group: " + n.Group, "Kind: " + n.Kind, "Provider: " + ProviderName(n.Provider), "Parent: " + n.Parent, place, "", n.Notes, "", "Access endpoints:"}
+		details := []string{"", "Node identity: " + n.ID, "Group: " + n.Group, "Kind: " + n.Kind, "Provider: " + ProviderName(n.Provider), "Parent: " + n.Parent, place, "", n.Notes}
+		for _, r := range resources[n.ID] {
+			details = append(details, "", "Local resources: "+r.Observer.Name+" · "+r.Health+" · "+r.Freshness, "Resource check: "+r.Check, "Sampled: "+Stamp(v.Now, r.SampledAt))
+			for _, pair := range ResourceValues(r) {
+				details = append(details, pair[0]+": "+pair[1])
+			}
+		}
+		details = append(details, "", "Access endpoints:")
 		fronts := []string{}
 		for _, ep := range s.Topology.Endpoints {
 			if ep.Node == n.ID {

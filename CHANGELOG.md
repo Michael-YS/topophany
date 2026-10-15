@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Host resource preview with deterministic changing counters and localized
+  CPU, memory, disk and missing-process scenarios. Preview shares the real
+  probe's accounting and threshold evaluation, including incidents and history,
+  without reading host resources. The full built-in topology includes resources
+  for ten hosts and its router, with per-node failures and worker liveness.
+  Servers cards and CLI output show current resource summaries; stale and
+  cached readings are withheld.
+
 - Local host resource checks on Linux and macOS: CPU utilization, physical
   memory, filesystem capacity/inodes, visible process and zombie counts,
   and optional named-process count/RSS. Resource and process-count assertions

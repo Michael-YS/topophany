@@ -12,7 +12,7 @@ import (
 )
 
 // Kept portable so macOS output fixtures can be validated on every build host.
-func sampleDarwinHost(ctx context.Context, h model.HostOptions, command Command, disk func(string) (hostDisk, error)) (HostSample, error) {
+func sampleDarwinHost(ctx context.Context, h model.HostOptions, command Command, disk func(string) (HostDisk, error)) (HostSample, error) {
 	var s HostSample
 	top, err := command(ctx, "/usr/bin/top", "-l", "2", "-n", "0", "-s", "1", "-R", "-F")
 	if err != nil {

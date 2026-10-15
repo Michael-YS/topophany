@@ -101,6 +101,23 @@ func (m *Model) card(f fleet, r Row, w int, selected bool) []cardRow {
 		where = []span{{c.Where, fg(cMuted)}}
 	}
 	add(cardRow{left: sub, right: where, bg: band, bar: hue})
+	if len(c.Resources) > 0 {
+		heading("LOCAL RESOURCES", len(c.Resources))
+		for _, resource := range c.Resources {
+			hit := "goto:check:" + resource.Check
+			add(cardRow{left: []span{{string(healthGlyph(resource.Health)) + " ", fg(healthColor(resource.Health))}, {resource.Observer.Name, fg(cMuted)}}, right: []span{{resource.Freshness, fg(cMuted)}}, hit: hit})
+			for _, pair := range view.ResourceValues(resource) {
+				color := cText
+				if resource.Health == "degraded" {
+					color = cWarn
+				}
+				if resource.Health == "unknown" {
+					color = cFaint
+				}
+				add(cardRow{left: []span{{pair[0], fg(cMuted)}}, right: []span{{pair[1], fg(color)}}, hit: hit})
+			}
+		}
+	}
 
 	// What runs here, healthiest last so trouble reads first.
 	if len(c.Services) > 0 {

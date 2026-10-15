@@ -121,6 +121,16 @@ func (t *text) card(c view.Card, now time.Time) {
 	t.kv("Kind", c.Kind)
 	t.kv("Group", c.Group)
 	t.kv("Where", c.Where)
+	if len(c.Resources) > 0 {
+		section("LOCAL RESOURCES", len(c.Resources))
+		for _, r := range c.Resources {
+			t.kv("Observer", r.Observer.Name+" · "+r.Health+" · "+r.Freshness)
+			t.kv("Resource check", r.Check)
+			for _, pair := range view.ResourceValues(r) {
+				t.kv(pair[0], pair[1])
+			}
+		}
+	}
 	if len(c.Services) > 0 {
 		section("SERVICES", len(c.Services))
 		cells := [][]string{}

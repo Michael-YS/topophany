@@ -29,6 +29,7 @@ type docShot struct {
 
 var docShots = []docShot{
 	{name: "overview", readme: true, tab: tabOverview},
+	{name: "servers", tab: tabServers, selected: "app"},
 	{name: "network", tab: tabTopology, mapMode: "network", selected: "transit"},
 	{name: "incident", tab: tabIncidents},
 }

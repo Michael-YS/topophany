@@ -32,6 +32,7 @@ type Ref struct {
 // Card is what a server's card says beside its state and name. Healths
 // are those of the view: unknown throughout a cached one.
 type Card struct {
+	Resources []CardResource `json:"resources,omitempty"`
 	Kind      string         `json:"kind"`            // with its provider, e.g. "edge · Cloudflare"
 	Group     string         `json:"group,omitempty"` //
 	Where     string         `json:"where,omitempty"` // its place, "anycast", or "on" its host
@@ -94,6 +95,7 @@ type CardLink struct {
 
 // Fleet is what the cards are built from, indexed once.
 type Fleet struct {
+	resources map[string][]CardResource
 	Names     map[string]string // node names; the ID of a node without one
 	Nodes     map[string]model.Node
 	topology  model.Config
@@ -184,6 +186,7 @@ func (v View) Fleet() *Fleet {
 	for at := range f.pops {
 		sort.Strings(f.pops[at])
 	}
+	f.resources = v.HostResources()
 	return f
 }
 
@@ -207,6 +210,7 @@ func (f *Fleet) Card(id string) Card {
 		return CardEndpoint{ID: ep.ID, Network: ep.Network, Address: ep.Address, Health: f.epHealth[ep.ID], Node: Ref{ep.Node, f.Names[ep.Node]}, Via: refs(ep.Via)}
 	}
 	c := Card{Kind: KindLabel(n), Group: n.Group, Memo: strings.TrimSpace(n.Notes), Services: []CardService{}, Fronts: []CardEndpoint{}, Pops: []string{}, Addresses: []CardEndpoint{}, Hosts: []CardHost{}, Observers: []CardObserver{}, Links: []CardLink{}}
+	c.Resources = f.resources[n.ID]
 	if c.Kind == "" {
 		c.Kind = "node"
 	}

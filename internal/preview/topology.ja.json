@@ -233,6 +233,48 @@
       "node": "git-node",
       "context": "@observer.obs-remote.context",
       "stale_seconds": 45
+    },
+    {
+      "id": "obs-router",
+      "name": "@node.router",
+      "node": "router",
+      "context": "@observer.host.context",
+      "stale_seconds": 45
+    },
+    {
+      "id": "obs-transit",
+      "name": "@node.transit",
+      "node": "transit",
+      "context": "@observer.host.context",
+      "stale_seconds": 45
+    },
+    {
+      "id": "obs-exit-a",
+      "name": "@node.exit-a",
+      "node": "exit-a",
+      "context": "@observer.host.context",
+      "stale_seconds": 45
+    },
+    {
+      "id": "obs-exit-b",
+      "name": "@node.exit-b",
+      "node": "exit-b",
+      "context": "@observer.host.context",
+      "stale_seconds": 45
+    },
+    {
+      "id": "obs-aux",
+      "name": "@node.aux",
+      "node": "aux",
+      "context": "@observer.host.context",
+      "stale_seconds": 45
+    },
+    {
+      "id": "obs-jp",
+      "name": "@node.jp",
+      "node": "jp",
+      "context": "@observer.host.context",
+      "stale_seconds": 45
     }
   ],
   "endpoints": [
@@ -2136,6 +2178,226 @@
           200
         ]
       }
+    },
+    {
+      "id": "host-win",
+      "name": "@check.host-win",
+      "observer": "obs-win",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "topo",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-mac",
+      "name": "@check.host-mac",
+      "observer": "obs-mac",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "topo",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-router",
+      "name": "@check.host-router",
+      "observer": "obs-router",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "dnsmasq",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-relay",
+      "name": "@check.host-relay",
+      "observer": "obs-relay",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "topo",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-transit",
+      "name": "@check.host-transit",
+      "observer": "obs-transit",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "mihomo",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-exit-a",
+      "name": "@check.host-exit-a",
+      "observer": "obs-exit-a",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "mihomo",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-exit-b",
+      "name": "@check.host-exit-b",
+      "observer": "obs-exit-b",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "mihomo",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-app",
+      "name": "@check.host-app",
+      "observer": "obs-app",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "caddy",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-aux",
+      "name": "@check.host-aux",
+      "observer": "obs-aux",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "syncthing",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-jp",
+      "name": "@check.host-jp",
+      "observer": "obs-jp",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "openlist",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
+    },
+    {
+      "id": "host-git-node",
+      "name": "@check.host-git-node",
+      "observer": "obs-remote",
+      "kind": "host",
+      "interval_seconds": 5,
+      "timeout_seconds": 8,
+      "stale_seconds": 20,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "host": {
+        "disk_path": "/",
+        "max_cpu_percent": 90,
+        "max_memory_percent": 90,
+        "max_disk_percent": 90,
+        "process_name": "gitea",
+        "min_processes": 1
+      },
+      "notes": "@check.host-resources.notes"
     }
   ]
 }

@@ -14,7 +14,7 @@ import (
 
 func hostFixture() HostSample {
 	return HostSample{CPUPercent: 25, CPUSampleMS: 200, MemoryTotal: 1000, MemoryAvailable: 250,
-		MemoryBasis: "fixture", Disk: hostDisk{Total: 1000, Free: 200, Available: 100, Inodes: 100, InodesFree: 50},
+		MemoryBasis: "fixture", Disk: HostDisk{Total: 1000, Free: 200, Available: 100, Inodes: 100, InodesFree: 50},
 		Processes: 20, Zombies: 1, Matching: 2, MatchingRSS: 4096}
 }
 
@@ -112,7 +112,7 @@ func TestDarwinHostOutputFixtures(t *testing.T) {
 		t.Fatal("unexpected system command", name, args)
 		return nil, nil
 	}
-	s, err := sampleDarwinHost(context.Background(), model.HostOptions{DiskPath: "/", ProcessName: "topo"}, command, func(string) (hostDisk, error) { return hostFixture().Disk, nil })
+	s, err := sampleDarwinHost(context.Background(), model.HostOptions{DiskPath: "/", ProcessName: "topo"}, command, func(string) (HostDisk, error) { return hostFixture().Disk, nil })
 	if err != nil || s.CPUPercent != 25 || s.MemoryAvailable != 350*16384 || s.Processes != 3 || s.Zombies != 1 || s.Matching != 1 || s.MatchingRSS != 1048576 {
 		t.Fatal(s, err)
 	}
@@ -140,7 +140,7 @@ func TestDarwinHostOutputFixtures(t *testing.T) {
 				return nil, hostReadError("command")
 			}
 			return command(ctx, name, args...)
-		}, func(string) (hostDisk, error) { return hostFixture().Disk, nil })
+		}, func(string) (HostDisk, error) { return hostFixture().Disk, nil })
 		if err == nil {
 			t.Fatal("command failure ignored", failed)
 		}

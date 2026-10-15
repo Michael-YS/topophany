@@ -74,7 +74,9 @@ type Scenario struct {
 	Slow        float64           // latency multiplier on cross-border samples
 	Chaos       bool              // random 30-second outage windows everywhere
 	Skew        map[string]time.Duration
-	Unreachable bool // the collector itself cannot be reached
+	Unreachable bool   // the collector itself cannot be reached
+	HostIssue   string // cpu, memory, disk or process; requires a host check
+	HostNode    string // affected node in the built-in topology; custom topologies fall back to their host checks
 }
 
 var scenarios = []Scenario{
@@ -92,6 +94,10 @@ var scenarios = []Scenario{
 	{ID: "edge-blocked", Blocked: []string{"cf"}},
 	{ID: "chaos", Chaos: true},
 	{ID: "collector-unreachable", Unreachable: true},
+	{ID: "host-cpu-high", HostIssue: "cpu", HostNode: "app"},
+	{ID: "host-memory-high", HostIssue: "memory", HostNode: "relay"},
+	{ID: "host-disk-full", HostIssue: "disk", HostNode: "exit-a"},
+	{ID: "host-process-missing", HostIssue: "process", HostNode: "transit"},
 }
 
 type change struct {
@@ -157,6 +163,12 @@ func New(c model.Config, now time.Time, lang string) *Sim {
 	}
 	for i, sc := range scenarios {
 		ok := true
+		if sc.HostIssue != "" {
+			ok = false
+			for _, x := range c.Checks {
+				ok = ok || x.Kind == "host" && !x.Disabled && !x.Maintenance
+			}
+		}
 		for _, id := range append(append(append(append([]string{}, sc.Down...), sc.Blocked...), sc.Maintenance...), keys(sc.WrongExit)...) {
 			ok = ok && s.nodes[id].ID != ""
 		}
@@ -259,6 +271,10 @@ func (s *Sim) at(t time.Time) Scenario {
 		}
 	}
 	return scenarios[s.timeline[0].sc]
+}
+
+func (s *Sim) offline(sc Scenario, observer string) bool {
+	return has(sc.Offline, observer) || has(sc.Down, s.obsNode[observer])
 }
 
 // Snapshot builds what a collector would serve for view at now, with what
@@ -381,7 +397,7 @@ func (s *Sim) roll(at time.Time) *rollup.Store {
 			sc := s.at(from)
 			c := s.configFor(sc)
 			y, _ := config.Check(c, x.ID)
-			if has(sc.Offline, x.Observer) || y.Disabled || y.Maintenance {
+			if s.offline(sc, x.Observer) || y.Disabled || y.Maintenance {
 				continue
 			}
 			t := from.Add(-offset).Truncate(step(from)).Add(offset)
@@ -481,7 +497,7 @@ func (s *Sim) build(view string, now time.Time) (model.Snapshot, error) {
 		for k := 7; k >= 0; k-- {
 			t := latest.Add(-time.Duration(k) * every)
 			sc := s.at(t)
-			if has(sc.Offline, x.Observer) {
+			if s.offline(sc, x.Observer) {
 				continue
 			}
 			o := s.observe(c, x, t, sc)
@@ -493,7 +509,7 @@ func (s *Sim) build(view string, now time.Time) (model.Snapshot, error) {
 	}
 	beats := map[string]model.Heartbeat{}
 	for _, o := range c.Observers {
-		if !has(cur.Offline, o.ID) {
+		if !s.offline(cur, o.ID) {
 			t := now.Add(-time.Second + cur.Skew[o.ID])
 			beats[o.ID] = model.Heartbeat{Project: c.Project, Contracts: config.ObserverContracts(c, o.ID), Observer: o.ID, Boot: "preview", SampledAt: t, ReceivedAt: now}
 		}
@@ -523,7 +539,7 @@ func (s *Sim) History(check string, limit int, now time.Time) ([]model.Observati
 	for k := 0; len(out) < limit && k < 24*3600/x.IntervalSeconds; k++ {
 		t := latest.Add(-time.Duration(k) * every)
 		sc := s.at(t)
-		if has(sc.Offline, x.Observer) {
+		if s.offline(sc, x.Observer) {
 			continue
 		}
 		o := s.observe(c, x, t, sc)
@@ -566,6 +582,8 @@ func (s *Sim) reach(x model.Check) []string {
 		}
 	}
 	switch x.Kind {
+	case "host":
+		add(s.obsNode[x.Observer])
 	case "tailscale", "wireguard":
 		if s.nodes[x.Adapter.Peer].ID != "" {
 			add(x.Adapter.Peer)
@@ -669,10 +687,7 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 		return o
 	}
 	if x.Kind == "host" {
-		o.Evidence, o.PathEvidence = "reported", "local_host_runtime_reported"
-		o.Outcome, o.Stage, o.Code = "unknown", "host", "host_preview_unavailable"
-		o.Detail = "host resource counters are not simulated; run topo once or a worker to collect them"
-		return o
+		return s.observeHost(x, t, sc, o)
 	}
 	if len(s.paths[x.Path].Proxies) > 0 {
 		o.Facts["transport_hops"] = strconv.Itoa(len(s.paths[x.Path].Proxies))
