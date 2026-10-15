@@ -388,6 +388,20 @@ func (v View) Rows(tab int) []Row {
 				}
 			}
 			r := Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: Age(v.Now, e.LastSeen), Cols: []string{host, Age(v.Now, e.LastSeen)}, Details: details}
+			if s.Storage != nil {
+				for _, u := range s.Storage.Observers {
+					if u.Observer != e.ID {
+						continue
+					}
+					r.Details = append(r.Details, "", fmt.Sprintf("Storage: %.1f / %.1f MiB", float64(u.Bytes)/(1<<20), float64(u.ByteLimit)/(1<<20)), fmt.Sprintf("Receipts: %d / %d; last hour: %d; projected: %d", u.Receipts, u.ReceiptLimit, u.LastHour, u.Settles))
+					if u.Fills {
+						r.Details = append(r.Details, "Projected quota exhaustion: "+u.FullIn.Round(time.Second).String())
+						if !v.Cached {
+							r.Note = "storage pressure"
+						}
+					}
+				}
+			}
 			if e.Health == "up" && e.Contracts == "outdated" {
 				r.Note = "outdated"
 			}

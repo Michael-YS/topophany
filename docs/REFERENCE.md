@@ -210,3 +210,7 @@ The terminal interface (`topo`, `topo edit` and `topo preview`) reads these.
 | `TOPO_HYPERLINKS` | `1` (`yes`, `on`, `true`) or `0` (`no`, `off`, `false`) decides whether links are written as OSC 8 hyperlinks; by default they are, except on the Linux console, a dumb terminal and GNU screen outside tmux |
 | `TOPO_CELL_ASPECT` | A character cell's height over its width, such as `2.6`, for drawing the About globe and the geographic map in their true shape. When unset, the shape comes from the pixel size the terminal reports, else from its answer to `CSI 16 t`, else is taken as `2`. Windows Terminal answers with a fixed 10×20 cell whatever its font and line height, so it needs this where its cells are not 2:1. Values outside 1 to 4 count as `2` |
 | `LC_ALL`, `LC_MESSAGES`, `LANG` | The first that is set chooses the language of `topo preview`'s built-in topology and scenarios; `--lang` overrides it |
+
+### Storage allocation
+
+Observers accept `storage_weight` (omitted/zero means 1; otherwise 1–1000). This trusted administrative setting changes quota allocation, not check identity or authorization scope. `/v1/snapshot` adds optional `storage`: global `receipts`, `max_receipts`, `state_bytes`, `max_state_bytes`, `receipt_hours`, and `observers` containing `observer`, `receipts`, `receipt_limit`, `bytes`, `byte_limit`, `last_hour_receipts`, `settled_receipts`, `fills` and `full_in_ns`. An observer-filtered view includes only that observer's allocation rows. Legacy snapshots may omit it. `topo capacity --help` describes offline preflight flags.

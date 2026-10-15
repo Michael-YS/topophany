@@ -133,6 +133,9 @@ func Validate(c model.Config) error {
 		}
 	}
 	for _, o := range c.Observers {
+		if o.StorageWeight < 0 || o.StorageWeight > 1000 {
+			return fmt.Errorf("observer %s: storage_weight must be 0..1000", o.ID)
+		}
 		if e := unique(obs, o.ID, "observer"); e != nil {
 			return e
 		}
@@ -571,4 +574,13 @@ func Public(c model.Config) model.Config {
 		}
 	}
 	return out
+}
+
+// StorageWeights returns the trusted allocation, independently of check contracts.
+func StorageWeights(c model.Config) map[string]int {
+	w := make(map[string]int, len(c.Observers))
+	for _, o := range c.Observers {
+		w[o.ID] = max(o.StorageWeight, 1)
+	}
+	return w
 }

@@ -51,6 +51,7 @@ Usage:
   topo init                         create a safe local demo with fresh credentials
   topo edit                         add/edit/delete topology entities in a local TUI
   topo preview                      open the TUI on synthetic evidence (built-in or --config)
+  topo capacity                     preflight storage allocation and migration
   topo validate                     validate a topology; print its revision
   topo once                         run local checks once; write observations as JSON
   topo export                       export a redacted topology
@@ -108,6 +109,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.read(ctx, args[0], args[1:], nil)
 	case "validate", "export", "once":
 		return a.topologyCommand(ctx, args[0], args[1:])
+	case "capacity":
+		return a.capacity(args[1:])
 	case "token":
 		return a.token(args[1:])
 	default:

@@ -41,6 +41,8 @@ var ErrCapacity = errors.New("receipt capacity reached; collection paused instea
 // sample it could match can be accepted, an hour after it.
 type Options struct {
 	Observers       []string
+	ObserverWeights map[string]int
+	weightTotal     int64
 	Revision        string
 	Contracts       map[string]string
 	Stale           map[string]time.Duration
@@ -129,30 +131,9 @@ type Store struct {
 }
 
 func Open(dir string, o Options) (s *Store, err error) {
-	o.Observers = append([]string(nil), o.Observers...)
-	if o.MaxHistory == 0 {
-		o.MaxHistory = 20000
-	}
-	if o.MaxReceipts == 0 {
-		o.MaxReceipts = 500000
-	}
-	if o.Retention == 0 {
-		o.Retention = 24 * time.Hour
-	}
-	if o.CheckpointBytes == 0 {
-		o.CheckpointBytes = 16 << 20
-	}
-	if o.Now == nil {
-		o.Now = time.Now
-	}
-	if o.MaxStateBytes == 0 {
-		o.MaxStateBytes = 128 << 20
-	}
-	if o.RollupBytes == 0 {
-		o.RollupBytes = 32 << 20
-	}
-	if o.MaxHistory < 1 || o.MaxReceipts < 1 || o.Retention < time.Minute || o.CheckpointBytes < 1024 || o.CheckpointBytes > 128<<20 || o.MaxStateBytes < 1024 || o.MaxStateBytes > 128<<20 || o.RollupBytes < rollup.MinLimit || o.RollupBytes > rollup.MaxLimit {
-		return nil, errors.New("invalid storage limits")
+	o, err = storageOptions(o)
+	if err != nil {
+		return nil, err
 	}
 	// A sample is acknowledged once the journal is synced, which makes
 	// neither the journal's name nor the directories above it durable:
@@ -652,10 +633,10 @@ func (s *Store) prune() {
 		for _, id := range s.options.Observers {
 			allowed[id] = true
 		}
-		quota := s.options.MaxHistory / len(s.options.Observers)
+
 		kept := make([]model.Observation, 0, min(len(rows), s.options.MaxHistory))
 		for i := len(rows) - 1; i >= 0; i-- {
-			if allowed[rows[i].Observer] && counts[rows[i].Observer] < quota {
+			if allowed[rows[i].Observer] && counts[rows[i].Observer] < int(s.options.share(int64(s.options.MaxHistory), rows[i].Observer)) {
 				kept = append(kept, rows[i])
 				counts[rows[i].Observer]++
 			}
@@ -722,8 +703,8 @@ func (s *Store) prune() {
 		s.receiptQueue = append([]string(nil), s.receiptQueue[s.receiptHead:]...)
 		s.receiptHead = 0
 	}
-	limit := s.floorLimit()
 	for o, q := range s.floorQueues {
+		limit := s.floorLimit(o)
 		if q.Len() > limit {
 			s.shedFloors(o, q.Len()-limit)
 		}

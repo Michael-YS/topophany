@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"sort"
 	"strings"
 	"time"
@@ -11,31 +12,8 @@ import (
 // they settle. A receipt lasts the ingestion window and an hour, so at a
 // steady rate an observer holds what it delivers in that long: the last
 // hour's receipts times the hours a receipt lasts.
-type Usage struct {
-	Receipts      int
-	MaxReceipts   int
-	StateBytes    int64
-	MaxStateBytes int64
-	Hours         float64 // how long a receipt lasts
-	Observers     []ObserverUsage
-}
-
-// ObserverUsage is one observer's share of a store: all of it when the
-// store is told of no observers, which Observer then leaves empty.
-type ObserverUsage struct {
-	Observer     string
-	Receipts     int
-	ReceiptLimit int
-	Bytes        int64 // its receipts, rows and floors, or all state
-	ByteLimit    int64
-	LastHour     int // receipts taken in the last hour
-	Settles      int // receipts held at the last hour's rate
-	// FullIn is how long, at the last hour's rate, until its receipts fill
-	// its share, of receipts or of bytes; Fills is false when they settle
-	// within both.
-	Fills  bool
-	FullIn time.Duration
-}
+type Usage model.StorageUsage
+type ObserverUsage = model.StorageObserverUsage
 
 // Usage reports what the store holds against its budgets as of now.
 func (s *Store) Usage() Usage {
@@ -86,9 +64,9 @@ func (s *Store) Usage() Usage {
 		u.Observers = []ObserverUsage{share(ObserverUsage{Receipts: len(s.seen), ReceiptLimit: s.options.MaxReceipts, Bytes: s.stateBytes, ByteLimit: s.options.MaxStateBytes}, total)}
 		return u
 	}
-	byteLimit := (s.options.MaxStateBytes - 1024 - int64(n)*2048) / int64(n)
+
 	for _, id := range s.options.Observers {
-		u.Observers = append(u.Observers, share(ObserverUsage{Observer: id, Receipts: s.scopeReceipts[id], ReceiptLimit: s.options.MaxReceipts / n, Bytes: s.scopeBytes[id], ByteLimit: byteLimit}, recent[id]))
+		u.Observers = append(u.Observers, share(ObserverUsage{Observer: id, Receipts: s.scopeReceipts[id], ReceiptLimit: int(s.options.share(int64(s.options.MaxReceipts), id)), Bytes: s.scopeBytes[id], ByteLimit: s.options.byteShare(id)}, recent[id]))
 	}
 	sort.Slice(u.Observers, func(i, j int) bool { return u.Observers[i].Observer < u.Observers[j].Observer })
 	return u

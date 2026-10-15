@@ -37,6 +37,8 @@ func (a *App) serve(parent context.Context, args []string) error {
 	key := f.String("tls-key", "", "PEM server private key")
 	insecure := f.Bool("allow-insecure", false, "explicitly allow plaintext non-loopback HTTP (unsafe without a secure tunnel)")
 	retention := f.Duration("retention", 24*time.Hour, "raw history/receipt retention and maximum accepted sample age")
+	stateBytes := f.Int64("state-bytes", 128<<20, "bounded state budget, at most 128 MiB")
+	maxReceipts := f.Int("max-receipts", 500000, "maximum deduplication receipts")
 	maxHistory := f.Int("max-history", 20000, "maximum retained raw history rows; per-check state tails retained separately")
 	rollupBytes := f.Int64("rollup-bytes", 32<<20, "hard cap on long-term rollups, in encoded bytes (64 KiB..64 MiB)")
 	if e := parsed(f, args); e != nil {
@@ -78,7 +80,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
-	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Observers: observerIDs(c), Retention: *retention, MaxHistory: *maxHistory, RollupBytes: *rollupBytes})
+	st, e := store.Open(*dir, store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Observers: observerIDs(c), ObserverWeights: config.StorageWeights(c), MaxStateBytes: *stateBytes, MaxReceipts: *maxReceipts, Retention: *retention, MaxHistory: *maxHistory, RollupBytes: *rollupBytes})
 	if e != nil {
 		return e
 	}

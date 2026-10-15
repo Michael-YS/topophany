@@ -72,6 +72,7 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 		s.snapshotGen = g
 		s.snapshotRows, s.snapshotCarries, s.snapshotBeats = s.Store.StateView()
 		s.snapshotAt = s.Now()
+		s.snapshotStorage = s.Store.Usage()
 		s.snapshotAvailable = nil
 		s.snapshotCache = map[string][]byte{}
 		s.snapshotCacheBytes = 0
@@ -87,6 +88,12 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
 	snap := g.engine.Build(s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
+	usage := model.StorageUsage(s.snapshotStorage)
+	usage.Observers = slices.Clone(usage.Observers)
+	if view != "" {
+		usage.Observers = slices.DeleteFunc(usage.Observers, func(o model.StorageObserverUsage) bool { return o.Observer != view })
+	}
+	snap.Storage = &usage
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
 	}

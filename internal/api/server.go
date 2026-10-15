@@ -100,6 +100,7 @@ type Server struct {
 	snapshotAt         time.Time
 	snapshotGen        *generation // what the cached snapshots were built under
 	snapshotRows       []model.Observation
+	snapshotStorage    store.Usage
 	snapshotCarries    []engine.Carry
 	snapshotBeats      map[string]model.Heartbeat
 	snapshotCache      map[string][]byte
@@ -131,7 +132,7 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 		ids = append(ids, o.ID)
 	}
 	if s != nil {
-		s.SetObservers(ids)
+		s.SetAllocation(ids, config.StorageWeights(c))
 	}
 	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
 }
@@ -202,7 +203,7 @@ func (s *Server) Reload(c model.Config, a Auth) {
 		for _, o := range c.Observers {
 			ids = append(ids, o.ID)
 		}
-		s.Store.SetObservers(ids)
+		s.Store.SetAllocation(ids, config.StorageWeights(c))
 		s.Store.SetCurrent(g.revision, g.contracts, config.Stale(c))
 	}
 	s.snapshotMu.Lock()

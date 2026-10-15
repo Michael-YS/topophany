@@ -84,7 +84,10 @@ func (s *Store) queueFloors() {
 
 // floorLimit is how many floors an observer may hold: one floorShare-th
 // of its share of the state budget.
-func (s *Store) floorLimit() int {
+func (s *Store) floorLimit(observer ...string) int {
+	if len(observer) > 0 {
+		return int(max(s.options.share(s.options.MaxStateBytes, observer[0])/floorShare/floorBytes, 1))
+	}
 	n := int64(max(len(s.options.Observers), 1))
 	return int(max(s.options.MaxStateBytes/n/floorShare/floorBytes, 1))
 }

@@ -64,6 +64,8 @@ type Service struct {
 	Notes     string   `json:"notes,omitempty"`
 }
 type Observer struct {
+	StorageWeight int `json:"storage_weight,omitempty"` // trusted quota weight; zero means one
+
 	ID               string `json:"id"`
 	Name             string `json:"name"`
 	Node             string `json:"node,omitempty"`
@@ -333,6 +335,8 @@ type ObserverState struct {
 	Contracts string    `json:"contracts,omitempty"`
 }
 type Snapshot struct {
+	Storage *StorageUsage `json:"storage,omitempty"`
+
 	DetailsOmitted bool            `json:"details_omitted,omitempty"`
 	Schema         int             `json:"schema"`
 	Version        string          `json:"version"`
