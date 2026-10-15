@@ -349,13 +349,16 @@ func (m *Model) drawForm(cv *Canvas, f *Form) {
 		default:
 			r := []rune(fd.value)
 			cur := min(max(fd.cursor, 0), len(r))
+			// The cursor goes where the text before it is shown, without
+			// the controls Text drops.
+			shown := func(from int) int { return width(secure.Text(string(r[from:cur]))) }
 			start := 0
-			for width(string(r[start:cur])) > vw-2 {
+			for shown(start) > vw-2 {
 				start++
 			}
 			cv.Text(vx, ry, string(r[start:]), box, vw)
 			if focused && !fd.readonly {
-				cxp := vx + width(string(r[start:cur]))
+				cxp := vx + shown(start)
 				ch := ' '
 				if cur < len(r) {
 					ch = r[cur]

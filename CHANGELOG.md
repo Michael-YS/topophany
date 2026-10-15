@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `0600` or stricter on POSIX, or the collector does not start, and it
   says why. Copy a key out of a certificate tool's directory of links,
   such as Let's Encrypt's `live/`, rather than pointing at it.
+- The editor no longer writes a terminal control or bidi rune from a
+  topology to the terminal. A field's text was shown without them, but
+  its cursor, in color, redrew the rune under it as it was, so moving
+  through a field of a crafted topology could send its controls one at a
+  time. Any such rune now shows as a space, wherever a single rune is
+  drawn, and the cursor stands where the text before it is shown rather
+  than a column further per control.
 
 ## [0.8.0] - 2026-10-14
 

@@ -3,6 +3,7 @@ package tui
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -133,7 +134,15 @@ func (c *Canvas) put(x, y int, ch string, w int, st Style) {
 }
 
 // Set writes one rune; it is the primitive used for glyphs and dot art.
-func (c *Canvas) Set(x, y int, r rune, st Style) { c.put(x, y, string(r), runeWidth(r), st) }
+// A terminal control or bidi rune, which Text would drop, shows as a
+// space, so a rune taken from text a topology or a collector wrote cannot
+// reach the terminal through here either.
+func (c *Canvas) Set(x, y int, r rune, st Style) {
+	if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+		r = ' '
+	}
+	c.put(x, y, string(r), runeWidth(r), st)
+}
 
 // Text writes s clipped to maxW columns (maxW<0: to the right edge) and
 // returns the number of columns written.

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -445,5 +446,68 @@ func TestEveryModeFrameBounds(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A field shows no terminal control or bidi rune a topology puts in it,
+// at the cursor too, in color or not, and its cursor stands where the
+// text it is on is shown.
+func TestEditorFieldsShowNoControls(t *testing.T) {
+	var b strings.Builder
+	for r := rune(0); r < 0xa0; r++ {
+		if unicode.IsControl(r) {
+			b.WriteString("x" + string(r))
+		}
+	}
+	for _, r := range "؜‎‏‪‫‬‭‮⁦⁧⁨⁩" {
+		b.WriteString("x" + string(r))
+	}
+	edit := func(t *testing.T, name string, noColor bool) *Model {
+		m, _ := editorModel(t)
+		m.NoColor = noColor
+		c := m.Edit.Config
+		c.Nodes[0].Name = name
+		m.Edit.Config = c
+		m.rebuild()
+		m.selectEntity("node", c.Nodes[0].ID)
+		m.Key("e")
+		m.Key("field:1")
+		m.Key("home")
+		if m.modal == nil || m.modal.form.val("Name") != name {
+			t.Fatal("name field not focused")
+		}
+		return m
+	}
+	for _, noColor := range []bool{false, true} {
+		m := edit(t, b.String(), noColor)
+		for i := range len([]rune(b.String())) + 1 {
+			for _, l := range m.Render() {
+				for _, r := range ansi.ReplaceAllString(l, "") {
+					if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+						t.Fatalf("cursor at %d (no color %v) shows %U", i, noColor, r)
+					}
+				}
+			}
+			m.Key("right")
+		}
+	}
+	m := edit(t, "ab\x1b‮cd", false)
+	for range 4 {
+		m.Key("right")
+	}
+	cv := m.draw()
+	found := false
+	for y := range cv.H {
+		for x := 1; x < cv.W; x++ {
+			if cv.at(x, y).st == (Style{FG: cDeep, BG: cAccent}) {
+				found = true
+				if cv.at(x, y).ch != "c" || cv.at(x-1, y).ch != "b" {
+					t.Fatalf("cursor on %q after %q", cv.at(x, y).ch, cv.at(x-1, y).ch)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no cursor")
 	}
 }
