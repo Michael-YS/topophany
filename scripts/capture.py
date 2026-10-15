@@ -3,7 +3,7 @@
 
 The TUI records each capture in the tour's format (TestCaptures in internal/tui):
 a still as one frame, an animation as chapters of the homepage's tour. The
-homepage's terminal renderer (site/public/js/term.js) paints them in a headless
+homepage's terminal renderer (site/src/js/term.js) paints them in a headless
 Chromium, with its CSS choosing the CJK fonts for the language, and the page
 posts every frame back as a PNG, so a capture looks as the homepage's replay
 does: 10x20 pixels a cell. ffmpeg writes a still as it was painted
@@ -33,7 +33,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs" / "assets"
-SITE = ROOT / "site" / "public"
+SITE = ROOT / "site" / "src"
 CELL = (10, 20)  # pixels per cell, as the homepage draws them
 PATIENCE = 120  # seconds a capture may take to paint
 

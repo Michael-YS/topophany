@@ -25,9 +25,9 @@
 <meta property="og:image:alt" content="{{meta.image-alt}}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="{{meta.image-alt}}">
-<link rel="stylesheet" href="/css/site.css">
-<link rel="preload" href="/data/land.bin" as="fetch" type="application/octet-stream" crossorigin>
-<script type="module" src="/js/site.js"></script>
+<link rel="stylesheet" href="{{page.style}}">
+<link rel="preload" href="{{page.land}}" as="fetch" type="application/octet-stream" crossorigin>
+<script type="module" src="{{page.script}}"></script>
 {{page.strings.html}}
 {{page.jsonld.html}}
 </head>
@@ -95,7 +95,7 @@
       <p class="lead">{{demo.lead.html}}</p>
     </div>
 
-    <figure class="term" id="term" data-tour="/data/tour.{{page.code}}.json">
+    <figure class="term" id="term" data-tour="{{page.tour}}">
       <div class="term-bar">
         <span class="term-title"><span class="term-prompt">~</span> topo preview</span>
         <span class="term-meta"><span class="term-state">{{js.replay}}</span> · 140×42</span>

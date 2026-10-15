@@ -23,6 +23,40 @@ class SiteTests(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), text,
                              f"{path.relative_to(ROOT)} is stale; run make site")
 
+    def test_nothing_unused_is_published(self):
+        self.assertEqual(build_site.strays(build_site.build()), [], "run make site")
+
+    def test_pages_name_files_by_what_they_hold(self):
+        pages = build_site.build()
+        for path, text in pages.items():
+            if path.suffix != ".html":
+                continue
+            names = re.findall(r'(?:href|src|data-tour)="(/(?:css|js|data)/[^"]+)"', text)
+            self.assertTrue(names, f"{path.relative_to(ROOT)} names no styles, scripts or data")
+            for name in names:
+                file, _, query = name.partition("?")
+                published = build_site.OUT / file.lstrip("/")
+                if file.startswith("/data/"):
+                    self.assertEqual(query, "v=" + build_site.digest(published.read_bytes()), name)
+                else:
+                    self.assertIn(published, pages, name)
+                    self.assertIn("." + build_site.digest(pages[published].encode()) + ".", published.name)
+
+    def test_a_script_is_renamed_when_what_it_imports_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            src = Path(temp)
+            (src / "js").mkdir()
+            (src / "js/a.js").write_text("import { b } from './b.js';\nb();\n")
+            (src / "js/b.js").write_text("export const b = () => 1;\n")
+            before = build_site.assets(src, src / "out")
+            self.assertIn(f"from './{before['/js/b.js'][0].name}'", before["/js/a.js"][1])
+            (src / "js/b.js").write_text("export const b = () => 2;\n")
+            after = build_site.assets(src, src / "out")
+            self.assertNotEqual(before["/js/a.js"][0], after["/js/a.js"][0])
+            (src / "js/b.js").write_text("import './a.js';\n")
+            with self.assertRaisesRegex(build_site.SiteError, "imports itself"):
+                build_site.assets(src, src / "out")
+
     def test_the_site_and_the_preview_speak_the_same_languages(self):
         site, catalogs = build_site.load()
         preview = {path.stem for path in (ROOT / "internal/preview/locales").glob("*.json")}
@@ -67,7 +101,7 @@ class SiteTests(unittest.TestCase):
     def test_scripts_ask_only_for_words_the_pages_carry(self):
         site, catalogs = build_site.load()
         words = {key[3:] for key in catalogs[site["default"]] if key.startswith("js.")}
-        source = (SITE / "public/js/site.js").read_text(encoding="utf-8")
+        source = (SITE / "src/js/site.js").read_text(encoding="utf-8")
         asked = set(re.findall(r"\bt\(\s*'([\w.-]+)'", source))
         asked |= {f"place.{place}" for place in re.findall(r"\{ id: '([\w-]+)'", source)}
         self.assertTrue(asked)

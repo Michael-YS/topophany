@@ -12,10 +12,19 @@ A key ending in .html holds markup and goes in as written; any other is text
 and is escaped. Words may name {{site.*}} values (versions, the origin) so a
 fact is kept in one place. js.* keys and each language's name reach the
 page's scripts as JSON.
+
+The styles and scripts in site/src/css and site/src/js are published under
+names that carry a digest of what they hold (css/site.<digest>.css), and the
+data the scripts fetch is named with its digest as a query, so all of them
+may be cached for good: a page names the files it was written with, and a
+browser never pairs a new page with an old script. A script's imports are
+renamed in it before it is digested, so a change to one renames every script
+that imports it. Published files no page names any more are removed.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import math
@@ -28,7 +37,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "site" / "src"
 OUT = ROOT / "site" / "public"
 PAGES = ("index.html", "404.html")
+STATIC = ("css", "js")
 PLACEHOLDER = re.compile(r"\{\{([a-z0-9][a-z0-9._-]*)\}\}")
+IMPORT = re.compile(r"""(\b(?:from|import)\s*)(['"])\./([\w.-]+\.js)\2""")
 # The vantage panel shows a language's preview as it places these nodes: the
 # MacBook at home, the transit host it cannot reach and the New York server
 # that can. It is 520 units wide, the land is drawn between rows 8 and 166,
@@ -67,9 +78,49 @@ def path_of(site: dict, code: str) -> str:
     return "/" if code == site["default"] else f"/{code}/"
 
 
-def page_values(site: dict, catalogs: dict, code: str) -> dict[str, str]:
+def digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()[:12]
+
+
+def assets(src: Path = SRC, out: Path = OUT) -> dict[str, tuple[Path, str]]:
+    """Every style and script, by the path a page would name it with
+    (/js/site.js), as the path it is published at and what it holds."""
+    published = {}
+    for kind in STATIC:
+        sources = {path.name: path.read_text(encoding="utf-8") for path in sorted((src / kind).glob(f"*.{kind}"))}
+        names: dict[str, str] = {}
+
+        def publish(name: str, importers: tuple[str, ...] = ()) -> str:
+            if name in importers:
+                raise SiteError(f"{kind}/{name} imports itself through {' → '.join(importers)}")
+            if name not in sources:
+                raise SiteError(f"{kind}/{importers[-1]} imports {name}, which site/src/{kind} does not have")
+            if name not in names:
+                text = sources[name]
+                if kind == "js":
+                    text = IMPORT.sub(lambda m: f"{m[1]}{m[2]}./{publish(m[3], importers + (name,))}{m[2]}", text)
+                stem, _, suffix = name.rpartition(".")
+                names[name] = f"{stem}.{digest(text.encode())}.{suffix}"
+                published[f"/{kind}/{name}"] = (out / kind / names[name], text)
+            return names[name]
+
+        for name in sources:
+            publish(name)
+    return published
+
+
+def data_url(out: Path, name: str) -> str | None:
+    """A data file's path with its digest as a query, or None while it is
+    not recorded."""
+    path = out / "data" / name
+    return f"/data/{name}?v={digest(path.read_bytes())}" if path.is_file() else None
+
+
+def page_values(site: dict, catalogs: dict, code: str, urls: dict[str, str] | None = None,
+                out: Path = OUT) -> dict[str, str]:
     words = catalogs[code]
     here = path_of(site, code)
+    urls = urls or {}
     links, items, offers, locales = [], [], [], []
     for other in languages(site, catalogs):
         theirs, where = catalogs[other], path_of(site, other)
@@ -86,6 +137,8 @@ def page_values(site: dict, catalogs: dict, code: str) -> dict[str, str]:
     strings["languages"] = offers
     # A data block is not run, but "</" could still end the element early.
     data = json.dumps(strings, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    files = {"page.style": urls.get("/css/site.css"), "page.script": urls.get("/js/site.js"),
+             "page.land": data_url(out, "land.bin"), "page.tour": data_url(out, f"tour.{code}.json")}
     return {
         "page.code": code,
         "page.path": here,
@@ -96,6 +149,7 @@ def page_values(site: dict, catalogs: dict, code: str) -> dict[str, str]:
         "page.strings.html": f'<script type="application/json" id="strings">{data}</script>',
         "page.locales.html": "\n".join(locales),
         "page.jsonld.html": jsonld(site, catalogs, code),
+        **{key: url for key, url in files.items() if url},
         **vantage(code, words),
     }
 
@@ -306,6 +360,8 @@ def render(template: str, name: str, site: dict, words: dict[str, str], page: di
         elif key in words:
             used.add(key)
             value = expand(words[key], site, page)
+        elif key.startswith("page."):
+            raise SiteError(f"{name}: nothing for {{{{{key}}}}}; is site/public/data recorded (make site)?")
         else:
             raise SiteError(f"{name}: no words for {{{{{key}}}}}")
         if key.endswith(".html"):
@@ -341,12 +397,14 @@ def robots(site: dict) -> str:
 
 def build(src: Path = SRC, out: Path = OUT) -> dict[Path, str]:
     """Every page in every language, by the path it is published from, with
-    the sitemap and robots.txt."""
+    the styles and scripts they name, the sitemap and robots.txt."""
     site, catalogs = load(src)
     templates = {name: (src / name).read_text(encoding="utf-8") for name in PAGES}
-    pages, used = {}, set()
+    published = assets(src, out)
+    urls = {path: "/" + file.relative_to(out).as_posix() for path, (file, _) in published.items()}
+    pages, used = {file: text for file, text in published.values()}, set()
     for code in languages(site, catalogs):
-        values = page_values(site, catalogs, code)
+        values = page_values(site, catalogs, code, urls, out)
         for name, template in templates.items():
             pages[out / path_of(site, code).strip("/") / name] = render(template, name, site, catalogs[code], values, used)
     unused = sorted(key for key in catalogs[site["default"]]
@@ -356,6 +414,11 @@ def build(src: Path = SRC, out: Path = OUT) -> dict[Path, str]:
     pages[out / "sitemap.xml"] = sitemap(site, catalogs)
     pages[out / "robots.txt"] = robots(site)
     return pages
+
+
+def strays(pages: dict[Path, str], out: Path = OUT) -> list[Path]:
+    """Styles and scripts published earlier that no page names now."""
+    return sorted(path for kind in STATIC for path in (out / kind).glob("*") if path not in pages)
 
 
 def main() -> int:
@@ -369,6 +432,7 @@ def main() -> int:
         return 1
     stale = [path for path, text in pages.items()
              if not path.is_file() or path.read_text(encoding="utf-8") != text]
+    unused = strays(pages)
     for path in stale:
         if args.check:
             print(f"stale: {path.relative_to(ROOT)}", file=sys.stderr)
@@ -376,7 +440,13 @@ def main() -> int:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(pages[path], encoding="utf-8")
             print(f"wrote {path.relative_to(ROOT)}")
-    if args.check and stale:
+    for path in unused:
+        if args.check:
+            print(f"unused: {path.relative_to(ROOT)}", file=sys.stderr)
+        else:
+            path.unlink()
+            print(f"removed {path.relative_to(ROOT)}")
+    if args.check and (stale or unused):
         print("build_site: run `python3 scripts/build_site.py` (or `make site`)", file=sys.stderr)
         return 1
     return 0

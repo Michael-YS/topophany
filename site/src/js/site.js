@@ -12,8 +12,9 @@ const STRINGS = (() => {
 })();
 const t = (key, vars = {}) => (STRINGS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
 
-// Natural Earth land, for the globe and the vantage map alike.
-const landLoaded = loadLand('/data/land.bin');
+// Natural Earth land, for the globe and the vantage map alike, from the URL
+// the page preloads it at.
+const landLoaded = loadLand($('link[rel="preload"][as="fetch"]').href);
 
 // ---------------------------------------------------------------- nav
 

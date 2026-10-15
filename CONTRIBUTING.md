@@ -27,10 +27,16 @@ redeployed by Workers Builds on every push to `main` that touches `site/`;
 `site/go.mod` keeps it out of the Go module. Its pages are written, one per
 language, from the templates in `site/src/` with `{{key}}` where words go and
 the words of each language in `site/src/locales/<language>.json`; edit those,
-never the pages in `site/public/`. Its terminal replays
+never the pages in `site/public/`. Its styles and scripts are edited in
+`site/src/css/` and `site/src/js/` and published under names that carry a
+digest of their content (`site.<digest>.css`), and the data the scripts fetch
+is named with its digest as a query, so browsers keep them for good and a page
+never runs with older ones (`site/public/_headers`). Its terminal replays
 (`site/public/data/tour.<language>.json`) are recorded from `topo preview` by
-the TUI's own renderer. Run `make site` after changing the TUI, the templates or
-the words to write them again; `scripts/test_site.py` fails while they are stale.
+the TUI's own renderer. Run `make site` after changing the TUI, the templates,
+the words, the styles or the scripts to write them again (`python3
+scripts/build_site.py` alone when the TUI is unchanged);
+`scripts/test_site.py` fails while they are stale.
 
 The TUI stills in `docs/assets` (`<name>.<language>.png`) are captured from the
 preview the same way: the README's in every language, the guide's in English.

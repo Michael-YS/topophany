@@ -2,6 +2,12 @@
 # so the policy can be strict. Pages go out as written: no-transform keeps
 # Cloudflare from injecting its analytics beacon (which the policy would
 # block anyway); data, styles and scripts drop it so they stay compressed.
+#
+# A page is asked for again on every visit (no-cache: a browser may keep it,
+# but checks its ETag first), so a deploy is seen at once. Styles and scripts
+# carry a digest of what they hold in their names, and data in its query
+# (scripts/build_site.py), so what a page names never changes and is kept
+# for good.
 /*
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
@@ -9,17 +15,17 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin
   Strict-Transport-Security: max-age=31536000
-  Cache-Control: no-transform
+  Cache-Control: no-cache, no-transform
 
 /data/*
   ! Cache-Control
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: public, max-age=31536000, immutable
   X-Robots-Tag: noindex
 
 /css/*
   ! Cache-Control
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: public, max-age=31536000, immutable
 
 /js/*
   ! Cache-Control
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Cache-Control: public, max-age=31536000, immutable

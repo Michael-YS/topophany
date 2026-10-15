@@ -90,6 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which now needs ffmpeg as well as a Chromium. The stills it makes keep
   their pixels in a quarter fewer bytes.
 
+### Fixed
+
+- A new version of the homepage shows without a forced refresh. Its
+  styles, scripts and data were kept for an hour and then served stale
+  for a day while they were checked, so a returning visitor got the new
+  page with the old styles and scripts. They are now published under
+  names that carry a digest of their content, and the data with its
+  digest as a query, so a browser keeps them for good and a new page
+  names new ones, while the pages themselves are checked on every visit.
+  `scripts/build_site.py` writes them from `site/src/css` and
+  `site/src/js`.
+
 ## [0.8.1] - 2026-10-14
 
 ### Changed
