@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-14
+
 ### Changed
 
 - The README and the homepage show the preview where 0.8.0 put it, at
@@ -603,7 +605,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/WhitenWhiten/topophany/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/WhitenWhiten/topophany/compare/v0.3.0...v0.8.0
 [0.3.0]: https://github.com/WhitenWhiten/topophany/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/WhitenWhiten/topophany/compare/v0.1.0...v0.2.0
