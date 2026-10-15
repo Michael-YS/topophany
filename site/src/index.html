@@ -184,13 +184,18 @@
 
       <article class="panel">
         <h3 class="panel-title">{{edge.title}}</h3>
-        <div class="edge">
-          <span class="e-visitors">{{edge.visitors}}</span>
-          <span class="e-wire ok" aria-hidden="true"></span>
-          <div class="e-node e-cf"><b>Cloudflare · FRA</b><span class="ok">● {{edge.up}}</span></div>
-          <span class="e-wire bad" aria-hidden="true"><i>✖</i></span>
-          <div class="e-node"><b>{{edge.origin}}</b><span class="warn">▲ {{edge.affected}}</span></div>
+        <div class="seq" role="img" aria-label="{{edge.label}}">
+          <p class="seq-who"><b>{{edge.observer}}</b><span>{{edge.observer-name}}</span></p>
+          <p class="seq-who seq-cf"><b>Cloudflare</b><span>{{edge.edge-name}}</span></p>
+          <p class="seq-who"><b>{{edge.origin}}</b><span>{{edge.origin-name}}</span></p>
+          <i class="seq-life"></i><i class="seq-life"></i><i class="seq-life"></i><i class="seq-act"></i>
+          <p class="seq-msg seq-ask"><span>GET /</span></p>
+          <p class="seq-msg seq-lost"><span>{{edge.refused}}</span></p>
+          <p class="seq-msg seq-back"><span>HTTP 521</span><small>cf-ray: …-FRA</small></p>
+          <p class="seq-state seq-up"><b>● {{edge.up}}</b><span>{{edge.up-why}}</span></p>
+          <p class="seq-state seq-origin"><b>▲ {{edge.affected}}</b><span>{{edge.affected-why}}</span></p>
         </div>
+        <p class="verdict"><b>{{vantage.verdict-key}}</b> {{edge.verdict}}</p>
         <p>{{edge.text}}</p>
       </article>
 
@@ -270,26 +275,61 @@
       <h2>{{probes.title}}</h2>
       <p class="lead">{{probes.lead}}</p>
     </div>
-    <div class="panel stack">
-      <h3 class="panel-title">{{probes.native}}</h3>
-      <div class="layer l7"><span class="layer-n">L7</span><ul><li><b>HTTP</b><span>{{probes.http}}</span></li><li><b>SSH</b><span>{{probes.ssh}}</span></li><li><b>DNS</b><span>A, AAAA</span></li></ul></div>
-      <div class="layer l6"><span class="layer-n">L6</span><ul><li><b>TLS</b><span>{{probes.tls}}</span></li></ul></div>
-      <div class="layer l4"><span class="layer-n">L4</span><ul><li><b>TCP</b><span>{{probes.tcp}}</span></li><li><b>UDP</b><span>{{probes.udp}}</span></li></ul></div>
-      <div class="layer l3"><span class="layer-n">L3</span><ul><li><b>ICMP</b><span>IPv4</span></li></ul></div>
-    </div>
-    <div class="grid-3 panes">
-      <div class="panel">
+    <div class="probes">
+      <article class="panel probes-native">
+        <h3 class="panel-title">{{probes.native}}</h3>
+        <div class="pt-h" aria-hidden="true"><span>{{probes.check}}</span><span>{{probes.evidence}}</span><span>{{probes.means}}</span></div>
+        <ul class="pt">
+          <li class="pt-layer l7"><b class="pt-n">L7</b><ul>
+            <li><b>http</b><code>200 · 182 ms</code><span>{{probes.http}}</span></li>
+            <li><b>ssh-banner</b><code>SSH-2.0 · 38 ms</code><span>{{probes.ssh}}</span></li>
+            <li><b>dns</b><code>A 192.0.2.10 · 9 ms</code><span>{{probes.dns}}</span></li>
+          </ul></li>
+          <li class="pt-layer l6"><b class="pt-n">L6</b><ul>
+            <li><b>tls</b><code>TLS 1.3 · verified · 41 ms</code><span>{{probes.tls}}</span></li>
+          </ul></li>
+          <li class="pt-layer l4"><b class="pt-n">L4</b><ul>
+            <li><b>tcp</b><code>connected · 23 ms</code><span>{{probes.tcp}}</span></li>
+            <li><b>udp-echo</b><code>nonce echoed · 27 ms</code><span>{{probes.udp}}</span></li>
+          </ul></li>
+          <li class="pt-layer l3"><b class="pt-n">L3</b><ul>
+            <li><b>icmp</b><code>echo reply · 31 ms</code><span>{{probes.icmp}}</span></li>
+          </ul></li>
+        </ul>
+      </article>
+
+      <article class="panel probes-chain">
         <h3 class="panel-title">{{probes.proxies}}</h3>
-        <ul class="rows hop"><li><b>HTTP CONNECT</b></li><li><b>HTTPS CONNECT</b></li><li><b>SOCKS5</b><span>{{probes.socks}}</span></li><li><b>OpenSSH -W</b><span>{{probes.openssh}}</span></li></ul>
-      </div>
-      <div class="panel">
+        <ol class="route">
+          <li class="r-end"><b>{{probes.observer}}</b></li>
+          <li><b>OpenSSH -W</b><span>{{probes.openssh}}</span></li>
+          <li><b>HTTP CONNECT</b></li>
+          <li><b>HTTPS CONNECT</b><span>{{probes.https}}</span></li>
+          <li><b>SOCKS5</b><span>{{probes.socks}}</span></li>
+          <li class="r-end"><b>{{probes.target}}</b></li>
+        </ol>
+        <p>{{probes.chain-note}}</p>
+      </article>
+
+      <article class="panel">
         <h3 class="panel-title">{{probes.adapters}}</h3>
-        <ul class="rows adapter"><li><b>Mihomo</b></li><li><b>Tailscale</b></li><li><b>WireGuard</b></li></ul>
-      </div>
-      <div class="panel">
+        <ul class="kit kit-adapters">
+          <li><b>Mihomo</b><code>GET /proxies</code><span>{{probes.mihomo}}</span></li>
+          <li><b>Tailscale</b><code>tailscale status --json</code><span>{{probes.tailscale}}</span></li>
+          <li><b>WireGuard</b><code>wg show wg0 dump</code><span>{{probes.wireguard}}</span></li>
+        </ul>
+        <p>{{probes.adapters-note}}</p>
+      </article>
+
+      <article class="panel">
         <h3 class="panel-title">{{probes.edges}}</h3>
-        <ul class="rows edge-list"><li><b>Cloudflare</b><span>Workers, Pages</span></li><li><b>Vercel</b></li><li><b>Supabase</b></li></ul>
-      </div>
+        <ul class="kit kit-edges">
+          <li><b>Cloudflare</b><code>edge</code><span>{{probes.cloudflare}}</span></li>
+          <li><b>Vercel</b><code>edge</code><span>{{probes.vercel}}</span></li>
+          <li><b>Supabase</b><code>platform</code><span>{{probes.supabase}}</span></li>
+        </ul>
+        <p>{{probes.edges-note}}</p>
+      </article>
     </div>
   </div>
 </section>

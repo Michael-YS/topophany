@@ -29,9 +29,9 @@
 <meta property="og:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
-<link rel="stylesheet" href="/css/site.164ac075be3c.css">
+<link rel="stylesheet" href="/css/site.c04787c168ca.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
-<script type="module" src="/js/site.6c9b422ff6fa.js"></script>
+<script type="module" src="/js/site.8fd064878dfd.js"></script>
 <script type="application/json" id="strings">{"replay":"再生中","paused":"一時停止","pause":"再生を一時停止","play":"再生する","recording":"Topophany ターミナル UI の録画：{title}。{text}","missing":"{tab} はこの録画に含まれていません。{cmd} を実行すると見られます。","failed":"録画を読み込めませんでした","copy":"コピー","copied":"コピーしました","place.shanghai":"上海","place.tokyo":"東京","place.singapore":"シンガポール","place.frankfurt":"フランクフルト","place.london":"ロンドン","place.ashburn":"アッシュバーン","place.los-angeles":"ロサンゼルス","place.sao-paulo":"サンパウロ","place.sydney":"シドニー","place.mumbai":"ムンバイ","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/ja/","inLanguage":"ja","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"ネットワークトポロジーと稼働状況をセルフホストで監視し、ターミナル UI で読む。Go のバイナリ 1 つで、何を、どこから、いつ測ったかを示します。","softwareVersion":"0.8.1"}]}</script>
 </head>
@@ -188,13 +188,18 @@
 
       <article class="panel">
         <h3 class="panel-title">エッジが応答した</h3>
-        <div class="edge">
-          <span class="e-visitors">訪問者</span>
-          <span class="e-wire ok" aria-hidden="true"></span>
-          <div class="e-node e-cf"><b>Cloudflare · FRA</b><span class="ok">● HTTP 521 · エッジは稼働</span></div>
-          <span class="e-wire bad" aria-hidden="true"><i>✖</i></span>
-          <div class="e-node"><b>ニューヨークのオリジン</b><span class="warn">▲ 影響あり</span></div>
+        <div class="seq" role="img" aria-label="フランクフルトからのチェックが Cloudflare 経由でサイトに問い合わせる。エッジはニューヨークのオリジンに接続できず、自ら HTTP 521 を返す。エッジは稼働しており、オリジンはどちらとも証明されていない。">
+          <p class="seq-who"><b>フランクフルト</b><span>worker · DigitalOcean</span></p>
+          <p class="seq-who seq-cf"><b>Cloudflare</b><span>エッジ · FRA</span></p>
+          <p class="seq-who"><b>ニューヨーク</b><span>オリジン · Oracle</span></p>
+          <i class="seq-life"></i><i class="seq-life"></i><i class="seq-life"></i><i class="seq-act"></i>
+          <p class="seq-msg seq-ask"><span>GET /</span></p>
+          <p class="seq-msg seq-lost"><span>接続拒否</span></p>
+          <p class="seq-msg seq-back"><span>HTTP 521</span><small>cf-ray: …-FRA</small></p>
+          <p class="seq-state seq-up"><b>● 稼働</b><span>応答した</span></p>
+          <p class="seq-state seq-origin"><b>▲ 影響あり</b><span>未証明</span></p>
         </div>
+        <p class="verdict"><b>判定</b> 障害はエッジの奥 · オリジンは未証明</p>
         <p>CDN からの応答が証明するのは、何を名乗ろうとエッジだけ。オリジンを証明するのは、エッジを通らないオリジン自身のチェックだけです。</p>
       </article>
 
@@ -274,26 +279,61 @@
       <h2>計測できるもの</h2>
       <p class="lead">ネイティブのプローブ、プロキシチェーン、そして既存ツール向けの読み取り専用アダプター。</p>
     </div>
-    <div class="panel stack">
-      <h3 class="panel-title">ネイティブプローブ</h3>
-      <div class="layer l7"><span class="layer-n">L7</span><ul><li><b>HTTP</b><span>ステータス、本文、ヘッダー、出口 IP</span></li><li><b>SSH</b><span>バナー</span></li><li><b>DNS</b><span>A, AAAA</span></li></ul></div>
-      <div class="layer l6"><span class="layer-n">L6</span><ul><li><b>TLS</b><span>証明書の検証</span></li></ul></div>
-      <div class="layer l4"><span class="layer-n">L4</span><ul><li><b>TCP</b><span>接続</span></li><li><b>UDP</b><span>エコー、ランダムな nonce</span></li></ul></div>
-      <div class="layer l3"><span class="layer-n">L3</span><ul><li><b>ICMP</b><span>IPv4</span></li></ul></div>
-    </div>
-    <div class="grid-3 panes">
-      <div class="panel">
+    <div class="probes">
+      <article class="panel probes-native">
+        <h3 class="panel-title">ネイティブプローブ</h3>
+        <div class="pt-h" aria-hidden="true"><span>チェック</span><span>根拠</span><span>合格が示すもの</span></div>
+        <ul class="pt">
+          <li class="pt-layer l7"><b class="pt-n">L7</b><ul>
+            <li><b>http</b><code>200 · 182 ms</code><span>期待したステータス・本文・ヘッダー・出口 IP</span></li>
+            <li><b>ssh-banner</b><code>SSH-2.0 · 38 ms</code><span>SSH バナー。ログインではない</span></li>
+            <li><b>dns</b><code>A 192.0.2.10 · 9 ms</code><span>期待した A / AAAA レコード</span></li>
+          </ul></li>
+          <li class="pt-layer l6"><b class="pt-n">L6</b><ul>
+            <li><b>tls</b><code>TLS 1.3 · verified · 41 ms</code><span>検証済みの証明書チェーンと名前</span></li>
+          </ul></li>
+          <li class="pt-layer l4"><b class="pt-n">L4</b><ul>
+            <li><b>tcp</b><code>connected · 23 ms</code><span>接続できたこと。その先は問わない</span></li>
+            <li><b>udp-echo</b><code>nonce echoed · 27 ms</code><span>ランダムな nonce が返ってきたこと</span></li>
+          </ul></li>
+          <li class="pt-layer l3"><b class="pt-n">L3</b><ul>
+            <li><b>icmp</b><code>echo reply · 31 ms</code><span>エコー応答（IPv4 のみ）</span></li>
+          </ul></li>
+        </ul>
+      </article>
+
+      <article class="panel probes-chain">
         <h3 class="panel-title">プロキシチェーン</h3>
-        <ul class="rows hop"><li><b>HTTP CONNECT</b></li><li><b>HTTPS CONNECT</b></li><li><b>SOCKS5</b><span>リモート DNS</span></li><li><b>OpenSSH -W</b><span>ホスト検証</span></li></ul>
-      </div>
-      <div class="panel">
+        <ol class="route">
+          <li class="r-end"><b>観測点</b></li>
+          <li><b>OpenSSH -W</b><span>先頭ホップ。ホスト鍵を検証</span></li>
+          <li><b>HTTP CONNECT</b></li>
+          <li><b>HTTPS CONNECT</b><span>プロキシの TLS を検証</span></li>
+          <li><b>SOCKS5</b><span>リモート DNS</span></li>
+          <li class="r-end"><b>ターゲット</b></li>
+        </ol>
+        <p>最大 12 ホップ。HTTP、TCP、TLS、SSH のチェックは、そのすべてを順に通ります。</p>
+      </article>
+
+      <article class="panel">
         <h3 class="panel-title">読み取り専用アダプター</h3>
-        <ul class="rows adapter"><li><b>Mihomo</b></li><li><b>Tailscale</b></li><li><b>WireGuard</b></li></ul>
-      </div>
-      <div class="panel">
+        <ul class="kit kit-adapters">
+          <li><b>Mihomo</b><code>GET /proxies</code><span>コアが報告するモード、チェーン、選択中のノード</span></li>
+          <li><b>Tailscale</b><code>tailscale status --json</code><span>ピアのオンライン状態、直結かリレーか</span></li>
+          <li><b>WireGuard</b><code>wg show wg0 dump</code><span>最後のハンドシェイクと転送量。鍵は保持しない</span></li>
+        </ul>
+        <p>ツールの報告は報告として示し、エンドツーエンドの合格とはみなしません。</p>
+      </article>
+
+      <article class="panel">
         <h3 class="panel-title">エッジとプラットフォーム</h3>
-        <ul class="rows edge-list"><li><b>Cloudflare</b><span>Workers, Pages</span></li><li><b>Vercel</b></li><li><b>Supabase</b></li></ul>
-      </div>
+        <ul class="kit kit-edges">
+          <li><b>Cloudflare</b><code>edge</code><span>Workers と Pages。応答した POP も</span></li>
+          <li><b>Vercel</b><code>edge</code><span>Functions。エッジと関数のリージョンも</span></li>
+          <li><b>Supabase</b><code>platform</code><span>リージョンにあるマネージドサービス</span></li>
+        </ul>
+        <p>応答は送ったエッジのものとして記録し、その奥のオリジンのものにはしません。</p>
+      </article>
     </div>
   </div>
 </section>

@@ -431,27 +431,92 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 .v-verdict { fill: var(--text); font-size: 12px; }
 .v-k { fill: var(--warn); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 
-/* Edge: nodes drawn as the network map draws them, a name in the border. */
-.edge { flex: 1; display: flex; align-items: center; padding: 18px 0 6px; font: 13px/1.4 var(--mono); }
-.e-visitors { color: var(--muted); font-style: italic; white-space: nowrap; }
-.e-node { flex: none; display: grid; justify-items: start; padding: 0 12px 9px; border: 1px solid var(--line); border-radius: 6px; }
-/* The name sits in the top border but still sizes the box. */
-.e-node b { margin: -.72em 0 5px -5px; padding: 0 5px; background: var(--ink); color: var(--glow); font-weight: 600; white-space: nowrap; }
-.e-node span { white-space: nowrap; font-size: 12px; }
-.e-cf { border-color: rgba(253, 186, 116, .45); }
-.e-cf b { color: #fdba74; }
-.e-wire { flex: 1; min-width: 20px; height: 1.5px; margin: 0 6px; position: relative; }
-.e-wire.ok { background: var(--up); }
-.e-wire.bad { background: repeating-linear-gradient(90deg, var(--down) 0 4px, transparent 4px 8px); }
-.e-wire i { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 0 3px; background: var(--ink); color: var(--down); font-style: normal; font-size: 12px; line-height: 1; }
-@media (max-width: 560px) {
-  .edge { flex-direction: column; align-items: flex-start; }
-  .e-wire { flex: none; width: 1.5px; height: 22px; min-width: 0; margin: 4px 0 4px 18px; }
-  .e-wire.bad { background: repeating-linear-gradient(180deg, var(--down) 0 4px, transparent 4px 8px); }
+/* Edge: the exchange as a sequence diagram, who asked whom and who answered.
+   Three lifelines stand at the middles of a six-column grid, so each arrow
+   runs from one middle to the next; an arrow is a grid of its own, its label
+   over the line and any note under it. */
+.seq {
+  flex: 1;
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: auto 10px repeat(3, auto) 10px auto;
+  align-content: center;
+  padding-top: 4px;
+  font: 12px/1.35 var(--mono);
+}
+.seq p { margin: 0; }
+.seq-who {
+  grid-row: 1; grid-column: span 2; justify-self: center;
+  display: grid; justify-items: center; gap: 3px; max-width: calc(100% - 8px);
+  padding: 7px 12px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+  text-align: center;
+}
+.seq-who b { color: var(--glow); font-weight: 600; font-size: 12.5px; }
+.seq-who span { color: var(--muted); font-size: 11px; }
+.seq-cf { border-color: rgba(253, 186, 116, .45); }
+.seq-cf b { color: #fdba74; }
+.seq-life { grid-row: 2 / 7; border-left: 1px dashed #2f4558; }
+.seq-life:nth-of-type(1) { grid-column: 2; }
+.seq-life:nth-of-type(2) { grid-column: 4; }
+.seq-life:nth-of-type(3) { grid-column: 6; }
+/* The edge is busy from the request it takes to the answer it gives. */
+.seq-act {
+  grid-row: 3 / 6; grid-column: 4; justify-self: start; width: 8px; margin: 14px 0 15px -4px;
+  border: 1px solid rgba(253, 186, 116, .55); border-radius: 2px; background: #1d1a17;
+}
+.seq-msg {
+  position: relative; z-index: 1;
+  display: grid; grid-template-rows: auto 11px auto; justify-items: center;
+  padding: 7px 0; color: var(--muted);
+}
+.seq-msg span { grid-row: 1; padding: 0 6px; color: var(--text); }
+.seq-msg small { grid-row: 3; padding-top: 1px; color: var(--faint); font-size: 11px; white-space: nowrap; }
+.seq-msg::before, .seq-msg::after { content: ""; grid-row: 2; grid-column: 1; align-self: center; }
+.seq-msg::before { justify-self: stretch; border-top: 1.5px solid currentColor; }
+.seq-msg::after { justify-self: end; border: 4.5px solid transparent; border-left: 8px solid currentColor; border-right: 0; }
+.seq-ask { grid-row: 3; grid-column: 2 / 4; }
+.seq-ask::before, .seq-ask::after { margin-right: 4px; }
+.seq-lost { grid-row: 4; grid-column: 4 / 6; color: var(--down); }
+.seq-lost::before { margin: 0 15px 0 4px; border-top-style: dashed; }
+.seq-lost::after { content: "✖"; border: 0; font-size: 11px; line-height: 1; margin-right: 1px; }
+.seq-lost span { color: var(--down); }
+.seq-back { grid-row: 5; grid-column: 2 / 4; color: var(--up); }
+.seq-back::before { margin-right: 4px; }
+.seq-back::after { justify-self: start; border-left: 0; border-right: 8px solid currentColor; }
+.seq-back span { color: var(--up); font-weight: 600; }
+.seq-state { grid-row: 7; display: grid; justify-items: center; gap: 2px; padding-top: 8px; text-align: center; }
+.seq-state b { font-weight: 600; font-size: 12.5px; }
+.seq-state span { color: var(--muted); font-size: 11px; }
+.seq-up { grid-column: 3 / 5; }
+.seq-up b { color: var(--up); }
+.seq-origin { grid-column: 5 / 7; }
+.seq-origin b { color: var(--warn); }
+/* Played once, when first seen (site.js arms it): the request, the edge's
+   failed connection, its answer, then what each of them proves. */
+.seq.armed :is(.seq-msg, .seq-state, .seq-act) { opacity: 0; }
+.seq.play :is(.seq-msg, .seq-state, .seq-act) { animation: seq-in .35s ease-out var(--at, 0s) forwards; }
+.seq.play .seq-msg::before { animation: seq-draw .5s cubic-bezier(.3, .7, .3, 1) var(--at) backwards; }
+.seq.play .seq-msg::after { animation: seq-in .2s ease-out calc(var(--at) + .4s) backwards; }
+.seq-ask { --at: .2s; }
+.seq-act { --at: .65s; }
+.seq-lost { --at: .9s; }
+.seq-back { --at: 1.6s; }
+.seq-state { --at: 2.3s; }
+.seq-msg::before { transform-origin: left; }
+.seq-back::before { transform-origin: right; }
+@keyframes seq-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes seq-draw { from { transform: scaleX(0); } }
+.panel > .verdict {
+  margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line-soft);
+  font: 12px/1.5 var(--mono); color: var(--text);
+}
+.verdict b { margin-right: 10px; color: var(--warn); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+@media (max-width: 420px) {
+  .seq-who { padding: 6px 6px 7px; }
+  .seq-who span, .seq-state span { font-size: 10.5px; }
 }
 
 /* An incident, as its evidence reads in the TUI. */
-.incident { font: 12.5px/1.55 var(--mono); border: 1px solid var(--line-soft); border-radius: 6px; overflow: hidden; }
+.incident { margin-block: auto; font: 12.5px/1.55 var(--mono); border: 1px solid var(--line-soft); border-radius: 6px; overflow: hidden; }
 .inc-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 14px; background: rgba(248, 113, 113, .07); border-bottom: 1px solid var(--line-soft); }
 .inc-h b { color: var(--down); font-weight: 700; letter-spacing: .04em; }
 .inc-h span { color: var(--glow); }
@@ -520,36 +585,95 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 .notes h3 { font: 600 17px/1.35 var(--sans); color: var(--glow); margin-bottom: 10px; }
 .notes p { color: var(--muted); font-size: 15.5px; }
 
-/* Probes: the native ones as a stack, lit from the top as the headings
-   are; each layer's probes share its row. */
-.stack { gap: 8px; padding-top: 32px; margin-bottom: 40px; }
-.layer { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: stretch; gap: 12px; --c: var(--accent); }
-.layer.l7 { --c: #f0fdfa; --t: rgba(240, 253, 250, .05); }
-.layer.l6 { --c: #a7f3e4; --t: rgba(167, 243, 228, .05); }
-.layer.l4 { --c: #5eead4; --t: rgba(94, 234, 212, .05); }
-.layer.l3 { --c: #2db3a3; --t: rgba(45, 179, 163, .06); }
-.layer-n { align-self: center; font: 600 12px/1 var(--mono); color: var(--c); }
-.layer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.layer li {
-  flex: 1 1 180px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px;
-  padding: 11px 14px; border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); background: var(--t);
-  font: 13px/1.4 var(--mono);
+/* Probes: the native ones by layer, each with the evidence it leaves and
+   what a pass of it proves; the layers are lit from the top as the headings
+   are. Beside them a proxy chain, drawn as the route a check takes; below,
+   what is read from tools and edges. */
+.probes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 40px 28px; }
+.probes-native { grid-column: span 4; }
+.probes-chain { grid-column: span 2; }
+.probes > .panel:nth-child(n + 3) { grid-column: span 3; }
+.probes .panel > p:last-child { margin-top: auto; padding-top: 20px; font-size: 14.5px; }
+@media (max-width: 1080px) { .probes-native, .probes-chain { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .probes > .panel:nth-child(n) { grid-column: 1 / -1; } }
+
+.pt-h, .pt li li { display: grid; grid-template-columns: 96px minmax(0, .8fr) minmax(0, 1.2fr); gap: 2px 18px; }
+.pt-h {
+  padding: 0 0 10px 64px; border-bottom: 1px solid var(--line-soft);
+  font: 500 11px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
 }
-.layer li b { color: var(--c); font-weight: 700; }
-.layer li span { color: var(--muted); font-family: var(--sans); font-size: 14px; }
-.panes .panel { padding-bottom: 18px; }
-.rows { list-style: none; margin: 0; padding: 0; font: 13px/1.4 var(--mono); }
-.rows li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
-.rows li:last-child { border-bottom: 0; }
-.rows li::before { width: 1em; flex: none; }
-.rows b { color: var(--text); font-weight: 500; }
-.rows span { color: var(--muted); font-family: var(--sans); font-size: 14px; }
-.hop li::before { content: "⇢"; color: var(--accent); }
-.adapter li::before { content: "◇"; color: var(--sky); }
-.edge-list li::before { content: "●"; color: #fdba74; }
-.edge-list b { color: #fdba74; }
-@media (max-width: 560px) { .layer { grid-template-columns: 26px minmax(0, 1fr); gap: 8px; } }
+.pt { list-style: none; margin: 0; padding: 0; }
+.pt-layer { display: grid; grid-template-columns: 46px minmax(0, 1fr); column-gap: 18px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
+.pt-layer:last-child { border-bottom: 0; padding-bottom: 0; }
+.pt-layer.l7 { --c: #f0fdfa; }
+.pt-layer.l6 { --c: #a7f3e4; }
+.pt-layer.l4 { --c: #5eead4; }
+.pt-layer.l3 { --c: #2db3a3; }
+.pt-n { position: relative; padding: 10px 0 0 14px; font: 700 12.5px/1 var(--mono); color: var(--c); }
+.pt-n::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 2px; background: var(--c); opacity: .8; }
+.pt-layer ul { list-style: none; margin: 0; padding: 0; }
+.pt li li { align-items: baseline; padding: 7px 0; }
+.pt li li b { font: 600 13px/1.4 var(--mono); color: var(--c); }
+.pt li li code {
+  min-width: 0; padding: 0; border: 0; background: none;
+  font-size: 12.5px; line-height: 1.4; color: var(--text); overflow: hidden; text-overflow: ellipsis;
+}
+.pt li li code::before { content: "● "; color: var(--up); }
+.pt li li span { color: var(--muted); font-size: 14px; line-height: 1.4; }
+@media (max-width: 640px) {
+  .pt-h { display: none; }
+  .pt-layer { grid-template-columns: 34px minmax(0, 1fr); column-gap: 12px; }
+  .pt li li { grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; }
+  .pt li li span { grid-column: 1 / -1; }
+}
+
+/* A proxy chain: the stops a check passes, in order, spread down the
+   panel's height. */
+.route { flex: 1; list-style: none; margin: 0; padding: 2px 0 0; display: flex; flex-direction: column; }
+.route li { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 0 0 18px 30px; }
+.route li:not(:last-child) { flex: 1 1 auto; }
+.route li:last-child { padding-bottom: 0; }
+.route li::before {
+  content: ""; position: absolute; left: 5px; top: 5px;
+  width: 8px; height: 8px; border-radius: 1.5px; transform: rotate(45deg); background: var(--accent);
+}
+.route li:not(:last-child)::after { content: ""; position: absolute; left: 8.5px; top: 18px; bottom: 3px; width: 1.5px; border-radius: 1px; background: #2a6f69; }
+.route b { font: 600 13px/1.4 var(--mono); color: var(--glow); }
+.route span { color: var(--muted); font-size: 14px; line-height: 1.4; }
+.route .r-end b { font-weight: 500; color: var(--muted); }
+.route .r-end::before { left: 3px; top: 3px; width: 12px; height: 12px; border-radius: 50%; transform: none; background: var(--ink); border: 1.5px solid var(--accent); }
+/* A panel wide enough lays the route out across it, the names under the stops. */
+.probes-chain { container-type: inline-size; }
+@container (min-width: 700px) {
+  .route { flex-direction: row; padding: 4px 0 6px; }
+  .route li { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 4px; padding: 26px 14px 0 0; }
+  .route li:not(:last-child) { flex: 1 1 0; }
+  .route li:last-child { flex: none; padding-right: 0; }
+  .route li:not(:last-child)::after { left: 21px; right: 6px; top: 8.5px; bottom: auto; width: auto; height: 1.5px; }
+}
+
+/* Adapters and edges: what each reads, and from where. */
+.kit { list-style: none; margin: 0; padding: 0; }
+.kit li {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 14px; align-items: baseline;
+  padding: 13px 0 13px 26px; border-bottom: 1px solid var(--line-soft);
+}
+.kit li:first-child { padding-top: 0; }
+.kit li:last-child { border-bottom: 0; padding-bottom: 0; }
+.kit li::before { position: absolute; left: 0; font: 12px/1.4 var(--mono); }
+.kit li:first-child::before { top: 1px; }
+.kit li:not(:first-child)::before { top: 14px; }
+.kit b { font: 600 14px/1.4 var(--mono); }
+.kit code {
+  justify-self: end; max-width: 100%; padding: 0 7px; border: 1px solid var(--line); border-radius: 4px; background: none;
+  font-size: 11.5px; line-height: 1.6; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+}
+.kit span { grid-column: 1 / -1; color: var(--muted); font-size: 14.5px; line-height: 1.5; }
+.kit-adapters li::before { content: "◇"; color: var(--sky); }
+.kit-adapters b { color: var(--sky); }
+.kit-edges li::before { content: "●"; color: #fdba74; }
+.kit-edges b { color: #fdba74; }
+.kit-edges code { border-color: rgba(253, 186, 116, .3); color: #fdba74; }
 
 /* Install */
 .install-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 40px 48px; align-items: start; }

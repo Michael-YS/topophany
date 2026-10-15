@@ -29,9 +29,9 @@
 <meta property="og:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
-<link rel="stylesheet" href="/css/site.164ac075be3c.css">
+<link rel="stylesheet" href="/css/site.c04787c168ca.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
-<script type="module" src="/js/site.6c9b422ff6fa.js"></script>
+<script type="module" src="/js/site.8fd064878dfd.js"></script>
 <script type="application/json" id="strings">{"replay":"replay","paused":"paused","pause":"Pause the replay","play":"Play the replay","recording":"Recording of the Topophany terminal UI: {title}. {text}","missing":"{tab} is not in this recording. Run {cmd} to see it.","failed":"the recording could not be loaded","copy":"Copy","copied":"Copied","place.shanghai":"Shanghai","place.tokyo":"Tokyo","place.singapore":"Singapore","place.frankfurt":"Frankfurt","place.london":"London","place.ashburn":"Ashburn","place.los-angeles":"Los Angeles","place.sao-paulo":"São Paulo","place.sydney":"Sydney","place.mumbai":"Mumbai","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/","inLanguage":"en","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Self-hosted network topology and uptime monitoring with a terminal UI. One Go binary shows what was measured, from where, and how recently.","softwareVersion":"0.8.1"}]}</script>
 </head>
@@ -188,13 +188,18 @@
 
       <article class="panel">
         <h3 class="panel-title">The edge answered</h3>
-        <div class="edge">
-          <span class="e-visitors">visitors</span>
-          <span class="e-wire ok" aria-hidden="true"></span>
-          <div class="e-node e-cf"><b>Cloudflare · FRA</b><span class="ok">● HTTP 521 · edge up</span></div>
-          <span class="e-wire bad" aria-hidden="true"><i>✖</i></span>
-          <div class="e-node"><b>New York origin</b><span class="warn">▲ affected</span></div>
+        <div class="seq" role="img" aria-label="A check from Frankfurt asks for the site through Cloudflare. The edge cannot reach the origin in New York and answers HTTP 521 itself: the edge is up, and the origin is not proven either way.">
+          <p class="seq-who"><b>Frankfurt</b><span>worker · DigitalOcean</span></p>
+          <p class="seq-who seq-cf"><b>Cloudflare</b><span>edge · FRA</span></p>
+          <p class="seq-who"><b>New York</b><span>origin · Oracle</span></p>
+          <i class="seq-life"></i><i class="seq-life"></i><i class="seq-life"></i><i class="seq-act"></i>
+          <p class="seq-msg seq-ask"><span>GET /</span></p>
+          <p class="seq-msg seq-lost"><span>refused</span></p>
+          <p class="seq-msg seq-back"><span>HTTP 521</span><small>cf-ray: …-FRA</small></p>
+          <p class="seq-state seq-up"><b>● up</b><span>it answered</span></p>
+          <p class="seq-state seq-origin"><b>▲ affected</b><span>not proven</span></p>
         </div>
+        <p class="verdict"><b>verdict</b> the fault lies behind the edge · origin unproven</p>
         <p>An answer from the CDN proves the edge, whatever it says. Only a check of its own proves the origin.</p>
       </article>
 
@@ -274,26 +279,61 @@
       <h2>What it measures</h2>
       <p class="lead">Native probes, proxy chains, and read-only adapters for tools you already run.</p>
     </div>
-    <div class="panel stack">
-      <h3 class="panel-title">Native probes</h3>
-      <div class="layer l7"><span class="layer-n">L7</span><ul><li><b>HTTP</b><span>status, body, headers, egress IP</span></li><li><b>SSH</b><span>banner</span></li><li><b>DNS</b><span>A, AAAA</span></li></ul></div>
-      <div class="layer l6"><span class="layer-n">L6</span><ul><li><b>TLS</b><span>certificate validation</span></li></ul></div>
-      <div class="layer l4"><span class="layer-n">L4</span><ul><li><b>TCP</b><span>connect</span></li><li><b>UDP</b><span>echo, random nonce</span></li></ul></div>
-      <div class="layer l3"><span class="layer-n">L3</span><ul><li><b>ICMP</b><span>IPv4</span></li></ul></div>
-    </div>
-    <div class="grid-3 panes">
-      <div class="panel">
+    <div class="probes">
+      <article class="panel probes-native">
+        <h3 class="panel-title">Native probes</h3>
+        <div class="pt-h" aria-hidden="true"><span>check</span><span>evidence</span><span>a pass proves</span></div>
+        <ul class="pt">
+          <li class="pt-layer l7"><b class="pt-n">L7</b><ul>
+            <li><b>http</b><code>200 · 182 ms</code><span>expected status, body, headers and egress IP</span></li>
+            <li><b>ssh-banner</b><code>SSH-2.0 · 38 ms</code><span>an SSH banner, not a login</span></li>
+            <li><b>dns</b><code>A 192.0.2.10 · 9 ms</code><span>expected A and AAAA records</span></li>
+          </ul></li>
+          <li class="pt-layer l6"><b class="pt-n">L6</b><ul>
+            <li><b>tls</b><code>TLS 1.3 · verified · 41 ms</code><span>a verified certificate chain and name</span></li>
+          </ul></li>
+          <li class="pt-layer l4"><b class="pt-n">L4</b><ul>
+            <li><b>tcp</b><code>connected · 23 ms</code><span>a connection, and nothing behind it</span></li>
+            <li><b>udp-echo</b><code>nonce echoed · 27 ms</code><span>a random nonce, echoed back</span></li>
+          </ul></li>
+          <li class="pt-layer l3"><b class="pt-n">L3</b><ul>
+            <li><b>icmp</b><code>echo reply · 31 ms</code><span>an echo reply, IPv4 only</span></li>
+          </ul></li>
+        </ul>
+      </article>
+
+      <article class="panel probes-chain">
         <h3 class="panel-title">Proxy chains</h3>
-        <ul class="rows hop"><li><b>HTTP CONNECT</b></li><li><b>HTTPS CONNECT</b></li><li><b>SOCKS5</b><span>remote DNS</span></li><li><b>OpenSSH -W</b><span>verified hosts</span></li></ul>
-      </div>
-      <div class="panel">
+        <ol class="route">
+          <li class="r-end"><b>observer</b></li>
+          <li><b>OpenSSH -W</b><span>first hop, host key verified</span></li>
+          <li><b>HTTP CONNECT</b></li>
+          <li><b>HTTPS CONNECT</b><span>the proxy's TLS verified</span></li>
+          <li><b>SOCKS5</b><span>remote DNS</span></li>
+          <li class="r-end"><b>target</b></li>
+        </ol>
+        <p>Up to 12 hops. HTTP, TCP, TLS and SSH checks run through every one, in order.</p>
+      </article>
+
+      <article class="panel">
         <h3 class="panel-title">Read-only adapters</h3>
-        <ul class="rows adapter"><li><b>Mihomo</b></li><li><b>Tailscale</b></li><li><b>WireGuard</b></li></ul>
-      </div>
-      <div class="panel">
+        <ul class="kit kit-adapters">
+          <li><b>Mihomo</b><code>GET /proxies</code><span>mode, chain and selection, as the core reports them</span></li>
+          <li><b>Tailscale</b><code>tailscale status --json</code><span>peer online, direct or relayed</span></li>
+          <li><b>WireGuard</b><code>wg show wg0 dump</code><span>last handshake and byte counts; keys never kept</span></li>
+        </ul>
+        <p>What a tool reports is shown as reported, never as an end-to-end pass.</p>
+      </article>
+
+      <article class="panel">
         <h3 class="panel-title">Edges and platforms</h3>
-        <ul class="rows edge-list"><li><b>Cloudflare</b><span>Workers, Pages</span></li><li><b>Vercel</b></li><li><b>Supabase</b></li></ul>
-      </div>
+        <ul class="kit kit-edges">
+          <li><b>Cloudflare</b><code>edge</code><span>Workers and Pages; the POP that answered</span></li>
+          <li><b>Vercel</b><code>edge</code><span>Functions; the edge and function region</span></li>
+          <li><b>Supabase</b><code>platform</code><span>managed services, in their region</span></li>
+        </ul>
+        <p>An answer is credited to the edge that sent it, never to the origin behind it.</p>
+      </article>
     </div>
   </div>
 </section>

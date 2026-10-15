@@ -400,6 +400,18 @@ function vantageMap() {
   }).catch(() => {});
 }
 
+// replays plays each sequence diagram once, the first time it is seen. It
+// is armed here, so a page without its script shows the whole exchange.
+function replays() {
+  if (reduced) return;
+  for (const seq of $$('.seq')) {
+    seq.classList.add('armed');
+    new IntersectionObserver(([e], io) => {
+      if (e.isIntersecting) { io.disconnect(); seq.classList.add('play'); }
+    }, { threshold: 0.6 }).observe(seq);
+  }
+}
+
 // strips draw recent samples as a check's evidence does in the TUI: one
 // slot per sample coloured by its outcome (o passed, x failed, . none
 // taken), over a bar for what each passing sample took.
@@ -536,6 +548,7 @@ hero();
 tour();
 dotNumerals();
 vantageMap();
+replays();
 strips();
 copyButtons();
 tabs();

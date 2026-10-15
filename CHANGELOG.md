@@ -90,6 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which now needs ffmpeg as well as a Chromium. The stills it makes keep
   their pixels in a quarter fewer bytes.
 
+### Changed
+
+- The homepage's "The edge answered" panel draws the exchange it is
+  about, as a sequence diagram played once as it comes into view: a
+  check from Frankfurt asks Cloudflare for the site, the edge cannot
+  reach the origin in New York and answers HTTP 521 itself, and below
+  each, what that proves of it: the edge up, the origin unproven. "What
+  it measures" lists the native probes by layer, each with the evidence
+  it leaves and what a pass of it proves; draws a proxy chain as the
+  route a check takes through its hops; and says what each adapter reads
+  and what each edge is credited with.
+
 ### Fixed
 
 - A new version of the homepage shows without a forced refresh. Its
