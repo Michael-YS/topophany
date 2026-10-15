@@ -214,3 +214,13 @@ The terminal interface (`topo`, `topo edit` and `topo preview`) reads these.
 ### Storage allocation
 
 Observers accept `storage_weight` (omitted/zero means 1; otherwise 1–1000). This trusted administrative setting changes quota allocation, not check identity or authorization scope. `/v1/snapshot` adds optional `storage`: global `receipts`, `max_receipts`, `state_bytes`, `max_state_bytes`, `receipt_hours`, and `observers` containing `observer`, `receipts`, `receipt_limit`, `bytes`, `byte_limit`, `last_hour_receipts`, `settled_receipts`, `fills` and `full_in_ns`. An observer-filtered view includes only that observer's allocation rows. Legacy snapshots may omit it. `topo capacity --help` describes offline preflight flags.
+
+### Central address definitions
+
+An optional top-level `addresses` object maps up to 256 stable IDs to literal IPv4, IPv6 or DNS hostnames. For example, `"addresses":{"dmit-public":"154.17.5.197"}` and an endpoint `"address":"${dmit-public}:22"` share one declared address. IPv6 references in host:port targets need brackets: `[${entry-v6}]:443`.
+
+References resolve in endpoint addresses; check `target`, `bind_ip`, `resolve_ip`, `server_name`, DNS names/expected IPs, HTTP expected exits and adapter peers; and proxy addresses/server names. They never read environment variables or interpolate credentials, filesystem paths, commands or notes. Definitions cannot be recursive, URLs or secrets. Missing/malformed references fail validation; expanded fields are bounded to 8192 bytes. See `examples/address-registry.json` (paused, documentation addresses only).
+
+`topo address --config topology.json` lists definitions. `--set NAME=IP_OR_HOSTNAME` validates and atomically updates the local file; `--delete NAME` refuses definitions still referenced. `--dry-run` previews the change. Output lists `changed_checks`: precisely the checks whose resolved measurement contract changes. Distribute/reload the reviewed topology to apply it; the command performs no remote writes.
+
+Local config, the editor and deployment bundles preserve references. Public topology and server cards show resolved addresses; aliases themselves are omitted from public topology. Replacing a literal with an equivalent reference, renaming a definition or changing an unused definition preserves measurement history. Changing an address starts new series only for dependent checks. Keep stable names and purposes in labels/notes and let the address rows show current endpoints, avoiding a second copy of IPs in prose.

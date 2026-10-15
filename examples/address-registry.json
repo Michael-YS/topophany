@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "project": "address-registry-demo",
+  "addresses": {"entry-public": "192.0.2.10", "home-lan": "192.0.2.20"},
+  "nodes": [{"id": "home", "name": "Home · Windows"}, {"id": "entry", "name": "DMIT", "notes": "Primary entry; addresses come from endpoints."}],
+  "observers": [{"id": "home", "name": "Home", "node": "home", "context": "Explicit local network namespace"}],
+  "endpoints": [{"id": "entry-ssh", "node": "entry", "address": "${entry-public}:22", "network": "public"}],
+  "services": [],
+  "paths": [],
+  "checks": [{"id": "entry-ssh", "name": "DMIT · SSH", "observer": "home", "endpoint": "entry-ssh", "kind": "ssh-banner", "disabled": true}]
+}

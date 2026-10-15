@@ -40,7 +40,8 @@ type contract struct {
 // and collectors store and count samples by it; like Revision, it is never
 // shown to viewers, who see PublicContract.
 func Contract(c model.Config, x model.Check) string {
-	return measurement(c.Project, x, Target(c, x), Path(c, x.Path).Proxies)
+	resolved, _ := ResolveCheck(c, x)
+	return measurement(c.Project, resolved, Target(c, resolved), Path(c, resolved.Path).Proxies)
 }
 
 func measurement(project string, x model.Check, target string, proxies []model.Proxy) string {
@@ -51,6 +52,11 @@ func measurement(project string, x model.Check, target string, proxies []model.P
 
 // Contracts are the contracts of every check in c, by check ID.
 func Contracts(c model.Config) map[string]string {
+	resolved, err := ResolveAddresses(c)
+	if err != nil {
+		return map[string]string{}
+	}
+	c = resolved
 	out := make(map[string]string, len(c.Checks))
 	endpoints, paths := map[string]string{}, map[string][]model.Proxy{}
 	for _, e := range c.Endpoints {

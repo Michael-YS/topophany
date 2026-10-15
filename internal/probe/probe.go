@@ -36,6 +36,14 @@ type Runner struct {
 func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Observation {
 	start := time.Now().UTC()
 	o := model.Observation{Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: x.Observer, SampledAt: start, Outcome: "unknown", Evidence: "measured", Stage: "setup", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
+	resolved, err := config.ResolveCheck(c, x)
+	if err != nil {
+		o.Outcome = "error"
+		o.Code = "invalid_address_reference"
+		o.Detail = "network address reference could not be resolved"
+		return o
+	}
+	x = resolved
 	if x.Disabled || x.Maintenance {
 		o.Detail = "check not executed"
 		return o

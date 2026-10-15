@@ -108,3 +108,16 @@ func TestAdapterURLFragmentsAreRedacted(t *testing.T) {
 		t.Fatal("fragment leaked")
 	}
 }
+
+func TestAddressReferencesReachResolvedLoopbackTarget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) }))
+	defer server.Close()
+	c := testkit.Config()
+	c.Addresses = map[string]string{"loopback": "127.0.0.1"}
+	x := httpCheck(strings.Replace(server.URL, "127.0.0.1", "${loopback}", 1))
+	x.BindIP = "${loopback}"
+	o := (Runner{}).Run(context.Background(), c, x)
+	if o.Outcome != "ok" || o.Facts["bind_ip"] != "127.0.0.1" {
+		t.Fatal(o)
+	}
+}

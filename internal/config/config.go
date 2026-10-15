@@ -93,6 +93,16 @@ func Defaults(c *model.Config) {
 	}
 }
 func Validate(c model.Config) error {
+	if err := PresentationBounds(c); err != nil {
+		return err
+	}
+	resolved, err := ResolveAddresses(c)
+	if err != nil {
+		return err
+	}
+	return validateResolved(resolved)
+}
+func validateResolved(c model.Config) error {
 	if c.Schema != model.ConfigSchema {
 		return fmt.Errorf("unsupported schema: %d", c.Schema)
 	}
@@ -495,11 +505,13 @@ func hostHeader(v string) bool {
 }
 func Target(c model.Config, x model.Check) string {
 	if x.Target != "" {
-		return x.Target
+		value, _ := expandAddress(c.Addresses, x.Target)
+		return value
 	}
 	for _, e := range c.Endpoints {
 		if e.ID == x.Endpoint {
-			return e.Address
+			value, _ := expandAddress(c.Addresses, e.Address)
+			return value
 		}
 	}
 	return ""
@@ -515,7 +527,8 @@ func Check(c model.Config, id string) (model.Check, bool) {
 func Path(c model.Config, id string) model.Path {
 	for _, p := range c.Paths {
 		if p.ID == id {
-			return p
+			resolved, _ := resolvePath(c, p)
+			return resolved
 		}
 	}
 	return model.Path{}
@@ -550,7 +563,11 @@ func PublicURL(s string) string {
 
 // Public returns a deep copy; redaction never modifies executor configuration.
 func Public(c model.Config) model.Config {
-	out := Clone(c)
+	resolved, err := ResolveAddresses(c)
+	if err != nil {
+		return model.Config{Schema: c.Schema, Project: c.Project}
+	}
+	out := Clone(resolved)
 	for i := range out.Endpoints {
 		out.Endpoints[i].Address = PublicURL(out.Endpoints[i].Address)
 	}

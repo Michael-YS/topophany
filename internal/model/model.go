@@ -19,6 +19,8 @@ const (
 const Version = "0.9.1"
 
 type Config struct {
+	Addresses map[string]string `json:"addresses,omitempty"`
+
 	Schema    int        `json:"schema"`
 	Project   string     `json:"project"`
 	Nodes     []Node     `json:"nodes"`

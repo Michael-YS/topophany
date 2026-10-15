@@ -511,3 +511,16 @@ func TestEditorFieldsShowNoControls(t *testing.T) {
 		t.Fatal("no cursor")
 	}
 }
+
+func TestEditorSavePreservesAddressReferences(t *testing.T) {
+	m, path := editorModel(t)
+	m.Edit.Config.Addresses = map[string]string{"entry": "192.0.2.10"}
+	m.Edit.Config.Endpoints[0].Address = "https://${entry}/"
+	if _, e := m.Edit.Save(); e != nil {
+		t.Fatal(e)
+	}
+	c, e := config.Load(path)
+	if e != nil || c.Endpoints[0].Address != "https://${entry}/" || c.Addresses["entry"] != "192.0.2.10" {
+		t.Fatal(e, c.Endpoints[0])
+	}
+}

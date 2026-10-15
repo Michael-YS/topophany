@@ -53,6 +53,7 @@ Usage:
   topo install                      install a reviewed bundle; supports dry-run and rollback
   topo edit                         add/edit/delete topology entities in a local TUI
   topo preview                      open the TUI on synthetic evidence (built-in or --config)
+  topo address                      inspect/edit local address definitions; report changed checks
   topo capacity                     preflight storage allocation and migration
   topo validate                     validate a topology; print its revision
   topo once                         run local checks once; write observations as JSON
@@ -113,6 +114,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.read(ctx, args[0], args[1:], nil)
 	case "validate", "export", "once":
 		return a.topologyCommand(ctx, args[0], args[1:])
+	case "address":
+		return a.address(args[1:])
 	case "capacity":
 		return a.capacity(args[1:])
 	case "token":

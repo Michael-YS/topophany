@@ -128,6 +128,9 @@ type Sim struct {
 // New simulates c from now on, naming the scenarios in lang (one of
 // Languages; any other names them in DefaultLanguage).
 func New(c model.Config, now time.Time, lang string) *Sim {
+	if resolved, err := config.ResolveAddresses(c); err == nil {
+		c = resolved
+	}
 	s := &Sim{base: c, where: map[string]*model.Location{}, nodes: map[string]model.Node{}, ends: map[string]model.Endpoint{}, paths: map[string]model.Path{}, services: map[string]model.Service{}, obsNode: map[string]string{}, ledger: ledger.New(), contracts: config.Contracts(c)}
 	var e error
 	if s.text, e = catalog(lang); e != nil {
