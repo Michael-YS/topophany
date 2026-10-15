@@ -146,7 +146,7 @@
         <h3 class="panel-title">{{green.title}}</h3>
         <div class="tui-table" role="table" aria-label="{{green.table}}">
           <div class="tr th" role="row"><span role="columnheader">{{green.service}}</span><span role="columnheader">{{green.evidence}}</span><span role="columnheader">{{green.state}}</span></div>
-          <div class="tr" role="row"><span role="cell"><b class="ok">●</b>{{green.site}}<i>Cloudflare ⇢ S1</i></span><span role="cell">{{green.site-evidence}}<i>{{green.site-edge}}</i></span><span role="cell"></span></div>
+          <div class="tr" role="row"><span role="cell"><b class="ok">●</b>{{green.site}}<i>{{green.site-via}}</i></span><span role="cell">{{green.site-evidence}}<i>{{green.site-edge}}</i></span><span role="cell"></span></div>
           <div class="tr" role="row"><span role="cell"><b class="unk">○</b>{{green.panel}}<i>{{green.panel-notes}}</i></span><span role="cell">{{green.panel-evidence}}<i>{{green.panel-why}}</i></span><span role="cell" class="unk">unknown</span></div>
           <div class="tr" role="row"><span role="cell"><b class="bad">✖</b>{{green.entry}}<i>{{green.entry-where}}</i></span><span role="cell">{{green.entry-evidence}}<i>{{green.entry-from}}</i></span><span role="cell" class="bad">DOWN</span></div>
         </div>
@@ -164,21 +164,18 @@
           <defs>
             <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#4ade80"/></marker>
           </defs>
-          <g class="v-land" data-lon="95" data-lat="60" data-scale="2.6" data-top="8" data-bottom="166"></g>
-          <path class="v-arc v-bad" d="M46.5 90.7Q214.1 -2.5 381.6 75.5"/>
-          <path class="v-arc v-ok" d="M496.6 58.2Q439.1 34.2 386.0 72.1" marker-end="url(#arr-ok)"/>
-          <g class="v-x" transform="translate(214.1 40.3)"><circle r="7"/><path d="M-2.8 -2.8L2.8 2.8M2.8 -2.8L-2.8 2.8"/></g>
-          <text x="214.1" y="25.3" class="v-ev bad" text-anchor="middle">{{vantage.bad}}</text>
-          <text x="439.1" y="36.2" class="v-ev ok" text-anchor="middle">{{vantage.ok}}</text>
-          <g class="v-city"><circle cx="46.5" cy="90.7" r="6"/><circle cx="46.5" cy="90.7" r="2.6"/></g>
-          <g class="v-city"><circle cx="381.6" cy="75.5" r="6"/><circle cx="381.6" cy="75.5" r="2.6"/></g>
-          <g class="v-city"><circle cx="496.6" cy="58.2" r="6"/><circle cx="496.6" cy="58.2" r="2.6"/></g>
-          <text x="58.5" y="108.7" class="v-place">{{vantage.home}}</text>
-          <text x="58.5" y="122.7" class="v-name">{{vantage.home-worker}}</text>
-          <text x="381.6" y="98.5" class="v-place" text-anchor="middle">{{vantage.target}}</text>
-          <text x="381.6" y="112.5" class="v-name" text-anchor="middle">{{vantage.target-name}}</text>
-          <text x="514" y="80.2" class="v-place" text-anchor="end">{{vantage.away}}</text>
-          <text x="514" y="94.2" class="v-name" text-anchor="end">{{vantage.away-worker}}</text>
+          <g class="v-land" data-lon="{{page.vantage.lon}}" data-lat="{{page.vantage.lat}}" data-scale="{{page.vantage.scale}}" data-top="8" data-bottom="166"></g>
+          <path class="v-arc v-bad" d="{{page.vantage.bad}}"/>
+          <path class="v-arc v-ok" d="{{page.vantage.ok}}" marker-end="url(#arr-ok)"/>
+          <g class="v-x" transform="translate({{page.vantage.x}})"><circle r="7"/><path d="M-2.8 -2.8L2.8 2.8M2.8 -2.8L-2.8 2.8"/></g>
+          <text transform="translate({{page.vantage.bad-at}})" text-anchor="{{page.vantage.bad-anchor}}" class="v-ev bad">{{vantage.bad}}</text>
+          <text transform="translate({{page.vantage.ok-at}})" text-anchor="{{page.vantage.ok-anchor}}" class="v-ev ok">{{vantage.ok}}</text>
+          <g class="v-city" transform="translate({{page.vantage.home}})"><circle r="6"/><circle r="2.6"/></g>
+          <g class="v-city" transform="translate({{page.vantage.target}})"><circle r="6"/><circle r="2.6"/></g>
+          <g class="v-city" transform="translate({{page.vantage.away}})"><circle r="6"/><circle r="2.6"/></g>
+          <g transform="translate({{page.vantage.home-label}})" text-anchor="{{page.vantage.home-anchor}}"><text class="v-place">{{vantage.home}}</text><text y="14" class="v-name">{{vantage.home-worker}}</text></g>
+          <g transform="translate({{page.vantage.target-label}})" text-anchor="{{page.vantage.target-anchor}}"><text class="v-place">{{vantage.target}}</text><text y="14" class="v-name">{{vantage.target-name}}</text></g>
+          <g transform="translate({{page.vantage.away-label}})" text-anchor="{{page.vantage.away-anchor}}"><text class="v-place">{{vantage.away}}</text><text y="14" class="v-name">{{vantage.away-worker}}</text></g>
           <line x1="0" x2="520" y1="174" y2="174" class="v-rule"/>
           <text x="0" y="196" class="v-verdict"><tspan class="v-k">{{vantage.verdict-key}}</tspan>  {{vantage.verdict}}</text>
         </svg>
@@ -190,7 +187,7 @@
         <div class="edge">
           <span class="e-visitors">{{edge.visitors}}</span>
           <span class="e-wire ok" aria-hidden="true"></span>
-          <div class="e-node e-cf"><b>Cloudflare · NRT</b><span class="ok">● {{edge.up}}</span></div>
+          <div class="e-node e-cf"><b>Cloudflare · FRA</b><span class="ok">● {{edge.up}}</span></div>
           <span class="e-wire bad" aria-hidden="true"><i>✖</i></span>
           <div class="e-node"><b>{{edge.origin}}</b><span class="warn">▲ {{edge.affected}}</span></div>
         </div>
@@ -202,8 +199,8 @@
         <div class="incident" role="group" aria-label="{{guess.label}}">
           <p class="inc-h"><b>✖ INCIDENT</b><span>{{green.entry}}</span><i>{{green.entry-where}}</i></p>
           <dl>
-            <div><dt>Failed checks</dt><dd><b class="bad">✖</b> m-exit-dmit-aaitr</dd></div>
-            <div><dt>Other-observer response evidence</dt><dd><b class="ok">●</b> w-exit-s2-aaitr <b class="ok">●</b> w-exit-s2-qqpr</dd></div>
+            <div><dt>Failed checks</dt><dd><b class="bad">✖</b> m-exit-transit-a</dd></div>
+            <div><dt>Other-observer response evidence</dt><dd><b class="ok">●</b> w-exit-aux-b</dd></div>
             <div class="hyp"><dt>Hypothesis (not a finding)</dt><dd>source/path-specific interference, filtering or routing fault is possible; blocking authority and untested protocols are not established</dd></div>
           </dl>
         </div>

@@ -116,9 +116,9 @@
     </figure>
 
     <ol class="chapters" id="chapters" aria-label="Chapters">
-      <li><button type="button" data-chapter="outage" data-title="An outage arrives" data-text="Press x and the DMIT line is blocked from mainland China. Only confirmed failures turn red."><span class="ch-bar"><i></i></span><span class="ch-n">1</span><span class="ch-t">Outage</span></button></li>
+      <li><button type="button" data-chapter="outage" data-title="An outage arrives" data-text="Press x and home loses the line to the transit host in Los Angeles. Only confirmed failures turn red."><span class="ch-bar"><i></i></span><span class="ch-n">1</span><span class="ch-t">Outage</span></button></li>
       <li><button type="button" data-chapter="route" data-title="Follow the route" data-text="Select a problem and its route lights up. Enter shows the evidence."><span class="ch-bar"><i></i></span><span class="ch-n">2</span><span class="ch-t">Route</span></button></li>
-      <li><button type="button" data-chapter="vantage" data-title="Two vantage points" data-text="Down from Changsha, fine from New York. Each observer reports only what it can see."><span class="ch-bar"><i></i></span><span class="ch-n">3</span><span class="ch-t">Vantage</span></button></li>
+      <li><button type="button" data-chapter="vantage" data-title="Two vantage points" data-text="Down from Seattle, fine from New York. Each observer reports only what it can see."><span class="ch-bar"><i></i></span><span class="ch-n">3</span><span class="ch-t">Vantage</span></button></li>
       <li><button type="button" data-chapter="virtual" data-title="Virtual geo" data-text="A schematic world that keeps the order of places, not their distances."><span class="ch-bar"><i></i></span><span class="ch-n">4</span><span class="ch-t">Virtual geo</span></button></li>
       <li><button type="button" data-chapter="geo" data-title="Geo" data-text="A braille world map. Nodes sit where you put them, not where an IP lookup guesses."><span class="ch-bar"><i></i></span><span class="ch-n">5</span><span class="ch-t">Geo</span></button></li>
       <li><button type="button" data-chapter="network" data-title="Network" data-text="Sources on the left, each link one column further right."><span class="ch-bar"><i></i></span><span class="ch-n">6</span><span class="ch-t">Network</span></button></li>
@@ -130,7 +130,7 @@
     <div class="caption">
       <div class="caption-text" aria-live="polite">
         <h3 id="cap-title">An outage arrives</h3>
-        <p id="cap-text">Press x and the DMIT line is blocked from mainland China. Only confirmed failures turn red.</p>
+        <p id="cap-text">Press x and home loses the line to the transit host in Los Angeles. Only confirmed failures turn red.</p>
       </div>
       <p class="keys"><kbd>1</kbd>–<kbd>9</kbd> chapters <kbd>space</kbd> pause. Or run <code>topo preview</code> yourself.</p>
     </div>
@@ -150,9 +150,9 @@
         <h3 class="panel-title">Nothing is green by default</h3>
         <div class="tui-table" role="table" aria-label="Three services and their evidence">
           <div class="tr th" role="row"><span role="columnheader">service</span><span role="columnheader">evidence</span><span role="columnheader">state</span></div>
-          <div class="tr" role="row"><span role="cell"><b class="ok">●</b>Main site<i>Cloudflare ⇢ S1</i></span><span role="cell">http 200 · 4s ago<i>answered by Cloudflare NRT · cache DYNAMIC</i></span><span role="cell"></span></div>
+          <div class="tr" role="row"><span role="cell"><b class="ok">●</b>Main site<i>Cloudflare ⇢ Oracle New York</i></span><span role="cell">http 200 · 4s ago<i>answered by Cloudflare FRA · cache DYNAMIC</i></span><span role="cell"></span></div>
           <div class="tr" role="row"><span role="cell"><b class="unk">○</b>Home panel<i>notes only</i></span><span role="cell">registered, not monitored<i>no check configured</i></span><span role="cell" class="unk">unknown</span></div>
-          <div class="tr" role="row"><span role="cell"><b class="bad">✖</b>VLESS+Reality entry<i>DMIT · Los Angeles</i></span><span role="cell">tcp timeout · 6s ago<i>from Changsha MacBook · 3 of 3 samples</i></span><span role="cell" class="bad">DOWN</span></div>
+          <div class="tr" role="row"><span role="cell"><b class="bad">✖</b>VLESS+Reality entry<i>BandwagonHost · Los Angeles</i></span><span role="cell">tcp timeout · 6s ago<i>from Seattle MacBook · 3 of 3 samples</i></span><span role="cell" class="bad">DOWN</span></div>
         </div>
         <div class="samples" aria-hidden="true">
           <p class="samples-h"><b>RECENT SAMPLES</b> 20 min · every 30s</p>
@@ -164,27 +164,24 @@
 
       <article class="panel">
         <h3 class="panel-title">Vantage points are explicit</h3>
-        <svg class="vantage" viewBox="0 0 520 206" role="img" aria-label="From Changsha the path to the server in Los Angeles times out; from New York it answers with HTTP 200. Verdict: a fault on Changsha's path, not a server outage.">
+        <svg class="vantage" viewBox="0 0 520 206" role="img" aria-label="From Seattle the path to the server in Los Angeles times out; from New York it answers with HTTP 200. Verdict: a fault on Seattle's path, not a server outage.">
           <defs>
             <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#4ade80"/></marker>
           </defs>
-          <g class="v-land" data-lon="95" data-lat="60" data-scale="2.6" data-top="8" data-bottom="166"></g>
-          <path class="v-arc v-bad" d="M46.5 90.7Q214.1 -2.5 381.6 75.5"/>
-          <path class="v-arc v-ok" d="M496.6 58.2Q439.1 34.2 386.0 72.1" marker-end="url(#arr-ok)"/>
-          <g class="v-x" transform="translate(214.1 40.3)"><circle r="7"/><path d="M-2.8 -2.8L2.8 2.8M2.8 -2.8L-2.8 2.8"/></g>
-          <text x="214.1" y="25.3" class="v-ev bad" text-anchor="middle">tcp timeout ×3</text>
-          <text x="439.1" y="36.2" class="v-ev ok" text-anchor="middle">http 200 · 182 ms</text>
-          <g class="v-city"><circle cx="46.5" cy="90.7" r="6"/><circle cx="46.5" cy="90.7" r="2.6"/></g>
-          <g class="v-city"><circle cx="381.6" cy="75.5" r="6"/><circle cx="381.6" cy="75.5" r="2.6"/></g>
-          <g class="v-city"><circle cx="496.6" cy="58.2" r="6"/><circle cx="496.6" cy="58.2" r="2.6"/></g>
-          <text x="58.5" y="108.7" class="v-place">Changsha</text>
-          <text x="58.5" y="122.7" class="v-name">worker · MacBook</text>
-          <text x="381.6" y="98.5" class="v-place" text-anchor="middle">Los Angeles</text>
-          <text x="381.6" y="112.5" class="v-name" text-anchor="middle">DMIT entry</text>
-          <text x="514" y="80.2" class="v-place" text-anchor="end">New York</text>
-          <text x="514" y="94.2" class="v-name" text-anchor="end">worker · S1</text>
+          <g class="v-land" data-lon="-139.83" data-lat="51.53" data-scale="6.637" data-top="8" data-bottom="166"></g>
+          <path class="v-arc v-bad" d="M116.2 34.0Q106.3 86.1 143.3 124.0"/>
+          <path class="v-arc v-ok" d="M436.9 79.8Q278.6 25.6 147.8 120.8" marker-end="url(#arr-ok)"/>
+          <g class="v-x" transform="translate(118.0 82.5)"><circle r="7"/><path d="M-2.8 -2.8L2.8 2.8M2.8 -2.8L-2.8 2.8"/></g>
+          <text transform="translate(103.0 86.5)" text-anchor="end" class="v-ev bad">tcp timeout ×3</text>
+          <text transform="translate(284.3 50.2)" text-anchor="middle" class="v-ev ok">http 200 · 182 ms</text>
+          <g class="v-city" transform="translate(116.2 34.0)"><circle r="6"/><circle r="2.6"/></g>
+          <g class="v-city" transform="translate(143.3 124.0)"><circle r="6"/><circle r="2.6"/></g>
+          <g class="v-city" transform="translate(436.9 79.8)"><circle r="6"/><circle r="2.6"/></g>
+          <g transform="translate(128.2 52.0)" text-anchor="start"><text class="v-place">Seattle</text><text y="14" class="v-name">worker · MacBook</text></g>
+          <g transform="translate(143.3 147.0)" text-anchor="middle"><text class="v-place">Los Angeles</text><text y="14" class="v-name">BandwagonHost entry</text></g>
+          <g transform="translate(454.3 101.8)" text-anchor="end"><text class="v-place">New York</text><text y="14" class="v-name">worker · Oracle</text></g>
           <line x1="0" x2="520" y1="174" y2="174" class="v-rule"/>
-          <text x="0" y="196" class="v-verdict"><tspan class="v-k">verdict</tspan>  fault on the path from Changsha · server up</text>
+          <text x="0" y="196" class="v-verdict"><tspan class="v-k">verdict</tspan>  fault on the path from Seattle · server up</text>
         </svg>
         <p>A failure seen from one place is a fault on that path, not a server outage.</p>
       </article>
@@ -194,9 +191,9 @@
         <div class="edge">
           <span class="e-visitors">visitors</span>
           <span class="e-wire ok" aria-hidden="true"></span>
-          <div class="e-node e-cf"><b>Cloudflare · NRT</b><span class="ok">● HTTP 521 · edge up</span></div>
+          <div class="e-node e-cf"><b>Cloudflare · FRA</b><span class="ok">● HTTP 521 · edge up</span></div>
           <span class="e-wire bad" aria-hidden="true"><i>✖</i></span>
-          <div class="e-node"><b>S1 origin</b><span class="warn">▲ affected</span></div>
+          <div class="e-node"><b>New York origin</b><span class="warn">▲ affected</span></div>
         </div>
         <p>An answer from the CDN proves the edge. Only a response it says it fetched proves the origin.</p>
       </article>
@@ -204,10 +201,10 @@
       <article class="panel">
         <h3 class="panel-title">A guess is labeled a guess</h3>
         <div class="incident" role="group" aria-label="An incident's evidence">
-          <p class="inc-h"><b>✖ INCIDENT</b><span>VLESS+Reality entry</span><i>DMIT · Los Angeles</i></p>
+          <p class="inc-h"><b>✖ INCIDENT</b><span>VLESS+Reality entry</span><i>BandwagonHost · Los Angeles</i></p>
           <dl>
-            <div><dt>Failed checks</dt><dd><b class="bad">✖</b> m-exit-dmit-aaitr</dd></div>
-            <div><dt>Other-observer response evidence</dt><dd><b class="ok">●</b> w-exit-s2-aaitr <b class="ok">●</b> w-exit-s2-qqpr</dd></div>
+            <div><dt>Failed checks</dt><dd><b class="bad">✖</b> m-exit-transit-a</dd></div>
+            <div><dt>Other-observer response evidence</dt><dd><b class="ok">●</b> w-exit-aux-b</dd></div>
             <div class="hyp"><dt>Hypothesis (not a finding)</dt><dd>source/path-specific interference, filtering or routing fault is possible; blocking authority and untested protocols are not established</dd></div>
           </dl>
         </div>

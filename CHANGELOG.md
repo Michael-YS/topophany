@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The README and the homepage show the preview where 0.8.0 put it, at
+  home in Seattle, Osaka or Chengdu by language. Their stills, the
+  homepage's recording and the words beside them still showed the
+  network the preview had in Changsha, and the recording's two vantage
+  points were observers the preview no longer has, so made again it
+  would have shown nothing measured from either. They are captured
+  again, and the tour now fails to record, in the tests too, when it
+  views an observer the preview lacks. The homepage's vantage panel is
+  drawn where each language's preview puts its home, the transit host
+  and New York, with its map fitted to them and its arcs and labels laid
+  out so that none overlap.
+
 ### Fixed
 
 - TLS and HTTPS checks, and https-connect hops, no longer report a

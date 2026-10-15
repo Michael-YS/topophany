@@ -387,11 +387,11 @@ function vantageMap() {
   if (!g) return;
   const [lon, lat, scale, top, bottom] = ['lon', 'lat', 'scale', 'top', 'bottom'].map((k) => +g.dataset[k]);
   const width = g.ownerSVGElement.viewBox.baseVal.width;
-  const step = 2; // degrees between dots
+  const pitch = 5.2; // units between dots, whatever the scale
   landLoaded.then(() => {
     let out = '';
-    for (let y = top + step * scale / 2; y < bottom; y += step * scale) {
-      for (let x = step * scale / 2; x < width; x += step * scale) {
+    for (let y = top + pitch / 2; y < bottom; y += pitch) {
+      for (let x = pitch / 2; x < width; x += pitch) {
         if (land(lat - (y - top) / scale, lon + x / scale)) out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.35"/>`;
       }
     }

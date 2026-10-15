@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/preview"
 )
 
@@ -16,7 +18,8 @@ import (
 // model through the tour below, once in each language the preview is written
 // in, and writes every frame as the cells that changed since the one before
 // (tour.<language>.json), with the land mask the hero globe is drawn from.
-// Without TOPO_SITE the test is skipped.
+// Without TOPO_SITE the test only records the tour, so one the preview has
+// outgrown fails before it reaches the homepage.
 
 const tourW, tourH = 140, 42
 
@@ -191,7 +194,12 @@ func (r *recorder) key(k string, hold time.Duration) {
 	r.wait(hold)
 }
 
+// observe switches the view to observer id, which the preview must have: a
+// view of no observer would be recorded as a screen with nothing measured.
 func (r *recorder) observe(id string) {
+	if id != "" && !slices.ContainsFunc(r.m.Snapshot.Topology.Observers, func(o model.Observer) bool { return o.ID == id }) {
+		r.t.Fatalf("the preview has no observer %q", id)
+	}
 	r.m.Observer = id
 	r.m.Selected, r.m.Offset = 0, 0
 	r.fetch()
@@ -229,9 +237,9 @@ func (r *recorder) record() {
 	m.Detail = false
 
 	r.chapter("vantage")
-	r.observe("cs-mac")
+	r.observe("obs-mac")
 	r.play(3*s, 500*milli, 500*milli)
-	r.observe("obs-s1")
+	r.observe("obs-app")
 	r.play(3*s, 500*milli, 500*milli)
 	r.observe("")
 
@@ -269,9 +277,6 @@ func (r *recorder) record() {
 
 func TestSite(t *testing.T) {
 	dir := os.Getenv("TOPO_SITE")
-	if dir == "" {
-		t.Skip("set TOPO_SITE to the site's data directory (make site)")
-	}
 	// Timestamps in the evidence read the same wherever the tour is made.
 	local := time.Local
 	time.Local = time.UTC
@@ -288,9 +293,15 @@ func TestSite(t *testing.T) {
 			frames += len(c.Frames)
 		}
 		t.Logf("%s: %d chapters, %d frames, %d styles, %d bytes", lang, len(r.out.Chapters), frames, len(r.out.Styles), len(b))
+		if dir == "" {
+			continue
+		}
 		if e := os.WriteFile(filepath.Join(dir, "tour."+lang+".json"), b, 0o644); e != nil {
 			t.Fatal(e)
 		}
+	}
+	if dir == "" {
+		return
 	}
 	if e := os.WriteFile(filepath.Join(dir, "land.bin"), landBits, 0o644); e != nil {
 		t.Fatal(e)

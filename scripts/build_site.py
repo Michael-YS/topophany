@@ -16,16 +16,28 @@ page's scripts as JSON.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
+import math
 from pathlib import Path
 import re
 import sys
+import unicodedata
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "site" / "src"
 OUT = ROOT / "site" / "public"
 PAGES = ("index.html", "404.html")
 PLACEHOLDER = re.compile(r"\{\{([a-z0-9][a-z0-9._-]*)\}\}")
+# The vantage panel shows a language's preview as it places these nodes: the
+# MacBook at home, the transit host it cannot reach and the New York server
+# that can. It is 520 units wide, the land is drawn between rows 8 and 166,
+# and the places keep to rows 34 to 124.
+PREVIEW = ROOT / "internal" / "preview"
+VANTAGE = {"home": "mac", "target": "transit", "away": "app"}
+VIEW = 520
+LAND = (8, 166)
+ROWS = (34.0, 124.0)
 
 
 class SiteError(Exception):
@@ -84,7 +96,160 @@ def page_values(site: dict, catalogs: dict, code: str) -> dict[str, str]:
         "page.strings.html": f'<script type="application/json" id="strings">{data}</script>',
         "page.locales.html": "\n".join(locales),
         "page.jsonld.html": jsonld(site, catalogs, code),
+        **vantage(code, words),
     }
+
+
+def vantage(code: str, words: dict[str, str]) -> dict[str, str]:
+    """The vantage panel drawn where the language's preview puts its places:
+    an equirectangular map fitted to them, arcs that cross no label, and
+    every label inside the panel."""
+    path = PREVIEW / f"topology.{code}.json"
+    if not path.is_file() or "vantage.home" not in words:
+        return {}
+    nodes = {n["id"]: n.get("location") for n in json.loads(path.read_text(encoding="utf-8"))["nodes"]}
+    at = {}
+    for role, node in VANTAGE.items():
+        if not nodes.get(node):
+            raise SiteError(f"{path.relative_to(ROOT)}: node {node!r} has no location for the vantage panel")
+        at[role] = (nodes[node]["lat"], nodes[node]["lon"])
+    # The places as close together as the antimeridian allows.
+    west = min((lon for _, lon in at.values()), key=lambda w: max((lon - w) % 360 for _, lon in at.values()))
+    at = {role: (lat, west + (lon - west) % 360) for role, (lat, lon) in at.items()}
+    left, right = 40.0, VIEW - 24.0
+    for _ in range(8):
+        values, (lo, hi), overlap = min((vantage_layout(at, left, right, words, choice) for choice in CHOICES),
+                                        key=lambda laid: laid[2])
+        if lo >= 4 and hi <= VIEW - 4:
+            break
+        # A unit more than it spills, since moving the places also scales them.
+        left, right = left + max(0.0, 5 - lo) * (lo < 4), right - max(0.0, hi - (VIEW - 5)) * (hi > VIEW - 4)
+    if overlap or lo < 4 or hi > VIEW - 4:
+        raise SiteError(f"locales/{code}.json: the vantage panel cannot be drawn without overlaps; shorten its words")
+    return values
+
+
+# How the panel may be drawn, the first choice that overlaps nothing
+# winning: whether each arc bows the other way than up (or, for an arc
+# running north to south, away from the third place), and where each
+# place's label goes, as an anchor and an offset from the place.
+HOME_LABELS = [("start", 12, 18), ("end", -12, 18)]
+TARGET_LABELS = [("middle", 0, 23), ("end", -6, 23), ("start", 6, 23)]
+AWAY_LABELS = [("end", 17.4, 22), ("middle", 0, 23), ("end", 17.4, -24), ("middle", 0, -26)]
+CHOICES = list(itertools.product((False, True), (False, True), HOME_LABELS, TARGET_LABELS, AWAY_LABELS))
+
+
+def text_width(text: str, size: float) -> float:
+    return sum(size if unicodedata.east_asian_width(c) in "WF" else size * 0.6 for c in text)
+
+
+def vantage_layout(at: dict, left: float, right: float, words: dict[str, str],
+                   choice: tuple) -> tuple[dict[str, str], tuple[float, float], int]:
+    """The panel's values with the places between columns left and right,
+    drawn as choice says; how far its labels reach to either side; and how
+    much of it overlaps."""
+    bad_flip, ok_flip, home_label, target_label, away_label = choice
+    lats, lons = [lat for lat, _ in at.values()], [lon for _, lon in at.values()]
+    top, bottom = ROWS
+    scale = min((right - left) / (max(lons) - min(lons)), (bottom - top) / (max(lats) - min(lats)))
+    x0 = (left + right - (max(lons) - min(lons)) * scale) / 2
+    y0 = (top + bottom - (max(lats) - min(lats)) * scale) / 2
+    pos = {role: (x0 + (lon - min(lons)) * scale, y0 + (max(lats) - lat) * scale) for role, (lat, lon) in at.items()}
+    home, target, away = pos["home"], pos["target"], pos["away"]
+    boxes = [(x - 7, y - 7, x + 7, y + 7) for x, y in pos.values()]  # what may not be crossed
+
+    def label(x: float, y: float, anchor: str, *lines: tuple[str, float]) -> list[tuple[float, float, float, float]]:
+        """The boxes of lines of text, 14 apart, from baseline y."""
+        out = []
+        for i, (text, size) in enumerate(lines):
+            width = text_width(text, size)
+            start = {"start": x, "middle": x - width / 2, "end": x - width}[anchor]
+            base = y + 14 * i
+            out.append((start - 2, base - 0.75 * size - 1, start + width + 2, base + 0.2 * size + 1))
+        return out
+
+    def bow(a, b, third, flip: bool):
+        """The control point, middle and outer normal of an arc from a to b."""
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(dx, dy)
+        nx, ny = dy / length, -dx / length
+        if abs(dy) < abs(dx):
+            turn = ny > 0
+        else:
+            turn = (third[0] - (a[0] + b[0]) / 2) * nx > 0
+        if turn != flip:
+            nx, ny = -nx, -ny
+        sag = 0.13 * length
+        mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+        return (mx + 2 * sag * nx, my + 2 * sag * ny), (mx + sag * nx, my + sag * ny), (nx, ny)
+
+    def evidence(middle, normal, gap: float, text: str):
+        """Where an arc's evidence goes: beyond its middle, on its outer side."""
+        (x, y), (nx, ny) = middle, normal
+        if abs(ny) >= abs(nx):
+            at, anchor = (x, y - gap if ny < 0 else y + gap + 8), "middle"
+        else:
+            at, anchor = (x + (gap if nx > 0 else -gap), y + 4), "start" if nx > 0 else "end"
+        return at, anchor, label(*at, anchor, (text, 11.5))
+
+    bad_control, bad_middle, bad_normal = bow(home, target, away, bad_flip)
+    ok_control, ok_middle, ok_normal = bow(away, target, home, ok_flip)
+    # The arrow ends at the target's ring, not under its dot.
+    ux, uy = ok_control[0] - target[0], ok_control[1] - target[1]
+    end = (target[0] + 5.5 * ux / math.hypot(ux, uy), target[1] + 5.5 * uy / math.hypot(ux, uy))
+    bad_at, bad_anchor, bad_box = evidence(bad_middle, bad_normal, 15, words["vantage.bad"])
+    ok_at, ok_anchor, ok_box = evidence(ok_middle, ok_normal, 13.5, words["vantage.ok"])
+    place, name = lambda key: (words[key], 12.5), lambda key: (words[key], 11)
+
+    def put(where, anchor: str, dx: float, dy: float):
+        return (where[0] + dx, where[1] + dy), anchor
+
+    home_at, home_anchor = put(home, *home_label)
+    target_at, target_anchor = put(target, *target_label)
+    away_at, away_anchor = put(away, *away_label)
+    labels = [bad_box, ok_box,
+              label(*home_at, home_anchor, place("vantage.home"), name("vantage.home-worker")),
+              label(*target_at, target_anchor, place("vantage.target"), name("vantage.target-name")),
+              label(*away_at, away_anchor, place("vantage.away"), name("vantage.away-worker"))]
+    boxes += [box for lines in labels for box in lines]
+
+    def inside(x: float, y: float, box) -> bool:
+        return box[0] <= x <= box[2] and box[1] <= y <= box[3]
+
+    def curve(a, control, b):
+        steps = 60
+        return [((1 - t) ** 2 * a[0] + 2 * (1 - t) * t * control[0] + t * t * b[0],
+                 (1 - t) ** 2 * a[1] + 2 * (1 - t) * t * control[1] + t * t * b[1])
+                for t in (i / steps for i in range(4, steps - 3))]
+
+    def meet(a, b) -> bool:
+        return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+    overlap = 0
+    for point in curve(home, bad_control, target) + curve(away, ok_control, end):
+        overlap += sum(inside(*point, box) for lines in labels for box in lines)
+        overlap += 10 * (not 2 <= point[1] <= LAND[1])
+    for i, lines in enumerate(labels):
+        for a in lines:
+            overlap += 10 * (a[1] < 0 or a[3] > LAND[1] + 4)
+            overlap += sum(10 * meet(a, city) for city in boxes[:3])
+            overlap += sum(10 * meet(a, b) for other in labels[i + 1:] for b in other)
+    point = lambda p: f"{p[0]:.1f} {p[1]:.1f}"
+    values = {
+        "page.vantage.lon": f"{min(lons) - x0 / scale:.2f}",
+        "page.vantage.lat": f"{max(lats) + (y0 - LAND[0]) / scale:.2f}",
+        "page.vantage.scale": f"{scale:.3f}",
+        "page.vantage.bad": f"M{point(home)}Q{point(bad_control)} {point(target)}",
+        "page.vantage.ok": f"M{point(away)}Q{point(ok_control)} {point(end)}",
+        "page.vantage.x": point(bad_middle),
+        "page.vantage.bad-at": point(bad_at), "page.vantage.bad-anchor": bad_anchor,
+        "page.vantage.ok-at": point(ok_at), "page.vantage.ok-anchor": ok_anchor,
+        "page.vantage.home": point(home), "page.vantage.target": point(target), "page.vantage.away": point(away),
+        "page.vantage.home-label": point(home_at), "page.vantage.home-anchor": home_anchor,
+        "page.vantage.target-label": point(target_at), "page.vantage.target-anchor": target_anchor,
+        "page.vantage.away-label": point(away_at), "page.vantage.away-anchor": away_anchor,
+    }
+    return values, (min(b[0] for b in boxes), max(b[2] for b in boxes)), overlap
 
 
 def jsonld(site: dict, catalogs: dict, code: str) -> str:
