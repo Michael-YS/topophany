@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drawn where each language's preview puts its home, the transit host
   and New York, with its map fitted to them and its arcs and labels laid
   out so that none overlap.
+- Topophany has a new mark, the globe of the README's banner in little:
+  a dot-matrix Earth lit from the upper left, with an arc of light from
+  Shanghai to a place it brings to light across the Pacific. It is the
+  homepage's favicon, the mark beside its name and its Apple touch icon,
+  and `scripts/icon.py` (`make icon`) draws it from the land mask.
 
 ### Fixed
 
