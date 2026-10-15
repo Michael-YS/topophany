@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   proves the first hop alone, and a node reached only through it reads
   unknown and says why; give it a check that does not go through the
   edge to measure it.
+- A query in an HTTP check's URL is kept as the credential it may be.
+  The public topology hid it from viewers, yet it was sent over plain
+  HTTP to any address, where a bearer token is refused, and a peer that
+  was sent one could hand it back in an edge's labels, which every
+  viewer reads. Such a check now needs HTTPS or a direct literal
+  loopback address, as `bearer_env` does, and its observation keeps
+  what the peer answered only in closed words, with
+  `peer_text: withheld_secret_request`. A topology with a query in a
+  plain `http://` URL to anywhere else is refused; use HTTPS, or move
+  the token to `bearer_env`.
 
 ## [0.8.1] - 2026-10-14
 

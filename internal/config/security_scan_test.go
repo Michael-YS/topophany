@@ -41,6 +41,26 @@ func TestSecretTransportBinding(t *testing.T) {
 			}
 		}
 	}
+	// A target's query is sent as a credential, with no token named; a
+	// Mihomo check sends none.
+	for _, tc := range []struct {
+		kind, url string
+		allowed   bool
+	}{
+		{"http", "http://203.0.113.1/health?token=x", false},
+		{"http", "http://localhost/?token=x", false},
+		{"http", "http://127.0.0.1/?token=x", true},
+		{"http", "https://203.0.113.1/?token=x", true},
+		{"http", "http://203.0.113.1/health", true},
+		{"mihomo", "http://203.0.113.1:9090/?token=x", true},
+	} {
+		c := testkit.Config()
+		x := &c.Checks[0]
+		x.Kind, x.Target = tc.kind, tc.url
+		if err := config.Validate(c); (err == nil) != tc.allowed {
+			t.Fatalf("%s %s: %v", tc.kind, tc.url, err)
+		}
+	}
 	for _, kind := range []string{"http-connect", "socks5", "https-connect"} {
 		for _, host := range []string{"127.0.0.1:1080", "localhost:1080", "203.0.113.1:1080"} {
 			for _, index := range []int{0, 1} {

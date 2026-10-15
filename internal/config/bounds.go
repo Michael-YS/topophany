@@ -62,8 +62,11 @@ func ProxyCredentials(p model.Proxy, index int) error {
 	return nil
 }
 
+// HTTPCredentials refuses a check that sends a credential, a bearer or
+// adapter token or a target's query, where a hop it was not meant for can
+// read it.
 func HTTPCredentials(c model.Config, x model.Check) error {
-	if x.HTTP.BearerEnv == "" && x.Adapter.TokenEnv == "" {
+	if x.HTTP.BearerEnv == "" && x.Adapter.TokenEnv == "" && !TargetQuery(c, x) {
 		return nil
 	}
 	u, err := url.Parse(Target(c, x))
@@ -80,7 +83,16 @@ func HTTPCredentials(c model.Config, x model.Check) error {
 	if u.Scheme == "http" && literalLoopback(u.Hostname()) && literalLoopback(host) && len(Path(c, x.Path).Proxies) == 0 {
 		return nil
 	}
-	return errors.New("HTTP credentials require HTTPS or direct literal loopback without a remote resolve override")
+	return errors.New("HTTP credentials and target queries require HTTPS or direct literal loopback without a remote resolve override")
+}
+
+// TargetQuery reports whether an http check sends a query with its target.
+// Viewers never see a query (PublicURL), as it may hold a credential, so it
+// is sent as one, never in the clear beyond loopback, and what the peer
+// answers is kept as for one. A Mihomo check sends none.
+func TargetQuery(c model.Config, x model.Check) bool {
+	u, err := url.Parse(Target(c, x))
+	return x.Kind == "http" && err == nil && u.RawQuery != ""
 }
 
 // ValidatePublic restores only redacted SSH file placeholders on an owned copy;

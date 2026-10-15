@@ -400,6 +400,7 @@ func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 	}{
 		{"bearer", func(x *model.Check) { x.HTTP.BearerEnv = "TOPH_HTTP_TOKEN" }, true, "", ""},
 		{"private header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"X-Key": token} }, true, "", ""},
+		{"query", func(x *model.Check) { x.Target += "/?key=" + token }, true, "", ""},
 		{"host header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"Host": "example.invalid"} }, false, token[:12], "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -420,6 +421,45 @@ func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A peer sent a query, which may be a credential, cannot hand it back in
+// the labels of any edge network the probe reads.
+func TestHTTPSentAQueryCannotEchoItThroughAnyEdge(t *testing.T) {
+	const token = "q1w2e3r4t5y6u7i8o9p0"
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Query().Get("key")
+		switch r.URL.Path {
+		case "/cloudflare":
+			w.Header().Set("Cf-Ray", "8f2c1b2a3d4e5f60-"+key)
+			w.Header().Set("Cf-Cache-Status", key)
+		case "/vercel":
+			w.Header().Set("X-Vercel-Id", key+"::"+key+"::x")
+			w.Header().Set("X-Vercel-Cache", key)
+		case "/cloudfront":
+			w.Header().Set("X-Amz-Cf-Pop", key)
+			w.Header().Set("X-Cache", key+" from cloudfront")
+		case "/fastly":
+			w.Header().Set("X-Served-By", "cache-nrt-"+key)
+			w.Header().Set("X-Cache", key)
+		case "/netlify":
+			w.Header().Set("Server", "Netlify")
+			w.Header().Set("Cache-Status", `"Netlify Edge"; fwd=miss; `+key)
+		}
+	}))
+	defer s.Close()
+	for _, provider := range []string{"cloudflare", "vercel", "cloudfront", "fastly", "netlify"} {
+		o := (Runner{}).Run(context.Background(), testkit.Config(), httpCheck(s.URL+"/"+provider+"?key="+token))
+		if o.Outcome != "ok" || o.Facts["edge_provider"] != provider || o.Facts["peer_text"] != withheld {
+			t.Fatal(provider, o.Outcome, o.Code, o.Facts)
+		}
+		b, _ := json.Marshal(o)
+		for _, part := range []string{token[:4], token[8:12], strings.ToUpper(token[:4])} {
+			if strings.Contains(string(b), part) {
+				t.Fatalf("%s: observation carries %q: %s", provider, part, b)
+			}
+		}
 	}
 }
 

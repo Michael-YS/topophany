@@ -29,6 +29,12 @@ func TestUnsafeCredentialTransportFailsBeforeDial(t *testing.T) {
 	if v := (Runner{}).Run(context.Background(), c, x); v.Code != "insecure_http_credentials" {
 		t.Fatal(v)
 	}
+	// A query is sent as a credential is, whether or not a token is named.
+	x = httpCheck(server.URL + "/?token=test-secret")
+	x.ResolveIP = "203.0.113.1"
+	if v := (Runner{}).Run(context.Background(), testkit.Config(), x); v.Code != "insecure_http_credentials" {
+		t.Fatal(v)
+	}
 	d := Dialer{Proxies: []model.Proxy{{Kind: "socks5", Address: "203.0.113.1:1080", PasswordEnv: "SECRET"}}}
 	if _, err := d.DialContext(context.Background(), "tcp", "127.0.0.1:80"); err == nil {
 		t.Fatal("unsafe proxy attempted connection")

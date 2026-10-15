@@ -240,7 +240,10 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	secret := token != "" || privateHeaders(x.HTTP.RequestHeaders) || u.Scheme != "https" && proxyPassword(d.Proxies)
+	// What the request carries beyond its method, path and Host is the
+	// topology's to keep from viewers, as any of it may be a credential: a
+	// header, the bearer token among them, or a query.
+	secret := len(req.Header) > 0 || req.URL.RawQuery != "" || u.Scheme != "https" && proxyPassword(d.Proxies)
 	req.Header.Set("User-Agent", "Topophany/"+model.Version)
 	resp, e := client.Do(req)
 	if e != nil {
@@ -345,17 +348,6 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 // or a name, for its observation to carry to every viewer of the
 // collector, though viewers are never given the secret itself.
 const withheld = "withheld_secret_request"
-
-// privateHeaders reports whether request headers, which the topology keeps
-// from viewers, carry anything but a Host.
-func privateHeaders(h map[string]string) bool {
-	for k := range h {
-		if !strings.EqualFold(k, "Host") {
-			return true
-		}
-	}
-	return false
-}
 
 // proxyPassword reports whether a hop is sent a password; over plain HTTP
 // such a hop can write the response.
