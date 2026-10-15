@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -221,4 +222,70 @@ func sameJSON(a, b any) bool {
 	ja, _ := json.Marshal(a)
 	jb, _ := json.Marshal(b)
 	return string(ja) == string(jb)
+}
+
+// A worker picks its boot IDs, and each boot whose receipts expire leaves
+// a floor. One that changes its boot without end cannot fill its
+// observer's share with floors for good: past an eighth of the share, the
+// floors raised longest ago go, while a boot still delivering keeps its
+// floor and its IDs stay bound, across a restart.
+func TestBootRotationCannotFillAnObserversShare(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	dir := t.TempDir()
+	opts := Options{Observers: []string{"home", "cloud"}, MaxStateBytes: 1 << 20, Retention: time.Minute, Now: func() time.Time { return now }}
+	s := openTest(t, dir, opts)
+	limit := s.floorLimit()
+	if limit != (1<<20)/2/8/floorBytes {
+		t.Fatal(limit)
+	}
+	held := func(s *Store) int {
+		n := 0
+		for boot := range s.floors {
+			if receiptObserver(boot+".0") == "home" {
+				n++
+			}
+		}
+		return n
+	}
+	steady := uint64(0)
+	sample := func(boot string, seq uint64) model.Observation {
+		v := testkit.Observation(c, "home-http", seq, now, "ok")
+		v.Boot, v.ID = boot, fmt.Sprintf("home.%s.%d", boot, seq)
+		return v
+	}
+	// Enough boots for their floors to fill the share, were they all kept.
+	for round := range 50 {
+		b := batch(c)
+		for i := range 99 {
+			b.Observations = append(b.Observations, sample(fmt.Sprintf("r%dx%d", round, i), 1))
+		}
+		steady++
+		b.Observations = append(b.Observations, sample("steady", steady))
+		if e := s.Put(b); e != nil {
+			t.Fatalf("round %d refused with %d floors held: %v", round, held(s), e)
+		}
+		now = now.Add(time.Minute + receiptGrace + time.Second)
+	}
+	s.prune()
+	if n := held(s); n > limit || n < limit/2 {
+		t.Fatal("floors held", n, "of", limit)
+	}
+	if s.floors["home.steady"] != steady {
+		t.Fatal("the boot still delivering lost its floor", s.floors["home.steady"], steady)
+	}
+	if e := s.Checkpoint(); e != nil {
+		t.Fatal(e)
+	}
+	s.Close()
+	s = openTest(t, dir, opts)
+	if n := held(s); n > limit {
+		t.Fatal("floors held after a restart", n)
+	}
+	if e := s.Put(batch(c, sample("steady", 1))); !errors.Is(e, ErrConflict) {
+		t.Fatal("a delivering boot's expired ID was accepted again", e)
+	}
+	if e := s.Put(batch(c, sample("steady", steady+1), sample("fresh", 1))); e != nil {
+		t.Fatal("ordinary samples refused", e)
+	}
 }

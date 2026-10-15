@@ -59,6 +59,10 @@ const receiptGrace = time.Hour
 // floorBytes is what a boot's floor costs in its observer's quota.
 const floorBytes = 128
 
+// floorShare is the part of an observer's share of the state budget its
+// floors may take, one floorShare-th: see shedFloors.
+const floorShare = 8
+
 // carryBytes is what a series' carry costs in the state budget.
 const carryBytes = 512
 
@@ -70,15 +74,18 @@ type receipt struct {
 
 // diskState is a checkpoint. Floors are, for each boot (observer.boot)
 // whose receipts expired, the highest sequence among them: an ID at or
-// below its boot's floor stays bound and is never accepted again.
+// below its boot's floor stays bound and is never accepted again, while
+// the floor is held. FloorsAt says when each floor's receipt was taken; a
+// checkpoint from before them has none, and its floors count as oldest.
 type diskState struct {
-	Schema  int                        `json:"schema"`
-	Rows    []model.Observation        `json:"rows"`
-	Seen    map[string]receipt         `json:"seen"`
-	Beats   map[string]model.Heartbeat `json:"beats"`
-	Floors  map[string]uint64          `json:"floors,omitempty"`
-	Rollups *rollup.Store              `json:"rollups,omitempty"`
-	Carries map[string]engine.Carry    `json:"carries,omitempty"`
+	Schema   int                        `json:"schema"`
+	Rows     []model.Observation        `json:"rows"`
+	Seen     map[string]receipt         `json:"seen"`
+	Beats    map[string]model.Heartbeat `json:"beats"`
+	Floors   map[string]uint64          `json:"floors,omitempty"`
+	FloorsAt map[string]time.Time       `json:"floors_at,omitempty"`
+	Rollups  *rollup.Store              `json:"rollups,omitempty"`
+	Carries  map[string]engine.Carry    `json:"carries,omitempty"`
 }
 type envelope struct {
 	SHA256  string          `json:"sha256"`
@@ -105,6 +112,7 @@ type Store struct {
 	scopeBytes    map[string]int64
 	scopeReceipts map[string]int
 	floors        map[string]uint64
+	floorAt       map[string]time.Time // when each floor's receipt was taken
 	rollups       *rollup.Store
 	settled       time.Time // when the rollups last settled
 
@@ -152,7 +160,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
 	s.rollups.SetCurrent(s.currentKey)
 	opened := s
 	defer func() {
@@ -179,6 +187,9 @@ func Open(dir string, o Options) (s *Store, err error) {
 		s.beats = state.Beats
 		if state.Floors != nil {
 			s.floors = state.Floors
+		}
+		if state.FloorsAt != nil {
+			s.floorAt = state.FloorsAt
 		}
 		// Carries first, so the rows they already hold are not folded again
 		// as the tails are rebuilt.
@@ -671,10 +682,11 @@ func (s *Store) prune() {
 	s.rows = rows
 	// A receipt binds an ID to its content for as long as a sample with
 	// that ID could still be accepted: the ingestion window and an hour.
-	// Then it goes, and its boot's floor keeps the ID bound for good, so
-	// ageing out never reopens an observation identity. Receipts are taken
-	// in order, so those due to go are at the front of the queue; one taken
-	// while the clock stood behind waits for those in front of it.
+	// Then it goes, and its boot's floor keeps the ID bound, so ageing out
+	// reopens no observation identity while the floor is held (shedFloors
+	// says how long that is). Receipts are taken in order, so those due to
+	// go are at the front of the queue; one taken while the clock stood
+	// behind waits for those in front of it.
 	expiry := s.options.Now().Add(-s.options.Retention - receiptGrace)
 	for s.receiptHead < len(s.receiptQueue) {
 		id := s.receiptQueue[s.receiptHead]
@@ -686,6 +698,9 @@ func (s *Store) prune() {
 		// One whose ID names no boot has no floor to bind it, so it stays.
 		if boot, seq, parsed := bootOf(id); ok && parsed {
 			s.floors[boot] = max(s.floors[boot], seq)
+			if r.At.After(s.floorAt[boot]) {
+				s.floorAt[boot] = r.At
+			}
 			delete(s.seen, id)
 			if s.scopeReceipts[r.Observer]--; s.scopeReceipts[r.Observer] == 0 {
 				delete(s.scopeReceipts, r.Observer)
@@ -696,12 +711,23 @@ func (s *Store) prune() {
 		s.receiptQueue = append([]string(nil), s.receiptQueue[s.receiptHead:]...)
 		s.receiptHead = 0
 	}
+	held := map[string]int{}
+	for boot := range s.floors {
+		held[receiptObserver(boot+".0")]++
+	}
+	limit := s.floorLimit()
+	for o, n := range held {
+		if n > limit {
+			s.shedFloors(o, n-limit)
+			held[o] = limit
+		}
+	}
 	s.scopeBytes = make(map[string]int64, len(s.scopeReceipts)+len(s.rowScope))
 	for id, n := range s.scopeReceipts {
 		s.scopeBytes[id] += int64(n) * 512
 	}
-	for boot := range s.floors {
-		s.scopeBytes[receiptObserver(boot+".0")] += floorBytes
+	for o, n := range held {
+		s.scopeBytes[o] += int64(n) * floorBytes
 	}
 	for id, size := range s.rowScope {
 		s.scopeBytes[id] += size
@@ -716,6 +742,42 @@ func (s *Store) prune() {
 		s.settled = now
 	}
 }
+
+// floorLimit is how many floors an observer may hold: one floorShare-th
+// of its share of the state budget.
+func (s *Store) floorLimit() int {
+	n := int64(max(len(s.options.Observers), 1))
+	return int(max(s.options.MaxStateBytes/n/floorShare/floorBytes, 1))
+}
+
+// shedFloors lets go of the n floors of observer whose receipts were taken
+// longest ago. A worker picks its boot IDs, so one that changed its boot
+// without end would otherwise fill its observer's share with floors for
+// good, past rotating its token or restarting the collector; a boot still
+// delivering keeps raising its floor, and keeps it. The IDs a shed floor
+// bound were received more than the ingestion window and an hour ago, so
+// their samples are too old to be accepted again: only another sample
+// under one of those IDs, which only that observer's worker would send,
+// is no longer refused.
+func (s *Store) shedFloors(observer string, n int) {
+	boots := []string{}
+	for boot := range s.floors {
+		if receiptObserver(boot+".0") == observer {
+			boots = append(boots, boot)
+		}
+	}
+	slices.SortFunc(boots, func(a, b string) int {
+		if c := s.floorAt[a].Compare(s.floorAt[b]); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
+	for _, boot := range boots[:n] {
+		delete(s.floors, boot)
+		delete(s.floorAt, boot)
+	}
+}
+
 func (s *Store) allRows() []model.Observation {
 	m := map[string]model.Observation{}
 	for _, v := range s.rows {
@@ -736,7 +798,7 @@ func (s *Store) allRows() []model.Observation {
 func (s *Store) checkpoint() error {
 	s.settled = s.options.Now()
 	s.rollups.Settle(s.settled)
-	state := diskState{Schema: 1, Rows: s.allRows(), Seen: s.seen, Beats: s.beats, Floors: s.floors, Rollups: s.rollups, Carries: s.carries}
+	state := diskState{Schema: 1, Rows: s.allRows(), Seen: s.seen, Beats: s.beats, Floors: s.floors, FloorsAt: s.floorAt, Rollups: s.rollups, Carries: s.carries}
 	b, e := wrap(state)
 	if e != nil {
 		return e

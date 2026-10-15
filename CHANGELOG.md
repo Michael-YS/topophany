@@ -43,6 +43,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   time. Any such rune now shows as a space, wherever a single rune is
   drawn, and the cursor stands where the text before it is shown rather
   than a column further per control.
+- A worker can no longer fill its observer's share of a collector for
+  good by changing its boot. Each boot whose receipts expired left a
+  floor that was kept forever and counted against the observer's share,
+  and a worker picks its boot IDs, so one that sent each sample under a
+  new boot made its observer's samples refused with 429 from then on,
+  through a token rotation and a restart. An observer's floors now take
+  at most an eighth of its share; past that, those whose receipts were
+  taken longest ago go. The IDs they bound were received more than
+  `--retention` and an hour ago, too long ago for their samples to be
+  accepted again, and a boot still delivering keeps its floor.
 
 ## [0.8.0] - 2026-10-14
 
