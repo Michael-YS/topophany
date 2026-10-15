@@ -16,7 +16,7 @@ const (
 	BatchSchema    = 2
 	SnapshotSchema = 2
 )
-const Version = "0.8.3"
+const Version = "0.9.0"
 
 type Config struct {
 	Schema    int        `json:"schema"`

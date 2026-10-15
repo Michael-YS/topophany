@@ -7,33 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Bound outstanding host filesystem queries across timeouts and reloads so a
-  stalled mount cannot block worker shutdown. Ignore Linux procfs `ESRCH` when
-  a process exits during a read, and recognize macOS `ps` fallback names for
-  processes whose command information is unreadable.
-
-### Changed
-
-- Host resources are drawn instead of listed. Each Servers card has a panel
-  for CPU, memory and disk that fills as far as the resource is used, its top
-  the last few minutes of samples, with the reading now and the capacity
-  beside it. A host check's evidence and its node's details chart CPU, memory
-  and disk on the samples' time axis with each configured limit drawn across,
-  in place of the probe's elapsed time. The TUI reads each host check's recent
-  history once and keeps newer snapshot samples (at most 240 per check, under
-  the current contract only); readings that are not current stay faint and
-  their values withheld. Preview CPU now jitters between samples and memory
-  and disk drift slowly.
-
-- Share host CPU, memory and selected-process aggregates briefly across checks,
-  retaining the original sample timestamp and independent disk/assertion results.
-  Linux CPU collection reads only the aggregate line instead of the entire
-  per-CPU and interrupt table.
+## [0.9.0] - 2026-10-15
 
 ### Added
 
+- Local host resource checks on Linux and macOS: CPU utilization, physical
+  memory, filesystem capacity and inodes, visible process and zombie counts,
+  and optional named-process count/RSS. Resource and process-count assertions
+  use existing policy incidents; metrics travel through worker buffering,
+  collector storage, check details and JSON history. Includes local editor
+  fields and a runnable `examples/host-resources.json` topology.
 - Host resource preview with deterministic changing counters and localized
   CPU, memory, disk and missing-process scenarios. Preview shares the real
   probe's accounting and threshold evaluation, including incidents and history,
@@ -42,12 +25,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Servers cards and CLI output show current resource summaries; stale and
   cached readings are withheld.
 
-- Local host resource checks on Linux and macOS: CPU utilization, physical
-  memory, filesystem capacity/inodes, visible process and zombie counts,
-  and optional named-process count/RSS. Resource and process-count assertions
-  use existing policy incidents; metrics travel through worker buffering,
-  collector storage, check details and JSON history. Includes local editor
-  fields and a runnable `examples/host-resources.json` topology.
+### Changed
+
+- Servers cards chart CPU, memory and disk usage, recent trends and capacity.
+  Host-check evidence and node details chart resource history against configured
+  limits instead of probe elapsed time. The TUI reads each host check's recent
+  history once and retains newer snapshot samples, up to 240 per check under
+  its current contract. Readings that are not current stay faint with their
+  values withheld. Preview CPU varies between samples while memory and disk
+  drift slowly.
+- Host checks briefly share CPU, memory and selected-process aggregates,
+  retaining the original sample timestamp and independent disk/assertion results.
+  Linux CPU collection reads only the aggregate line instead of the entire
+  per-CPU and interrupt table.
+
+### Fixed
+
+- Bound outstanding host filesystem queries across timeouts and reloads so a
+  stalled mount cannot block worker shutdown. Ignore Linux procfs `ESRCH` when
+  a process exits during a read, and recognize macOS `ps` fallback names for
+  processes whose command information is unreadable.
+- Bound each late sample's rollup correction to shifting at most 1,024 retained
+  boundaries during ingestion and journal recovery. Larger corrections still
+  count the sample but mark its time totals incomplete with
+  `unreconciled_samples`.
+- Apply node, edge and viewport limits to the geographic map as well as the
+  network and virtual maps. Geographic label placement shares a bounded work
+  budget across all placement attempts; oversized or exhausted layouts show a
+  complexity notice while lists and details remain available.
+
+### Security
+
+- Preserve collector authentication capacity when pending sockets fill the
+  listener: new arrivals replace the oldest pending socket within the relevant
+  quota, and unauthenticated sockets expire after five seconds. Authenticated
+  connections leave the source quota and are protected from pending-socket
+  eviction, with at most eight sockets per principal and 96 globally under the
+  default 128-connection cap, leaving 32 slots for authentication. Existing
+  authenticated connections remain usable during anonymous connection floods;
+  continuous transport floods can still interrupt clients before authentication.
 
 ## [0.8.3] - 2026-10-15
 
@@ -779,7 +795,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/WhitenWhiten/topophany/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/WhitenWhiten/topophany/compare/v0.8.1...v0.8.3
 [0.8.1]: https://github.com/WhitenWhiten/topophany/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/WhitenWhiten/topophany/compare/v0.3.0...v0.8.0
