@@ -49,6 +49,8 @@ Usage:
   topo serve                        run a collector (optional local checks)
   topo worker                       execute a reviewed topology from this location
   topo init                         create a safe local demo with fresh credentials
+  topo init --role ROLE              generate a private server/worker/client installation bundle
+  topo install                      install a reviewed bundle; supports dry-run and rollback
   topo edit                         add/edit/delete topology entities in a local TUI
   topo preview                      open the TUI on synthetic evidence (built-in or --config)
   topo capacity                     preflight storage allocation and migration
@@ -101,6 +103,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.login(ctx, args[1:])
 	case "init":
 		return a.init(args[1:])
+	case "install":
+		return a.install(ctx, args[1:])
 	case "edit":
 		return a.edit(ctx, args[1:])
 	case "preview":
@@ -195,6 +199,11 @@ func (a *App) topologyCommand(ctx context.Context, cmd string, args []string) er
 }
 
 func (a *App) init(args []string) error {
+	for _, arg := range args {
+		if arg == "--role" || strings.HasPrefix(arg, "--role=") || arg == "--interactive" {
+			return a.setup(args)
+		}
+	}
 	f := a.flags("init")
 	dir := f.String("dir", "./topophany-demo", "NEW demo directory (refuses existing files)")
 	if e := parsed(f, args); e != nil {

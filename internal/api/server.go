@@ -228,6 +228,7 @@ func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
+	mux.HandleFunc("GET /v1/worker", s.authorize("worker", s.workerInfo))
 	mux.HandleFunc("GET /v1/snapshot", s.authorize("viewer", s.snapshot))
 	mux.HandleFunc("GET /v1/config", s.authorize("viewer", s.topology))
 	mux.HandleFunc("GET /v1/history", s.authorize("viewer", s.history))
@@ -592,4 +593,9 @@ func SaveAuth(path string, a Auth) error {
 		return e
 	}
 	return secure.AtomicWrite(path, append(b, '\n'), os.FileMode(0600))
+}
+
+// workerInfo verifies enrollment without probing, writing a heartbeat or reading topology.
+func (s *Server) workerInfo(w http.ResponseWriter, r *http.Request, a authority) {
+	writeJSON(w, 200, map[string]string{"project": a.gen.config.Project, "observer": a.Observer})
 }

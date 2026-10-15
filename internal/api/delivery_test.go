@@ -44,3 +44,19 @@ func TestDeliveryStatusScopedBoundedAndDetached(t *testing.T) {
 		t.Fatal("arbitrary status reflected", w.Code)
 	}
 }
+
+func TestWorkerEnrollmentCheckIsReadOnlyAndScoped(t *testing.T) {
+	_, h, _ := fixture(t)
+	w := request(h, "GET", "/v1/worker", workerToken, "", nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body)
+	}
+	var info map[string]string
+	json.Unmarshal(w.Body.Bytes(), &info)
+	if info["observer"] != "home" || info["project"] == "" {
+		t.Fatal(info)
+	}
+	if w = request(h, "GET", "/v1/worker", viewerToken, "", nil); w.Code != 403 {
+		t.Fatal("viewer acquired worker identity", w.Code)
+	}
+}
