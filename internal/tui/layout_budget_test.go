@@ -234,7 +234,7 @@ func securityCanvasText(cv *Canvas) string {
 }
 
 func TestSecurityLargeMapsDegradeWithoutDiscardingTopology(t *testing.T) {
-	for _, mode := range []string{"network", "virtual"} {
+	for _, mode := range []string{"network", "virtual", "geo"} {
 		for _, n := range []int{maxLayoutNodes + 1, 3000} {
 			t.Run(fmt.Sprintf("%s/%d", mode, n), func(t *testing.T) {
 				m := &Model{MapMode: mode}
@@ -250,6 +250,11 @@ func TestSecurityLargeMapsDegradeWithoutDiscardingTopology(t *testing.T) {
 						t.Fatal("large graph entered virtual measurement/layout")
 					}
 					m.drawVirtual(cv, 0, 0, 100, 30, nodes, nil, nil, mapFocus{})
+				} else if mode == "geo" {
+					if m.geoRows(100) != 0 {
+						t.Fatal("large graph entered geographic measurement")
+					}
+					m.drawGeo(cv, 0, 0, 100, 30, nodes, nil, mapFocus{})
 				} else {
 					m.drawNetwork(cv, 0, 0, 100, 30, nodes, nil, nil, mapFocus{})
 				}
@@ -264,6 +269,8 @@ func TestSecurityLargeMapsDegradeWithoutDiscardingTopology(t *testing.T) {
 				cv = NewCanvas(100, 30)
 				if mode == "virtual" {
 					m.drawVirtual(cv, 0, 0, 100, 30, nodes[:1], nil, nil, mapFocus{})
+				} else if mode == "geo" {
+					m.drawGeo(cv, 0, 0, 100, 30, nodes[:1], nil, mapFocus{})
 				} else {
 					m.drawNetwork(cv, 0, 0, 100, 30, nodes[:1], nil, nil, mapFocus{})
 				}

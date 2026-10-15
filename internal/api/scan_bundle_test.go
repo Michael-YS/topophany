@@ -41,17 +41,21 @@ func TestConnectionLimitCoversPartialHeadersAndReleases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Exercise the global cap independently; source quotas have separate tests.
+	// Exercise the global cap and oldest-pending replacement independently.
 	bounded := newLimitedListener(ln, 2, 2, maxConnectionLifetime)
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }), ReadHeaderTimeout: 100 * time.Millisecond}
 	defer server.Close()
 	go server.Serve(bounded)
+	var first net.Conn
 	for i := 0; i < 2; i++ {
 		c, err := net.Dial("tcp", ln.Addr().String())
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer c.Close()
+		if i == 0 {
+			first = c
+		}
 		fmt.Fprint(c, "GET /")
 	}
 	deadline := time.Now().Add(time.Second)
@@ -66,13 +70,15 @@ func TestConnectionLimitCoversPartialHeadersAndReleases(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer extra.Close()
-	extra.SetReadDeadline(time.Now().Add(time.Second))
+	first.SetReadDeadline(time.Now().Add(time.Second))
 	var b [1]byte
-	if _, err := extra.Read(b[:]); err == nil {
-		t.Fatal("excess connection stayed open")
+	if _, err := first.Read(b[:]); err == nil {
+		t.Fatal("oldest pending connection stayed open")
 	} else if e, ok := err.(net.Error); ok && e.Timeout() {
-		t.Fatal("excess connection was not rejected")
+		t.Fatal("oldest pending connection was not replaced")
 	}
+	// The replacement must stay within the cap and expire on the header timeout.
+	fmt.Fprint(extra, "GET /")
 	for len(bounded.slots) != 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("expired slots leaked")

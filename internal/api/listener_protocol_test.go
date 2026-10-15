@@ -43,6 +43,7 @@ func TestHTTPConnectionAnonymousAndRejectedRequestsReleaseSlots(t *testing.T) {
 					tc.setup(srv)
 				}
 				ts := httptest.NewUnstartedServer(h)
+				ts.Config.ConnContext = ConnectionContext
 				ln := newLimitedListener(ts.Listener, 1, 1, time.Minute)
 				ts.Listener = ln
 				ts.EnableHTTP2 = h2

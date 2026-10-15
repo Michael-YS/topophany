@@ -51,10 +51,15 @@ type layoutWork struct{ remaining int }
 
 func newLayoutWork() *layoutWork { return &layoutWork{remaining: maxLayoutWork} }
 func (b *layoutWork) take() bool {
-	if b.remaining <= 0 {
+	return b.takeN(1)
+}
+
+func (b *layoutWork) takeN(n int) bool {
+	if n < 0 || n > b.remaining {
+		b.remaining = 0
 		return false
 	}
-	b.remaining--
+	b.remaining -= n
 	return true
 }
 

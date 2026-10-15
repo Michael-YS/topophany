@@ -3,14 +3,19 @@ package api
 import (
 	"net"
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 )
 
 const maxConnectionLifetime = 2 * time.Minute
+const maxAuthenticationLifetime = 5 * time.Second
 
 // LimitListener bounds connections before TLS or HTTP parsing. Each source gets
-// at most a quarter of the global capacity (and never more than 16 slots).
+// at most a quarter of the pending capacity (and never more than 16 slots).
+// New arrivals replace the oldest unverified socket when that quota is full,
+// so a shared NAT or /64 cannot permanently occupy the authentication path.
+// Use ConnectionContext on the HTTP server to protect authenticated sockets.
 // IPv4-mapped addresses share a quota with IPv4; IPv6 addresses share a /64.
 // Source identity comes only from the socket, never from forwarded HTTP headers.
 func LimitListener(inner net.Listener, maximum int) net.Listener {
@@ -25,16 +30,59 @@ func newLimitedListener(inner net.Listener, maximum, perSource int, lifetime tim
 		panic("invalid connection limits")
 	}
 	return &limitedListener{Listener: inner, slots: make(chan struct{}, maximum),
-		perSource: perSource, lifetime: lifetime, sources: make(map[string]int)}
+		perSource: perSource, lifetime: lifetime, sources: make(map[string]int), principals: make(map[string]int)}
 }
 
 type limitedListener struct {
 	net.Listener
-	slots     chan struct{}
-	mu        sync.Mutex
-	perSource int
-	lifetime  time.Duration
-	sources   map[string]int
+	slots         chan struct{}
+	mu            sync.Mutex
+	perSource     int
+	lifetime      time.Duration
+	sources       map[string]int
+	pending       []*limitedConn // oldest first; bounded by the global connection cap
+	principals    map[string]int
+	authenticated int
+}
+
+// removePending holds l.mu. Authenticated sockets retain their global slot,
+// but no longer consume a source's unauthenticated quota.
+func (l *limitedListener) removePending(c *limitedConn) {
+	if i := slices.Index(l.pending, c); i >= 0 {
+		l.pending = slices.Delete(l.pending, i, i+1)
+	}
+	if l.sources[c.source]--; l.sources[c.source] == 0 {
+		delete(l.sources, c.source)
+	}
+}
+
+func (l *limitedListener) evictPending(source string) *limitedConn {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, c := range l.pending {
+		if l.sources[source] < l.perSource || c.source == source {
+			// Make selection atomic with promotion. A racing request cannot
+			// promote a socket between this choice and Close outside the lock.
+			c.closed = true
+			return c
+		}
+	}
+	return nil
+}
+
+func (l *limitedListener) releaseConn(c *limitedConn) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	c.closed = true
+	if c.principal == "" {
+		l.removePending(c)
+	} else {
+		l.authenticated--
+		if l.principals[c.principal]--; l.principals[c.principal] == 0 {
+			delete(l.principals, c.principal)
+		}
+	}
+	<-l.slots
 }
 
 func connectionSource(a net.Addr) string {
@@ -87,15 +135,26 @@ func (l *limitedListener) Accept() (net.Conn, error) {
 			return nil, err
 		}
 		source := connectionSource(c.RemoteAddr())
-		if !l.reserve(source) {
+		reserved := l.reserve(source)
+		if !reserved {
+			if old := l.evictPending(source); old != nil {
+				_ = old.Close()
+				reserved = l.reserve(source)
+			}
+		}
+		if !reserved {
 			_ = c.Close()
 			continue
 		}
-		out := &limitedConn{Conn: c, release: func() { l.release(source) }}
+		out := &limitedConn{Conn: c, listener: l, source: source, accepted: time.Now()}
+		out.release = func() { l.releaseConn(out) }
+		l.mu.Lock()
+		l.pending = append(l.pending, out)
+		l.mu.Unlock()
 		// A timer, rather than a socket deadline, also bounds active keep-alive
 		// and HTTP/2 connections: net/http cannot extend it with SetDeadline.
 		out.mu.Lock()
-		out.timer = time.AfterFunc(l.lifetime, func() { _ = out.Close() })
+		out.timer = time.AfterFunc(min(l.lifetime, maxAuthenticationLifetime), func() { _ = out.Close() })
 		out.mu.Unlock()
 		return out, nil
 	}
@@ -103,10 +162,14 @@ func (l *limitedListener) Accept() (net.Conn, error) {
 
 type limitedConn struct {
 	net.Conn
-	once    sync.Once
-	mu      sync.Mutex
-	timer   *time.Timer
-	release func()
+	once              sync.Once
+	mu                sync.Mutex
+	timer             *time.Timer
+	release           func()
+	listener          *limitedListener
+	source, principal string // principal and closed are protected by listener.mu
+	closed            bool
+	accepted          time.Time
 }
 
 func (c *limitedConn) Close() error {

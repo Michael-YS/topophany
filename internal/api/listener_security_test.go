@@ -67,13 +67,13 @@ func TestConnectionSourceCanonicalization(t *testing.T) {
 	}
 }
 
-func TestSourceQuotaRejectsFloodAndAdmitsAnotherSource(t *testing.T) {
+func TestSourceQuotaRecyclesFloodAndAdmitsAnotherSource(t *testing.T) {
 	inner := &scriptedListener{}
 	var rejected []net.Conn
 	for i := 0; i < 128; i++ {
 		c, peer := sourcePipe(t, fmt.Sprintf("192.0.2.1:%d", i+1))
 		inner.conns = append(inner.conns, c)
-		if i >= 16 {
+		if i < 128-16 {
 			rejected = append(rejected, peer)
 		}
 	}
@@ -81,7 +81,7 @@ func TestSourceQuotaRejectsFloodAndAdmitsAnotherSource(t *testing.T) {
 	inner.conns = append(inner.conns, other)
 	l := LimitListener(inner, 128).(*limitedListener)
 	var admitted []net.Conn
-	for i := 0; i < 17; i++ {
+	for i := 0; i < 129; i++ {
 		c, err := l.Accept()
 		if err != nil {
 			t.Fatal(err)
@@ -89,7 +89,7 @@ func TestSourceQuotaRejectsFloodAndAdmitsAnotherSource(t *testing.T) {
 		admitted = append(admitted, c)
 		t.Cleanup(func() { _ = c.Close() })
 	}
-	if got := connectionSource(admitted[16].RemoteAddr()); got != "198.51.100.2" {
+	if got := connectionSource(admitted[128].RemoteAddr()); got != "198.51.100.2" {
 		t.Fatalf("flood starved the other source: %s", got)
 	}
 	for _, c := range rejected {
@@ -195,6 +195,7 @@ func TestHTTPConnectionReuseRequiresAuthorization(t *testing.T) {
 		t.Run(fmt.Sprintf("tls=%v", tls), func(t *testing.T) {
 			_, h, _ := fixture(t)
 			ts := httptest.NewUnstartedServer(h)
+			ts.Config.ConnContext = ConnectionContext
 			ts.Listener = LimitListener(ts.Listener, 128)
 			if tls {
 				ts.StartTLS()

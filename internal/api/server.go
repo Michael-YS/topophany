@@ -247,6 +247,10 @@ func (s *Server) Handler() http.Handler {
 		// shared by everything anonymous, so anonymous traffic, however much
 		// of it, cannot refuse a worker or a viewer.
 		if a, ok := s.admit(r); ok {
+			if !authenticateConnection(r.Context(), scope(a.Principal)) {
+				writeError(w, 429, "connection_limited")
+				return
+			}
 			if !s.allow(scope(a.Principal)) {
 				w.Header().Set("Retry-After", "1")
 				writeError(w, 429, "rate_limited")

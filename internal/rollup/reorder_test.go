@@ -2,11 +2,64 @@ package rollup
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"sort"
 	"testing"
 	"time"
 )
+
+func TestLateSampleWorkLimitPreservesCountsAcrossRestart(t *testing.T) {
+	r := New(MaxLimit)
+	n := 10 * maxBoundaryShift
+	now := t0.Add(time.Minute)
+	for i := 0; i < n; i++ {
+		r.Add("c", "o", t0.Add(time.Duration(2*i)*time.Millisecond), "ok", 1, time.Minute, now)
+	}
+	for restart := 0; restart < 2; restart++ {
+		for i := 99; i >= 0; i-- {
+			r.Add("c", "o", t0.Add(time.Duration(2*i+1)*time.Millisecond), "fail", 1, time.Minute, now)
+		}
+		if len(r.series["c"].recent) != n+restart {
+			t.Fatal("over-budget samples changed correction boundaries")
+		}
+		// A nearby late sample still corrects normally after exhaustion.
+		at := t0.Add(time.Duration(2*n-3+restart) * time.Millisecond)
+		r.Add("c", "o", at, "ok", 1, time.Minute, now)
+		got, _ := r.Window("c", t0, now, now)
+		if got.Unreconciled != int64(100*(restart+1)) || got.Samples != int64(n+101*(restart+1)) {
+			t.Fatal(got)
+		}
+		raw, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r = New(MaxLimit)
+		if err := json.Unmarshal(raw, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkLateSampleWorkLimit(b *testing.B) {
+	for _, n := range []int{2 * maxBoundaryShift, 100000, 500000} {
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			r := New(MaxLimit)
+			s := &series{recent: make([]open, n)}
+			for i := range s.recent {
+				s.recent[i] = open{at: int64(2*i + 2), stale: 60000}
+			}
+			s.open = &s.recent[n-1]
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if r.insert(s, open{at: 3, stale: 60000}, 1000000) {
+					b.Fatal("over-budget correction accepted")
+				}
+			}
+		})
+	}
+}
 
 func FuzzLateSampleOrder(f *testing.F) {
 	f.Add([]byte{2, 9, 1, 4, 0, 19})

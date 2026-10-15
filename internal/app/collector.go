@@ -109,7 +109,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 		a.watch(ctx, backend, ledger.Settle(c), notifier)
 	}()
 	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
-	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ConnContext: api.ConnectionContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	// Local checks, if any, under a topology; reloads replace them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
 		if *observer == "" {

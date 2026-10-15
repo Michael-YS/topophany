@@ -8,6 +8,10 @@ import (
 
 const boundaryBytes = 64 // encoded timestamp, stale duration, class and delimiters
 
+// Bound the work of a late sample independently of the byte budget. The same
+// rule applies during journal replay and when loading large older checkpoints.
+const maxBoundaryShift = 1024
+
 // SetReorderWindow retains the boundaries needed to correct samples within
 // the collector's ingestion window. They share the rollup byte budget.
 func (r *Store) SetReorderWindow(window time.Duration) {
@@ -51,6 +55,10 @@ func (r *Store) insert(s *series, point open, now int64) bool {
 		return s.recent[i] == point
 	}
 	if i == len(s.recent) {
+		return false
+	}
+	if len(s.recent)-i > maxBoundaryShift {
+		// Keep its sample count, but disclose that its time was not corrected.
 		return false
 	}
 	next := s.recent[i]

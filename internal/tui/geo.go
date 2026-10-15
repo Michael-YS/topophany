@@ -199,7 +199,10 @@ func frameGeo(points [][2]float64, wd, hd, ky float64, zoom int, focus *[2]float
 // their labels, and never more than its whole latitude band. Layouts give
 // any height beyond that to other panels rather than to empty sea and ice.
 func (m *Model) geoRows(w int) int {
-	nodes, _, _ := m.graph()
+	nodes, edges, _ := m.graph()
+	if !mapGraphAllowed(w, len(nodes), len(edges)) {
+		return 0
+	}
 	pts := [][2]float64{}
 	lo, hi := 90.0, -90.0
 	for _, n := range nodes {
@@ -352,6 +355,10 @@ type geoArc struct {
 }
 
 func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, f mapFocus) {
+	if !mapLayoutAllowed(w, h, len(nodes), len(edges)) {
+		drawLayoutLimit(cv, x, y, w, h, len(nodes), len(edges))
+		return
+	}
 	unplaced := []int{}
 	pts := [][2]float64{}
 	var focus *[2]float64
@@ -526,7 +533,12 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		if m.FullMap {
 			runs = m.nodeServices()
 		}
-		plates = m.plates(sites, nodes, f, w, mh, m.cellAspect(), landCells, arcCells, taken, runs)
+		var complete bool
+		plates, complete = m.plates(sites, nodes, f, w, mh, m.cellAspect(), landCells, arcCells, taken, runs)
+		if !complete {
+			drawLayoutLimit(cv, x, y, w, h, len(nodes), len(edges))
+			return
+		}
 		for _, p := range plates {
 			if !p.beside {
 				p.leader(d, Mix(signalColor(p.site.signal), cInk, .25), g.ky)

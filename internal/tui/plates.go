@@ -128,9 +128,16 @@ func (t sat) over(x0, y0, x1, y1 int) int32 {
 // aspect is a cell's height over its width. Labels are placed one at a time,
 // each where it costs least around those placed before it; since the order
 // matters, a few orders are tried and the one that costs least in all wins.
-func placePlates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span) []plate {
+func placePlates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span) ([]plate, bool) {
+	return placePlatesBudget(sites, nodes, f, w, h, aspect, land, arcs, taken, runs, newLayoutWork())
+}
+
+func placePlatesBudget(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span, work *layoutWork) ([]plate, bool) {
+	if !mapLayoutAllowed(w, h, len(nodes), 0) || len(sites) > maxLayoutNodes {
+		return nil, false
+	}
 	if w <= 0 || h <= 0 || len(sites) == 0 {
-		return nil
+		return nil, true
 	}
 	shapes := make([][]plate, len(sites))
 	most, maxW := min(max(h/4, 3), 12), min(max(w/3, 18), 36)
@@ -142,6 +149,9 @@ func placePlates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect
 		for i := range shapes[k] {
 			shapes[k][i].k = k
 		}
+	}
+	if !work.takeN(2 * w * h) {
+		return nil, false
 	}
 	landT := newSat(w, h, func(x, y int) int32 { return int32(land[y*w+x]) })
 	arcT := newSat(w, h, func(x, y int) int32 {
@@ -172,24 +182,28 @@ func placePlates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect
 	var best []plate
 	bestCost := math.Inf(1)
 	for _, o := range orders {
-		ps, cost := placeInOrder(sites, shapes, o, w, h, aspect, landT, arcT, taken)
+		ps, cost, complete := placeInOrder(sites, shapes, o, w, h, aspect, landT, arcT, taken, work)
+		if !complete {
+			return nil, false
+		}
 		if cost < bestCost-1e-9 {
 			best, bestCost = ps, cost
 		}
 	}
-	return best
+	return best, true
 }
 
 // plateCache keeps the geographic map's labels between frames: between
 // two frames usually only the animation moves.
 type plateCache struct {
-	key    uint64
-	plates []plate
+	key      uint64
+	plates   []plate
+	complete bool
 }
 
 // plates are placePlates' labels, from the cache while nothing they depend
 // on has changed.
-func (m *Model) plates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span) []plate {
+func (m *Model) plates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span) ([]plate, bool) {
 	hs := fnv.New64a()
 	var b [8]byte
 	num := func(vs ...float64) {
@@ -231,7 +245,8 @@ func (m *Model) plates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, 
 	}
 	key := hs.Sum64()
 	if m.pcache.key != key || m.pcache.plates == nil {
-		m.pcache = plateCache{key, placePlates(sites, nodes, f, w, h, aspect, land, arcs, taken, runs)}
+		ps, complete := placePlates(sites, nodes, f, w, h, aspect, land, arcs, taken, runs)
+		m.pcache = plateCache{key: key, plates: ps, complete: complete}
 		if m.pcache.plates == nil {
 			m.pcache.plates = []plate{}
 		}
@@ -240,13 +255,16 @@ func (m *Model) plates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, 
 	for i := range out {
 		out[i].site = sites[out[i].k]
 	}
-	return out
+	return out, m.pcache.complete
 }
 
 // placeInOrder places the labels in order and says what they cost in all:
 // how far each is from its marker and what it covers, plus a toll for each
 // label that had to shrink and a bigger one for each that found no room.
-func placeInOrder(sites []*geoSite, shapes [][]plate, order []int, w, h int, aspect float64, landT, arcT sat, taken []bool) ([]plate, float64) {
+func placeInOrder(sites []*geoSite, shapes [][]plate, order []int, w, h int, aspect float64, landT, arcT sat, taken []bool, work *layoutWork) ([]plate, float64, bool) {
+	if !work.takeN(2*w*h + len(sites)) {
+		return nil, 0, false
+	}
 	cell := func(s *geoSite) (int, int) { return int(s.x) / 2, int(s.y) / 4 }
 	occ := append([]bool(nil), taken...)
 	soft := make([]bool, w*h) // the leaders laid so far
@@ -271,11 +289,17 @@ func placeInOrder(sites []*geoSite, shapes [][]plate, order []int, w, h int, asp
 		if mx < 0 || my < 0 || mx >= w || my >= h {
 			continue
 		}
+		if !work.takeN(2 * w * h) {
+			return nil, 0, false
+		}
 		occT, softT := newSat(w, h, bit(occ)), newSat(w, h, bit(soft))
 		// A leader should not run through another marker or label.
 		crosses := func(x0, y0, x1, y1 int) int {
 			n := 0
 			steps := max(abs(x1-x0), abs(y1-y0))
+			if !work.takeN(max(0, steps-1)) {
+				return -1
+			}
 			for i := 1; i < steps; i++ {
 				x := x0 + (x1-x0)*i/steps
 				y := y0 + (y1-y0)*i/steps
@@ -291,6 +315,9 @@ func placeInOrder(sites []*geoSite, shapes [][]plate, order []int, w, h int, asp
 			ry := int(reach/aspect) + 1
 			for py := max(0, my-p.h-ry); py <= min(h-p.h, my+ry); py++ {
 				for px := max(0, mx-p.w-int(reach)); px <= min(w-p.w, mx+int(reach)); px++ {
+					if !work.take() {
+						return nil, 0, false
+					}
 					// A cell clear all round, so labels never touch.
 					if occT.over(px-1, py-1, px+p.w+1, py+p.h+1) > 0 {
 						continue
@@ -326,7 +353,11 @@ func placeInOrder(sites []*geoSite, shapes [][]plate, order []int, w, h int, asp
 					}
 					if !beside {
 						ax, ay := min(max(mx, px), px+p.w-1), min(max(my, py), py+p.h-1)
-						if cost += 3 * float64(crosses(mx, my, ax, ay)); cost >= cheapest {
+						crossed := crosses(mx, my, ax, ay)
+						if crossed < 0 {
+							return nil, 0, false
+						}
+						if cost += 3 * float64(crossed); cost >= cheapest {
 							continue
 						}
 					}
@@ -339,6 +370,9 @@ func placeInOrder(sites []*geoSite, shapes [][]plate, order []int, w, h int, asp
 			}
 			out = append(out, found)
 			total += cheapest + 12*float64(level)
+			if !work.takeN(found.w*found.h + max(w, h)) {
+				return nil, 0, false
+			}
 			for y := found.y; y < found.y+found.h; y++ {
 				for x := found.x; x < found.x+found.w; x++ {
 					occ[y*w+x] = true
@@ -358,7 +392,7 @@ func placeInOrder(sites []*geoSite, shapes [][]plate, order []int, w, h int, asp
 			total += 60
 		}
 	}
-	return out, total
+	return out, total, true
 }
 
 // leader joins a plate to its marker with a line of dots from the marker's
