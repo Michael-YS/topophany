@@ -427,12 +427,11 @@ func TestHTTPRecordsTheEdgeThatAnswered(t *testing.T) {
 	}
 }
 
-// An HTTP peer sent a bearer token can hand it back in the headers an
-// edge's labels are read from, or as the exit address. The observation,
-// which every viewer of a collector reads, keeps the edge's name and a
-// cache status from a closed list, and checks the exit without keeping
-// it, so no part of the token reaches it. Sent no secret, the labels and
-// the exit are kept.
+// An HTTP peer can echo a bearer, private header or query through edge
+// labels or an exit address. Every collector viewer reads the observation,
+// so private requests retain only the edge name and a closed cache status,
+// and compare exit addresses without retaining them. Public requests keep
+// both their edge labels and exit addresses.
 func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 	const token = "tok-a1b2c3d4e5f6a7b8c9d0e1f2"
 	t.Setenv("TOPH_HTTP_TOKEN", token)
@@ -451,7 +450,9 @@ func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 		{"bearer", func(x *model.Check) { x.HTTP.BearerEnv = "TOPH_HTTP_TOKEN" }, true, "", ""},
 		{"private header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"X-Key": token} }, true, "", ""},
 		{"query", func(x *model.Check) { x.Target += "/?key=" + token }, true, "", ""},
-		{"host header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"Host": "example.invalid"} }, false, token[:12], "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2"},
+		{"host header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"Host": "example.invalid"} }, true, "", ""},
+		{"lowercase host header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"host": "example.invalid"} }, true, "", ""},
+		{"public request", func(*model.Check) {}, false, token[:12], "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			x := httpCheck(s.URL)

@@ -256,10 +256,10 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	// What the request carries beyond its method, path and Host is the
-	// topology's to keep from viewers, as any of it may be a credential: a
-	// header, the bearer token among them, or a query.
-	secret := len(req.Header) > 0 || req.URL.RawQuery != "" || u.Scheme != "https" && proxyCredentials(d.Proxies)
+	// Any configured header, including a Host override, may be private.
+	// Count the topology's headers because Host lives in Request.Host,
+	// outside Request.Header; a bearer or query is private too.
+	secret := len(x.HTTP.RequestHeaders) > 0 || token != "" || req.URL.RawQuery != "" || u.Scheme != "https" && proxyCredentials(d.Proxies)
 	req.Header.Set("User-Agent", "Topophany/"+model.Version)
 	resp, e := client.Do(req)
 	if e != nil {
