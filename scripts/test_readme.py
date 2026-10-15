@@ -48,13 +48,16 @@ class ReadmeTests(unittest.TestCase):
     def test_each_readme_shows_the_tui_in_its_language(self):
         shown = {}
         for code, path in readmes().items():
-            stills = re.findall(r"docs/assets/(\w+)\.([\w-]+)\.png", path.read_text(encoding="utf-8"))
+            captures = re.findall(r"docs/assets/(\w+)\.([\w-]+)\.(png|gif)", path.read_text(encoding="utf-8"))
             with self.subTest(language=code):
-                self.assertTrue(stills, "no capture of the TUI")
-                for name, lang in stills:
+                kinds = {kind for _, _, kind in captures}
+                self.assertIn("png", kinds, "no still of the TUI")
+                self.assertIn("gif", kinds, "no animation of the TUI")
+                for name, lang, kind in captures:
                     self.assertEqual(lang, code, f"{name} is captured in another language")
-                    self.assertTrue((ROOT / f"docs/assets/{name}.{lang}.png").is_file(), f"no {name}.{lang}.png; run make captures")
-            shown[code] = sorted(name for name, _ in stills)
+                    self.assertTrue((ROOT / f"docs/assets/{name}.{lang}.{kind}").is_file(),
+                                    f"no {name}.{lang}.{kind}; run make captures")
+            shown[code] = sorted(f"{name}.{kind}" for name, _, kind in captures)
         self.assertEqual(len(set(map(tuple, shown.values()))), 1, shown)
 
 

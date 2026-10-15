@@ -80,6 +80,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plain-text diagnostics, and refused otherwise, which the evidence says;
   latency bars are drawn whatever durations they are given.
 
+### Added
+
+- Each README shows the TUI in motion, in its own language. It opens
+  with an outage arriving on the Overview, the routes it breaks and the
+  evidence for one incident, and its terminal UI section shows the
+  network from two vantage points and then the three maps. They are
+  chapters of the homepage's tour, made into GIFs by `make captures`,
+  which now needs ffmpeg as well as a Chromium. The stills it makes keep
+  their pixels in a quarter fewer bytes.
+
 ## [0.8.1] - 2026-10-14
 
 ### Changed

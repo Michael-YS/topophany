@@ -21,8 +21,8 @@
 **Topophany** は、ネットワークとその上のサービスをセルフホストで監視し、ターミナル UI で読み取るツールです。Go のバイナリ `topo` 1 つを 3 つの役割で動かします。**ワーカー**は自分のいる場所から計測し、**コレクター**は根拠を保存し、**TUI** は何がどこでおかしいのかを示します。
 
 <p align="center">
-  <img src="docs/assets/overview.ja.png" alt="障害をシミュレートしている Overview：仮想地図には東京からフランクフルトまでの場所がカードで並び、失敗している経路が琥珀色で描かれ、ステータスカードには 5 件のインシデント、その横に対処が必要な項目の一覧" width="100%">
-  <br><sub>障害をシミュレートしている Overview。<code>topo preview --lang ja --scenario 1</code> より。</sub>
+  <img src="docs/assets/outage.ja.gif" alt="Overview に障害が起きる様子：シナリオの選択画面が開き、サンプルが届くたびにチェックが失敗して 5 件のインシデントが開き、失敗した経路が地図上で琥珀色になる。問題を選ぶたびにその経路が浮かび上がり、最後に 1 件のインシデントの根拠が開く" width="100%">
+  <br><sub><code>topo preview --lang ja</code> で <code>x</code> を押すと、自宅からロサンゼルスの中継回線への接続が遮断されます。問題を選ぶとその経路が浮かび上がり、<code>Enter</code> で根拠を表示します。</sub>
 </p>
 
 ## Topophany を選ぶ理由
@@ -31,6 +31,11 @@
 - **観測点を明示する。** 各観測点は、実際にいる場所から計測します。自宅から見えた失敗はその経路の失敗として報告され、サーバーの停止とはされません。
 - **ひと目で読める。** Overview は *どこかおかしい？ それはどこ？* という問いに、判定、すべての場所と経路の地図、対処が必要なものの短いリストで答えます。
 - **バイナリ 1 つ、依存なし。** CGO も、データベースのデーモンも、Node.js も不要で、外部の Go モジュールはゼロです。
+
+<p align="center">
+  <img src="docs/assets/overview.ja.png" alt="障害をシミュレートしている Overview：仮想地図には東京からフランクフルトまでの場所がカードで並び、失敗している経路が琥珀色で描かれ、ステータスカードには 5 件のインシデント、その横に対処が必要な項目の一覧" width="100%">
+  <br><sub>障害をシミュレートしている Overview。<code>topo preview --lang ja --scenario 1</code> より。</sub>
+</p>
 
 ## 1 分で試す
 
@@ -103,6 +108,11 @@ topo --credentials ./demo/credentials.json
 ## ターミナル UI
 
 9 つのタブ：**Overview**、**Topology** (仮想地図、地図、ネットワークの 3 つのマップ)、**Servers**、**Services**、**Paths**、**Checks**、**Incidents**、**Observers**、**About**。
+
+<p align="center">
+  <img src="docs/assets/views.ja.gif" alt="大阪の MacBook から見た Overview では中継経路がダウンし、ニューヨークのサーバーから見ると正常。続いて Topology タブの仮想地図、点字の世界地図、ネットワーク図" width="100%">
+  <br><sub>大阪からはダウン、ニューヨークからは正常。各観測点は見えるものだけを報告します (<code>v</code>)。続いて 3 つのマップ (<code>m</code>)：仮想地図、地図、ネットワーク。</sub>
+</p>
 
 | キー | |
 |---|---|

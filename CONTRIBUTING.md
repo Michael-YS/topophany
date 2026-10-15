@@ -34,10 +34,12 @@ the words to write them again; `scripts/test_site.py` fails while they are stale
 
 The TUI stills in `docs/assets` (`<name>.<language>.png`) are captured from the
 preview the same way: the README's in every language, the guide's in English.
-Run `make captures` after changing what they show. It needs a Chromium (found on
-`PATH`, or given as `CHROME`), and Japanese wants a font with Japanese glyph
-forms; `make captures FONTS=dir` adds a directory of fonts, such as Noto Sans
-JP, for that run only.
+The README's animations (`<name>.<language>.gif`) are chapters of the
+homepage's tour. Run `make captures` after changing what they show, and after
+`make site`. It needs a Chromium (found on `PATH`, or given as `CHROME`) and
+ffmpeg (found on `PATH`, or given as `FFMPEG`), and Japanese wants a font with
+Japanese glyph forms; `make captures FONTS=dir` adds a directory of fonts, such
+as Noto Sans JP, for that run only.
 
 Words a reader sees go in catalogs, never in code. The preview's built-in
 topology refers to its names, notes and places as `@key`, and each language's

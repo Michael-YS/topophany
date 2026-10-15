@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -275,24 +276,38 @@ func (r *recorder) record() {
 	r.play(7*s, 100*milli, 100*milli)
 }
 
-func TestSite(t *testing.T) {
-	dir := os.Getenv("TOPO_SITE")
-	// Timestamps in the evidence read the same wherever the tour is made.
+// tours holds the tour in each language once recorded, for the homepage and
+// the README's animations to share: recording all three takes seconds.
+var tours sync.Map
+
+// recordTour records the tour in lang, with timestamps in UTC so that the
+// evidence reads the same wherever it is made.
+func recordTour(t *testing.T, lang string) tour {
+	if out, ok := tours.Load(lang); ok {
+		return out.(tour)
+	}
 	local := time.Local
 	time.Local = time.UTC
 	defer func() { time.Local = local }()
+	r := newRecorder(t, lang)
+	r.record()
+	tours.Store(lang, r.out)
+	return r.out
+}
+
+func TestSite(t *testing.T) {
+	dir := os.Getenv("TOPO_SITE")
 	for _, lang := range preview.Languages() {
-		r := newRecorder(t, lang)
-		r.record()
-		b, e := json.Marshal(r.out)
+		out := recordTour(t, lang)
+		b, e := json.Marshal(out)
 		if e != nil {
 			t.Fatal(e)
 		}
 		frames := 0
-		for _, c := range r.out.Chapters {
+		for _, c := range out.Chapters {
 			frames += len(c.Frames)
 		}
-		t.Logf("%s: %d chapters, %d frames, %d styles, %d bytes", lang, len(r.out.Chapters), frames, len(r.out.Styles), len(b))
+		t.Logf("%s: %d chapters, %d frames, %d styles, %d bytes", lang, len(out.Chapters), frames, len(out.Styles), len(b))
 		if dir == "" {
 			continue
 		}

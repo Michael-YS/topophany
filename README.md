@@ -21,8 +21,8 @@
 **Topophany** is a self-hosted monitor for your network and the services on it, read in a terminal UI. It is one Go binary, `topo`, that you run in three roles: **workers** measure from where they are, **collectors** store the evidence, and the **TUI** shows what is wrong and where.
 
 <p align="center">
-  <img src="docs/assets/overview.en.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
-  <br><sub>The Overview during a simulated outage, from <code>topo preview --lang en --scenario 1</code>.</sub>
+  <img src="docs/assets/outage.en.gif" alt="An outage arriving on the Overview: the scenario picker opens, checks fail sample by sample until five incidents are open and the failing routes turn amber on the map, each problem's route lights up as it is selected, and the evidence for one incident opens" width="100%">
+  <br><sub>Press <code>x</code> in <code>topo preview --lang en</code> and home loses the line to the transit host in Los Angeles. Select a problem and its route lights up; <code>Enter</code> shows the evidence.</sub>
 </p>
 
 ## Why Topophany
@@ -31,6 +31,11 @@
 - **Vantage points are explicit.** Each observer measures from where it actually is. A failure seen from home is reported as a failure of that path, not as a server outage.
 - **Readable at a glance.** The Overview answers *is anything wrong, and where?* with a verdict, a map of every place and path, and the short list of what needs attention.
 - **One binary, no dependencies.** No CGO, no database daemon, no Node.js, and zero external Go modules.
+
+<p align="center">
+  <img src="docs/assets/overview.en.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
+  <br><sub>The Overview during a simulated outage, from <code>topo preview --lang en --scenario 1</code>.</sub>
+</p>
 
 ## Try it in a minute
 
@@ -103,6 +108,11 @@ The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units
 ## The terminal UI
 
 Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and network), **Servers**, **Services**, **Paths**, **Checks**, **Incidents**, **Observers** and **About**.
+
+<p align="center">
+  <img src="docs/assets/views.en.gif" alt="The Overview viewed from the MacBook in Seattle, where the transit path is down, then from the server in New York, where it is fine; then the Topology tab's virtual geo map, braille world map and network graph" width="100%">
+  <br><sub>Down from Seattle, fine from New York: each observer reports only what it can see (<code>v</code>). Then the three maps (<code>m</code>): virtual geo, geo and network.</sub>
+</p>
 
 | Keys | |
 |---|---|

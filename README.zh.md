@@ -21,8 +21,8 @@
 **Topophany** 是一个自托管的监控工具，用来监控你的网络和其上的服务，并在终端界面中查看。它只有一个 Go 二进制文件 `topo`，以三种角色运行：**worker** 在所处的位置测量，**采集器**保存证据，**TUI** 告诉你哪里出了什么问题。
 
 <p align="center">
-  <img src="docs/assets/overview.zh.png" alt="模拟故障时的 Overview：虚拟地图上从东京到法兰克福的各个地点以卡片排列，故障路径以琥珀色绘出，状态卡片显示 5 个事件，旁边是需要关注的项目列表" width="100%">
-  <br><sub>模拟故障时的 Overview，来自 <code>topo preview --lang zh --scenario 1</code>。</sub>
+  <img src="docs/assets/outage.zh.gif" alt="Overview 上故障来临：场景选择框打开，检查随样本到达逐个失败，直到 5 个事件打开、故障路径在地图上变为琥珀色；每选中一个问题，它的路径就会亮起，最后打开一个事件的证据" width="100%">
+  <br><sub>在 <code>topo preview --lang zh</code> 中按 <code>x</code>，家里到洛杉矶中转线路的连接被阻断。选中一个问题，它的路径会亮起；按 <code>Enter</code> 查看证据。</sub>
 </p>
 
 ## 为什么选择 Topophany
@@ -31,6 +31,11 @@
 - **观测点是明确的。** 每个观测点都从它实际所在的位置测量。从家里看到的失败会被报告为那条路径的失败，而不是服务器宕机。
 - **一眼就能读懂。** Overview 用一个结论、一张涵盖所有地点和路径的地图，以及需要关注的简短清单，回答*有没有出问题？在哪里？*
 - **一个二进制，没有依赖。** 不需要 CGO、数据库守护进程或 Node.js，外部 Go 模块为零。
+
+<p align="center">
+  <img src="docs/assets/overview.zh.png" alt="模拟故障时的 Overview：虚拟地图上从东京到法兰克福的各个地点以卡片排列，故障路径以琥珀色绘出，状态卡片显示 5 个事件，旁边是需要关注的项目列表" width="100%">
+  <br><sub>模拟故障时的 Overview，来自 <code>topo preview --lang zh --scenario 1</code>。</sub>
+</p>
 
 ## 一分钟上手
 
@@ -103,6 +108,11 @@ topo --credentials ./demo/credentials.json
 ## 终端界面
 
 九个标签页：**Overview**、**Topology**（虚拟地图、地理和网络三种地图）、**Servers**、**Services**、**Paths**、**Checks**、**Incidents**、**Observers** 和 **About**。
+
+<p align="center">
+  <img src="docs/assets/views.zh.gif" alt="从成都的 MacBook 看 Overview，中转路径已断；从纽约的服务器看则正常。接着是 Topology 标签页的虚拟地图、盲文点阵世界地图和网络图" width="100%">
+  <br><sub>从成都看已断，从纽约看正常：每个观测点只报告它能看到的（<code>v</code>）。接着是三种地图（<code>m</code>）：虚拟地图、地理和网络。</sub>
+</p>
 
 | 按键 | |
 |---|---|
