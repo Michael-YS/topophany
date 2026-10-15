@@ -139,8 +139,10 @@ func (l *limitedListener) Accept() (net.Conn, error) {
 		if !reserved {
 			if old := l.evictPending(source); old != nil {
 				_ = old.Close()
-				reserved = l.reserve(source)
 			}
+			// Authentication or Close may have freed capacity after the first
+			// reservation failed, leaving no pending socket to evict.
+			reserved = l.reserve(source)
 		}
 		if !reserved {
 			_ = c.Close()

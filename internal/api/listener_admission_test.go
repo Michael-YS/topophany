@@ -187,3 +187,30 @@ func TestAuthenticationCannotRacePendingEviction(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionAdmissionCannotRacePendingClose(t *testing.T) {
+	for range 100 {
+		first, _ := sourcePipe(t, "192.0.2.1:1")
+		next, _ := sourcePipe(t, "192.0.2.1:2")
+		l := newLimitedListener(&scriptedListener{conns: []net.Conn{first, next}}, 1, 1, time.Minute)
+		c, err := l.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { c.Close() })
+		closed := make(chan struct{})
+		go func() {
+			c.Close()
+			close(closed)
+		}()
+		replacement, err := l.Accept()
+		<-closed
+		if err != nil {
+			t.Fatal("released global capacity was unavailable", err)
+		}
+		replacement.Close()
+		if len(l.slots) != 0 || len(l.pending) != 0 || len(l.sources) != 0 {
+			t.Fatal("close/admission race leaked connection accounting")
+		}
+	}
+}

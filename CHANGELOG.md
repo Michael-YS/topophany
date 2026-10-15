@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-15
+
+### Fixed
+
+- Retry collector connection admission when concurrent authentication or socket
+  closure frees capacity after the initial quota check, even if no pending
+  socket remains to evict. New connections no longer receive an intermittent
+  EOF despite available capacity; source and global connection limits remain
+  enforced.
+
 ## [0.9.0] - 2026-10-15
 
 ### Added
@@ -795,7 +805,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/WhitenWhiten/topophany/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/WhitenWhiten/topophany/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/WhitenWhiten/topophany/compare/v0.8.1...v0.8.3
 [0.8.1]: https://github.com/WhitenWhiten/topophany/compare/v0.8.0...v0.8.1
