@@ -347,3 +347,57 @@ func TestReconfigureAndOverflow(t *testing.T) {
 		t.Fatal("a removed webhook is kept")
 	}
 }
+
+// One observer's alerts cannot crowd another's out of a webhook it shares:
+// a worker can make as many incidents as it likes for its own observer,
+// so a full queue gives way to an observer with fewer alerts waiting, at
+// the cost of the newest of whoever has the most.
+func TestAnObserverCannotCrowdOutAnother(t *testing.T) {
+	c := testkit.Config()
+	snap, changes := failing(t)
+	release := make(chan struct{})
+	var mu sync.Mutex
+	got := []string{}
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		var m struct {
+			Event    string
+			Observer model.ObserverState
+		}
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &m)
+		mu.Lock()
+		got = append(got, m.Event+":"+m.Observer.ID)
+		mu.Unlock()
+	}))
+	defer hook.Close()
+	l := &logs{}
+	n := &Notifier{Project: "lab", Instance: "primary", Log: l.log}
+	n.Configure(Config{Schema: 1, Webhooks: []Webhook{{ID: "shared", Format: "json", URL: hook.URL}}})
+	defer n.Close()
+	for range queueSize + 3 {
+		n.Observe(snap, changes, false)
+	}
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	home := map[string]model.Heartbeat{"home": {Project: c.Project, Observer: "home", Boot: "b", SampledAt: now.Add(-time.Second)}}
+	n.Observe(engine.Build(c, "primary", "", nil, home, now), nil, true)
+	n.mu.Lock()
+	waiting := n.queues["shared"].Waiting
+	last := waiting[len(waiting)-1]
+	n.mu.Unlock()
+	if len(waiting) != queueSize || last.Event.Kind != "observer.silent" || last.Observer != "cloud" {
+		t.Fatal("cloud's alert did not get into the queue home filled", len(waiting), last.Event.Kind, last.Observer)
+	}
+	if !strings.Contains(l.String(), "alert incident.opened from observer home to webhook shared dropped for one from observer cloud") {
+		t.Fatal(l.String())
+	}
+	close(release)
+	wait(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(got) == queueSize
+	})
+	if got[queueSize-1] != "observer.silent:cloud" {
+		t.Fatal(got[queueSize-1])
+	}
+}

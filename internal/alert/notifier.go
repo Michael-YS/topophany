@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,13 +34,14 @@ const (
 
 // Notifier turns what a collector concludes into alerts and delivers them
 // to the webhooks that take them, in order, one at a time per webhook, at
-// least once. An alert a webhook fails to take, or takes with 408, 429 or
-// a 5xx status, is tried again with pauses growing to five minutes until
-// it has waited a day; one it refuses otherwise, or answers with a
-// redirect, which is never followed, is dropped. With a Path, what waits
-// is kept there, so a collector that stops or reloads loses none of it.
-// Each drop is logged, by webhook ID: a webhook's URL is a secret and is
-// never logged, nor kept with the alerts.
+// least once; a full queue keeps each observer's share (see room). An
+// alert a webhook fails to take, or takes with 408, 429 or a 5xx status,
+// is tried again with pauses growing to five minutes until it has waited
+// a day; one it refuses otherwise, or answers with a redirect, which is
+// never followed, is dropped. With a Path, what waits is kept there, so a
+// collector that stops or reloads loses none of it. Each drop is logged,
+// by webhook ID: a webhook's URL is a secret and is never logged, nor
+// kept with the alerts.
 type Notifier struct {
 	Project, Instance string
 	Log               func(format string, args ...any)
@@ -233,8 +235,12 @@ func (n *Notifier) Observe(snap model.Snapshot, changes []ledger.Change, settled
 			q := n.queues[h.ID]
 			if len(q.Waiting) >= queueSize {
 				q.Dropped++
-				n.logf("alert %s to webhook %s dropped: %d alerts already wait", e.Kind, h.ID, queueSize)
-				continue
+				gone, ok := q.room(e.Observer)
+				if !ok {
+					n.logf("alert %s from observer %s to webhook %s dropped: %d alerts already wait", e.Kind, e.Observer, h.ID, queueSize)
+					continue
+				}
+				n.logf("alert %s from observer %s to webhook %s dropped for one from observer %s: %d alerts already wait, most of them from %s", gone.Event.Kind, gone.Observer, h.ID, e.Observer, queueSize, gone.Observer)
 			}
 			q.Waiting = append(q.Waiting, queued{Event: e, Observer: e.Observer, Queued: time.Now().UTC()})
 			queuedAny = true
@@ -247,6 +253,31 @@ func (n *Notifier) Observe(snap model.Snapshot, changes []ledger.Change, settled
 	if queuedAny {
 		n.save()
 	}
+}
+
+// room makes room in a full q for an alert from observer. The newest
+// alert of the observer with the most waiting gives way, if that is more
+// than observer has, so that a worker, which can make as many incidents
+// as it likes for its own observer, cannot crowd out another observer's
+// alerts: a full queue holds each observer's fair share. The oldest stays
+// whoever it is from, as it may be being sent.
+func (q *queue) room(observer string) (queued, bool) {
+	counts := map[string]int{}
+	for _, w := range q.Waiting {
+		counts[w.Observer]++
+	}
+	victim := 0
+	for i := len(q.Waiting) - 1; i > 0; i-- {
+		if victim == 0 || counts[q.Waiting[i].Observer] > counts[q.Waiting[victim].Observer] {
+			victim = i
+		}
+	}
+	if victim == 0 || counts[q.Waiting[victim].Observer] <= counts[observer] {
+		return queued{}, false
+	}
+	gone := q.Waiting[victim]
+	q.Waiting = slices.Delete(q.Waiting, victim, victim+1)
+	return gone, true
 }
 
 // deliver sends what waits for h, oldest first, until ctx ends.

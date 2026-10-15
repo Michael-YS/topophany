@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now offer only X25519, P-256, P-384 and P-521, as those clients do.
   Workers still offer the hybrid exchange to their collectors.
 
+### Security
+
+- A worker can no longer crowd other observers' alerts out of a webhook
+  they share. A webhook's queue held its 64 alerts whoever they were
+  from, so while it was down or slow a worker could fill it with
+  incidents of its own observer, which it can make at will, and every
+  alert from another observer was dropped until it drained. A full queue
+  now gives an alert from an observer with fewer waiting the place of the
+  newest from the observer with the most, so each keeps its share; a
+  drop is logged with the observer it was from.
+
 ## [0.8.0] - 2026-10-14
 
 Everything since 0.3.0. No release was published between them.
