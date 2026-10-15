@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -214,12 +215,16 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if (*cert == "") != (*key == "") {
 		return errors.New("both tls-cert and tls-key required")
 	}
+	tc, e := serverTLS(*cert, *key)
+	if e != nil {
+		return e
+	}
 	host, _, e := net.SplitHostPort(*listen)
 	if e != nil {
 		return errors.New("listen must be host:port")
 	}
 	ip := net.ParseIP(host)
-	if *cert == "" && !*insecure && (ip == nil || !ip.IsLoopback()) {
+	if tc == nil && !*insecure && (ip == nil || !ip.IsLoopback()) {
 		return errors.New("non-loopback collectors require TLS, or explicit --allow-insecure")
 	}
 	if *retention < time.Minute || *retention > 30*24*time.Hour {
@@ -271,7 +276,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 		a.watch(ctx, backend, ledger.Settle(c), notifier)
 	}()
 	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
-	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	// Local checks, if any, under a topology; reloads replace them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
 		if *observer == "" {
@@ -294,8 +299,8 @@ func (a *App) serve(parent context.Context, args []string) error {
 	go func() {
 		defer wg.Done()
 		var e error
-		if *cert != "" {
-			e = srv.ServeTLS(api.LimitListener(ln, 128), *cert, *key)
+		if tc != nil {
+			e = srv.ServeTLS(api.LimitListener(ln, 128), "", "")
 		} else {
 			e = srv.Serve(api.LimitListener(ln, 128))
 		}
@@ -372,6 +377,28 @@ wait:
 		_ = srv.Close()
 	}
 	return result
+}
+
+// serverTLS loads a collector's certificate and key, if it has them. The
+// key is read as a credential, like auth.json: a regular file, not a
+// link, that no other user can read on POSIX.
+func serverTLS(cert, key string) (*tls.Config, error) {
+	if cert == "" {
+		return nil, nil
+	}
+	c, e := secure.ReadBounded(cert, 1<<20)
+	if e != nil {
+		return nil, fmt.Errorf("tls-cert %s: %w", cert, e)
+	}
+	k, e := secure.PrivateRead(key)
+	if e != nil {
+		return nil, fmt.Errorf("tls-key %s: %w", key, e)
+	}
+	pair, e := tls.X509KeyPair(c, k)
+	if e != nil {
+		return nil, fmt.Errorf("tls-cert and tls-key: %w", e)
+	}
+	return &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12}, nil
 }
 
 // loadAlerts reads a collector's alerts file, if it has one.

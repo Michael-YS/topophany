@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -353,5 +354,69 @@ func TestShippedTopologyExamplesValidateAndHomelabIsPaused(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The collector's TLS key is a credential like auth.json: a key another
+// user could read, a link or anything but a file stops it before it
+// listens, and one that is private serves TLS.
+func TestServeTLSKeyMustBePrivate(t *testing.T) {
+	dir, _, _, cr := initialized(t)
+	cert, key, ca := testkit.Certificate(t, "localhost")
+	serve := func(ctx context.Context, key string, log io.Writer) error {
+		a := &App{In: strings.NewReader(""), Out: io.Discard, Err: log}
+		return a.Run(ctx, []string{"serve", "--config", filepath.Join(dir, "topology.json"), "--auth", filepath.Join(dir, "auth.json"), "--data", filepath.Join(dir, "data"), "--listen", "127.0.0.1:0", "--tls-cert", cert, "--tls-key", key})
+	}
+	b, e := os.ReadFile(key)
+	if e != nil {
+		t.Fatal(e)
+	}
+	bad := map[string]string{"missing": filepath.Join(t.TempDir(), "missing.pem"), "directory": t.TempDir(), "link": filepath.Join(t.TempDir(), "link.pem")}
+	if e = os.Symlink(key, bad["link"]); e != nil {
+		t.Fatal(e)
+	}
+	if runtime.GOOS != "windows" {
+		bad["group-readable"] = filepath.Join(t.TempDir(), "shared.pem")
+		if e = os.WriteFile(bad["group-readable"], b, 0640); e != nil {
+			t.Fatal(e)
+		}
+	}
+	for name, path := range bad {
+		log := &lockedWriter{}
+		e := serve(context.Background(), path, log)
+		if e == nil || !strings.Contains(e.Error(), "tls-key") || strings.Contains(log.String(), "listening") {
+			t.Fatal(name, e, log.String())
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	log := &lockedWriter{}
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, key, log) }()
+	re := regexp.MustCompile(`listening on (127\.0\.0\.1:\d+)`)
+	var addr string
+	testkit.Wait(t, 3*time.Second, func() bool {
+		m := re.FindStringSubmatch(log.String())
+		if len(m) > 1 {
+			addr = m[1]
+			return true
+		}
+		return false
+	})
+	p := cr.Profiles["demo"]
+	p.Servers[0].URL = "https://" + addr
+	p.Servers[0].CAFile = ca
+	cl, e := client.New(p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer cl.Close()
+	if _, _, e = cl.Snapshot(context.Background(), "demo"); e != nil {
+		t.Fatal(e)
+	}
+	cancel()
+	if e = <-done; e != nil {
+		t.Fatal(e)
 	}
 }

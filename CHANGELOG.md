@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now gives an alert from an observer with fewer waiting the place of the
   newest from the observer with the most, so each keeps its share; a
   drop is logged with the observer it was from.
+- A collector's TLS private key is read as its other credentials are.
+  `topo serve` handed `--tls-key` to the TLS server to open as it was,
+  so a key other users could read, a link or anything but a file was
+  served from; now the key must be a regular file, not a link, of mode
+  `0600` or stricter on POSIX, or the collector does not start, and it
+  says why. Copy a key out of a certificate tool's directory of links,
+  such as Let's Encrypt's `live/`, rather than pointing at it.
 
 ## [0.8.0] - 2026-10-14
 
