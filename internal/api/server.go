@@ -235,11 +235,11 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		// Health, unknown routes, bad methods, authentication failures and
-		// pre-auth rejections must not retain HTTP/1 listener slots. Only a
+		// pre-auth rejections must not retain listener slots. Only a
 		// successfully authorized request opts back into connection reuse.
-		if r.ProtoMajor == 1 {
-			w.Header().Set("Connection", "close")
-		}
+		// net/http translates this into GOAWAY for HTTP/2 and removes the
+		// header from the wire, closing the connection once streams finish.
+		w.Header().Set("Connection", "close")
 		// A request that authenticates answers to the budgets of its own
 		// principal, whatever it asks for, never to the slots and the rate
 		// shared by everything anonymous, so anonymous traffic, however much

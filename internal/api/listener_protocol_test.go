@@ -12,43 +12,94 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
-func TestHTTPConnectionHTTP2RemainsReusable(t *testing.T) {
-	_, h, _ := fixture(t)
-	ts := httptest.NewUnstartedServer(h)
-	ts.Listener = LimitListener(ts.Listener, 128)
-	ts.EnableHTTP2 = true
-	ts.StartTLS()
-	defer ts.Close()
-	client := ts.Client()
-	client.Timeout = 3 * time.Second
-	for i, tc := range []struct {
-		path, token string
-		status      int
-	}{
-		{"/healthz", "", 200},
-		{"/v1/config", "", 401},
-		{"/v1/config", viewerToken, 200},
-		{"/v1/config", viewerToken, 200},
-	} {
-		req, err := http.NewRequest("GET", ts.URL+tc.path, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tc.token != "" {
-			req.Header.Set("Authorization", "Bearer "+tc.token)
-		}
-		reused := false
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
-			GotConn: func(info httptrace.GotConnInfo) { reused = info.Reused },
-		}))
-		response, err := client.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, readErr := io.Copy(io.Discard, response.Body)
-		response.Body.Close()
-		if readErr != nil || response.ProtoMajor != 2 || response.StatusCode != tc.status || response.Header.Get("Connection") != "" || reused != (i > 0) {
-			t.Fatalf("request %d: protocol=%s status=%d reused=%v read=%v", i, response.Proto, response.StatusCode, reused, readErr)
+func TestHTTPConnectionAnonymousAndRejectedRequestsReleaseSlots(t *testing.T) {
+	for _, h2 := range []bool{false, true} {
+		for _, tc := range []struct {
+			name, method, path, token string
+			status                    int
+			setup                     func(*Server)
+		}{
+			{name: "health", method: "GET", path: "/healthz", status: 200},
+			{name: "missing token", method: "GET", path: "/v1/config", status: 401},
+			{name: "invalid token", method: "GET", path: "/v1/config", token: "invalid", status: 401},
+			{name: "unknown route", method: "GET", path: "/missing", status: 404},
+			{name: "bad method", method: "POST", path: "/healthz", status: 405},
+			{name: "wrong role", method: "POST", path: "/v1/observations", token: viewerToken, status: 403},
+			{name: "preauth busy", method: "GET", path: "/healthz", status: 429, setup: func(s *Server) {
+				for i := 0; i < cap(s.preauthSlots); i++ {
+					s.preauthSlots <- struct{}{}
+				}
+			}},
+			{name: "preauth rate", method: "GET", path: "/healthz", status: 429, setup: func(s *Server) {
+				s.limits["preauth"] = limit{At: s.Now(), Count: 300}
+			}},
+			{name: "principal rate", method: "GET", path: "/v1/config", token: viewerToken, status: 429, setup: func(s *Server) {
+				s.limits[secure.Hash(viewerToken)] = limit{At: s.Now(), Count: 30}
+			}},
+		} {
+			t.Run(fmt.Sprintf("http2=%v/%s", h2, tc.name), func(t *testing.T) {
+				srv, h, _ := fixture(t)
+				if tc.setup != nil {
+					tc.setup(srv)
+				}
+				ts := httptest.NewUnstartedServer(h)
+				ln := newLimitedListener(ts.Listener, 1, 1, time.Minute)
+				ts.Listener = ln
+				ts.EnableHTTP2 = h2
+				ts.StartTLS()
+				defer ts.Close()
+				client := ts.Client()
+				client.Timeout = 3 * time.Second
+				req, err := http.NewRequest(tc.method, ts.URL+tc.path, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tc.token != "" {
+					req.Header.Set("Authorization", "Bearer "+tc.token)
+				}
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+				if err != nil || resp.StatusCode != tc.status || (resp.ProtoMajor == 2) != h2 {
+					t.Fatalf("protocol=%s status=%d read=%v", resp.Proto, resp.StatusCode, err)
+				}
+				if h2 && resp.Header.Get("Connection") != "" {
+					t.Fatal("HTTP/1 header sent over HTTP/2")
+				}
+				// Check the actual admission slot, not just the response header or
+				// client's choice to reuse a socket. No client close triggers this.
+				deadline := time.Now().Add(3 * time.Second)
+				for len(ln.slots) != 0 && time.Now().Before(deadline) {
+					time.Sleep(10 * time.Millisecond)
+				}
+				if len(ln.slots) != 0 {
+					t.Fatal("rejected/anonymous connection retained the only listener slot")
+				}
+				// Once released, a viewer must be able to connect and reuse it.
+				srv.mu.Lock()
+				delete(srv.limits, secure.Hash(viewerToken))
+				srv.mu.Unlock()
+				for i := 0; i < 2; i++ {
+					req, _ := http.NewRequest("GET", ts.URL+"/v1/config", nil)
+					req.Header.Set("Authorization", "Bearer "+viewerToken)
+					reused := false
+					req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
+						GotConn: func(info httptrace.GotConnInfo) { reused = info.Reused },
+					}))
+					resp, err := client.Do(req)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_, err = io.Copy(io.Discard, resp.Body)
+					resp.Body.Close()
+					if err != nil || resp.StatusCode != 200 || reused != (i > 0) {
+						t.Fatalf("viewer request %d: status=%d reused=%v read=%v", i, resp.StatusCode, reused, err)
+					}
+				}
+			})
 		}
 	}
 }

@@ -101,7 +101,7 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 	}
 	// A controller sent a secret says its mode in a closed word and names
 	// only what the topology declares; see withheld.
-	secret := token != "" || u.Scheme != "https" && proxyPassword(d.Proxies)
+	secret := token != "" || u.Scheme != "https" && proxyCredentials(d.Proxies)
 	mode, name := safeFact, func(s string) string { return s }
 	if secret {
 		known := declared(x.Adapter)

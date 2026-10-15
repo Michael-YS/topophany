@@ -372,7 +372,8 @@ func sshProcessFixture() {
 	}
 	os.Exit(0)
 }
-func TestSSHJumpProcessBridgeAndStrictArguments(t *testing.T) {
+func sshFixture(t *testing.T, user string) (model.Proxy, string) {
+	t.Helper()
 	dir := t.TempDir()
 	self, e := os.Executable()
 	if e != nil {
@@ -397,10 +398,16 @@ func TestSSHJumpProcessBridgeAndStrictArguments(t *testing.T) {
 	known := filepath.Join(dir, "known hosts")
 	_ = os.WriteFile(identity, []byte("fixture only; not a real key"), 0600)
 	_ = os.WriteFile(known, []byte("fixture only"), 0600)
+	return model.Proxy{Kind: "ssh", Address: "127.0.0.1:22", SSHUser: user, SSHIdentityFile: identity, SSHKnownHosts: known}, argsFile
+}
+
+func TestSSHJumpProcessBridgeAndStrictArguments(t *testing.T) {
+	p, argsFile := sshFixture(t, "fixture")
+	known := p.SSHKnownHosts
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "jump-success") }))
 	defer target.Close()
 	c := testkit.Config()
-	c.Paths[0].Proxies = []model.Proxy{{Kind: "ssh", Address: "127.0.0.1:22", SSHUser: "fixture", SSHIdentityFile: identity, SSHKnownHosts: known}}
+	c.Paths[0].Proxies = []model.Proxy{p}
 	x := httpCheck(target.URL)
 	x.Path = "direct"
 	x.HTTP.Contains = "jump-success"
@@ -426,7 +433,7 @@ func TestSSHJumpProcessBridgeAndStrictArguments(t *testing.T) {
 	}
 	x.Kind = "http"
 	x.Target = target.URL
-	c.Paths[0].Proxies[0].SSHKnownHosts = filepath.Join(dir, "missing")
+	c.Paths[0].Proxies[0].SSHKnownHosts = filepath.Join(t.TempDir(), "missing")
 	o = (Runner{}).Run(context.Background(), c, x)
 	if o.Outcome != "error" || o.Code != "ssh_file_unreadable" {
 		t.Fatal("missing known_hosts bypassed", o)
