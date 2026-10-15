@@ -137,6 +137,14 @@ func parsed(f *flag.FlagSet, args []string) error {
 	}
 	return nil
 }
+
+// printJSON writes v as indented JSON, for a program or a terminal to
+// read. encoding/json escapes C0 controls in strings but writes DEL, the
+// C1 controls and bidi controls as they are, and a terminal may act on a
+// C1 control as on the escape sequence it stands for; each is written as
+// a \u escape instead, which reads back as the same string. The only
+// control left is the newline between lines, as one in a string is
+// escaped already.
 func printJSON(w io.Writer, v any) error {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -144,7 +152,7 @@ func printJSON(w io.Writer, v any) error {
 	}
 	var out strings.Builder
 	for _, r := range string(raw) {
-		if unicode.Is(unicode.Bidi_Control, r) {
+		if r != '\n' && unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
 			fmt.Fprintf(&out, "\\u%04x", r)
 		} else {
 			out.WriteRune(r)

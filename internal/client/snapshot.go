@@ -161,7 +161,8 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 }
 
 // validRollup reports whether r is a rollup a collector could have sent:
-// no time or count below zero, and time that adds up to its span.
+// no time or count below zero, time that adds up to its span, and
+// outcomes named in plain text.
 func validRollup(r model.Rollup) bool {
 	if r.Seconds < 0 || r.Seconds > 1000*24*3600 || r.Samples < 0 || len(r.Outcomes) > 8 {
 		return false
@@ -176,7 +177,7 @@ func validRollup(r model.Rollup) bool {
 	}
 	counted := int64(0)
 	for k, n := range r.Outcomes {
-		if len(k) > 16 || n < 0 {
+		if k == "" || len(k) > 16 || secure.Text(k) != k || n < 0 {
 			return false
 		}
 		counted += n

@@ -15,11 +15,17 @@ import (
 	"unicode"
 )
 
-func TestJSONOutputEscapesAllBidiControlsLosslessly(t *testing.T) {
+// unsafe reports whether r is a rune a terminal may act on: a control,
+// C0, DEL or C1, or a bidi control.
+func unsafe(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) }
+
+// JSON output escapes every control, a C1 CSI, OSC or ST as well as an
+// ESC, and every bidi control, and reads back as what was written.
+func TestJSONOutputEscapesAllControlsLosslessly(t *testing.T) {
 	var value strings.Builder
 	value.WriteString("before\x1b\nafter")
 	for r := rune(0); r <= unicode.MaxRune; r++ {
-		if unicode.Is(unicode.Bidi_Control, r) {
+		if unsafe(r) {
 			value.WriteRune(r)
 		}
 	}
@@ -29,7 +35,7 @@ func TestJSONOutputEscapesAllBidiControlsLosslessly(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, r := range out.String() {
-		if unicode.Is(unicode.Bidi_Control, r) || r == 0x1b {
+		if unsafe(r) && r != '\n' {
 			t.Fatalf("literal control %U", r)
 		}
 	}
@@ -45,16 +51,19 @@ func TestJSONOutputEscapesAllBidiControlsLosslessly(t *testing.T) {
 	}
 }
 
-func TestRemoteJSONEscapesBidiControls(t *testing.T) {
+// What a collector says reaches stdout as JSON with no control in it: a
+// C1 CSI, OSC or ST, which some terminals act on as on the escape
+// sequence, no more than an ESC or a bidi control.
+func TestRemoteJSONEscapesControls(t *testing.T) {
 	c := testkit.Config()
 	snapshot := engine.Build(c, "remote", "", nil, nil, time.Now().UTC())
 	var controls strings.Builder
 	for r := rune(0); r <= unicode.MaxRune; r++ {
-		if unicode.Is(unicode.Bidi_Control, r) {
+		if unsafe(r) {
 			controls.WriteRune(r)
 		}
 	}
-	snapshot.Checks[0].Reason = controls.String() + "\x1b\n"
+	snapshot.Checks[0].Reason = controls.String() + "\u009b31m\u009d2;title\u009c\x1b\n"
 	token := strings.Repeat("a", 64)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+token {
@@ -69,7 +78,7 @@ func TestRemoteJSONEscapesBidiControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, r := range out {
-		if unicode.Is(unicode.Bidi_Control, r) || r == 0x1b {
+		if unsafe(r) && r != '\n' {
 			t.Fatalf("unsafe remote output %U", r)
 		}
 	}

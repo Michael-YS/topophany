@@ -57,6 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each budget counts what the peer sends and runs out at once. A target
   that compresses its body unasked is checked as sent: `contains` and
   `body_regex` see it compressed.
+- `--json` output carries no C1 control. It escaped bidi controls, and
+  encoding/json escapes C0 ones, but DEL and the C1 controls, which some
+  terminals act on as the escape sequences they stand for, were written
+  as a collector sent them, in a check's reason, a history entry or a
+  rollup's outcomes. Every control is now written as a `\u` escape,
+  which reads back the same, and a rollup whose outcomes are not named
+  in plain text is refused.
 
 ## [0.8.1] - 2026-10-14
 

@@ -439,6 +439,8 @@ func TestAvailabilityAndRollupsAreChecked(t *testing.T) {
 		"miscounted":   func(r *model.Rollup) { r.Samples = 7 },
 		"percentiles":  func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 2, P50: 100, P95: 90, Max: 90} },
 		"more_passing": func(r *model.Rollup) { r.Latency = &model.Latency{Samples: 4, P50: 1, P95: 2, Max: 3} },
+		"control":      func(r *model.Rollup) { r.Outcomes = map[string]int64{"ok": 2, "\u009b2J": 1} },
+		"unnamed":      func(r *model.Rollup) { r.Outcomes = map[string]int64{"ok": 2, "": 1} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := snapshot()

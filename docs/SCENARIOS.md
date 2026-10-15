@@ -92,7 +92,7 @@ This document lists the finite, verifiable scenario contracts for version 0.8.1,
 | Fair snapshot cache computation | `TestViewerCannotReserveAllSnapshotBuilds`, `TestSnapshotViewCacheHasGlobalBudget` |
 | Heartbeat project provenance; an executor on another topology revision stays alive | `TestRecoveredHeartbeatContract` |
 | Durable expired observation-ID binding | `TestExpiredEvictedIDRemainsBoundAcrossRestart` |
-| Terminal-safe machine-readable remote JSON | `TestJSONOutputEscapesAllBidiControlsLosslessly`, `TestRemoteJSONEscapesBidiControls` |
+| Terminal-safe machine-readable remote JSON: every control, C1 CSI, OSC and ST among them, and every bidi control is escaped, losslessly; a rollup whose outcomes are not named in plain text is refused | `TestJSONOutputEscapesAllControlsLosslessly`, `TestRemoteJSONEscapesControls`, `TestAvailabilityAndRollupsAreChecked` |
 | Verification commit/tree binding | `test_old_revision_evidence_is_rejected`, `test_mutation_during_verification_is_rejected` |
 | Release tag-to-build binding | `test_publish_resolves_lightweight_and_nested_annotated_tags` (matching, moved, missing, nested and cyclic tag fixtures) |
 | A heartbeat that changes nothing, such as one sent again, is acknowledged without a journal write or fsync; a newer one, or one under another revision, is written and recovered | `TestHeartbeatThatChangesNothingIsNotWritten` |
