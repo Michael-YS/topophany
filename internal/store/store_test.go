@@ -6,9 +6,12 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -380,5 +383,38 @@ func TestSetCurrentFollowsAReload(t *testing.T) {
 	}
 	if rows, _, _ := s.StateView(); len(rows) != 1 {
 		t.Fatal("history lost across reloads", len(rows))
+	}
+}
+
+// A store made afresh is found after a power loss once a sample is
+// acknowledged: the directories it made and the journal it created are
+// synced into their parents before it opens. One that exists syncs none.
+func TestANewStoreIsDurablyMade(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not sync directories")
+	}
+	base := t.TempDir()
+	dir := filepath.Join(base, "collector", "data")
+	var synced []string
+	stop := secure.WatchSyncs(func(d string) { synced = append(synced, d) })
+	defer stop()
+	s, e := Open(dir, Options{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, want := range []string{base, filepath.Join(base, "collector"), dir} {
+		if !slices.Contains(synced, want) {
+			t.Fatal("not synced:", want, synced)
+		}
+	}
+	s.Close()
+	synced = nil
+	s, e = Open(dir, Options{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	if len(synced) != 0 {
+		t.Fatal("an existing store synced", synced)
 	}
 }

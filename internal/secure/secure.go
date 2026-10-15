@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"unicode"
 )
 
@@ -79,7 +80,7 @@ func PrivateRead(path string) ([]byte, error) {
 }
 func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
-	if e := os.MkdirAll(dir, 0700); e != nil {
+	if e := MkdirAll(dir, 0700); e != nil {
 		return e
 	}
 	if s, e := os.Lstat(path); e == nil && !s.Mode().IsRegular() {
@@ -109,6 +110,57 @@ func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	}
 	return SyncDir(dir)
 }
+
+// MkdirAll makes path and the parents it lacks, as os.MkdirAll does, and
+// syncs each directory that gained an entry, from the one it found down,
+// so that what is then written durably under path can be found after a
+// power loss: syncing a file or a directory does not make the entry that
+// names it durable. With nothing to make, it syncs nothing.
+func MkdirAll(path string, perm os.FileMode) error {
+	made := []string{}
+	for p := filepath.Clean(path); ; {
+		s, e := os.Stat(p)
+		if e == nil && !s.IsDir() {
+			return &os.PathError{Op: "mkdir", Path: p, Err: errors.New("not a directory")}
+		}
+		if e == nil {
+			break
+		}
+		if !errors.Is(e, os.ErrNotExist) {
+			return e
+		}
+		made = append(made, p)
+		parent := filepath.Dir(p)
+		if parent == p {
+			break
+		}
+		p = parent
+	}
+	if len(made) == 0 {
+		return nil
+	}
+	if e := os.MkdirAll(path, perm); e != nil {
+		return e
+	}
+	for i := len(made) - 1; i >= 0; i-- {
+		if e := SyncDir(filepath.Dir(made[i])); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// synced is told of each directory SyncDir syncs; see WatchSyncs.
+var synced atomic.Pointer[func(dir string)]
+
+// WatchSyncs has f told of each directory SyncDir syncs until stop is
+// called. Whether an entry survives a power loss cannot be seen without
+// one, so tests use it to see what a write made durable.
+func WatchSyncs(f func(dir string)) (stop func()) {
+	synced.Store(&f)
+	return func() { synced.Store(nil) }
+}
+
 func SyncDir(path string) error {
 	if runtime.GOOS == "windows" {
 		return nil
@@ -118,7 +170,13 @@ func SyncDir(path string) error {
 		return e
 	}
 	defer f.Close()
-	return f.Sync()
+	if e = f.Sync(); e != nil {
+		return e
+	}
+	if f := synced.Load(); f != nil {
+		(*f)(path)
+	}
+	return nil
 }
 func URL(raw string, insecure bool) error {
 	u, e := url.Parse(raw)

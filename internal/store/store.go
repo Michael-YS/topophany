@@ -153,7 +153,10 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if o.MaxHistory < 1 || o.MaxReceipts < 1 || o.Retention < time.Minute || o.CheckpointBytes < 1024 || o.CheckpointBytes > 128<<20 || o.MaxStateBytes < 1024 || o.MaxStateBytes > 128<<20 || o.RollupBytes < rollup.MinLimit || o.RollupBytes > rollup.MaxLimit {
 		return nil, errors.New("invalid storage limits")
 	}
-	if e := os.MkdirAll(dir, 0700); e != nil {
+	// A sample is acknowledged once the journal is synced, which makes
+	// neither the journal's name nor the directories above it durable:
+	// those are synced as they are made.
+	if e := secure.MkdirAll(dir, 0700); e != nil {
 		return nil, e
 	}
 	unlock, e := secure.Lock(filepath.Join(dir, "writer.lock"))
@@ -208,14 +211,21 @@ func Open(dir string, o Options) (s *Store, err error) {
 		return nil, e
 	}
 	path := filepath.Join(dir, "journal.jsonl")
-	if st, e := os.Lstat(path); e == nil && !st.Mode().IsRegular() {
+	st, e := os.Lstat(path)
+	if e == nil && !st.Mode().IsRegular() {
 		return nil, errors.New("journal must be regular file")
 	}
+	created := errors.Is(e, os.ErrNotExist)
 	s.file, e = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if e != nil {
 		return nil, e
 	}
-	st, e := s.file.Stat()
+	if created {
+		if e = secure.SyncDir(dir); e != nil {
+			return nil, e
+		}
+	}
+	st, e = s.file.Stat()
 	if e != nil {
 		return nil, e
 	}

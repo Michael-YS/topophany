@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -177,5 +178,49 @@ func TestReadBoundedAndCredentialBudgets(t *testing.T) {
 		if CheckToken(s) == nil {
 			t.Fatal("control token accepted")
 		}
+	}
+}
+
+// MkdirAll syncs each directory that gained an entry, the one it already
+// found as well as those it made, so what is written durably under the
+// new directory can be found after a power loss; with nothing to make it
+// syncs nothing.
+func TestMkdirAllSyncsWhatItChanged(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not sync directories")
+	}
+	base := t.TempDir()
+	var synced []string
+	stop := WatchSyncs(func(dir string) { synced = append(synced, dir) })
+	defer stop()
+	path := filepath.Join(base, "a", "b", "c")
+	if e := MkdirAll(path, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if want := []string{base, filepath.Join(base, "a"), filepath.Join(base, "a", "b")}; !slices.Equal(synced, want) {
+		t.Fatal(synced, want)
+	}
+	if s, e := os.Stat(path); e != nil || !s.IsDir() || s.Mode().Perm() != 0700 {
+		t.Fatal(s, e)
+	}
+	synced = nil
+	if e := MkdirAll(path, 0700); e != nil || len(synced) != 0 {
+		t.Fatal("an existing directory synced", synced, e)
+	}
+	if e := AtomicWrite(filepath.Join(base, "d", "file"), []byte("x"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if want := []string{base, filepath.Join(base, "d")}; !slices.Equal(synced, want) {
+		t.Fatal("a write into a new directory", synced, want)
+	}
+	file := filepath.Join(base, "file")
+	if e := os.WriteFile(file, nil, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := MkdirAll(filepath.Join(file, "x"), 0700); e == nil {
+		t.Fatal("made a directory under a file")
+	}
+	if e := MkdirAll(file, 0700); e == nil {
+		t.Fatal("took a file for a directory")
 	}
 }

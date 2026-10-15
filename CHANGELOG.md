@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collector logged "incident ledger written again" at the next judgement
   that changed nothing, and a crash before the next change lost the
   incidents that write held. The log now follows a write that succeeded.
+- A collector starting on a new data directory makes it durably. The
+  directory, those made above it and its new journal were never synced
+  into their parents, so on a POSIX filesystem a power loss could leave
+  the samples it had acknowledged, each written and synced, with no name
+  to find them by. Each is now synced into its parent as it is made,
+  before the collector opens, and so is any directory made to write a
+  file into, such as a credentials file's.
 
 ### Security
 
