@@ -182,7 +182,7 @@ func (a *App) topologyCommand(ctx context.Context, cmd string, args []string) er
 	case "export":
 		return printJSON(a.Out, config.Public(c))
 	case "once":
-		r, e := runner.New(c, *observer, 1, probe.Runner{}.Run, func(v model.Observation) error { return json.NewEncoder(a.Out).Encode(v) })
+		r, e := runner.New(c, *observer, 1, probe.NewRunner(c, *observer).Run, func(v model.Observation) error { return json.NewEncoder(a.Out).Encode(v) })
 		if e != nil {
 			return e
 		}

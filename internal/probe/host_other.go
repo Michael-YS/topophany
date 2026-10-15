@@ -2,12 +2,12 @@
 
 package probe
 
-import (
-	"context"
+import "context"
 
-	"github.com/WhitenWhiten/topophany/internal/model"
-)
+func sampleHostRuntime(context.Context, []string) (hostRuntime, error) {
+	return hostRuntime{}, local("host", "host_platform_unsupported")
+}
 
-func (r Runner) sampleHost(context.Context, model.HostOptions) (HostSample, error) {
-	return HostSample{}, local("host", "host_platform_unsupported")
+func readDisk(string) (HostDisk, error) {
+	return HostDisk{}, local("host", "host_platform_unsupported")
 }

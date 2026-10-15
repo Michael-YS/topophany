@@ -6,12 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"time"
-
-	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
-func (r Runner) sampleHost(ctx context.Context, h model.HostOptions) (HostSample, error) {
-	return sampleDarwinHost(ctx, h, darwinHostCommand, sampleDisk)
+func sampleHostRuntime(ctx context.Context, names []string) (hostRuntime, error) {
+	return sampleDarwinRuntime(ctx, names, darwinHostCommand)
 }
 
 // Fixed system paths and argument lists; no shell, PATH lookup or commands

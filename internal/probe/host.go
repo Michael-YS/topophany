@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
@@ -14,6 +15,8 @@ import (
 // HostSample contains bounded aggregate counters, never process arguments,
 // environment variables, user names or a process inventory.
 type HostSample struct {
+	// SampledAt is the beginning of collection, preserved when counters are shared.
+	SampledAt                    time.Time
 	OS                           string
 	LogicalCPUs                  int
 	CPUPercent                   float64
@@ -40,7 +43,7 @@ func (r Runner) host(ctx context.Context, x model.Check, o *model.Observation) e
 	}
 	collect := r.HostSample
 	if collect == nil {
-		collect = r.sampleHost
+		collect = newHostCollector([]string{h.ProcessName}).sample
 	}
 	s, err := collect(ctx, h)
 	if err != nil {
@@ -50,6 +53,9 @@ func (r Runner) host(ctx context.Context, x model.Check, o *model.Observation) e
 		return local("host", "host_sampling_canceled")
 	}
 	s.OS, s.LogicalCPUs = runtime.GOOS, runtime.NumCPU()
+	if !s.SampledAt.IsZero() {
+		o.SampledAt = s.SampledAt
+	}
 	return ApplyHostSample(o, h, s)
 }
 

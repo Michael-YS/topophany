@@ -112,8 +112,8 @@ func TestDarwinHostOutputFixtures(t *testing.T) {
 		t.Fatal("unexpected system command", name, args)
 		return nil, nil
 	}
-	s, err := sampleDarwinHost(context.Background(), model.HostOptions{DiskPath: "/", ProcessName: "topo"}, command, func(string) (HostDisk, error) { return hostFixture().Disk, nil })
-	if err != nil || s.CPUPercent != 25 || s.MemoryAvailable != 350*16384 || s.Processes != 3 || s.Zombies != 1 || s.Matching != 1 || s.MatchingRSS != 1048576 {
+	s, err := sampleDarwinRuntime(context.Background(), []string{"topo"}, command)
+	if err != nil || s.CPUPercent != 25 || s.MemoryAvailable != 350*16384 || s.Processes != 3 || s.Zombies != 1 || s.matches["topo"].count != 1 || s.matches["topo"].rss != 1048576 {
 		t.Fatal(s, err)
 	}
 	if len(commands) != 4 || commands[3] != "/bin/ps -ww -axo pid=,stat=,rss=,comm=" {
@@ -130,19 +130,40 @@ func TestDarwinHostOutputFixtures(t *testing.T) {
 		}
 	}
 	for _, ps := range []string{"", "100 R bad topo", "100 R 10"} {
-		if err := parseDarwinProcesses(ps, "topo", &HostSample{}); err == nil {
+		if err := parseDarwinProcesses(ps, &hostRuntime{}); err == nil {
 			t.Fatal("malformed process snapshot accepted")
 		}
 	}
 	for _, failed := range []string{"/usr/bin/top", "/usr/sbin/sysctl", "/usr/bin/vm_stat", "/bin/ps"} {
-		_, err := sampleDarwinHost(context.Background(), model.HostOptions{}, func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		_, err := sampleDarwinRuntime(context.Background(), nil, func(ctx context.Context, name string, args ...string) ([]byte, error) {
 			if name == failed {
 				return nil, hostReadError("command")
 			}
 			return command(ctx, name, args...)
-		}, func(string) (HostDisk, error) { return hostFixture().Disk, nil })
+		})
 		if err == nil {
 			t.Fatal("command failure ignored", failed)
+		}
+	}
+}
+
+func TestDarwinProcessFallbackAndSelectedAggregates(t *testing.T) {
+	s := newHostRuntime([]string{"topo", "other", "(literal)", "space name", "nested"})
+	raw := "100 S 10 (topo)\n101 R 20 /Applications/Some App/topo\n" +
+		"102 Z 0 (topo)\n103 S 30 /usr/bin/other\n104 S 40 /bin/(literal)\n" +
+		"105 S 50 (space name)\n106 S 60 ((nested))\n107 S 70 unselected\n"
+	if err := parseDarwinProcesses(raw, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.Processes != 8 || s.Zombies != 1 || len(s.matches) != 5 {
+		t.Fatal(s)
+	}
+	for name, want := range map[string]processUsage{
+		"topo": {2, 30 * 1024}, "other": {1, 30 * 1024},
+		"(literal)": {1, 40 * 1024}, "space name": {1, 50 * 1024}, "nested": {},
+	} {
+		if s.matches[name] != want {
+			t.Fatal(name, s.matches[name], want)
 		}
 	}
 }

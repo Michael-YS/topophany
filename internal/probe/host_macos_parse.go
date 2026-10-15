@@ -7,13 +7,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
-	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 // Kept portable so macOS output fixtures can be validated on every build host.
-func sampleDarwinHost(ctx context.Context, h model.HostOptions, command Command, disk func(string) (HostDisk, error)) (HostSample, error) {
-	var s HostSample
+func sampleDarwinRuntime(ctx context.Context, names []string, command Command) (hostRuntime, error) {
+	s := newHostRuntime(names)
 	top, err := command(ctx, "/usr/bin/top", "-l", "2", "-n", "0", "-s", "1", "-R", "-F")
 	if err != nil {
 		return s, hostReadError("cpu")
@@ -40,15 +38,11 @@ func sampleDarwinHost(ctx context.Context, h model.HostOptions, command Command,
 		return s, err
 	}
 	s.MemoryBasis = "macos_estimated_free_inactive_speculative"
-	s.Disk, err = disk(h.DiskPath)
-	if err != nil {
-		return s, err
-	}
 	ps, err := command(ctx, "/bin/ps", "-ww", "-axo", "pid=,stat=,rss=,comm=")
 	if err != nil {
 		return s, hostReadError("processes")
 	}
-	err = parseDarwinProcesses(string(ps), h.ProcessName, &s)
+	err = parseDarwinProcesses(string(ps), &s)
 	return s, err
 }
 
@@ -99,21 +93,21 @@ func parseDarwinMemory(raw string, total uint64) (uint64, error) {
 	return available, nil
 }
 
-func parseDarwinProcesses(raw, name string, s *HostSample) error {
+func parseDarwinProcesses(raw string, s *hostRuntime) error {
 	for _, line := range strings.Split(raw, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		// The executable path may contain spaces. Consume only the three
 		// leading numeric/state fields, keeping the whole command as the last.
-		f := make([]string, 0, 3)
+		var f [3]string
 		rest := strings.TrimSpace(line)
 		for i := 0; i < 3; i++ {
 			j := strings.IndexAny(rest, " \t")
 			if j < 0 {
 				return local("host", "invalid_process_counters")
 			}
-			f = append(f, rest[:j])
+			f[i] = rest[:j]
 			rest = strings.TrimSpace(rest[j:])
 		}
 		pid, e1 := counter(f[0])
@@ -121,18 +115,14 @@ func parseDarwinProcesses(raw, name string, s *HostSample) error {
 		if e1 != nil || e2 != nil || pid > math.MaxInt32 || rest == "" || s.Processes >= 65536 {
 			return local("host", "invalid_process_counters")
 		}
-		s.Processes++
-		if strings.HasPrefix(f[1], "Z") {
-			s.Zombies++
-			continue
+		// ps falls back to (p_comm) when another user's argv is unreadable.
+		// Normalize only that form; parentheses in an executable path are literal.
+		name := rest
+		if strings.HasPrefix(name, "(") && strings.HasSuffix(name, ")") && !strings.Contains(name, "/") {
+			name = name[1 : len(name)-1]
 		}
-		if name != "" && filepath.Base(rest) == name {
-			bytes, err := bytesFromUnits(rss, 1024)
-			if err != nil || bytes > math.MaxUint64-s.MatchingRSS {
-				return local("host", "invalid_process_counters")
-			}
-			s.Matching++
-			s.MatchingRSS += bytes
+		if err := s.addProcess(filepath.Base(name), strings.HasPrefix(f[1], "Z"), rss, 1024); err != nil {
+			return err
 		}
 	}
 	if s.Processes == 0 {

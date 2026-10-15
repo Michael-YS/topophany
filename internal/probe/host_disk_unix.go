@@ -4,7 +4,7 @@ package probe
 
 import "syscall"
 
-func sampleDisk(path string) (HostDisk, error) {
+func readDisk(path string) (HostDisk, error) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {
 		return HostDisk{}, hostReadError("disk")

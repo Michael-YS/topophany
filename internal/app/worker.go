@@ -60,7 +60,7 @@ func (a *App) worker(parent context.Context, args []string) error {
 	// The checks under a topology; a reload replaces them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
 		revision := config.Revision(c)
-		return runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
+		return runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
 			err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}}, d.Recipients())
 			var degraded *outbox.DegradedError
 			if errors.As(err, &degraded) {

@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -9,24 +10,32 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
-
-	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
-func (r Runner) sampleHost(ctx context.Context, h model.HostOptions) (HostSample, error) {
-	return sampleLinuxHost(ctx, h, "/proc")
+func sampleHostRuntime(ctx context.Context, names []string) (hostRuntime, error) {
+	return sampleLinuxRuntime(ctx, names, "/proc")
 }
 
-func sampleLinuxHost(ctx context.Context, h model.HostOptions, proc string) (HostSample, error) {
-	var s HostSample
-	readCPU := func() (cpuTicks, error) {
-		b, err := readHostFile(filepath.Join(proc, "stat"), 1<<20)
-		if err != nil {
-			return cpuTicks{}, hostReadError("cpu")
-		}
-		return parseLinuxCPU(string(b))
+func readLinuxCPU(path string) (cpuTicks, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return cpuTicks{}, hostReadError("cpu")
 	}
+	defer f.Close()
+	// Only the aggregate line is needed. Avoid reading per-CPU and interrupt
+	// tables, whose size grows with the machine rather than the measurement.
+	line, err := bufio.NewReaderSize(f, 4096).ReadSlice('\n')
+	if err != nil {
+		return cpuTicks{}, hostReadError("cpu")
+	}
+	return parseLinuxCPU(string(line))
+}
+
+func sampleLinuxRuntime(ctx context.Context, names []string, proc string) (hostRuntime, error) {
+	s := newHostRuntime(names)
+	readCPU := func() (cpuTicks, error) { return readLinuxCPU(filepath.Join(proc, "stat")) }
 	a, err := readCPU()
 	if err != nil {
 		return s, err
@@ -60,11 +69,7 @@ func sampleLinuxHost(ctx context.Context, h model.HostOptions, proc string) (Hos
 	if ctx.Err() != nil {
 		return s, local("host", "host_sampling_canceled")
 	}
-	s.Disk, err = sampleDisk(h.DiskPath)
-	if err != nil {
-		return s, err
-	}
-	err = linuxProcesses(ctx, proc, h.ProcessName, &s)
+	err = linuxProcesses(ctx, proc, &s)
 	return s, err
 }
 
@@ -145,7 +150,7 @@ func parseLinuxMemory(raw string) (total, available uint64, err error) {
 	return total, available, nil
 }
 
-func linuxProcesses(ctx context.Context, proc, name string, s *HostSample) error {
+func linuxProcesses(ctx context.Context, proc string, s *hostRuntime) error {
 	dir, err := os.Open(proc)
 	if err != nil {
 		return hostReadError("processes")
@@ -153,7 +158,7 @@ func linuxProcesses(ctx context.Context, proc, name string, s *HostSample) error
 	defer dir.Close()
 	entries := 0
 	for {
-		batch, err := dir.ReadDir(256)
+		batch, err := dir.Readdirnames(256)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return hostReadError("processes")
 		}
@@ -165,13 +170,13 @@ func linuxProcesses(ctx context.Context, proc, name string, s *HostSample) error
 			if entries > 131072 {
 				return local("host", "host_process_budget_exceeded")
 			}
-			pid, parseErr := strconv.ParseUint(e.Name(), 10, 32)
+			pid, parseErr := strconv.ParseUint(e, 10, 32)
 			if parseErr != nil || pid == 0 {
 				continue
 			}
-			b, readErr := readHostFile(filepath.Join(proc, e.Name(), "stat"), 8192)
-			if errors.Is(readErr, os.ErrNotExist) {
-				continue // A process may exit between listing and reading it.
+			b, readErr := readHostFile(filepath.Join(proc, e, "stat"), 8192)
+			if errors.Is(readErr, os.ErrNotExist) || errors.Is(readErr, syscall.ESRCH) {
+				continue // Exit can race both open (ENOENT) and read (ESRCH).
 			}
 			if readErr != nil {
 				return hostReadError("processes")
@@ -180,18 +185,8 @@ func linuxProcesses(ctx context.Context, proc, name string, s *HostSample) error
 			if parseErr != nil {
 				return parseErr
 			}
-			s.Processes++
-			if state == "Z" {
-				s.Zombies++
-				continue // Zombies do not satisfy a running-process assertion.
-			}
-			if name != "" && comm == name {
-				rssBytes, e := bytesFromUnits(rss, uint64(os.Getpagesize()))
-				if e != nil || rssBytes > math.MaxUint64-s.MatchingRSS {
-					return local("host", "invalid_process_counters")
-				}
-				s.Matching++
-				s.MatchingRSS += rssBytes
+			if err := s.addProcess(comm, state == "Z", rss, uint64(os.Getpagesize())); err != nil {
+				return err
 			}
 		}
 		if errors.Is(err, io.EOF) {

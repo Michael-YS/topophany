@@ -2,13 +2,14 @@ package probe
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
-
-	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 func TestLinuxCPUAccountingAndReset(t *testing.T) {
@@ -27,6 +28,58 @@ func TestLinuxCPUAccountingAndReset(t *testing.T) {
 	}
 	if _, err := parseLinuxCPU("cpu 1 2 broken"); err == nil {
 		t.Fatal("malformed CPU accepted")
+	}
+}
+
+func TestLinuxProcessExitAfterOpen(t *testing.T) {
+	p := exec.Command("sleep", "30")
+	if err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Process.Kill(); _ = p.Wait() })
+	f, err := os.Open(fmt.Sprintf("/proc/%d/stat", p.Process.Pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := p.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = p.Wait()
+	// Reopening this descriptor keeps the exited process's procfs inode.
+	// This reproduces read(2)'s ESRCH, unlike a missing fixture file (ENOENT).
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "123"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "123", "stat")
+	if err := os.Symlink(fmt.Sprintf("/proc/self/fd/%d", f.Fd()), path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readHostFile(path, 8192); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("expected real procfs ESRCH, got %v", err)
+	}
+	s := newHostRuntime([]string{"sleep"})
+	if err := linuxProcesses(context.Background(), root, &s); err != nil || s.Processes != 0 || s.matches["sleep"].count != 0 {
+		t.Fatal("exited process invalidated snapshot", s, err)
+	}
+}
+
+func TestLinuxCPUReadsOnlyBoundedAggregateLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stat")
+	write := func(raw string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("cpu 100 20 30 400 50 10 20 5 80 10\n" + strings.Repeat("cpu0 1 2 3 4\n", 100000))
+	if s, err := readLinuxCPU(path); err != nil || s.total != 635 || s.idle != 450 {
+		t.Fatal(s, err)
+	}
+	write(strings.Repeat("1", 4096) + "\n")
+	if _, err := readLinuxCPU(path); err == nil {
+		t.Fatal("oversized aggregate line accepted")
 	}
 }
 
@@ -63,11 +116,11 @@ func TestLinuxProcessSnapshotAndDisappearingProcess(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(root, "999"), 0700); err != nil {
 		t.Fatal(err)
 	} // Exited before stat read.
-	var s HostSample
-	if err := linuxProcesses(context.Background(), root, "topo", &s); err != nil {
+	s := newHostRuntime([]string{"topo"})
+	if err := linuxProcesses(context.Background(), root, &s); err != nil {
 		t.Fatal(err)
 	}
-	if s.Processes != 3 || s.Zombies != 1 || s.Matching != 1 || s.MatchingRSS != uint64(10*os.Getpagesize()) {
+	if s.Processes != 3 || s.Zombies != 1 || s.matches["topo"].count != 1 || s.matches["topo"].rss != uint64(10*os.Getpagesize()) {
 		t.Fatal(s)
 	}
 	if name, _, rss, err := parseLinuxProcess(processStat(1, "space ) name", "R", 20)); err != nil || name != "space ) name" || rss != 20 {
@@ -78,20 +131,20 @@ func TestLinuxProcessSnapshotAndDisappearingProcess(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := linuxProcesses(ctx, root, "", &HostSample{}); err == nil {
+	if err := linuxProcesses(ctx, root, &hostRuntime{}); err == nil {
 		t.Fatal("cancellation ignored")
 	}
 }
 
 func TestLinuxHostNativeSampling(t *testing.T) {
-	s, err := sampleLinuxHost(context.Background(), model.HostOptions{DiskPath: t.TempDir()}, "/proc")
-	if err != nil || s.MemoryTotal == 0 || s.Disk.Total == 0 || s.Processes < 1 || s.CPUPercent < 0 || s.CPUPercent > 100 || s.CPUSampleMS < 200 {
+	s, err := sampleLinuxRuntime(context.Background(), nil, "/proc")
+	if err != nil || s.MemoryTotal == 0 || s.Processes < 1 || s.CPUPercent < 0 || s.CPUPercent > 100 || s.CPUSampleMS < 200 {
 		t.Fatal(s, err)
 	}
-	if _, err := sampleLinuxHost(context.Background(), model.HostOptions{}, t.TempDir()); err == nil {
+	if _, err := sampleLinuxRuntime(context.Background(), nil, t.TempDir()); err == nil {
 		t.Fatal("missing procfs accepted")
 	}
-	if _, err := sampleDisk(filepath.Join(t.TempDir(), "missing")); err == nil {
+	if _, err := sampleDisk(context.Background(), filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("missing filesystem accepted")
 	}
 }

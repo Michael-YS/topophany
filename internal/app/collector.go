@@ -116,7 +116,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 			return nil, nil
 		}
 		revision := config.Revision(c)
-		return runner.New(c, *observer, *workers, probe.Runner{}.Run, func(v model.Observation) error {
+		return runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
 			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}})
 		})
 	}

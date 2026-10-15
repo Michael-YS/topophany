@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Bound outstanding host filesystem queries across timeouts and reloads so a
+  stalled mount cannot block worker shutdown. Ignore Linux procfs `ESRCH` when
+  a process exits during a read, and recognize macOS `ps` fallback names for
+  processes whose command information is unreadable.
+
+### Changed
+
+- Share host CPU, memory and selected-process aggregates briefly across checks,
+  retaining the original sample timestamp and independent disk/assertion results.
+  Linux CPU collection reads only the aggregate line instead of the entire
+  per-CPU and interrupt table.
+
 ### Added
 
 - Host resource preview with deterministic changing counters and localized
