@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-10-15
+
 ### Security
 
+- Anonymous and rejected HTTP/2 requests now close their connections after
+  active streams finish, releasing listener slots as HTTP/1 requests do.
+- Plain HTTP checks through authenticated proxies withhold peer-controlled
+  text whenever a hop receives a username, password or SSH login, so a proxy
+  cannot reflect its private login into observations visible to viewers.
 - Custom HTTP request headers, including API keys, require HTTPS or direct
   literal loopback. Invalid header names and values are rejected before
   execution, and incomplete collector snapshots are refused by clients.
@@ -730,7 +737,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/WhitenWhiten/topophany/compare/v0.8.1...v0.8.3
 [0.8.1]: https://github.com/WhitenWhiten/topophany/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/WhitenWhiten/topophany/compare/v0.3.0...v0.8.0
 [0.3.0]: https://github.com/WhitenWhiten/topophany/compare/v0.2.0...v0.3.0
