@@ -201,7 +201,7 @@ func (v View) Rows(tab int) []Row {
 					for _, v := range ep.Via {
 						hops = append(hops, nodeNames[v])
 					}
-					details = append(details, "Reached via: "+strings.Join(append(hops, nodeNames[ep.Node]), " → "), "", "An edge in front answers first: its answer proves the edge; the node behind it counts only a passing response the edge says it fetched from it.")
+					details = append(details, "Reached via: "+strings.Join(append(hops, nodeNames[ep.Node]), " → "), "", "An edge in front answers first: its answer proves the edge alone, whatever it says of where it came from; the node behind it counts only a check that does not go through the edge.")
 				}
 				details = append(details, "", "Health aggregates checks that target this endpoint.", "", ep.Notes)
 				r := entity("endpoint", find(endpointStates, ep.ID), ep.ID, ep.Network, details)

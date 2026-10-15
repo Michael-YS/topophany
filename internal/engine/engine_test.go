@@ -4,6 +4,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -317,8 +318,9 @@ func TestRuntimeSelectionAndTCPAcceptNeverProvePathRecovery(t *testing.T) {
 }
 
 // An address reached through an edge is answered by the edge first: its
-// answer, even an error page, proves the edge; the origin behind it counts
-// only a passing response that the edge did not serve from its cache.
+// answer, even an error page, proves the edge and nothing behind it,
+// whatever it says of where the answer came from; the origin counts only a
+// check of its own.
 func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	edged := func() model.Config {
 		c := testkit.Config()
@@ -356,20 +358,27 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		t.Fatal("no bounded diagnosis behind the edge", s.Incidents)
 	}
 
-	// Only a response the edge says it fetched proves the origin: not one
-	// from its cache, from code it runs itself or from a hop that says
-	// nothing of its cache.
-	for _, tt := range []struct {
-		cache  string
-		origin string
-	}{{"DYNAMIC", "up"}, {"MISS", "up"}, {"EXPIRED", "up"}, {"REVALIDATED", "up"}, {"REFRESHHIT", "up"}, {"PASS", "up"}, {"BYPASS", "up"}, {"", "unknown"}, {"HIT", "unknown"}, {"STALE", "unknown"}, {"UPDATING", "unknown"}, {"PRERENDER", "unknown"}, {"NONEUNKNOWN", "unknown"}, {"LAMBDAGENERATEDRESPONSE", "unknown"}, {"FUNCTIONGENERATEDRESPONS", "unknown"}, {"ERROR", "unknown"}} {
-		v := through(c, "cloud-http", 1, now.Add(-time.Second), "ok", "200", tt.cache, true)
+	// Where the edge says its answer came from is its own word, which the
+	// edge, or the origin behind it, can send whatever happened: no cache
+	// status proves the origin, not even one that says the edge fetched it.
+	for _, cache := range []string{"DYNAMIC", "MISS", "EXPIRED", "REVALIDATED", "REFRESHHIT", "PASS", "BYPASS", "", "HIT", "STALE", "UPDATING", "PRERENDER", "LAMBDAGENERATEDRESPONSE", "ERROR"} {
+		v := through(c, "cloud-http", 1, now.Add(-time.Second), "ok", "200", cache, true)
 		s := Build(c, "a", "cloud", []model.Observation{v}, nil, now)
 		if e := findEntity(t, s.Nodes, "edge"); e.Health != "up" {
-			t.Fatal("edge answer not counted", tt.cache, e)
+			t.Fatal("edge answer not counted", cache, e)
 		}
-		if o := findEntity(t, s.Nodes, "dmit"); o.Health != tt.origin {
-			t.Fatalf("cache %q: origin %s, want %s", tt.cache, o.Health, tt.origin)
+		if o := findEntity(t, s.Nodes, "dmit"); o.Health != "unknown" || o.Evidence != "unknown" || !strings.Contains(o.Reason, "proves that hop alone") {
+			t.Fatalf("cache %q: the edge's word proved the origin: %+v", cache, o)
+		}
+	}
+
+	// Nor does it make another observer's answer through the edge
+	// evidence against a failure of the origin's own check.
+	rows = append(seedFailures(c, "home-ssh", 1, now), through(c, "cloud-http", 1, now.Add(-time.Second), "ok", "200", "MISS", true))
+	s = Build(c, "a", "", rows, nil, now)
+	for _, inc := range s.Incidents {
+		if slices.Contains(inc.Checks, "home-ssh") && slices.Contains(inc.CounterEvidence, "cloud-http") {
+			t.Fatal("the edge's word stood against the origin's failure", inc)
 		}
 	}
 

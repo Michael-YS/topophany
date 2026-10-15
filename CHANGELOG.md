@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   topology it was admitted with, and a batch whose sending straddles a
   reload is refused with `503 topology_reloaded`, for its worker to send
   again and be admitted, or not, under the new ones.
+- A response through an edge or proxy no longer proves the nodes behind
+  it. A passing HTTP response whose edge said it fetched it from behind,
+  with a cache status such as `MISS` or `DYNAMIC`, made the origin read
+  up, measured, and stood as evidence against a failure of the origin
+  seen from another observer; but those headers are the response's own
+  word, which the edge, or anything behind it, can send whatever
+  happened, so an edge could hide a dead origin. Such an answer now
+  proves the first hop alone, and a node reached only through it reads
+  unknown and says why; give it a check that does not go through the
+  edge to measure it.
 
 ## [0.8.1] - 2026-10-14
 

@@ -98,7 +98,7 @@
   "edge.origin": "New York origin",
   "edge.up": "HTTP 521 · edge up",
   "edge.affected": "affected",
-  "edge.text": "An answer from the CDN proves the edge. Only a response it says it fetched proves the origin.",
+  "edge.text": "An answer from the CDN proves the edge, whatever it says. Only a check of its own proves the origin.",
   "guess.title": "A guess is labeled a guess",
   "guess.label": "An incident's evidence",
   "guess.text": "Incidents show their evidence. Anything more is marked as a hypothesis.",

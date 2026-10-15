@@ -202,6 +202,7 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 		s := model.EntityState{ID: n.ID, Health: "unknown", Evidence: "unknown", Reason: "no fresh remote-response evidence"}
 		failures := 0
 		proof := []string{}
+		through := false
 		for _, cs := range states {
 			s.Checks = append(s.Checks, cs.ID)
 			if cs.Freshness != "fresh" || cs.Last == nil {
@@ -209,9 +210,10 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 			}
 			x := checks[cs.ID]
 			ep := endpoints[x.Endpoint]
-			if answered(ep, n.ID, x.Kind, cs.Last) {
+			if answered(ep, n.ID, cs.Last) {
 				proof = append(proof, cs.ID)
 			}
+			through = through || behind(ep, n.ID, cs.Last)
 			if cs.Health == "down" && implicated(ep, n.ID, cs.Last) {
 				failures++
 			}
@@ -225,6 +227,8 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 			s.Reason = "configured response paths unavailable; physical power state unknown"
 			s.Evidence = "inferred"
 			s.Affected = true
+		} else if through {
+			s.Reason = "answered only through the edge or proxy in front, which proves that hop alone; a check that does not go through it proves this node"
 		}
 		if len(states) == 0 {
 			s.Reason = "registered asset; no checks in this view"
@@ -395,7 +399,7 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 			for _, other := range c.Checks {
 				cs := allStates[other.ID]
 				oe, ok := endpoints[other.Endpoint]
-				if other.Observer != x.Observer && ok && (oe.Node == ep.Node || slices.Contains(oe.Via, ep.Node)) && cs.Freshness == "fresh" && cs.Last != nil && answered(oe, ep.Node, other.Kind, cs.Last) {
+				if other.Observer != x.Observer && ok && (oe.Node == ep.Node || slices.Contains(oe.Via, ep.Node)) && cs.Freshness == "fresh" && cs.Last != nil && answered(oe, ep.Node, cs.Last) {
 					inc.CounterEvidence = boundedChecks(inc.CounterEvidence, []string{other.ID})
 				}
 			}
@@ -422,38 +426,32 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 const unavailable = "; access path unavailable, intrinsic service state not established"
 
 // answered reports whether v is remote-response evidence for node: the
-// endpoint's own node, or an edge or proxy in its via chain. The first hop
-// answers whatever happens behind it, even with an error page, so any
-// response proves it; the nodes behind it count only a passing HTTP
-// response that the edge says it fetched from them.
-func answered(ep model.Endpoint, node, kind string, v *model.Observation) bool {
-	if v.Evidence != "measured" || !v.Connectivity || v.Facts["response_proof"] == "" || v.Facts["response_proof"] == "none" {
-		return false
-	}
-	if len(ep.Via) == 0 || ep.Via[0] == node {
-		return true
-	}
-	return kind == "http" && v.Outcome == "ok" && edgeForwarded(v.Facts["edge_cache"])
+// endpoint's own node, or the first edge or proxy in its via chain. The
+// first hop answers whatever happens behind it, even with an error page,
+// so any response proves it and nothing behind it. Where an edge says a
+// response came from, its cache status among them, is the response's own
+// word, which the edge or anything behind it can send whatever happened,
+// so the nodes behind the first hop count only a check that reaches them
+// without going through it.
+func answered(ep model.Endpoint, node string, v *model.Observation) bool {
+	return responded(v) && (len(ep.Via) == 0 || ep.Via[0] == node)
+}
+
+// behind reports whether v is an answer through the first hop of ep's via
+// chain that proves that hop and not node, behind it.
+func behind(ep model.Endpoint, node string, v *model.Observation) bool {
+	return responded(v) && len(ep.Via) > 0 && ep.Via[0] != node
+}
+
+// responded reports whether v is a measured response from the remote end.
+func responded(v *model.Observation) bool {
+	return v.Evidence == "measured" && v.Connectivity && v.Facts["response_proof"] != "" && v.Facts["response_proof"] != "none"
 }
 
 // implicated reports whether a confirmed failure of a check on ep may lie at
 // node: anywhere along the chain, except at a first hop that answered.
 func implicated(ep model.Endpoint, node string, v *model.Observation) bool {
 	return len(ep.Via) == 0 || ep.Via[0] != node || !v.Connectivity
-}
-
-// edgeForwarded reports whether an edge cache status says the edge asked
-// what is behind it for this response. Anything else proves only the
-// edge: its cache (HIT, STALE, UPDATING, PRERENDER), code it runs itself
-// (a Worker that sends no subrequest has no status, CloudFront says
-// LambdaGeneratedResponse or FunctionGeneratedResponse), its own pages,
-// or a hop that says nothing of its cache at all.
-func edgeForwarded(status string) bool {
-	switch status {
-	case "MISS", "DYNAMIC", "BYPASS", "EXPIRED", "REVALIDATED", "REFRESHHIT", "PASS":
-		return true
-	}
-	return false
 }
 
 func withStatus(v *model.Observation) string {
