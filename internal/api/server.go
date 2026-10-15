@@ -87,7 +87,8 @@ type Server struct {
 	Ledger             *ledger.Ledger // what snapshots carry of past incidents; nil for none
 	Auth               Auth
 	configMu           sync.RWMutex
-	gen                *generation // what Config gives every request; nil until first asked
+	gen                *generation  // what Config and Auth give every request; nil until first asked
+	reloadMu           sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
 	MaxSampleAge       time.Duration
 	Now                func() time.Time
 	mu                 sync.Mutex
@@ -97,6 +98,7 @@ type Server struct {
 	inflight           map[string]int
 	snapshotMu         sync.Mutex
 	snapshotAt         time.Time
+	snapshotGen        *generation // what the cached snapshots were built under
 	snapshotRows       []model.Observation
 	snapshotCarries    []engine.Carry
 	snapshotBeats      map[string]model.Heartbeat
@@ -107,7 +109,16 @@ type Server struct {
 	snapshotBuilds     int
 	preauthSlots       chan struct{}
 }
-type principalKey struct{}
+type authorityKey struct{}
+
+// An authority is what a request was admitted with: the principal its
+// token names and the generation that token was found in. The request is
+// served under that generation throughout, so one admitted before a
+// reload never acts under the topology loaded after it.
+type authority struct {
+	Principal
+	gen *generation
+}
 
 type limit struct {
 	At    time.Time
@@ -125,19 +136,13 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
 }
 
-// current is the topology and tokens a request is served under.
-func (s *Server) current() (model.Config, Auth) {
-	s.configMu.RLock()
-	defer s.configMu.RUnlock()
-	return s.Config, s.Auth
-}
-
-// A generation is what every request served under one topology shares,
-// worked out once when the topology is loaded rather than by each
+// A generation is what every request served under one topology and its
+// tokens shares, worked out once when they are loaded rather than by each
 // request: its revision, its checks and their contracts, and what viewers
 // may see of them. Nothing in it is changed after it is made.
 type generation struct {
 	config          model.Config
+	auth            Auth
 	revision        string
 	checks          map[string]model.Check
 	contracts       map[string]string // by check
@@ -146,9 +151,9 @@ type generation struct {
 	topology        []byte            // the body GET /v1/config answers with
 }
 
-func newGeneration(c model.Config) *generation {
+func newGeneration(c model.Config, a Auth) *generation {
 	public := config.Public(c)
-	g := &generation{config: c, revision: config.Revision(c), checks: make(map[string]model.Check, len(c.Checks)), contracts: config.Contracts(c), publicRevision: config.Revision(public), publicContracts: config.Contracts(public)}
+	g := &generation{config: c, auth: a, revision: config.Revision(c), checks: make(map[string]model.Check, len(c.Checks)), contracts: config.Contracts(c), publicRevision: config.Revision(public), publicContracts: config.Contracts(public)}
 	for _, x := range c.Checks {
 		g.checks[x.ID] = x
 	}
@@ -161,7 +166,8 @@ func newGeneration(c model.Config) *generation {
 	return g
 }
 
-// generation is the generation of the topology a request is served under.
+// generation is the generation of the topology and tokens a request
+// admitted now is served under.
 func (s *Server) generation() *generation {
 	s.configMu.RLock()
 	g := s.gen
@@ -172,17 +178,20 @@ func (s *Server) generation() *generation {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	if s.gen == nil {
-		s.gen = newGeneration(s.Config)
+		s.gen = newGeneration(s.Config, s.Auth)
 	}
 	return s.gen
 }
 
 // Reload makes c and a the collector's topology and tokens, as on SIGHUP.
-// Requests already past authorization finish under the old ones. The store
-// counts samples under c from now on, and no snapshot built before is
-// served again.
+// Requests already past authorization read under the old ones; a batch
+// admitted under them is refused for its worker to send again, unless it
+// was stored before the reload. The store counts samples under c from now
+// on, and no snapshot built before is served again.
 func (s *Server) Reload(c model.Config, a Auth) {
-	g := newGeneration(c)
+	g := newGeneration(c, a)
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	s.configMu.Lock()
 	s.Config, s.Auth, s.gen = c, a, g
 	s.configMu.Unlock()
@@ -235,13 +244,13 @@ func (s *Server) Handler() http.Handler {
 		// principal, whatever it asks for, never to the slots and the rate
 		// shared by everything anonymous, so anonymous traffic, however much
 		// of it, cannot refuse a worker or a viewer.
-		if p, ok := s.principal(r); ok {
-			if !s.allow(scope(p)) {
+		if a, ok := s.admit(r); ok {
+			if !s.allow(scope(a.Principal)) {
 				w.Header().Set("Retry-After", "1")
 				writeError(w, 429, "rate_limited")
 				return
 			}
-			mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+			mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authorityKey{}, a)))
 			return
 		}
 		select {
@@ -259,29 +268,28 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-// principal is the principal whose token r carries, if any: one SHA-256
-// and a constant-time comparison with each token, cheap enough to do
-// before any budget is charged.
-func (s *Server) principal(r *http.Request) (Principal, bool) {
+// admit is the authority of the token r carries, if any, found in the
+// current generation: one SHA-256 and a constant-time comparison with each
+// token, cheap enough to do before any budget is charged.
+func (s *Server) admit(r *http.Request) (authority, bool) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || secure.CheckToken(token) != nil {
-		return Principal{}, false
+		return authority{}, false
 	}
 	hash := secure.Hash(token)
-	var found Principal
+	found := authority{gen: s.generation()}
 	ok = false
-	_, auth := s.current()
-	for _, p := range auth.Tokens {
+	for _, p := range found.gen.auth.Tokens {
 		if subtle.ConstantTimeCompare([]byte(strings.ToLower(p.TokenSHA256)), []byte(hash)) == 1 {
-			found = p
+			found.Principal = p
 			ok = true
 		}
 	}
 	return found, ok
 }
-func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Request, Principal)) http.HandlerFunc {
+func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Request, authority)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		found, ok := r.Context().Value(principalKey{}).(Principal)
+		found, ok := r.Context().Value(authorityKey{}).(authority)
 		if !ok {
 			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="Topophany"`)
@@ -296,11 +304,11 @@ func (s *Server) authorize(role string, next func(http.ResponseWriter, *http.Req
 			return
 		}
 		w.Header().Del("Connection")
-		if !s.acquire(scope(found), role) {
+		if !s.acquire(scope(found.Principal), role) {
 			writeError(w, 429, "concurrency_limited")
 			return
 		}
-		defer s.release(scope(found), role)
+		defer s.release(scope(found.Principal), role)
 		next(w, r, found)
 	}
 }
@@ -326,11 +334,11 @@ func (s *Server) allowBudget(key string, maximum int) bool {
 	s.limits[key] = v
 	return v.Count <= maximum
 }
-func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, p Principal) {
+func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, a authority) {
 	view := r.URL.Query().Get("observer")
 	if view != "" {
 		exists := false
-		for _, o := range s.generation().config.Observers {
+		for _, o := range a.gen.config.Observers {
 			exists = exists || o.ID == view
 		}
 		if !exists {
@@ -338,15 +346,15 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, p Principal) {
 			return
 		}
 	}
-	s.writeSnapshot(w, view, p.TokenSHA256)
+	s.writeSnapshot(w, a.gen, view, a.TokenSHA256)
 }
-func (s *Server) topology(w http.ResponseWriter, r *http.Request, _ Principal) {
+func (s *Server) topology(w http.ResponseWriter, r *http.Request, a authority) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(s.generation().topology)
+	_, _ = w.Write(a.gen.topology)
 }
-func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
-	g := s.generation()
+func (s *Server) history(w http.ResponseWriter, r *http.Request, a authority) {
+	g := a.gen
 	id := r.URL.Query().Get("check")
 	if _, ok := g.checks[id]; !ok {
 		writeError(w, 404, "unknown_check")
@@ -377,8 +385,8 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request, _ Principal) {
 
 // rollups lays a check's rollups under its current contract out in slots
 // of step (5m, 1h or 1d) over the span before now, with their total.
-func (s *Server) rollups(w http.ResponseWriter, r *http.Request, _ Principal) {
-	g := s.generation()
+func (s *Server) rollups(w http.ResponseWriter, r *http.Request, a authority) {
+	g := a.gen
 	q := r.URL.Query()
 	id := q.Get("check")
 	if _, ok := g.checks[id]; !ok {
@@ -420,7 +428,7 @@ func (s *Server) rollups(w http.ResponseWriter, r *http.Request, _ Principal) {
 		Slots       []model.Rollup `json:"slots"`
 	}{g.config.Project, g.publicRevision, id, g.publicContracts[id], now, int64(step / time.Second), since, total, slots})
 }
-func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
+func (s *Server) ingest(w http.ResponseWriter, r *http.Request, a authority) {
 	if ct, _, e := mime.ParseMediaType(r.Header.Get("Content-Type")); e != nil || ct != "application/json" {
 		writeError(w, 415, "json_required")
 		return
@@ -436,29 +444,52 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request, p Principal) {
 		return
 	}
 	_ = controller.SetReadDeadline(time.Time{})
-	if code, status := s.ValidateBatch(b, p.Observer); code != "" {
-		writeError(w, status, code)
-		return
-	}
-	if e := s.Store.Put(b); e != nil {
-		switch {
-		case errors.Is(e, store.ErrConflict):
-			writeError(w, 409, "observation_id_conflict")
-		case errors.Is(e, store.ErrScopeCapacity):
-			writeError(w, 429, "observer_storage_quota")
-		case errors.Is(e, store.ErrCapacity):
-			writeError(w, 503, "storage_receipt_capacity")
-		default:
-			writeError(w, 503, "storage_unavailable")
+	if status, code := s.put(a, b); code != "" {
+		if code == "topology_reloaded" {
+			w.Header().Set("Retry-After", "1")
 		}
+		writeError(w, status, code)
 		return
 	}
 	// The acknowledgement echoes the batch's revision: under schema 2 it
 	// describes the sender, not what the collector counts.
 	writeJSON(w, 202, map[string]any{"project": b.Project, "revision": b.Revision, "accepted": len(b.Observations)})
 }
+
+// put judges b under the generation a was admitted with and stores it,
+// or says why not. That generation must still be current when b is
+// stored: a reload while the body was read may have revoked the token
+// that admitted it, so the worker sends it again and is admitted, or not,
+// afresh.
+func (s *Server) put(a authority, b model.Batch) (int, string) {
+	s.reloadMu.RLock()
+	defer s.reloadMu.RUnlock()
+	if s.generation() != a.gen {
+		return 503, "topology_reloaded"
+	}
+	if code, status := a.gen.validateBatch(b, a.Observer, s.Now(), s.MaxSampleAge); code != "" {
+		return status, code
+	}
+	if e := s.Store.Put(b); e != nil {
+		switch {
+		case errors.Is(e, store.ErrConflict):
+			return 409, "observation_id_conflict"
+		case errors.Is(e, store.ErrScopeCapacity):
+			return 429, "observer_storage_quota"
+		case errors.Is(e, store.ErrCapacity):
+			return 503, "storage_receipt_capacity"
+		default:
+			return 503, "storage_unavailable"
+		}
+	}
+	return 0, ""
+}
+
+// ValidateBatch judges b from observer under the current topology.
 func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
-	g := s.generation()
+	return s.generation().validateBatch(b, observer, s.Now(), s.MaxSampleAge)
+}
+func (g *generation) validateBatch(b model.Batch, observer string, now time.Time, maxAge time.Duration) (string, int) {
 	if b.Project != g.config.Project {
 		return "project_mismatch", 409
 	}
@@ -477,9 +508,8 @@ func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
 	if len(b.Observations) > 100 || len(b.Observations) == 0 && b.Heartbeat == nil {
 		return "invalid_batch_size", 400
 	}
-	now := s.Now()
 	validTime := func(t time.Time) bool {
-		return !t.IsZero() && !t.After(now.Add(30*time.Second)) && !t.Before(now.Add(-s.MaxSampleAge))
+		return !t.IsZero() && !t.After(now.Add(30*time.Second)) && !t.Before(now.Add(-maxAge))
 	}
 	for _, v := range b.Observations {
 		x, ok := g.checks[v.Check]

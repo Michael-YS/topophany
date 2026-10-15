@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- A worker token revoked by a reload can no longer store a sample. A
+  collector found a request's token among those in force when the
+  request arrived, but judged its batch under the topology in force once
+  the body was read, so a worker holding its body open across a reload
+  that revoked its token had a sample of the new topology stored; a
+  viewer admitted just before a reload could likewise read the topology
+  loaded after it. Each request is now served under the tokens and the
+  topology it was admitted with, and a batch whose sending straddles a
+  reload is refused with `503 topology_reloaded`, for its worker to send
+  again and be admitted, or not, under the new ones.
+
 ## [0.8.1] - 2026-10-14
 
 ### Changed

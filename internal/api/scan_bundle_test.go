@@ -19,6 +19,8 @@ func TestViewerCannotReserveAllSnapshotBuilds(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		srv.Config.Observers = append(srv.Config.Observers, model.Observer{ID: fmt.Sprintf("v%d", i), Context: "test", StaleSeconds: 90})
 	}
+	token := strings.Repeat("e", 64)
+	srv.Auth.Tokens = append(srv.Auth.Tokens, Principal{TokenSHA256: secure.Hash(token), Role: "viewer"})
 	for i := 0; i < 10; i++ {
 		got := request(h, "GET", fmt.Sprintf("/v1/snapshot?observer=v%d", i), viewerToken, "", nil)
 		want := 200
@@ -29,8 +31,6 @@ func TestViewerCannotReserveAllSnapshotBuilds(t *testing.T) {
 			t.Fatal(i, got.Code)
 		}
 	}
-	token := strings.Repeat("e", 64)
-	srv.Auth.Tokens = append(srv.Auth.Tokens, Principal{TokenSHA256: secure.Hash(token), Role: "viewer"})
 	if got := request(h, "GET", "/v1/snapshot?observer=v9", token, "", nil); got.Code != 200 {
 		t.Fatal("second viewer starved", got.Code)
 	}

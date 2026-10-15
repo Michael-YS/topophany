@@ -2,8 +2,10 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -356,6 +358,87 @@ func TestReloadSwapsTopologyAndTokens(t *testing.T) {
 	w := request(h, "GET", "/v1/snapshot", newViewer, "", nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Renamed") {
 		t.Fatal("the new token or the new topology is not served", w.Code)
+	}
+}
+
+// A request is served under the tokens that admitted it and the topology
+// loaded with them. A worker whose token a reload revokes while it sends
+// its batch cannot store a sample of the topology loaded after: the batch
+// is refused for the worker to send again, and the revoked token is then
+// refused. A viewer admitted before a reload reads the old topology, and
+// what it reads is never served to one admitted after.
+func TestARequestIsServedUnderTheTokensThatAdmittedIt(t *testing.T) {
+	srv, h, _ := fixture(t)
+	old := srv.Config
+	next := testkit.Config()
+	next.Checks[0].HTTP.Status = []int{204}
+	next.Nodes[0].Name = "Renamed"
+	newWorker, newViewer := strings.Repeat("c", 64), strings.Repeat("d", 64)
+	auth := Auth{Schema: 1, Tokens: []Principal{{secure.Hash(newViewer), "viewer", ""}, {secure.Hash(newWorker), "worker", "home"}}}
+	b := model.Batch{Schema: model.BatchSchema, Project: next.Project, Revision: config.Revision(next), Observations: []model.Observation{testkit.Observation(next, "home-http", 1, srv.Now().Add(-time.Second), "ok")}}
+	body := payload(t, b)
+
+	pr, pw := io.Pipe()
+	r := httptest.NewRequest("POST", "/v1/observations", pr)
+	r.Header.Set("Authorization", "Bearer "+workerToken)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(w, r)
+	}()
+	// The first byte is read only once the request is admitted.
+	if _, e := pw.Write(body[:1]); e != nil {
+		t.Fatal(e)
+	}
+	srv.Reload(next, auth)
+	go func() {
+		pw.Write(body[1:])
+		pw.Close()
+	}()
+	<-done
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "topology_reloaded") || w.Header().Get("Retry-After") == "" {
+		t.Fatal("a batch admitted by a revoked token was not refused to be sent again", w.Code, w.Body.String())
+	}
+	if got := srv.Store.History("home-http", config.Contracts(next), config.Revision(next), 10); len(got) != 0 {
+		t.Fatal("a revoked token stored a sample of the new topology", got)
+	}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", body); w.Code != 401 {
+		t.Fatal("a revoked token was admitted again", w.Code, w.Body.String())
+	}
+	if w := request(h, "POST", "/v1/observations", newWorker, "application/json", body); w.Code != 202 {
+		t.Fatal("the batch was refused from the new token", w.Code, w.Body.String())
+	}
+
+	// Viewers: one admitted before the reload, one after, and the first
+	// again, in either order, each read their own topology.
+	before := httptest.NewRequest("GET", "/v1/config", nil)
+	before.Header.Set("Authorization", "Bearer "+viewerToken)
+	srv.Reload(old, Auth{Schema: 1, Tokens: []Principal{{secure.Hash(viewerToken), "viewer", ""}, {secure.Hash(workerToken), "worker", "home"}}})
+	a, ok := srv.admit(before)
+	if !ok {
+		t.Fatal("the old viewer was not admitted")
+	}
+	srv.Reload(next, auth)
+	admitted := before.WithContext(context.WithValue(before.Context(), authorityKey{}, a))
+	read := func(route func(http.ResponseWriter, *http.Request, authority), r *http.Request) string {
+		t.Helper()
+		w := httptest.NewRecorder()
+		srv.authorize("viewer", route)(w, r)
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	if strings.Contains(read(srv.topology, admitted), "Renamed") || strings.Contains(read(srv.snapshot, admitted), "Renamed") {
+		t.Fatal("a viewer admitted before the reload read the topology loaded after it")
+	}
+	if w := request(h, "GET", "/v1/snapshot", newViewer, "", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "Renamed") {
+		t.Fatal("a snapshot built for a viewer admitted before the reload was served after it", w.Code)
+	}
+	if strings.Contains(read(srv.snapshot, admitted), "Renamed") {
+		t.Fatal("a snapshot built after the reload was served to a viewer admitted before it")
 	}
 }
 

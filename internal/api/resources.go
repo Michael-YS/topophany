@@ -42,8 +42,8 @@ func (s *Server) release(scope, role string) {
 	<-slots
 }
 
-func (s *Server) writeSnapshot(w http.ResponseWriter, view, principal string) {
-	raw, status, code := s.cachedSnapshot(view, principal)
+func (s *Server) writeSnapshot(w http.ResponseWriter, g *generation, view, principal string) {
+	raw, status, code := s.cachedSnapshot(g, view, principal)
 	if status != http.StatusOK {
 		if status == 429 {
 			w.Header().Set("Retry-After", "1")
@@ -57,15 +57,20 @@ func (s *Server) writeSnapshot(w http.ResponseWriter, view, principal string) {
 	_, _ = w.Write(raw)
 }
 
-func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
+// cachedSnapshot is the snapshot of view under g, the generation its
+// request was admitted under.
+func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, int, string) {
 	// Capture bounded store tails once per second. Cache at most eight observer
 	// projections (32 MiB total) so switching views cannot amplify store reads.
 	// Waiting readers never queue expensive work, and writes use a separate mutex.
+	// What is cached was built under one generation and is served under no
+	// other, even to a request admitted before a reload and answered after.
 	if !s.snapshotMu.TryLock() {
 		return nil, 429, "snapshot_busy"
 	}
 	defer s.snapshotMu.Unlock()
-	if s.snapshotCache == nil || s.Now().Sub(s.snapshotAt) >= time.Second {
+	if s.snapshotCache == nil || s.snapshotGen != g || s.Now().Sub(s.snapshotAt) >= time.Second {
+		s.snapshotGen = g
 		s.snapshotRows, s.snapshotCarries, s.snapshotBeats = s.Store.StateView()
 		s.snapshotAt = s.Now()
 		s.snapshotAvailable = nil
@@ -82,7 +87,6 @@ func (s *Server) cachedSnapshot(view, principal string) ([]byte, int, string) {
 	}
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
-	g := s.generation()
 	snap := engine.BuildCarried(g.config, s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
