@@ -62,7 +62,7 @@ func TestReadCommandsShowWhatTheTUIShows(t *testing.T) {
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	scenarios := len(preview.New(c, now, preview.DefaultLanguage).Scenarios())
 	for sc := 0; sc < scenarios; sc++ {
-		for _, observer := range []string{"", "cs-win"} {
+		for _, observer := range []string{"", "obs-win"} {
 			name := fmt.Sprintf("scenario %d from %q", sc, observer)
 			sim := preview.New(c, now, preview.DefaultLanguage)
 			if sc != 0 {
@@ -184,7 +184,7 @@ func TestShowCheckCarriesItsRecentSamples(t *testing.T) {
 		t.Fatal(e)
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	const id = "w-dmit-443"
+	const id = "w-transit-443"
 	// All clear, a lossy border, then a worker gone quiet.
 	for _, sc := range []int{0, 5, 6} {
 		sim := preview.New(c, now, preview.DefaultLanguage)
@@ -361,7 +361,7 @@ func TestPreviewScenariosAndCommands(t *testing.T) {
 		Name    string
 		Current bool
 	}
-	if e != nil || json.Unmarshal([]byte(out), &list) != nil || len(list) < 3 || !list[2].Current || list[0].Current || list[1].ID != "dmit-blocked" {
+	if e != nil || json.Unmarshal([]byte(out), &list) != nil || len(list) < 3 || !list[2].Current || list[0].Current || list[1].ID != "transit-blocked" {
 		t.Fatalf("%v\n%s", e, out)
 	}
 	if out, e = at(now, "preview", "--lang", preview.DefaultLanguage, "--scenario", "2", "scenarios"); e != nil || !strings.Contains(out, "2*") {
@@ -453,7 +453,7 @@ func TestHowChecksFaredFromRollups(t *testing.T) {
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	ids := preview.New(c, now, preview.DefaultLanguage).ScenarioIDs()
 	index := func(id string) int { return slices.Index(ids, id) }
-	const id = "w-dmit-443"
+	const id = "w-transit-443"
 	// The normal scenario fails a sample in a hundred or so, and so do the
 	// others besides what they break.
 	calm, e := preview.New(c, now, preview.DefaultLanguage).Snapshot("", now)
@@ -469,7 +469,7 @@ func TestHowChecksFaredFromRollups(t *testing.T) {
 	if usual.Unmeasured != 0 || usual.Down == 0 || usual.Down > 60*60 {
 		t.Fatalf("a normal day reads as %+v", usual.Rollup)
 	}
-	for _, sc := range []int{index("dmit-down"), index("home-offline")} {
+	for _, sc := range []int{index("transit-down"), index("home-offline")} {
 		sim := preview.New(c, now, preview.DefaultLanguage)
 		sim.SetScenario(sc, now.Add(-30*time.Minute))
 		snap, e := sim.Snapshot("", now)
@@ -487,7 +487,7 @@ func TestHowChecksFaredFromRollups(t *testing.T) {
 		}
 		day := fared[0]
 		switch ids[sc] {
-		case "dmit-down":
+		case "transit-down":
 			if more := day.Down - usual.Down; more < 25*60 || more > 31*60 || day.Unmeasured != 0 || fared[2].Down < day.Down {
 				t.Fatalf("half an hour down reads as %+v", day.Rollup)
 			}

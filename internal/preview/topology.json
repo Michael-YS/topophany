@@ -8,9 +8,9 @@
       "kind": "host",
       "group": "@group.home",
       "location": {
-        "label": "@place.changsha",
-        "lat": 28.23,
-        "lon": 112.94
+        "label": "@place.seattle",
+        "lat": 47.61,
+        "lon": -122.33
       },
       "notes": "@node.win.notes"
     },
@@ -20,9 +20,9 @@
       "kind": "host",
       "group": "@group.home",
       "location": {
-        "label": "@place.changsha",
-        "lat": 28.2,
-        "lon": 112.97
+        "label": "@place.seattle",
+        "lat": 47.61,
+        "lon": -122.33
       },
       "notes": "Clash Verge Rev + Tailscale"
     },
@@ -32,27 +32,28 @@
       "kind": "router",
       "group": "@group.home",
       "location": {
-        "label": "@place.changsha",
-        "lat": 28.21,
-        "lon": 112.95
+        "label": "@place.seattle",
+        "lat": 47.61,
+        "lon": -122.33
       },
       "notes": "@node.router.notes"
     },
     {
-      "id": "hz",
-      "name": "@node.hz",
+      "id": "relay",
+      "name": "@node.relay",
       "kind": "host",
       "group": "@group.relay",
       "location": {
-        "label": "@place.hangzhou",
-        "lat": 30.27,
-        "lon": 120.15
+        "label": "@place.san-jose",
+        "lat": 37.34,
+        "lon": -121.89
       },
-      "notes": "@node.hz.notes"
+      "provider": "digitalocean",
+      "notes": "@node.relay.notes"
     },
     {
-      "id": "dmit",
-      "name": "@node.dmit",
+      "id": "transit",
+      "name": "@node.transit",
       "kind": "host",
       "group": "@group.transit",
       "location": {
@@ -60,11 +61,12 @@
         "lat": 34.05,
         "lon": -118.24
       },
-      "notes": "@node.dmit.notes"
+      "provider": "bandwagon",
+      "notes": "@node.transit.notes"
     },
     {
-      "id": "aaitr",
-      "name": "@node.aaitr",
+      "id": "exit-a",
+      "name": "@node.exit-a",
       "kind": "host",
       "group": "@group.exit",
       "location": {
@@ -72,11 +74,12 @@
         "lat": 33.99,
         "lon": -118.31
       },
+      "provider": "oracle",
       "notes": "@notes.residential-exit"
     },
     {
-      "id": "qqpr",
-      "name": "@node.qqpr",
+      "id": "exit-b",
+      "name": "@node.exit-b",
       "kind": "host",
       "group": "@group.exit",
       "location": {
@@ -84,11 +87,12 @@
         "lat": 21.31,
         "lon": -157.86
       },
+      "provider": "vultr",
       "notes": "@notes.residential-exit"
     },
     {
-      "id": "s1",
-      "name": "@node.s1",
+      "id": "app",
+      "name": "@node.app",
       "kind": "host",
       "group": "@group.self-hosted",
       "location": {
@@ -96,18 +100,19 @@
         "lat": 40.71,
         "lon": -74.01
       },
-      "notes": "@node.s1.notes"
+      "provider": "oracle",
+      "notes": "@node.app.notes"
     },
     {
-      "id": "s1-db",
-      "name": "@node.s1-db",
+      "id": "app-db",
+      "name": "@node.app-db",
       "kind": "container",
-      "parent": "s1",
+      "parent": "app",
       "group": "@group.self-hosted"
     },
     {
-      "id": "s2",
-      "name": "@node.s2",
+      "id": "aux",
+      "name": "@node.aux",
       "kind": "host",
       "group": "@group.self-hosted",
       "location": {
@@ -115,7 +120,8 @@
         "lat": 40.73,
         "lon": -73.94
       },
-      "notes": "@node.s2.notes"
+      "provider": "azure",
+      "notes": "@node.aux.notes"
     },
     {
       "id": "jp",
@@ -125,8 +131,10 @@
       "location": {
         "label": "@place.tokyo",
         "lat": 35.68,
-        "lon": 139.69
-      }
+        "lon": 139.77
+      },
+      "provider": "gcp",
+      "notes": "@node.jp.notes"
     },
     {
       "id": "jp-openlist",
@@ -136,8 +144,8 @@
       "group": "@group.self-hosted"
     },
     {
-      "id": "de",
-      "name": "@node.de",
+      "id": "git-node",
+      "name": "@node.git-node",
       "kind": "host",
       "group": "@group.self-hosted",
       "location": {
@@ -145,7 +153,8 @@
         "lat": 50.11,
         "lon": 8.68
       },
-      "notes": "@node.de.notes"
+      "provider": "digitalocean",
+      "notes": "@node.git-node.notes"
     },
     {
       "id": "cf",
@@ -191,38 +200,38 @@
   ],
   "observers": [
     {
-      "id": "cs-win",
-      "name": "@observer.cs-win",
+      "id": "obs-win",
+      "name": "@observer.obs-win",
       "node": "win",
-      "context": "@observer.cs-win.context",
+      "context": "@observer.obs-win.context",
       "stale_seconds": 45
     },
     {
-      "id": "cs-mac",
-      "name": "@observer.cs-mac",
+      "id": "obs-mac",
+      "name": "@observer.obs-mac",
       "node": "mac",
-      "context": "@observer.cs-mac.context",
+      "context": "@observer.obs-mac.context",
       "stale_seconds": 45
     },
     {
-      "id": "obs-hz",
-      "name": "@observer.obs-hz",
-      "node": "hz",
-      "context": "@observer.obs-hz.context",
+      "id": "obs-relay",
+      "name": "@observer.obs-relay",
+      "node": "relay",
+      "context": "@observer.obs-relay.context",
       "stale_seconds": 45
     },
     {
-      "id": "obs-s1",
-      "name": "@observer.obs-s1",
-      "node": "s1",
-      "context": "@observer.obs-s1.context",
+      "id": "obs-app",
+      "name": "@observer.obs-app",
+      "node": "app",
+      "context": "@observer.obs-app.context",
       "stale_seconds": 45
     },
     {
-      "id": "obs-jp",
-      "name": "@observer.obs-jp",
-      "node": "jp",
-      "context": "@observer.obs-jp.context",
+      "id": "obs-remote",
+      "name": "@observer.obs-remote",
+      "node": "git-node",
+      "context": "@observer.obs-remote.context",
       "stale_seconds": 45
     }
   ],
@@ -232,14 +241,14 @@
       "node": "win",
       "address": "http://127.0.0.1:9097",
       "network": "loopback",
-      "observer": "cs-win"
+      "observer": "obs-win"
     },
     {
       "id": "mac-clash",
       "node": "mac",
       "address": "http://127.0.0.1:9097",
       "network": "loopback",
-      "observer": "cs-mac"
+      "observer": "obs-mac"
     },
     {
       "id": "win-tn",
@@ -250,7 +259,13 @@
     {
       "id": "win-dash",
       "node": "win",
-      "address": "http://100.64.0.11:3000/",
+      "address": "http://100.64.0.11:8123/",
+      "network": "tailnet"
+    },
+    {
+      "id": "aux-jellyfin",
+      "node": "aux",
+      "address": "http://100.64.0.62:8096/health",
       "network": "tailnet"
     },
     {
@@ -272,58 +287,58 @@
       "network": "lan"
     },
     {
-      "id": "hz-tn",
-      "node": "hz",
+      "id": "relay-tn",
+      "node": "relay",
       "address": "100.64.0.20:22",
       "network": "tailnet"
     },
     {
-      "id": "hz-derp",
-      "node": "hz",
-      "address": "https://derp-hz.example.invalid/",
+      "id": "relay-derp",
+      "node": "relay",
+      "address": "https://derp.example.invalid/",
       "network": "public"
     },
     {
-      "id": "hz-rproxy",
-      "node": "hz",
+      "id": "relay-rproxy",
+      "node": "relay",
       "address": "https://home.example.invalid/healthz",
       "network": "public"
     },
     {
-      "id": "hz-rproxy-local",
-      "node": "hz",
+      "id": "relay-rproxy-local",
+      "node": "relay",
       "address": "http://127.0.0.1:8080/healthz",
       "network": "loopback",
-      "observer": "obs-hz"
+      "observer": "obs-relay"
     },
     {
-      "id": "dmit-entry",
-      "node": "dmit",
+      "id": "transit-entry",
+      "node": "transit",
       "address": "192.0.2.10:443",
       "network": "public",
-      "notes": "@endpoint.dmit-entry.notes"
+      "notes": "@endpoint.transit-entry.notes"
     },
     {
-      "id": "dmit-tn",
-      "node": "dmit",
+      "id": "transit-tn",
+      "node": "transit",
       "address": "100.64.0.30:22",
       "network": "tailnet"
     },
     {
-      "id": "aaitr-tn",
-      "node": "aaitr",
+      "id": "exit-a-tn",
+      "node": "exit-a",
       "address": "100.64.0.40:22",
       "network": "tailnet"
     },
     {
-      "id": "qqpr-tn",
-      "node": "qqpr",
+      "id": "exit-b-tn",
+      "node": "exit-b",
       "address": "100.64.0.50:22",
       "network": "tailnet"
     },
     {
-      "id": "s1-web",
-      "node": "s1",
+      "id": "app-web",
+      "node": "app",
       "address": "https://www.example.invalid/",
       "network": "public",
       "via": [
@@ -331,8 +346,8 @@
       ]
     },
     {
-      "id": "s1-api",
-      "node": "s1",
+      "id": "app-api",
+      "node": "app",
       "address": "https://api.example.invalid/healthz",
       "network": "public",
       "via": [
@@ -340,48 +355,48 @@
       ]
     },
     {
-      "id": "s1-web-local",
-      "node": "s1",
+      "id": "app-web-local",
+      "node": "app",
       "address": "http://127.0.0.1:8080/",
       "network": "loopback",
-      "observer": "obs-s1"
+      "observer": "obs-app"
     },
     {
-      "id": "s1-tn",
-      "node": "s1",
+      "id": "app-tn",
+      "node": "app",
       "address": "100.64.0.61:22",
       "network": "tailnet"
     },
     {
-      "id": "s1-db-tn",
-      "node": "s1-db",
+      "id": "app-db-tn",
+      "node": "app-db",
       "address": "100.64.0.61:5432",
       "network": "tailnet",
-      "notes": "@endpoint.s1-db-tn.notes"
+      "notes": "@endpoint.app-db-tn.notes"
     },
     {
-      "id": "s2-entry",
-      "node": "s2",
+      "id": "app-memos",
+      "node": "app",
+      "address": "http://100.64.0.61:5230/healthz",
+      "network": "tailnet"
+    },
+    {
+      "id": "aux-entry",
+      "node": "aux",
       "address": "192.0.2.70:443",
       "network": "public",
-      "notes": "@endpoint.s2-entry.notes"
+      "notes": "@endpoint.aux-entry.notes"
     },
     {
-      "id": "s2-tn",
-      "node": "s2",
+      "id": "aux-tn",
+      "node": "aux",
       "address": "100.64.0.62:22",
       "network": "tailnet"
     },
     {
-      "id": "s2-memos",
-      "node": "s2",
-      "address": "http://100.64.0.62:5230/",
-      "network": "tailnet"
-    },
-    {
-      "id": "s2-rsshub",
-      "node": "s2",
-      "address": "http://100.64.0.62:1200/",
+      "id": "vaultwarden-ep",
+      "node": "aux",
+      "address": "http://100.64.0.62:8000/alive",
       "network": "tailnet"
     },
     {
@@ -397,20 +412,20 @@
       "network": "public"
     },
     {
-      "id": "de-tn",
-      "node": "de",
+      "id": "git-tn",
+      "node": "git-node",
       "address": "100.64.0.80:22",
       "network": "tailnet"
     },
     {
-      "id": "de-git",
-      "node": "de",
+      "id": "git-http",
+      "node": "git-node",
       "address": "https://git.example.invalid/api/healthz",
       "network": "public"
     },
     {
-      "id": "de-restic",
-      "node": "de",
+      "id": "git-restic",
+      "node": "git-node",
       "address": "http://100.64.0.80:8000/",
       "network": "tailnet"
     },
@@ -472,53 +487,61 @@
       ]
     },
     {
+      "id": "jellyfin",
+      "name": "@service.jellyfin",
+      "node": "aux",
+      "endpoints": [
+        "aux-jellyfin"
+      ]
+    },
+    {
       "id": "derp",
       "name": "@service.derp",
-      "node": "hz",
+      "node": "relay",
       "endpoints": [
-        "hz-derp"
+        "relay-derp"
       ]
     },
     {
       "id": "home-rproxy",
       "name": "@service.home-rproxy",
-      "node": "hz",
+      "node": "relay",
       "endpoints": [
-        "hz-rproxy",
-        "hz-rproxy-local"
+        "relay-rproxy",
+        "relay-rproxy-local"
       ],
       "depends_on": [
         "home-dash"
       ]
     },
     {
-      "id": "vless-dmit",
-      "name": "@service.vless-dmit",
-      "node": "dmit",
+      "id": "vless-transit",
+      "name": "@service.vless-transit",
+      "node": "transit",
       "endpoints": [
-        "dmit-entry"
+        "transit-entry"
       ]
     },
     {
-      "id": "vless-s2",
-      "name": "@service.vless-s2",
-      "node": "s2",
+      "id": "vless-aux",
+      "name": "@service.vless-aux",
+      "node": "aux",
       "endpoints": [
-        "s2-entry"
+        "aux-entry"
       ]
     },
     {
-      "id": "egress-aaitr",
-      "name": "@service.egress-aaitr",
-      "node": "aaitr",
+      "id": "egress-a",
+      "name": "@service.egress-a",
+      "node": "exit-a",
       "endpoints": [
         "exit-check"
       ]
     },
     {
-      "id": "egress-qqpr",
-      "name": "@service.egress-qqpr",
-      "node": "qqpr",
+      "id": "egress-b",
+      "name": "@service.egress-b",
+      "node": "exit-b",
       "endpoints": [
         "exit-check"
       ]
@@ -526,18 +549,18 @@
     {
       "id": "postgres",
       "name": "PostgreSQL",
-      "node": "s1-db",
+      "node": "app-db",
       "endpoints": [
-        "s1-db-tn"
+        "app-db-tn"
       ]
     },
     {
       "id": "blog",
       "name": "@service.blog",
-      "node": "s1",
+      "node": "app",
       "endpoints": [
-        "s1-web",
-        "s1-web-local"
+        "app-web",
+        "app-web-local"
       ],
       "depends_on": [
         "postgres"
@@ -546,9 +569,9 @@
     {
       "id": "api",
       "name": "@service.api",
-      "node": "s1",
+      "node": "app",
       "endpoints": [
-        "s1-api"
+        "app-api"
       ],
       "depends_on": [
         "postgres"
@@ -557,17 +580,17 @@
     {
       "id": "memos",
       "name": "@service.memos",
-      "node": "s2",
+      "node": "app",
       "endpoints": [
-        "s2-memos"
+        "app-memos"
       ]
     },
     {
-      "id": "rsshub",
-      "name": "@service.rsshub",
-      "node": "s2",
+      "id": "vaultwarden",
+      "name": "@service.vaultwarden",
+      "node": "aux",
       "endpoints": [
-        "s2-rsshub"
+        "vaultwarden-ep"
       ]
     },
     {
@@ -581,23 +604,23 @@
     {
       "id": "forgejo",
       "name": "@service.forgejo",
-      "node": "de",
+      "node": "git-node",
       "endpoints": [
-        "de-git"
+        "git-http"
       ]
     },
     {
       "id": "restic",
       "name": "@service.restic",
-      "node": "de",
+      "node": "git-node",
       "endpoints": [
-        "de-restic"
+        "git-restic"
       ]
     },
     {
       "id": "backup-job",
       "name": "@service.backup-job",
-      "node": "s1",
+      "node": "app",
       "depends_on": [
         "restic",
         "postgres"
@@ -646,62 +669,62 @@
   ],
   "links": [
     {
-      "id": "win-dmit",
+      "id": "win-transit",
       "from": "win",
-      "to": "dmit",
+      "to": "transit",
       "transport": "VLESS+Reality · TCP 443"
     },
     {
-      "id": "mac-dmit",
+      "id": "mac-transit",
       "from": "mac",
-      "to": "dmit",
+      "to": "transit",
       "transport": "VLESS+Reality · TCP 443"
     },
     {
-      "id": "win-s2",
+      "id": "win-aux",
       "from": "win",
-      "to": "s2",
+      "to": "aux",
       "transport": "@transport.vless-backup"
     },
     {
-      "id": "mac-s2",
+      "id": "mac-aux",
       "from": "mac",
-      "to": "s2",
+      "to": "aux",
       "transport": "@transport.vless-backup"
     },
     {
-      "id": "dmit-aaitr",
-      "from": "dmit",
-      "to": "aaitr",
+      "id": "transit-exit-a",
+      "from": "transit",
+      "to": "exit-a",
       "transport": "@transport.chain"
     },
     {
-      "id": "dmit-qqpr",
-      "from": "dmit",
-      "to": "qqpr",
+      "id": "transit-exit-b",
+      "from": "transit",
+      "to": "exit-b",
       "transport": "@transport.chain"
     },
     {
-      "id": "s2-aaitr",
-      "from": "s2",
-      "to": "aaitr",
+      "id": "aux-exit-a",
+      "from": "aux",
+      "to": "exit-a",
       "transport": "@transport.chain-fallback"
     },
     {
-      "id": "s2-qqpr",
-      "from": "s2",
-      "to": "qqpr",
+      "id": "aux-exit-b",
+      "from": "aux",
+      "to": "exit-b",
       "transport": "@transport.chain-fallback"
     },
     {
-      "id": "aaitr-net",
-      "from": "aaitr",
+      "id": "exit-a-net",
+      "from": "exit-a",
       "to": "internet",
       "transport": "@transport.residential-exit"
     },
     {
-      "id": "qqpr-net",
-      "from": "qqpr",
+      "id": "exit-b-net",
+      "from": "exit-b",
       "to": "internet",
       "transport": "@transport.residential-exit"
     },
@@ -709,25 +732,25 @@
       "id": "win-router",
       "from": "win",
       "to": "router",
-      "transport": "LAN"
+      "transport": "Ethernet · 1000BASE-T"
     },
     {
       "id": "mac-router",
       "from": "mac",
       "to": "router",
-      "transport": "LAN / Wi-Fi"
+      "transport": "Wi-Fi 6 · 5GHz"
     },
     {
-      "id": "hz-win",
-      "from": "hz",
+      "id": "relay-win",
+      "from": "relay",
       "to": "win",
-      "transport": "@link.hz-win"
+      "transport": "@link.relay-win"
     },
     {
-      "id": "visitors-hz",
+      "id": "visitors-relay",
       "from": "visitors",
-      "to": "hz",
-      "transport": "@link.visitors-hz"
+      "to": "relay",
+      "transport": "@link.visitors-relay"
     },
     {
       "id": "visitors-cf",
@@ -736,10 +759,10 @@
       "transport": "@link.visitors-cf"
     },
     {
-      "id": "cf-s1",
+      "id": "cf-app",
       "from": "cf",
-      "to": "s1",
-      "transport": "@link.cf-s1"
+      "to": "app",
+      "transport": "@link.cf-app"
     },
     {
       "id": "visitors-jp",
@@ -748,9 +771,9 @@
       "transport": "@link.visitors-jp"
     },
     {
-      "id": "visitors-de",
+      "id": "visitors-git",
       "from": "visitors",
-      "to": "de",
+      "to": "git-node",
       "transport": "HTTPS git"
     },
     {
@@ -766,128 +789,128 @@
       "transport": "supabase-js · HTTPS"
     },
     {
-      "id": "s1-de",
-      "from": "s1",
-      "to": "de",
-      "transport": "@link.s1-de"
+      "id": "app-git",
+      "from": "app",
+      "to": "git-node",
+      "transport": "@link.app-git"
     }
   ],
   "paths": [
     {
-      "id": "w-dmit",
-      "name": "@path.w-dmit",
-      "observer": "cs-win",
+      "id": "w-transit",
+      "name": "@path.w-transit",
+      "observer": "obs-win",
       "nodes": [
         "win",
-        "dmit"
+        "transit"
       ],
       "links": [
-        "win-dmit"
+        "win-transit"
       ]
     },
     {
-      "id": "w-s2",
-      "name": "@path.w-s2",
-      "observer": "cs-win",
+      "id": "w-aux",
+      "name": "@path.w-aux",
+      "observer": "obs-win",
       "nodes": [
         "win",
-        "s2"
+        "aux"
       ],
       "links": [
-        "win-s2"
+        "win-aux"
       ]
     },
     {
-      "id": "w-dmit-aaitr",
-      "name": "@path.dmit-aaitr",
-      "observer": "cs-win",
+      "id": "w-transit-exit-a",
+      "name": "@path.transit-exit-a",
+      "observer": "obs-win",
       "nodes": [
         "win",
-        "dmit",
-        "aaitr",
+        "transit",
+        "exit-a",
         "internet"
       ],
       "links": [
-        "win-dmit",
-        "dmit-aaitr",
-        "aaitr-net"
+        "win-transit",
+        "transit-exit-a",
+        "exit-a-net"
       ],
       "proxies": [
         {
           "kind": "socks5",
-          "address": "127.0.0.1:7891",
+          "address": "127.0.0.1:7897",
           "node": "win"
         }
       ],
       "notes": "@notes.socks-listener"
     },
     {
-      "id": "w-dmit-qqpr",
-      "name": "@path.dmit-qqpr",
-      "observer": "cs-win",
+      "id": "w-transit-exit-b",
+      "name": "@path.transit-exit-b",
+      "observer": "obs-win",
       "nodes": [
         "win",
-        "dmit",
-        "qqpr",
+        "transit",
+        "exit-b",
         "internet"
       ],
       "links": [
-        "win-dmit",
-        "dmit-qqpr",
-        "qqpr-net"
+        "win-transit",
+        "transit-exit-b",
+        "exit-b-net"
       ],
       "proxies": [
         {
           "kind": "socks5",
-          "address": "127.0.0.1:7892",
+          "address": "127.0.0.1:7897",
           "node": "win"
         }
       ],
       "notes": "@notes.socks-listener"
     },
     {
-      "id": "w-s2-aaitr",
-      "name": "@path.s2-aaitr",
-      "observer": "cs-win",
+      "id": "w-aux-exit-a",
+      "name": "@path.aux-exit-a",
+      "observer": "obs-win",
       "nodes": [
         "win",
-        "s2",
-        "aaitr",
+        "aux",
+        "exit-a",
         "internet"
       ],
       "links": [
-        "win-s2",
-        "s2-aaitr",
-        "aaitr-net"
+        "win-aux",
+        "aux-exit-a",
+        "exit-a-net"
       ],
       "proxies": [
         {
           "kind": "socks5",
-          "address": "127.0.0.1:7893",
+          "address": "127.0.0.1:7897",
           "node": "win"
         }
       ],
       "notes": "@notes.socks-listener"
     },
     {
-      "id": "w-s2-qqpr",
-      "name": "@path.s2-qqpr",
-      "observer": "cs-win",
+      "id": "w-aux-exit-b",
+      "name": "@path.aux-exit-b",
+      "observer": "obs-win",
       "nodes": [
         "win",
-        "s2",
-        "qqpr",
+        "aux",
+        "exit-b",
         "internet"
       ],
       "links": [
-        "win-s2",
-        "s2-qqpr",
-        "qqpr-net"
+        "win-aux",
+        "aux-exit-b",
+        "exit-b-net"
       ],
       "proxies": [
         {
           "kind": "socks5",
-          "address": "127.0.0.1:7894",
+          "address": "127.0.0.1:7897",
           "node": "win"
         }
       ],
@@ -896,101 +919,19 @@
     {
       "id": "w-egress",
       "name": "@path.egress",
-      "observer": "cs-win",
-      "nodes": [],
+      "observer": "obs-win",
       "candidates": [
-        "w-dmit-aaitr",
-        "w-dmit-qqpr",
-        "w-s2-aaitr",
-        "w-s2-qqpr"
+        "w-transit-exit-a",
+        "w-transit-exit-b",
+        "w-aux-exit-a",
+        "w-aux-exit-b"
       ],
       "notes": "@path.egress.notes"
     },
     {
-      "id": "w-tn-mac",
-      "name": "tailnet → mac",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "mac"
-      ]
-    },
-    {
-      "id": "w-tn-hz",
-      "name": "tailnet → hz",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "hz"
-      ]
-    },
-    {
-      "id": "w-tn-dmit",
-      "name": "tailnet → dmit",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "dmit"
-      ]
-    },
-    {
-      "id": "w-tn-aaitr",
-      "name": "tailnet → aaitr",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "aaitr"
-      ]
-    },
-    {
-      "id": "w-tn-qqpr",
-      "name": "tailnet → qqpr",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "qqpr"
-      ]
-    },
-    {
-      "id": "w-tn-s1",
-      "name": "tailnet → s1",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "s1"
-      ]
-    },
-    {
-      "id": "w-tn-s2",
-      "name": "tailnet → s2",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "s2"
-      ]
-    },
-    {
-      "id": "w-tn-jp",
-      "name": "tailnet → jp",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "jp"
-      ]
-    },
-    {
-      "id": "w-tn-de",
-      "name": "tailnet → de",
-      "observer": "cs-win",
-      "nodes": [
-        "win",
-        "de"
-      ]
-    },
-    {
       "id": "w-lan",
       "name": "@path.w-lan",
-      "observer": "cs-win",
+      "observer": "obs-win",
       "nodes": [
         "win",
         "router"
@@ -1001,56 +942,137 @@
     },
     {
       "id": "w-lan-mac",
-      "name": "LAN → MacBook",
-      "observer": "cs-win",
+      "name": "@path.w-lan-mac",
+      "observer": "obs-win",
       "nodes": [
         "win",
         "mac"
       ]
     },
     {
-      "id": "m-dmit-aaitr",
-      "name": "@path.dmit-aaitr",
-      "observer": "cs-mac",
+      "id": "w-tn-mac",
+      "name": "tailnet → mac",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "mac"
+      ]
+    },
+    {
+      "id": "w-tn-relay",
+      "name": "tailnet → relay",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "relay"
+      ]
+    },
+    {
+      "id": "w-tn-transit",
+      "name": "tailnet → transit",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "transit"
+      ]
+    },
+    {
+      "id": "w-tn-exit-a",
+      "name": "tailnet → exit-a",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "exit-a"
+      ]
+    },
+    {
+      "id": "w-tn-exit-b",
+      "name": "tailnet → exit-b",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "exit-b"
+      ]
+    },
+    {
+      "id": "w-tn-app",
+      "name": "tailnet → app",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "app"
+      ]
+    },
+    {
+      "id": "w-tn-aux",
+      "name": "tailnet → aux",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "aux"
+      ]
+    },
+    {
+      "id": "w-tn-jp",
+      "name": "tailnet → jp",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "jp"
+      ]
+    },
+    {
+      "id": "w-tn-git",
+      "name": "tailnet → git",
+      "observer": "obs-win",
+      "nodes": [
+        "win",
+        "git-node"
+      ]
+    },
+    {
+      "id": "m-transit-exit-a",
+      "name": "@path.transit-exit-a",
+      "observer": "obs-mac",
       "nodes": [
         "mac",
-        "dmit",
-        "aaitr",
+        "transit",
+        "exit-a",
         "internet"
       ],
       "links": [
-        "mac-dmit",
-        "dmit-aaitr",
-        "aaitr-net"
+        "mac-transit",
+        "transit-exit-a",
+        "exit-a-net"
       ],
       "proxies": [
         {
           "kind": "socks5",
-          "address": "127.0.0.1:7891",
+          "address": "127.0.0.1:7897",
           "node": "mac"
         }
       ],
       "notes": "@notes.socks-listener"
     },
     {
-      "id": "m-s2-aaitr",
-      "name": "@path.s2-aaitr",
-      "observer": "cs-mac",
+      "id": "m-aux-exit-a",
+      "name": "@path.aux-exit-a",
+      "observer": "obs-mac",
       "nodes": [
         "mac",
-        "s2",
-        "aaitr",
+        "aux",
+        "exit-a",
         "internet"
       ],
       "links": [
-        "mac-s2",
-        "s2-aaitr",
-        "aaitr-net"
+        "mac-aux",
+        "aux-exit-a",
+        "exit-a-net"
       ],
       "proxies": [
         {
           "kind": "socks5",
-          "address": "127.0.0.1:7893",
+          "address": "127.0.0.1:7897",
           "node": "mac"
         }
       ],
@@ -1059,130 +1081,130 @@
     {
       "id": "m-egress",
       "name": "@path.egress",
-      "observer": "cs-mac",
-      "nodes": [],
+      "observer": "obs-mac",
       "candidates": [
-        "m-dmit-aaitr",
-        "m-s2-aaitr"
-      ]
+        "m-transit-exit-a",
+        "m-aux-exit-a"
+      ],
+      "notes": "@path.egress.notes"
     },
     {
       "id": "m-tn-win",
-      "name": "tailnet → Windows",
-      "observer": "cs-mac",
+      "name": "tailnet → win",
+      "observer": "obs-mac",
       "nodes": [
         "mac",
         "win"
       ]
     },
     {
-      "id": "h-win",
-      "name": "@path.h-win",
-      "observer": "obs-hz",
+      "id": "r-win",
+      "name": "@path.r-win",
+      "observer": "obs-relay",
       "nodes": [
-        "hz",
+        "relay",
         "win"
       ],
       "links": [
-        "hz-win"
+        "relay-win"
       ]
     },
     {
-      "id": "h-dmit",
-      "name": "@path.h-dmit",
-      "observer": "obs-hz",
+      "id": "r-transit",
+      "name": "@path.r-transit",
+      "observer": "obs-relay",
       "nodes": [
-        "hz",
-        "dmit"
+        "relay",
+        "transit"
       ]
     },
     {
-      "id": "h-s1",
-      "name": "@path.h-s1",
-      "observer": "obs-hz",
+      "id": "r-app",
+      "name": "@path.r-app",
+      "observer": "obs-relay",
       "nodes": [
-        "hz",
+        "relay",
         "cf",
-        "s1"
+        "app"
       ]
     },
     {
-      "id": "s-de",
-      "name": "@path.s-de",
-      "observer": "obs-s1",
+      "id": "a-git",
+      "name": "@path.a-git",
+      "observer": "obs-app",
       "nodes": [
-        "s1",
-        "de"
+        "app",
+        "git-node"
       ],
       "links": [
-        "s1-de"
+        "app-git"
       ]
     },
     {
-      "id": "s-dmit",
-      "name": "@path.overseas-dmit",
-      "observer": "obs-s1",
+      "id": "a-transit",
+      "name": "@path.overseas-transit",
+      "observer": "obs-app",
       "nodes": [
-        "s1",
-        "dmit"
+        "app",
+        "transit"
       ]
     },
     {
-      "id": "s-aaitr",
-      "name": "tailnet → AAITR",
-      "observer": "obs-s1",
+      "id": "a-exit-a",
+      "name": "tailnet → exit-a",
+      "observer": "obs-app",
       "nodes": [
-        "s1",
-        "aaitr"
+        "app",
+        "exit-a"
       ]
     },
     {
-      "id": "s-s2",
-      "name": "tailnet → S2",
-      "observer": "obs-s1",
+      "id": "a-aux",
+      "name": "tailnet → aux",
+      "observer": "obs-app",
       "nodes": [
-        "s1",
-        "s2"
+        "app",
+        "aux"
       ]
     },
     {
-      "id": "j-s1",
-      "name": "@path.j-s1",
-      "observer": "obs-jp",
+      "id": "rem-app",
+      "name": "@path.rem-app",
+      "observer": "obs-remote",
       "nodes": [
-        "jp",
+        "git-node",
         "cf",
-        "s1"
+        "app"
       ]
     },
     {
-      "id": "j-hz",
-      "name": "@path.j-hz",
-      "observer": "obs-jp",
+      "id": "rem-relay",
+      "name": "@path.rem-relay",
+      "observer": "obs-remote",
       "nodes": [
-        "jp",
-        "hz",
+        "git-node",
+        "relay",
         "win"
       ],
-      "notes": "@path.j-hz.notes",
+      "notes": "@path.rem-relay.notes",
       "opaque": true
     },
     {
-      "id": "j-de",
-      "name": "@path.j-de",
-      "observer": "obs-jp",
+      "id": "rem-git",
+      "name": "@path.rem-git",
+      "observer": "obs-remote",
       "nodes": [
-        "jp",
-        "de"
+        "git-node",
+        "git-node"
       ]
     },
     {
-      "id": "j-dmit",
-      "name": "@path.overseas-dmit",
-      "observer": "obs-jp",
+      "id": "rem-transit",
+      "name": "@path.overseas-transit",
+      "observer": "obs-remote",
       "nodes": [
-        "jp",
-        "dmit"
+        "git-node",
+        "transit"
       ]
     }
   ],
@@ -1190,7 +1212,7 @@
     {
       "id": "w-clash",
       "name": "@check.clash",
-      "observer": "cs-win",
+      "observer": "obs-win",
       "kind": "mihomo",
       "interval_seconds": 10,
       "timeout_seconds": 5,
@@ -1206,9 +1228,9 @@
       }
     },
     {
-      "id": "w-ts-dmit",
-      "name": "@check.ts-dmit",
-      "observer": "cs-win",
+      "id": "w-ts-transit",
+      "name": "@check.ts-transit",
+      "observer": "obs-win",
       "kind": "tailscale",
       "interval_seconds": 10,
       "timeout_seconds": 5,
@@ -1216,13 +1238,13 @@
       "failure_threshold": 2,
       "recovery_threshold": 2,
       "adapter": {
-        "peer": "dmit"
+        "peer": "transit"
       }
     },
     {
-      "id": "w-ts-s2",
-      "name": "@check.ts-s2",
-      "observer": "cs-win",
+      "id": "w-ts-aux",
+      "name": "@check.ts-aux",
+      "observer": "obs-win",
       "kind": "tailscale",
       "interval_seconds": 10,
       "timeout_seconds": 5,
@@ -1230,13 +1252,13 @@
       "failure_threshold": 2,
       "recovery_threshold": 2,
       "adapter": {
-        "peer": "s2"
+        "peer": "aux"
       }
     },
     {
-      "id": "w-ts-hz",
-      "name": "@check.ts-hz",
-      "observer": "cs-win",
+      "id": "w-ts-relay",
+      "name": "@check.ts-relay",
+      "observer": "obs-win",
       "kind": "tailscale",
       "interval_seconds": 10,
       "timeout_seconds": 5,
@@ -1244,321 +1266,313 @@
       "failure_threshold": 2,
       "recovery_threshold": 2,
       "adapter": {
-        "peer": "hz"
+        "peer": "relay"
       }
     },
     {
       "id": "w-dns",
       "name": "@check.w-dns",
-      "observer": "cs-win",
-      "kind": "dns",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "observer": "obs-win",
       "endpoint": "router-dns",
       "path": "w-lan",
+      "kind": "dns",
+      "interval_seconds": 15,
+      "timeout_seconds": 3,
+      "stale_seconds": 45,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "dns": {
-        "name": "www.example.invalid",
+        "name": "gateway.lan",
         "type": "A"
       }
     },
     {
-      "id": "w-dmit-443",
-      "name": "@check.w-dmit-443",
-      "observer": "cs-win",
-      "kind": "tcp",
+      "id": "w-transit-443",
+      "name": "@check.w-transit-443",
+      "observer": "obs-win",
+      "endpoint": "transit-entry",
+      "service": "vless-transit",
+      "path": "w-transit",
+      "kind": "tls",
+      "server_name": "transit.example.invalid",
       "interval_seconds": 10,
-      "timeout_seconds": 5,
+      "timeout_seconds": 4,
       "stale_seconds": 35,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "dmit-entry",
-      "service": "vless-dmit"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-dmit-icmp",
-      "name": "DMIT ICMP",
-      "observer": "cs-win",
+      "id": "w-transit-icmp",
+      "name": "transit ping",
+      "observer": "obs-win",
+      "target": "192.0.2.10",
+      "path": "w-transit",
       "kind": "icmp",
       "interval_seconds": 10,
-      "timeout_seconds": 5,
+      "timeout_seconds": 2,
       "stale_seconds": 35,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "path": "w-dmit",
-      "target": "192.0.2.10"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-s2-443",
-      "name": "@check.w-s2-443",
-      "observer": "cs-win",
-      "kind": "tcp",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
+      "id": "w-aux-443",
+      "name": "@check.w-aux-443",
+      "observer": "obs-win",
+      "endpoint": "aux-entry",
+      "service": "vless-aux",
+      "path": "w-aux",
+      "kind": "tls",
+      "server_name": "aux.example.invalid",
+      "interval_seconds": 15,
+      "timeout_seconds": 4,
+      "stale_seconds": 45,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "s2-entry",
-      "service": "vless-s2"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-s2-icmp",
-      "name": "S2 ICMP",
-      "observer": "cs-win",
+      "id": "w-aux-icmp",
+      "name": "aux ping",
+      "observer": "obs-win",
+      "target": "192.0.2.70",
+      "path": "w-aux",
       "kind": "icmp",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
+      "interval_seconds": 15,
+      "timeout_seconds": 2,
+      "stale_seconds": 45,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "path": "w-s2",
-      "target": "192.0.2.70"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-exit-dmit-aaitr",
-      "name": "@check.exit-dmit-aaitr",
-      "observer": "cs-win",
+      "id": "w-exit-transit-a",
+      "name": "@check.exit-transit-a",
+      "observer": "obs-win",
+      "endpoint": "exit-check",
+      "service": "egress-a",
+      "path": "w-transit-exit-a",
       "kind": "http",
       "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "timeout_seconds": 8,
+      "stale_seconds": 45,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "exit-check",
-      "path": "w-dmit-aaitr",
-      "service": "egress-aaitr",
       "http": {
         "status": [
           200
         ],
-        "exit_format": "json",
-        "exit_json_key": "ip",
         "expected_exit": [
           "203.0.113.40"
-        ],
-        "max_body_bytes": 4096
+        ]
       }
     },
     {
-      "id": "w-exit-dmit-qqpr",
-      "name": "@check.exit-dmit-qqpr",
-      "observer": "cs-win",
+      "id": "w-exit-transit-b",
+      "name": "@check.exit-transit-b",
+      "observer": "obs-win",
+      "endpoint": "exit-check",
+      "service": "egress-b",
+      "path": "w-transit-exit-b",
       "kind": "http",
       "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "timeout_seconds": 8,
+      "stale_seconds": 45,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "exit-check",
-      "path": "w-dmit-qqpr",
-      "service": "egress-qqpr",
       "http": {
         "status": [
           200
         ],
-        "exit_format": "json",
-        "exit_json_key": "ip",
         "expected_exit": [
           "203.0.113.50"
-        ],
-        "max_body_bytes": 4096
+        ]
       }
     },
     {
-      "id": "w-exit-s2-aaitr",
-      "name": "@check.exit-s2-aaitr",
-      "observer": "cs-win",
+      "id": "w-exit-aux-a",
+      "name": "@check.exit-aux-a",
+      "observer": "obs-win",
+      "endpoint": "exit-check",
+      "service": "egress-a",
+      "path": "w-aux-exit-a",
       "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "interval_seconds": 30,
+      "timeout_seconds": 8,
+      "stale_seconds": 90,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "exit-check",
-      "path": "w-s2-aaitr",
-      "service": "egress-aaitr",
       "http": {
         "status": [
           200
         ],
-        "exit_format": "json",
-        "exit_json_key": "ip",
         "expected_exit": [
           "203.0.113.40"
-        ],
-        "max_body_bytes": 4096
+        ]
       }
     },
     {
-      "id": "w-exit-s2-qqpr",
-      "name": "@check.exit-s2-qqpr",
-      "observer": "cs-win",
+      "id": "w-exit-aux-b",
+      "name": "@check.exit-aux-b",
+      "observer": "obs-win",
+      "endpoint": "exit-check",
+      "service": "egress-b",
+      "path": "w-aux-exit-b",
       "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "interval_seconds": 30,
+      "timeout_seconds": 8,
+      "stale_seconds": 90,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "exit-check",
-      "path": "w-s2-qqpr",
-      "service": "egress-qqpr",
       "http": {
         "status": [
           200
         ],
-        "exit_format": "json",
-        "exit_json_key": "ip",
         "expected_exit": [
           "203.0.113.50"
-        ],
-        "max_body_bytes": 4096
+        ]
       }
     },
     {
       "id": "w-tn-mac",
-      "name": "tailnet SSH mac",
-      "observer": "cs-win",
-      "kind": "ssh-banner",
-      "interval_seconds": 20,
-      "timeout_seconds": 5,
-      "stale_seconds": 65,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "name": "tn mac",
+      "observer": "obs-win",
       "endpoint": "mac-tn",
-      "path": "w-tn-mac"
-    },
-    {
-      "id": "w-tn-hz",
-      "name": "tailnet SSH hz",
-      "observer": "cs-win",
+      "path": "w-tn-mac",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "hz-tn",
-      "path": "w-tn-hz"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-tn-dmit",
-      "name": "tailnet SSH dmit",
-      "observer": "cs-win",
+      "id": "w-tn-relay",
+      "name": "tn relay",
+      "observer": "obs-win",
+      "endpoint": "relay-tn",
+      "path": "w-tn-relay",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "dmit-tn",
-      "path": "w-tn-dmit"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-tn-aaitr",
-      "name": "tailnet SSH aaitr",
-      "observer": "cs-win",
+      "id": "w-tn-transit",
+      "name": "tn transit",
+      "observer": "obs-win",
+      "endpoint": "transit-tn",
+      "path": "w-tn-transit",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "aaitr-tn",
-      "path": "w-tn-aaitr"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-tn-qqpr",
-      "name": "tailnet SSH qqpr",
-      "observer": "cs-win",
+      "id": "w-tn-exit-a",
+      "name": "tn exit-a",
+      "observer": "obs-win",
+      "endpoint": "exit-a-tn",
+      "path": "w-tn-exit-a",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "qqpr-tn",
-      "path": "w-tn-qqpr"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-tn-s1",
-      "name": "tailnet SSH s1",
-      "observer": "cs-win",
+      "id": "w-tn-exit-b",
+      "name": "tn exit-b",
+      "observer": "obs-win",
+      "endpoint": "exit-b-tn",
+      "path": "w-tn-exit-b",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "s1-tn",
-      "path": "w-tn-s1"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-tn-s2",
-      "name": "tailnet SSH s2",
-      "observer": "cs-win",
+      "id": "w-tn-app",
+      "name": "tn app",
+      "observer": "obs-win",
+      "endpoint": "app-tn",
+      "path": "w-tn-app",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "s2-tn",
-      "path": "w-tn-s2"
+      "recovery_threshold": 2
+    },
+    {
+      "id": "w-tn-aux",
+      "name": "tn aux",
+      "observer": "obs-win",
+      "endpoint": "aux-tn",
+      "path": "w-tn-aux",
+      "kind": "ssh-banner",
+      "interval_seconds": 20,
+      "timeout_seconds": 5,
+      "stale_seconds": 65,
+      "failure_threshold": 2,
+      "recovery_threshold": 2
     },
     {
       "id": "w-tn-jp",
-      "name": "tailnet SSH jp",
-      "observer": "cs-win",
+      "name": "tn jp",
+      "observer": "obs-win",
+      "endpoint": "jp-tn",
+      "path": "w-tn-jp",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "jp-tn",
-      "path": "w-tn-jp"
+      "recovery_threshold": 2
     },
     {
-      "id": "w-tn-de",
-      "name": "tailnet SSH de",
-      "observer": "cs-win",
+      "id": "w-tn-git",
+      "name": "tn git",
+      "observer": "obs-win",
+      "endpoint": "git-tn",
+      "path": "w-tn-git",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "de-tn",
-      "path": "w-tn-de"
+      "recovery_threshold": 2
     },
     {
       "id": "w-lan-mac",
-      "name": "LAN SSH MacBook",
-      "observer": "cs-win",
+      "name": "lan mac",
+      "observer": "obs-win",
+      "endpoint": "mac-lan",
+      "path": "w-lan-mac",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "mac-lan",
-      "path": "w-lan-mac"
+      "recovery_threshold": 2
     },
     {
       "id": "w-memos",
-      "name": "Memos (tailnet)",
-      "observer": "cs-win",
+      "name": "app memos",
+      "observer": "obs-win",
+      "endpoint": "app-memos",
+      "service": "memos",
+      "path": "w-tn-app",
       "kind": "http",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "s2-memos",
-      "path": "w-tn-s2",
-      "service": "memos",
       "http": {
         "status": [
           200
@@ -1566,18 +1580,37 @@
       }
     },
     {
-      "id": "w-rsshub",
-      "name": "RSSHub (tailnet)",
-      "observer": "cs-win",
+      "id": "w-vaultwarden",
+      "name": "vaultwarden",
+      "observer": "obs-win",
+      "endpoint": "vaultwarden-ep",
+      "service": "vaultwarden",
+      "path": "w-tn-aux",
       "kind": "http",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "s2-rsshub",
-      "path": "w-tn-s2",
-      "service": "rsshub",
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "w-jellyfin",
+      "name": "jellyfin",
+      "observer": "obs-win",
+      "endpoint": "aux-jellyfin",
+      "service": "jellyfin",
+      "path": "w-tn-aux",
+      "kind": "http",
+      "interval_seconds": 20,
+      "timeout_seconds": 5,
+      "stale_seconds": 65,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200
@@ -1587,7 +1620,7 @@
     {
       "id": "m-clash",
       "name": "@check.clash",
-      "observer": "cs-mac",
+      "observer": "obs-mac",
       "kind": "mihomo",
       "interval_seconds": 10,
       "timeout_seconds": 5,
@@ -1603,9 +1636,9 @@
       }
     },
     {
-      "id": "m-ts-dmit",
-      "name": "@check.ts-dmit",
-      "observer": "cs-mac",
+      "id": "m-ts-transit",
+      "name": "@check.ts-transit",
+      "observer": "obs-mac",
       "kind": "tailscale",
       "interval_seconds": 10,
       "timeout_seconds": 5,
@@ -1613,84 +1646,78 @@
       "failure_threshold": 2,
       "recovery_threshold": 2,
       "adapter": {
-        "peer": "dmit"
+        "peer": "transit"
       }
     },
     {
-      "id": "m-exit-dmit-aaitr",
-      "name": "@check.exit-dmit-aaitr",
-      "observer": "cs-mac",
+      "id": "m-exit-transit-a",
+      "name": "@check.exit-transit-a",
+      "observer": "obs-mac",
+      "endpoint": "exit-check",
+      "service": "egress-a",
+      "path": "m-transit-exit-a",
       "kind": "http",
       "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "timeout_seconds": 8,
+      "stale_seconds": 45,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "exit-check",
-      "path": "m-dmit-aaitr",
-      "service": "egress-aaitr",
       "http": {
         "status": [
           200
         ],
-        "exit_format": "json",
-        "exit_json_key": "ip",
         "expected_exit": [
           "203.0.113.40"
-        ],
-        "max_body_bytes": 4096
+        ]
       }
     },
     {
-      "id": "m-exit-s2-aaitr",
-      "name": "@check.exit-s2-aaitr",
-      "observer": "cs-mac",
+      "id": "m-exit-aux-a",
+      "name": "@check.exit-aux-a",
+      "observer": "obs-mac",
+      "endpoint": "exit-check",
+      "service": "egress-a",
+      "path": "m-aux-exit-a",
       "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "interval_seconds": 30,
+      "timeout_seconds": 8,
+      "stale_seconds": 90,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "exit-check",
-      "path": "m-s2-aaitr",
-      "service": "egress-aaitr",
       "http": {
         "status": [
           200
         ],
-        "exit_format": "json",
-        "exit_json_key": "ip",
         "expected_exit": [
           "203.0.113.40"
-        ],
-        "max_body_bytes": 4096
+        ]
       }
     },
     {
       "id": "m-tn-win",
-      "name": "tailnet SSH Windows",
-      "observer": "cs-mac",
+      "name": "tn win",
+      "observer": "obs-mac",
+      "endpoint": "win-tn",
+      "path": "m-tn-win",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "win-tn",
-      "path": "m-tn-win"
+      "recovery_threshold": 2
     },
     {
-      "id": "h-rproxy-local",
-      "name": "@check.h-rproxy-local",
-      "observer": "obs-hz",
-      "kind": "http",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "hz-rproxy-local",
+      "id": "r-rproxy-local",
+      "name": "@check.r-rproxy-local",
+      "observer": "obs-relay",
+      "endpoint": "relay-rproxy-local",
       "service": "home-rproxy",
+      "kind": "http",
+      "interval_seconds": 10,
+      "timeout_seconds": 2,
+      "stale_seconds": 35,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200
@@ -1698,36 +1725,18 @@
       }
     },
     {
-      "id": "h-dash",
-      "name": "@check.h-dash",
-      "observer": "obs-hz",
-      "kind": "http",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "id": "r-dash",
+      "name": "@check.r-dash",
+      "observer": "obs-relay",
       "endpoint": "win-dash",
-      "path": "h-win",
       "service": "home-dash",
-      "http": {
-        "status": [
-          200
-        ]
-      }
-    },
-    {
-      "id": "h-derp",
-      "name": "DERP HTTPS",
-      "observer": "obs-hz",
+      "path": "r-win",
       "kind": "http",
       "interval_seconds": 10,
-      "timeout_seconds": 5,
+      "timeout_seconds": 4,
       "stale_seconds": 35,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "hz-derp",
-      "service": "derp",
       "http": {
         "status": [
           200
@@ -1735,43 +1744,64 @@
       }
     },
     {
-      "id": "h-dmit-443",
-      "name": "@check.h-dmit-443",
-      "observer": "obs-hz",
-      "kind": "tcp",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
+      "id": "r-derp",
+      "name": "relay derp",
+      "observer": "obs-relay",
+      "endpoint": "relay-derp",
+      "service": "derp",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 3,
+      "stale_seconds": 45,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "dmit-entry"
+      "http": {
+        "status": [
+          200
+        ]
+      }
     },
     {
-      "id": "h-dmit-icmp",
-      "name": "@check.h-dmit-icmp",
-      "observer": "obs-hz",
+      "id": "r-transit-443",
+      "name": "@check.r-transit-443",
+      "observer": "obs-relay",
+      "endpoint": "transit-entry",
+      "service": "vless-transit",
+      "path": "r-transit",
+      "kind": "tls",
+      "server_name": "transit.example.invalid",
+      "interval_seconds": 10,
+      "timeout_seconds": 4,
+      "stale_seconds": 35,
+      "failure_threshold": 2,
+      "recovery_threshold": 2
+    },
+    {
+      "id": "r-transit-icmp",
+      "name": "@check.r-transit-icmp",
+      "observer": "obs-relay",
+      "target": "192.0.2.10",
+      "path": "r-transit",
       "kind": "icmp",
       "interval_seconds": 10,
-      "timeout_seconds": 5,
+      "timeout_seconds": 2,
       "stale_seconds": 35,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "path": "h-dmit",
-      "target": "192.0.2.10"
+      "recovery_threshold": 2
     },
     {
-      "id": "h-s1-web",
-      "name": "@check.h-s1-web",
-      "observer": "obs-hz",
+      "id": "r-app-web",
+      "name": "@check.r-app-web",
+      "observer": "obs-relay",
+      "endpoint": "app-web",
+      "service": "blog",
+      "path": "r-app",
       "kind": "http",
       "interval_seconds": 15,
       "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "stale_seconds": 45,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "s1-web",
-      "path": "h-s1",
-      "service": "blog",
       "http": {
         "status": [
           200
@@ -1781,15 +1811,15 @@
     {
       "id": "s-web-local",
       "name": "@check.s-web-local",
-      "observer": "obs-s1",
+      "observer": "obs-app",
+      "endpoint": "app-web-local",
+      "service": "blog",
       "kind": "http",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
+      "interval_seconds": 5,
+      "timeout_seconds": 2,
+      "stale_seconds": 20,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "s1-web-local",
-      "service": "blog",
       "http": {
         "status": [
           200
@@ -1798,49 +1828,48 @@
     },
     {
       "id": "s-api",
-      "name": "@service.api",
-      "observer": "obs-s1",
+      "name": "app api",
+      "observer": "obs-app",
+      "endpoint": "app-api",
+      "service": "api",
       "kind": "http",
       "interval_seconds": 10,
-      "timeout_seconds": 5,
+      "timeout_seconds": 3,
       "stale_seconds": 35,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "s1-api",
-      "service": "api",
       "http": {
         "status": [
           200
-        ],
-        "contains": "ok"
+        ]
       }
     },
     {
       "id": "s-db",
       "name": "@check.s-db",
-      "observer": "obs-s1",
+      "observer": "obs-app",
+      "endpoint": "app-db-tn",
+      "service": "postgres",
       "kind": "tcp",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
+      "interval_seconds": 5,
+      "timeout_seconds": 2,
+      "stale_seconds": 20,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "s1-db-tn",
-      "service": "postgres"
+      "recovery_threshold": 2
     },
     {
       "id": "s-restic",
       "name": "@check.s-restic",
-      "observer": "obs-s1",
+      "observer": "obs-app",
+      "endpoint": "git-restic",
+      "service": "restic",
+      "path": "a-git",
       "kind": "http",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "de-restic",
-      "path": "s-de",
-      "service": "restic",
       "http": {
         "status": [
           200,
@@ -1849,81 +1878,84 @@
       }
     },
     {
-      "id": "s-de-ssh",
-      "name": "tailnet SSH DE",
-      "observer": "obs-s1",
+      "id": "s-git-ssh",
+      "name": "git ssh",
+      "observer": "obs-app",
+      "endpoint": "git-tn",
+      "path": "a-git",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "de-tn",
-      "path": "s-de"
+      "recovery_threshold": 2
     },
     {
-      "id": "s-dmit-443",
-      "name": "@check.overseas-dmit-443",
-      "observer": "obs-s1",
-      "kind": "tcp",
+      "id": "s-transit-443",
+      "name": "@check.overseas-transit-443",
+      "observer": "obs-app",
+      "endpoint": "transit-entry",
+      "service": "vless-transit",
+      "path": "a-transit",
+      "kind": "tls",
+      "server_name": "transit.example.invalid",
       "interval_seconds": 10,
-      "timeout_seconds": 5,
+      "timeout_seconds": 4,
       "stale_seconds": 35,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "dmit-entry"
+      "recovery_threshold": 2
     },
     {
-      "id": "s-dmit-tn",
-      "name": "@check.s-dmit-tn",
-      "observer": "obs-s1",
+      "id": "s-transit-tn",
+      "name": "@check.s-transit-tn",
+      "observer": "obs-app",
+      "endpoint": "transit-tn",
+      "path": "a-transit",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "dmit-tn",
-      "path": "s-dmit"
+      "recovery_threshold": 2
     },
     {
-      "id": "s-aaitr-tn",
-      "name": "tailnet SSH AAITR",
-      "observer": "obs-s1",
+      "id": "s-exit-a-tn",
+      "name": "tn exit-a",
+      "observer": "obs-app",
+      "endpoint": "exit-a-tn",
+      "path": "a-exit-a",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "aaitr-tn",
-      "path": "s-aaitr"
+      "recovery_threshold": 2
     },
     {
-      "id": "s-s2-tn",
-      "name": "tailnet SSH S2",
-      "observer": "obs-s1",
+      "id": "s-aux-tn",
+      "name": "tn aux",
+      "observer": "obs-app",
+      "endpoint": "aux-tn",
+      "path": "a-aux",
       "kind": "ssh-banner",
       "interval_seconds": 20,
       "timeout_seconds": 5,
       "stale_seconds": 65,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "s2-tn",
-      "path": "s-s2"
+      "recovery_threshold": 2
     },
     {
       "id": "j-openlist",
-      "name": "@service.openlist",
-      "observer": "obs-jp",
-      "kind": "http",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "name": "openlist",
+      "observer": "obs-remote",
       "endpoint": "jp-openlist",
       "service": "openlist",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 4,
+      "stale_seconds": 45,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200
@@ -1933,16 +1965,16 @@
     {
       "id": "j-blog",
       "name": "@check.j-blog",
-      "observer": "obs-jp",
+      "observer": "obs-remote",
+      "endpoint": "app-web",
+      "service": "blog",
+      "path": "rem-app",
       "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "interval_seconds": 10,
+      "timeout_seconds": 4,
+      "stale_seconds": 35,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "s1-web",
-      "path": "j-s1",
-      "service": "blog",
       "http": {
         "status": [
           200
@@ -1952,16 +1984,16 @@
     {
       "id": "j-home",
       "name": "@check.j-home",
-      "observer": "obs-jp",
+      "observer": "obs-remote",
+      "endpoint": "relay-rproxy",
+      "service": "home-rproxy",
+      "path": "rem-relay",
       "kind": "http",
-      "interval_seconds": 15,
+      "interval_seconds": 10,
       "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "stale_seconds": 35,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "hz-rproxy",
-      "path": "j-hz",
-      "service": "home-rproxy",
       "http": {
         "status": [
           200
@@ -1971,16 +2003,16 @@
     {
       "id": "j-git",
       "name": "@check.j-git",
-      "observer": "obs-jp",
+      "observer": "obs-remote",
+      "endpoint": "git-http",
+      "service": "forgejo",
+      "path": "rem-git",
       "kind": "http",
       "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
+      "timeout_seconds": 4,
+      "stale_seconds": 45,
       "failure_threshold": 2,
       "recovery_threshold": 2,
-      "endpoint": "de-git",
-      "path": "j-de",
-      "service": "forgejo",
       "http": {
         "status": [
           200
@@ -1988,42 +2020,45 @@
       }
     },
     {
-      "id": "j-dmit-443",
-      "name": "@check.overseas-dmit-443",
-      "observer": "obs-jp",
-      "kind": "tcp",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
+      "id": "j-transit-443",
+      "name": "remote transit 443",
+      "observer": "obs-remote",
+      "endpoint": "transit-entry",
+      "service": "vless-transit",
+      "path": "rem-transit",
+      "kind": "tls",
+      "server_name": "transit.example.invalid",
+      "interval_seconds": 15,
+      "timeout_seconds": 4,
+      "stale_seconds": 45,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "endpoint": "dmit-entry"
+      "recovery_threshold": 2
     },
     {
-      "id": "j-dmit-icmp",
-      "name": "@check.j-dmit-icmp",
-      "observer": "obs-jp",
+      "id": "j-transit-icmp",
+      "name": "@check.j-transit-icmp",
+      "observer": "obs-remote",
+      "target": "192.0.2.10",
+      "path": "rem-transit",
       "kind": "icmp",
-      "interval_seconds": 10,
-      "timeout_seconds": 5,
-      "stale_seconds": 35,
+      "interval_seconds": 15,
+      "timeout_seconds": 2,
+      "stale_seconds": 45,
       "failure_threshold": 2,
-      "recovery_threshold": 2,
-      "path": "j-dmit",
-      "target": "192.0.2.10"
+      "recovery_threshold": 2
     },
     {
       "id": "j-worker",
       "name": "@check.j-worker",
-      "observer": "obs-jp",
-      "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "observer": "obs-remote",
       "endpoint": "cf-worker",
       "service": "shortlink",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 3,
+      "stale_seconds": 45,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200
@@ -2031,17 +2066,17 @@
       }
     },
     {
-      "id": "h-worker",
-      "name": "@check.h-worker",
-      "observer": "obs-hz",
-      "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "id": "r-worker",
+      "name": "@check.r-worker",
+      "observer": "obs-relay",
       "endpoint": "cf-worker",
       "service": "shortlink",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 3,
+      "stale_seconds": 45,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200
@@ -2051,15 +2086,15 @@
     {
       "id": "j-docs",
       "name": "@check.j-docs",
-      "observer": "obs-jp",
-      "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "observer": "obs-remote",
       "endpoint": "cf-pages",
       "service": "docs",
+      "kind": "http",
+      "interval_seconds": 20,
+      "timeout_seconds": 3,
+      "stale_seconds": 60,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200
@@ -2069,15 +2104,15 @@
     {
       "id": "j-webapp",
       "name": "@check.j-webapp",
-      "observer": "obs-jp",
-      "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "observer": "obs-remote",
       "endpoint": "vercel-app",
       "service": "webapp",
+      "kind": "http",
+      "interval_seconds": 15,
+      "timeout_seconds": 4,
+      "stale_seconds": 45,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200
@@ -2086,16 +2121,16 @@
     },
     {
       "id": "s-supabase",
-      "name": "Supabase REST",
-      "observer": "obs-s1",
-      "kind": "http",
-      "interval_seconds": 15,
-      "timeout_seconds": 5,
-      "stale_seconds": 50,
-      "failure_threshold": 2,
-      "recovery_threshold": 2,
+      "name": "supabase rest",
+      "observer": "obs-app",
       "endpoint": "supabase-rest",
       "service": "supabase-db",
+      "kind": "http",
+      "interval_seconds": 30,
+      "timeout_seconds": 4,
+      "stale_seconds": 90,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
       "http": {
         "status": [
           200

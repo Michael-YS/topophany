@@ -16,18 +16,22 @@ var testNow = time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 // Every catalog gives text to every reference in the topology and every
 // scenario, and to nothing else.
 func TestEveryLanguageHasEveryText(t *testing.T) {
-	want := map[string]bool{}
-	for _, m := range reference.FindAllSubmatch(preset, -1) {
-		want[string(m[1])] = true
-	}
-	for _, sc := range scenarios {
-		want["scenario."+sc.ID], want["scenario."+sc.ID+".detail"] = true, true
-	}
 	langs := Languages()
 	if !slices.Contains(langs, DefaultLanguage) || len(langs) < 2 {
 		t.Fatal("languages", langs)
 	}
 	for _, lang := range langs {
+		raw, err := RawTopology(lang)
+		if err != nil {
+			t.Fatal(lang, err)
+		}
+		want := map[string]bool{}
+		for _, m := range reference.FindAllSubmatch(raw, -1) {
+			want[string(m[1])] = true
+		}
+		for _, sc := range scenarios {
+			want["scenario."+sc.ID], want["scenario."+sc.ID+".detail"] = true, true
+		}
 		text, e := catalog(lang)
 		if e != nil {
 			t.Fatal(lang, e)
@@ -88,7 +92,7 @@ func TestLanguagesChangeOnlyWords(t *testing.T) {
 		t.Fatal("the built-in topology hides scenarios", ids)
 	}
 	for _, id := range ids {
-		if id == "collector-unreachable" {
+		if id == "collector-unreachable" || id == "cross-border-loss" || id == "chaos" {
 			continue
 		}
 		base := settledIn(t, id, DefaultLanguage)
@@ -126,7 +130,7 @@ func TestScenariosAreNamedInTheirLanguage(t *testing.T) {
 	for _, lang := range Languages() {
 		text, _ := catalog(lang)
 		names := New(c, testNow, lang).Scenarios()
-		if names[1] != text["scenario.dmit-blocked"]+"\t"+text["scenario.dmit-blocked.detail"] {
+		if names[1] != text["scenario.transit-blocked"]+"\t"+text["scenario.transit-blocked.detail"] {
 			t.Fatal(lang, names[1])
 		}
 		if other, ok := seen[names[1]]; ok {

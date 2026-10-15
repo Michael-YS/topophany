@@ -82,7 +82,7 @@ func TestVirtualMapKeepsTheWorldsOrder(t *testing.T) {
 	}
 	// The crowded home site keeps a row for each of its nodes, and the
 	// unplaced edges stay on the map as pills.
-	home := cardAt(t, l, "长沙")
+	home := cardAt(t, l, "成都")
 	if len(home.rows) != 3 || home.hidden() != 0 || home.h != 5 {
 		t.Fatal("home site folded", len(home.rows), home.hidden(), home.h)
 	}
@@ -211,7 +211,7 @@ func TestVirtualMapIsTheDefaultAndShowsPlacesAndLinks(t *testing.T) {
 		t.Fatal("default map", m.mapMode())
 	}
 	out := mapText(m, 128)
-	for _, s := range []string{"virtual geo", "Tokyo", "Los Angeles", "New York", "Frankfurt", "Honolulu", "长沙", "杭州", "34°N 118°W", "Windows 台式机", "MacBook Pro", "家庭路由器", "DMIT 线路机", "AAITR 家宽落地", "Cloudflare", "Vercel"} {
+	for _, s := range []string{"virtual geo", "Tokyo", "Los Angeles", "New York", "Frankfurt", "Honolulu", "成都", "杭州", "34°N 118°W", "Windows 台式机", "MacBook Pro", "家庭路由器", "搬瓦工 洛杉矶", "Oracle 洛杉矶", "Cloudflare", "Vercel"} {
 		if !strings.Contains(out, s) {
 			t.Fatalf("map lacks %q:\n%s", s, out)
 		}
@@ -222,7 +222,7 @@ func TestVirtualMapIsTheDefaultAndShowsPlacesAndLinks(t *testing.T) {
 	lanes := 0
 	for _, l := range strings.Split(out, "\n") {
 		switch {
-		case strings.Contains(l, "DMIT 线路机") && strings.Contains(l, "─╮"), strings.Contains(l, "AAITR 家宽落地") && strings.Contains(l, "◂╯"):
+		case strings.Contains(l, "搬瓦工 洛杉矶") && strings.Contains(l, "─╮"), strings.Contains(l, "Oracle 洛杉矶") && strings.Contains(l, "◂╯"):
 			lanes++
 		}
 	}

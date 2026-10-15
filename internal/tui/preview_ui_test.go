@@ -35,17 +35,17 @@ func TestPreviewScenarioMenuDebugAndReadOnly(t *testing.T) {
 	m := previewModel(t)
 	m.setTab(tabTopology)
 	out := visible(m)
-	if !strings.Contains(out, "PREVIEW") || !strings.Contains(out, "全部正常") || !strings.Contains(out, "长沙") {
+	if !strings.Contains(out, "PREVIEW") || !strings.Contains(out, "全部正常") || !strings.Contains(out, "成都") {
 		t.Fatal("preview chrome or geography missing")
 	}
 	if !strings.Contains(out, "Scenario") || !strings.Contains(out, "Add") {
 		t.Fatal("preview footer dropped a key", out[len(out)-400:])
 	}
 	m.Key("x")
-	if m.modal == nil || m.modal.kind != "menu" || len(m.modal.items) < 8 || !strings.Contains(m.modal.items[1].hint, "Clash 回落") {
+	if m.modal == nil || m.modal.kind != "menu" || len(m.modal.items) < 8 || !strings.Contains(m.modal.items[1].hint, "回落") {
 		t.Fatal("scenario menu", m.modal)
 	}
-	if m.Key("2") != "refresh" || !strings.Contains(m.notice, "DMIT") {
+	if m.Key("2") != "refresh" || !strings.Contains(m.notice, "中转") {
 		t.Fatal("scenario not applied", m.notice)
 	}
 	m.Key("D")
@@ -88,17 +88,17 @@ func TestOverviewDashboardAnswersAtAGlance(t *testing.T) {
 	snap, _ := sim.Snapshot("", now)
 	m := &Model{Snapshot: snap, Now: now, Width: 160, Height: 48, Preview: sim, Server: "synthetic"}
 	out := visible(m)
-	for _, want := range []string{"ALL CLEAR", "checks passing", "Nothing needs attention", "SERVICES", "OBSERVERS", "长沙"} {
+	for _, want := range []string{"ALL CLEAR", "checks passing", "Nothing needs attention", "SERVICES", "OBSERVERS", "成都"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("healthy overview lacks %q", want)
 		}
 	}
-	// DMIT blocked from mainland observers: the verdict, the worst-first
+	// Transit blocked from mainland observers: the verdict, the worst-first
 	// attention list and the route of the selected incident.
 	sim.SetScenario(1, now.Add(-30*time.Minute))
 	m.Snapshot, _ = sim.Snapshot("", now)
 	out = visible(m)
-	if !strings.Contains(out, "INCIDENTS") || !strings.Contains(out, "checks failing") || !strings.Contains(out, "长沙 MacBook → 主链 DMIT → AAITR 家宽") {
+	if !strings.Contains(out, "INCIDENTS") || !strings.Contains(out, "checks failing") || !strings.Contains(out, "主链搬瓦工 → Oracle 出口 A") {
 		t.Fatal("blocked overview lacks verdict or incident", out)
 	}
 	rows := m.Rows()
@@ -111,7 +111,7 @@ func TestOverviewDashboardAnswersAtAGlance(t *testing.T) {
 		}
 	}
 	f := m.focus(rows[0])
-	if !f.nodes["dmit"] || !f.nodes["aaitr"] || !f.edges["dmit-aaitr"] {
+	if !f.nodes["transit"] || !f.nodes["exit-a"] || !f.edges["transit-exit-a"] {
 		t.Fatal("selected incident does not light its route", f)
 	}
 	// A cached view never claims a verdict it cannot know.
@@ -214,7 +214,7 @@ func TestEdgesShowWhereServicesRunAndWhoAnswered(t *testing.T) {
 		t.Fatal("missing row", id)
 		return nil
 	}
-	if c := cols(tabServices, "blog"); !strings.HasPrefix(c[0], "Cloudflare ⇢ S1") {
+	if c := cols(tabServices, "blog"); !strings.HasPrefix(c[0], "Cloudflare ⇢ Oracle 纽约") {
 		t.Fatal("the way into the blog does not start at the edge", c)
 	}
 	if c := cols(tabServices, "shortlink"); c[0] != "Cloudflare · workers" {
@@ -223,7 +223,7 @@ func TestEdgesShowWhereServicesRunAndWhoAnswered(t *testing.T) {
 	if c := cols(tabServices, "webapp"); c[0] != "Vercel · functions" {
 		t.Fatal(c)
 	}
-	if c := cols(tabTopology, "s1-web"); c[0] != "public · via cf" {
+	if c := cols(tabTopology, "app-web"); c[0] != "public · via cf" {
 		t.Fatal("endpoint behind the edge", c)
 	}
 	if c := cols(tabTopology, "cf"); c[1] != "edge · Cloudflare" {
@@ -231,14 +231,14 @@ func TestEdgesShowWhereServicesRunAndWhoAnswered(t *testing.T) {
 	}
 	m.setTab(tabChecks)
 	for _, r := range m.Rows() {
-		if r.ID == "j-blog" && !strings.Contains(strings.Join(r.Details, "\n"), "Answered by: Cloudflare NRT · cache DYNAMIC") {
+		if r.ID == "j-blog" && !strings.Contains(strings.Join(r.Details, "\n"), "Answered by: Cloudflare FRA · cache DYNAMIC") {
 			t.Fatal("check evidence does not name the edge that answered", r.Details)
 		}
 	}
 
 	links := m.Snapshot.Topology.Links[:0]
 	for _, l := range m.Snapshot.Topology.Links {
-		if l.ID != "cf-s1" {
+		if l.ID != "cf-app" {
 			links = append(links, l)
 		}
 	}
@@ -246,7 +246,7 @@ func TestEdgesShowWhereServicesRunAndWhoAnswered(t *testing.T) {
 	_, edges, _ := m.graph()
 	pairs := 0
 	for _, e := range edges {
-		if e.From == "cf" && e.To == "s1" {
+		if e.From == "cf" && e.To == "app" {
 			pairs++
 			if e.Kind != edgeVia || e.Signal != "carried" {
 				t.Fatal("implied hop behind the edge", e)
@@ -276,21 +276,21 @@ func TestServersTabCardsAndMemo(t *testing.T) {
 		}
 		ids = append(ids, r.ID)
 	}
-	for _, id := range []string{"win", "s1", "de", "cf", "vercel", "supabase"} {
+	for _, id := range []string{"win", "app", "git-node", "cf", "vercel", "supabase"} {
 		if !contains(ids, id) {
 			t.Fatal("no card for", id, ids)
 		}
 	}
-	for _, id := range []string{"internet", "visitors", "s1-db", "jp-openlist"} {
+	for _, id := range []string{"internet", "visitors", "app-db", "jp-openlist"} {
 		if contains(ids, id) {
 			t.Fatal("card for an external party or a container", id)
 		}
 	}
-	m.Key("select:node:s1")
+	m.Key("select:node:app")
 	out := visible(m)
-	for _, want := range []string{"S1 主站", "SERVICES", "via Cloudflare", "not monitored", "HOSTS", "PostgreSQL 容器", "✎ 主要建站服务器"} {
+	for _, want := range []string{"Oracle 纽约", "SERVICES", "via Cloudflare", "not monitored", "HOSTS", "PostgreSQL 容器", "✎ 主要建站与核心应用服务器"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("S1's card lacks %q", want)
+			t.Fatalf("app's card lacks %q", want)
 		}
 	}
 	clicked := false
@@ -307,7 +307,7 @@ func TestServersTabCardsAndMemo(t *testing.T) {
 	m.setTab(tabServers)
 	m.Key("select:node:cf")
 	out = visible(m)
-	for _, want := range []string{"Cloudflare", "edge · Cloudflare", "RUNS HERE", "workers", "IN FRONT OF", "www.example.invalid", "ANSWERED FROM", "LAX · NRT"} {
+	for _, want := range []string{"Cloudflare", "edge · Cloudflare", "RUNS HERE", "workers", "IN FRONT OF", "www.example.invalid", "ANSWERED FROM"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("the edge's card lacks %q", want)
 		}
@@ -316,7 +316,7 @@ func TestServersTabCardsAndMemo(t *testing.T) {
 		t.Fatal("memo line breaks", got)
 	}
 	m.Search = "备份仓库"
-	if rows := m.Rows(); len(rows) != 1 || rows[0].ID != "de" {
+	if rows := m.Rows(); len(rows) != 1 || rows[0].ID != "git-node" {
 		t.Fatal("memos are not searchable", rows)
 	}
 }
@@ -405,7 +405,7 @@ func TestSmallOverviewUsesItsRoom(t *testing.T) {
 	m := previewModel(t)
 	m.Width, m.Height = 80, 24
 	out := visible(m)
-	for _, want := range []string{"ALL CLEAR", "checks passing", "OBSERVERS", "长沙 Windows", "Nothing needs attention", "SERVICES", "Clash Verge"} {
+	for _, want := range []string{"ALL CLEAR", "checks passing", "OBSERVERS", "成都 Windows", "Nothing needs attention", "SERVICES", "Clash Verge"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("healthy 80x24 overview lacks %q\n%s", want, out)
 		}
@@ -414,7 +414,7 @@ func TestSmallOverviewUsesItsRoom(t *testing.T) {
 	sim.SetScenario(1, m.Now.Add(-30*time.Minute))
 	m.Snapshot, _ = sim.Snapshot("", m.Now)
 	out = visible(m)
-	for _, want := range []string{"checks failing", "NEEDS ATTENTION", "长沙 MacBook → 主链 DMIT → AAITR 家宽"} {
+	for _, want := range []string{"checks failing", "NEEDS ATTENTION", "主链搬瓦工 → Oracle 出口 A"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("80x24 overview of an outage lacks %q\n%s", want, out)
 		}
@@ -433,16 +433,16 @@ func TestServerCardsPutTroubleUpFront(t *testing.T) {
 	m.Colors = colorTrue
 	m.Width, m.Height = 160, 45
 	sim := m.Preview.(*preview.Sim)
-	sim.SetScenario(slices.Index(sim.ScenarioIDs(), "dmit-blocked"), m.Now.Add(-30*time.Minute))
+	sim.SetScenario(slices.Index(sim.ScenarioIDs(), "transit-blocked"), m.Now.Add(-30*time.Minute))
 	snap, e := sim.Snapshot("", m.Now)
 	if e != nil {
 		t.Fatal(e)
 	}
 	m.Snapshot = snap
 	m.setTab(tabServers)
-	m.Key("select:node:dmit")
+	m.Key("select:node:transit")
 	out := visible(m)
-	if !regexp.MustCompile(`│▎DMIT 线路机 +● AFFECTED +│`).MatchString(out) {
+	if !regexp.MustCompile(`│▎搬瓦工 洛杉矶 +● AFFECTED +│`).MatchString(out) {
 		t.Fatal("the header should name the server once, its state in the pill", out)
 	}
 	if !regexp.MustCompile(`SERVICES ─{10,}`).MatchString(out) || !regexp.MustCompile(`ADDRESSES 2 ─{10,}`).MatchString(out) {
@@ -451,7 +451,7 @@ func TestServerCardsPutTroubleUpFront(t *testing.T) {
 	cv := m.draw()
 	for y := 0; y < cv.H; y++ {
 		for x := 1; x+4 < cv.W; x++ {
-			if cv.at(x-1, y).ch != "▎" || cv.at(x, y).ch != "D" || cv.at(x+1, y).ch != "M" || cv.at(x+3, y).ch != "T" {
+			if cv.at(x-1, y).ch != "▎" || cv.at(x, y).ch != "搬" {
 				continue
 			}
 			if bg := cv.at(x, y).st.BG; bg != Mix(Mix(cWarn, cInk, .86), cSelBG, .35) {
@@ -463,5 +463,5 @@ func TestServerCardsPutTroubleUpFront(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("no DMIT card drawn")
+	t.Fatal("no transit card drawn")
 }

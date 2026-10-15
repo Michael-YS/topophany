@@ -106,7 +106,7 @@ func TestGeoPlateListsTheNodesOfItsPlace(t *testing.T) {
 	m.setTab(tabTopology)
 	m.MapMode = "geo"
 	out := mapText(m, 128)
-	for _, want := range []string{"▎ 长沙", "▎ ● Windows 台式机", "▎ ● MacBook Pro", "▎ ● 家庭路由器", "▎ Tokyo", "▎ └ ● OpenList 容器"} {
+	for _, want := range []string{"▎ 成都", "▎ ● Windows 台式机", "▎ ● MacBook Pro", "▎ ● 家庭路由器", "▎ Tokyo", "▎ └ ● OpenList 容器"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("plate lacks %q:\n%s", want, out)
 		}

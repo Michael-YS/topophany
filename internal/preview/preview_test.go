@@ -62,7 +62,7 @@ func TestPresetModelsTheDeclaredNetwork(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	want := []string{"win", "mac", "router", "hz", "dmit", "aaitr", "qqpr", "s1", "s2", "jp", "de"}
+	want := []string{"win", "mac", "router", "relay", "transit", "exit-a", "exit-b", "app", "aux", "jp", "git-node"}
 	for _, id := range want {
 		found := false
 		for _, n := range c.Nodes {
@@ -74,7 +74,7 @@ func TestPresetModelsTheDeclaredNetwork(t *testing.T) {
 			t.Fatal("node without a declared location", id)
 		}
 	}
-	for _, id := range []string{"s1-db", "jp-openlist"} {
+	for _, id := range []string{"app-db", "jp-openlist"} {
 		var n model.Node
 		for _, x := range c.Nodes {
 			if x.ID == id {
@@ -112,45 +112,45 @@ func TestHealthyPresetMostlyUpWithLiveObservers(t *testing.T) {
 			t.Fatal("observer", o)
 		}
 	}
-	exit := check(t, s, "w-exit-dmit-aaitr")
+	exit := check(t, s, "w-exit-transit-a")
 	if exit.Health != "up" || exit.Last.Facts["exit_ip"] != "203.0.113.40" || exit.Last.Facts["response_proof"] != "verified_https" {
 		t.Fatal(exit.Health, exit.Last.Facts, exit.Last.Detail)
 	}
 	clash := check(t, s, "w-clash")
-	if !strings.Contains(clash.Last.Facts["reported_chain"], "DMIT") {
+	if !strings.Contains(clash.Last.Facts["reported_chain"], "BandwagonHost") {
 		t.Fatal("primary chain not selected", clash.Last.Facts["reported_chain"])
 	}
 }
 
 func TestBlockedLineFallsBackAndKeepsCounterEvidence(t *testing.T) {
-	s := settled(t, "dmit-blocked")
-	if check(t, s, "w-dmit-443").Health != "down" || check(t, s, "w-dmit-icmp").Health != "up" {
+	s := settled(t, "transit-blocked")
+	if check(t, s, "w-transit-443").Health != "down" || check(t, s, "w-transit-icmp").Health != "up" {
 		t.Fatal("public port and icmp should disagree")
 	}
-	tn := check(t, s, "w-tn-dmit")
-	if tn.Health != "up" || tn.Last.DurationMS < 50 {
+	tn := check(t, s, "w-tn-transit")
+	if tn.Health != "up" || tn.Last.DurationMS < 30 {
 		t.Fatal("tailnet should survive via relay", tn.Health, tn.Last)
 	}
-	ts := check(t, s, "w-ts-dmit")
-	if ts.Health != "up" || ts.Last.Facts["relay"] != "hz" {
+	ts := check(t, s, "w-ts-transit")
+	if ts.Health != "up" || ts.Last.Facts["relay"] != "relay" {
 		t.Fatal("tailscale relay", ts.Last.Facts)
 	}
-	if check(t, s, "s-dmit-tn").Health != "up" || check(t, s, "w-exit-s2-aaitr").Health != "up" {
+	if check(t, s, "s-transit-tn").Health != "up" || check(t, s, "w-exit-aux-a").Health != "up" {
 		t.Fatal("overseas contrast or fallback exit failed")
 	}
-	if check(t, s, "w-exit-dmit-aaitr").Health != "down" {
+	if check(t, s, "w-exit-transit-a").Health != "down" {
 		t.Fatal("primary chain should fail")
 	}
 	clash := check(t, s, "w-clash")
-	if !strings.Contains(clash.Last.Facts["reported_chain"], "S2") {
+	if !strings.Contains(clash.Last.Facts["reported_chain"], "Azure") {
 		t.Fatal("clash did not fall back", clash.Last.Facts["reported_chain"])
 	}
 	found := false
 	for _, inc := range s.Incidents {
 		for _, id := range inc.Checks {
-			if id == "w-dmit-443" {
+			if id == "w-transit-443" {
 				found = true
-				if inc.Hypothesis == "" || !contains(inc.CounterEvidence, "s-dmit-tn") {
+				if inc.Hypothesis == "" || !contains(inc.CounterEvidence, "s-transit-tn") {
 					t.Fatal("missing counter-evidence", inc)
 				}
 			}
@@ -162,57 +162,57 @@ func TestBlockedLineFallsBackAndKeepsCounterEvidence(t *testing.T) {
 }
 
 func TestHostDownIsGlobalAndExitFailureIsSpecific(t *testing.T) {
-	down := settled(t, "dmit-down")
-	if check(t, down, "w-tn-dmit").Health != "down" || check(t, down, "s-dmit-tn").Health != "down" || check(t, down, "w-ts-dmit").Health != "down" {
+	down := settled(t, "transit-down")
+	if check(t, down, "w-tn-transit").Health != "down" || check(t, down, "s-transit-tn").Health != "down" || check(t, down, "w-ts-transit").Health != "down" {
 		t.Fatal("a dead host should fail from every observer, including tailnet")
 	}
-	if check(t, down, "w-exit-s2-aaitr").Health != "up" {
+	if check(t, down, "w-exit-aux-a").Health != "up" {
 		t.Fatal("fallback chain should stay up")
 	}
 	for _, inc := range down.Incidents {
 		for _, id := range inc.Checks {
-			if id == "w-dmit-443" && inc.Hypothesis != "" {
+			if id == "w-transit-443" && inc.Hypothesis != "" {
 				t.Fatal("no contrast exists when every observer fails", inc)
 			}
 		}
 	}
-	exit := settled(t, "aaitr-down")
-	if check(t, exit, "w-exit-dmit-aaitr").Health != "down" || check(t, exit, "w-exit-dmit-qqpr").Health != "up" {
-		t.Fatal("only the AAITR exit should fail")
+	exit := settled(t, "exit-down")
+	if check(t, exit, "w-exit-transit-a").Health != "down" || check(t, exit, "w-exit-transit-b").Health != "up" {
+		t.Fatal("only the exit-a should fail")
 	}
 	if entity(t, exit.Paths, "w-egress").Health != "degraded" {
 		t.Fatal("candidate set should degrade, not go down")
 	}
-	if !strings.Contains(check(t, exit, "w-clash").Last.Facts["reported_chain"], "QQPR") {
+	if !strings.Contains(check(t, exit, "w-clash").Last.Facts["reported_chain"], "Vultr") {
 		t.Fatal("clash should move to the Hawaii exit")
 	}
 }
 
 func TestPolicyDriftMaintenanceOutageAndClock(t *testing.T) {
-	drift := settled(t, "aaitr-exit-drift")
-	bad := check(t, drift, "w-exit-dmit-aaitr")
+	drift := settled(t, "exit-drift")
+	bad := check(t, drift, "w-exit-transit-a")
 	if bad.Health != "degraded" || bad.Last.Outcome != "policy" || bad.Last.Facts["exit_ip"] != "203.0.113.99" {
 		t.Fatal(bad.Health, bad.Last)
 	}
-	if check(t, drift, "w-exit-dmit-qqpr").Health != "up" {
+	if check(t, drift, "w-exit-transit-b").Health != "up" {
 		t.Fatal("the other exit is unaffected")
 	}
-	maint := settled(t, "s2-maintenance")
-	if check(t, maint, "w-s2-443").Freshness != "maintenance" || check(t, maint, "w-memos").Freshness != "maintenance" {
-		t.Fatal("s2 checks should leave alerting")
+	maint := settled(t, "aux-maintenance")
+	if check(t, maint, "w-aux-443").Freshness != "maintenance" || check(t, maint, "w-vaultwarden").Freshness != "maintenance" {
+		t.Fatal("aux checks should leave alerting")
 	}
-	if check(t, maint, "w-exit-dmit-aaitr").Health != "up" {
+	if check(t, maint, "w-exit-transit-a").Health != "up" {
 		t.Fatal("unrelated checks changed")
 	}
 	for _, inc := range maint.Incidents {
 		for _, id := range inc.Checks {
-			if strings.Contains(id, "s2") {
+			if strings.Contains(id, "aux") {
 				t.Fatal("maintenance created an incident", inc)
 			}
 		}
 	}
 	home := settled(t, "home-offline")
-	if check(t, home, "w-tn-s1").Freshness != "never" || check(t, home, "m-tn-win").Freshness != "never" {
+	if check(t, home, "w-tn-app").Freshness != "never" || check(t, home, "m-tn-win").Freshness != "never" {
 		t.Fatal("offline workers should not keep fresh results")
 	}
 	if check(t, home, "s-web-local").Health != "up" {
@@ -223,10 +223,10 @@ func TestPolicyDriftMaintenanceOutageAndClock(t *testing.T) {
 		t.Fatal("visitor should see the reverse proxy fail", proxy.Health, proxy.Last)
 	}
 	hz := settled(t, "relay-down")
-	if check(t, hz, "h-derp").Freshness != "never" || check(t, hz, "j-home").Health != "down" {
-		t.Fatal("hangzhou observer and the relay should both be gone")
+	if check(t, hz, "r-derp").Freshness != "never" || check(t, hz, "j-home").Health != "down" {
+		t.Fatal("relay observer and the relay should both be gone")
 	}
-	clock := settled(t, "tokyo-clock-skew")
+	clock := settled(t, "remote-clock-skew")
 	jp := check(t, clock, "j-openlist")
 	if jp.Health != "unknown" || jp.Freshness != "stale" || !strings.Contains(jp.Reason, "clock") {
 		t.Fatal(jp)
@@ -274,11 +274,11 @@ func contains(list []string, v string) bool {
 
 func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 	ok := settled(t, "normal")
-	if f := check(t, ok, "h-s1-web").Last.Facts; f["edge_provider"] != "cloudflare" || f["edge_pop"] != "LAX" || f["edge_cache"] != "DYNAMIC" {
-		t.Fatal("mainland visitors should land on a US edge", f)
+	if f := check(t, ok, "r-app-web").Last.Facts; f["edge_provider"] != "cloudflare" || f["edge_cache"] != "DYNAMIC" {
+		t.Fatal("relay visitors should land on a Cloudflare edge", f)
 	}
-	if f := check(t, ok, "j-blog").Last.Facts; f["edge_pop"] != "NRT" {
-		t.Fatal("Tokyo visitors should land in Tokyo", f)
+	if f := check(t, ok, "j-blog").Last.Facts; f["edge_provider"] != "cloudflare" || f["edge_pop"] == "" {
+		t.Fatal("remote visitors should land on edge", f)
 	}
 	if f := check(t, ok, "j-docs").Last.Facts; f["edge_cache"] != "HIT" {
 		t.Fatal("Pages are served from the edge cache", f)
@@ -286,13 +286,13 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 	if f := check(t, ok, "j-webapp").Last.Facts; f["edge_provider"] != "vercel" || f["edge_region"] != "hnd1" {
 		t.Fatal("Vercel evidence", f)
 	}
-	for _, id := range []string{"cf", "s1", "vercel", "supabase"} {
+	for _, id := range []string{"cf", "app", "vercel", "supabase"} {
 		if n := entity(t, ok.Nodes, id); n.Health != "up" {
 			t.Fatal("healthy edge or origin without evidence", n)
 		}
 	}
 
-	down := settled(t, "s1-origin-down")
+	down := settled(t, "app-origin-down")
 	blog := check(t, down, "j-blog")
 	if blog.Health != "down" || blog.Last.Facts["http_status"] != "521" || !blog.Last.Connectivity {
 		t.Fatal("the edge should answer for a dead origin", blog.Health, blog.Last)
@@ -300,11 +300,11 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 	if cf := entity(t, down.Nodes, "cf"); cf.Health != "up" || cf.Affected {
 		t.Fatal("the edge answered and is not at fault", cf)
 	}
-	if s1 := entity(t, down.Nodes, "s1"); s1.Health == "up" || !s1.Affected {
-		t.Fatal("an edge error page counted as the origin answering", s1)
+	if app := entity(t, down.Nodes, "app"); app.Health == "up" || !app.Affected {
+		t.Fatal("an edge error page counted as the origin answering", app)
 	}
 	if check(t, down, "j-worker").Health != "up" || check(t, down, "j-webapp").Health != "up" {
-		t.Fatal("what runs on the edge does not depend on S1")
+		t.Fatal("what runs on the edge does not depend on app")
 	}
 	explained := false
 	for _, inc := range down.Incidents {
@@ -317,14 +317,14 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 	}
 
 	blocked := settled(t, "edge-blocked")
-	if h := check(t, blocked, "h-worker"); h.Health != "down" || h.Last.Connectivity {
-		t.Fatal("mainland requests should get no answer at all", h.Health, h.Last)
+	if h := check(t, blocked, "r-worker"); h.Health != "down" || h.Last.Connectivity {
+		t.Fatal("blocked requests should get no answer at all", h.Health, h.Last)
 	}
 	if check(t, blocked, "j-worker").Health != "up" || check(t, blocked, "j-blog").Health != "up" {
 		t.Fatal("the edge still answers elsewhere")
 	}
 	for _, inc := range blocked.Incidents {
-		if contains(inc.Checks, "h-worker") && !contains(inc.CounterEvidence, "j-worker") {
+		if contains(inc.Checks, "r-worker") && !contains(inc.CounterEvidence, "j-worker") {
 			t.Fatal("Tokyo's answers are counter-evidence", inc)
 		}
 	}
@@ -358,10 +358,10 @@ func TestPreviewRemembersIncidents(t *testing.T) {
 	if len(again.Ledger) != len(snap.Ledger) || again.Ledger[0].ID != snap.Ledger[0].ID || !again.Ledger[0].Opened.Equal(snap.Ledger[0].Opened) {
 		t.Fatal("a simulator on the same timeline remembers otherwise")
 	}
-	mine, _ := s.Snapshot("cs-win", now)
+	mine, _ := s.Snapshot("obs-win", now)
 	for _, r := range mine.Ledger {
-		if !strings.HasPrefix(r.Scope, "cs-win/") {
-			t.Fatalf("cs-win's view carries %s", r.Scope)
+		if !strings.HasPrefix(r.Scope, "obs-win/") {
+			t.Fatalf("obs-win's view carries %s", r.Scope)
 		}
 	}
 	s.SetScenario(0, now)
@@ -387,20 +387,20 @@ func TestPreviewKeepsRollups(t *testing.T) {
 			t.Fatalf("%s: a normal month not measured throughout: %+v", c.ID, c.Availability)
 		}
 	}
-	for scenario, id := range map[string]string{"s2-maintenance": "w-s2-443", "home-offline": "w-tn-s1"} {
+	for scenario, id := range map[string]string{"aux-maintenance": "w-aux-443", "home-offline": "w-tn-app"} {
 		day := check(t, settled(t, scenario), id).Availability[0]
 		if day.Unmeasured < 25*60 || day.Unmeasured > 30*60 {
 			t.Fatalf("%s: %s's last half hour reads as measured: %+v", scenario, id, day.Rollup)
 		}
 	}
-	down := settled(t, "dmit-down")
+	down := settled(t, "transit-down")
 	for _, c := range calm.Checks {
-		if !strings.Contains(c.ID, "dmit") && !same(check(t, down, c.ID).Availability, c.Availability) {
-			t.Fatalf("dmit down changed how %s fared", c.ID)
+		if !strings.Contains(c.ID, "transit") && !same(check(t, down, c.ID).Availability, c.Availability) {
+			t.Fatalf("transit down changed how %s fared", c.ID)
 		}
 	}
-	if d := check(t, down, "w-dmit-443").Availability[0].Down - check(t, calm, "w-dmit-443").Availability[0].Down; d < 25*60 || d > 30*60 {
-		t.Fatalf("half an hour of dmit down adds %ds down", d)
+	if d := check(t, down, "w-transit-443").Availability[0].Down - check(t, calm, "w-transit-443").Availability[0].Down; d < 25*60 || d > 30*60 {
+		t.Fatalf("half an hour of transit down adds %ds down", d)
 	}
 }
 

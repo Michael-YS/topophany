@@ -69,7 +69,7 @@ func TestLabelsUseTheRoomTheyHave(t *testing.T) {
 	m.Width, m.Height = 211, 50
 	m.setTab(tabTopology)
 	for mode, names := range map[string][]string{
-		"virtual": {"S2 个人服务 / 备用线路", "互联网 (出口校验目标)", "S1 主站 (高性能)"},
+		"virtual": {"Azure 纽约", "互联网 (出口校验目标)", "Oracle 纽约"},
 		"network": {"PostgreSQL 容器", "OpenList 容器"},
 	} {
 		m.MapMode = mode
@@ -83,7 +83,7 @@ func TestLabelsUseTheRoomTheyHave(t *testing.T) {
 	// With the map alone, the network graph has room for every name.
 	m.FullMap = true
 	out := visible(m)
-	for _, n := range []string{"Windows 台式机", "S1 主站 (高性能)", "AAITR 家宽落地", "互联网 (出口校验目标)"} {
+	for _, n := range []string{"Windows 台式机", "Oracle 纽约", "Oracle 洛杉矶", "互联网 (出口校验目标)"} {
 		if !strings.Contains(out, n) {
 			t.Fatalf("full network map cuts %q short:\n%s", n, out)
 		}

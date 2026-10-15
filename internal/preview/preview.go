@@ -6,7 +6,7 @@ package preview
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -24,12 +24,25 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 )
 
-//go:embed topology.json
-var preset []byte
+//go:embed topology.json topology.*.json
+var topologies embed.FS
 
-// Preset returns the built-in complex topology (Changsha home, Hangzhou
-// relay, LA line + residential exits, Hawaii exit, New York, Tokyo, Frankfurt,
-// and Cloudflare, Vercel and Supabase at the edge), written in lang.
+var preset, _ = topologies.ReadFile("topology.json")
+
+// RawTopology returns the unlocalized topology source for lang.
+func RawTopology(lang string) ([]byte, error) {
+	lang = Language(lang)
+	if lang == "" {
+		lang = DefaultLanguage
+	}
+	b, err := topologies.ReadFile("topology." + lang + ".json")
+	if err == nil {
+		return b, nil
+	}
+	return topologies.ReadFile("topology.json")
+}
+
+// Preset returns the built-in complex topology for lang.
 func Preset(lang string) (model.Config, error) {
 	b, e := PresetJSON(lang)
 	if e != nil {
@@ -40,14 +53,20 @@ func Preset(lang string) (model.Config, error) {
 
 // PresetJSON is the reviewed source of Preset in lang, for `topo preview
 // --print-topology`.
-func PresetJSON(lang string) ([]byte, error) { return localize(preset, lang) }
+func PresetJSON(lang string) ([]byte, error) {
+	raw, err := RawTopology(lang)
+	if err != nil {
+		return nil, err
+	}
+	return localize(raw, lang)
+}
 
 // Scenario is one simulated world state. Node and observer IDs that are not in
 // the topology make a scenario unavailable rather than silently empty.
 type Scenario struct {
 	ID          string            // its name and detail are scenario.ID and scenario.ID.detail in the catalogs
 	Down        []string          // nodes that answer nothing (power/host failure)
-	Blocked     []string          // nodes unreachable over public networks from mainland-China observers
+	Blocked     []string          // nodes unreachable over public networks from regional home observers
 	Offline     []string          // observers whose worker stops reporting
 	Maintenance []string          // nodes whose checks are put in maintenance
 	WrongExit   map[string]string // exit node → observed exit IP that violates policy
@@ -60,16 +79,16 @@ type Scenario struct {
 
 var scenarios = []Scenario{
 	{ID: "normal"},
-	{ID: "dmit-blocked", Blocked: []string{"dmit"}},
-	{ID: "dmit-down", Down: []string{"dmit"}},
-	{ID: "aaitr-down", Down: []string{"aaitr"}},
-	{ID: "aaitr-exit-drift", WrongExit: map[string]string{"aaitr": "203.0.113.99"}},
+	{ID: "transit-blocked", Blocked: []string{"transit"}},
+	{ID: "transit-down", Down: []string{"transit"}},
+	{ID: "exit-down", Down: []string{"exit-a"}},
+	{ID: "exit-drift", WrongExit: map[string]string{"exit-a": "203.0.113.99"}},
 	{ID: "cross-border-loss", Lossy: .35, Slow: 2.6},
-	{ID: "home-offline", Down: []string{"win", "mac", "router"}, Offline: []string{"cs-win", "cs-mac"}},
-	{ID: "relay-down", Down: []string{"hz"}, Offline: []string{"obs-hz"}},
-	{ID: "s2-maintenance", Maintenance: []string{"s2"}},
-	{ID: "tokyo-clock-skew", Skew: map[string]time.Duration{"obs-jp": 40 * time.Second}},
-	{ID: "s1-origin-down", Down: []string{"s1"}, Offline: []string{"obs-s1"}},
+	{ID: "home-offline", Down: []string{"win", "mac", "router"}, Offline: []string{"obs-win", "obs-mac"}},
+	{ID: "relay-down", Down: []string{"relay"}, Offline: []string{"obs-relay"}},
+	{ID: "aux-maintenance", Maintenance: []string{"aux"}},
+	{ID: "remote-clock-skew", Skew: map[string]time.Duration{"obs-remote": 40 * time.Second}},
+	{ID: "app-origin-down", Down: []string{"app"}, Offline: []string{"obs-app"}},
 	{ID: "edge-blocked", Blocked: []string{"cf"}},
 	{ID: "chaos", Chaos: true},
 	{ID: "collector-unreachable", Unreachable: true},
@@ -654,12 +673,8 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 		o.PathEvidence = "explicit_proxy_transport"
 	}
 	reach := s.reach(x)
-	cn := s.china(s.obsNode[x.Observer])
-	cross := false
-	for _, n := range reach {
-		l := s.loc(n, x.Observer)
-		cross = cross || (cn && l != nil && !mainland(l))
-	}
+	blockedObs := s.blockedObserver(x.Observer)
+	cross := s.crossBorder(x.Observer, reach)
 	ms := s.rtt(x, reach, t)
 	if cross && sc.Slow > 0 {
 		ms *= sc.Slow
@@ -669,7 +684,7 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 	}
 	tunnel := false
 	for _, n := range reach {
-		if has(sc.Blocked, n) && cn && s.ends[x.Endpoint].Network == "tailnet" {
+		if has(sc.Blocked, n) && blockedObs && s.ends[x.Endpoint].Network == "tailnet" {
 			tunnel = true
 			ms *= 1.7
 		}
@@ -685,7 +700,7 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 	}
 	passed, atEdge := false, false
 	for _, n := range reach {
-		down := has(sc.Down, n) || (has(sc.Blocked, n) && cn && s.ends[x.Endpoint].Network != "tailnet" && x.Kind != "icmp" && x.Kind != "tailscale")
+		down := has(sc.Down, n) || (has(sc.Blocked, n) && blockedObs && s.ends[x.Endpoint].Network != "tailnet" && x.Kind != "icmp" && x.Kind != "tailscale")
 		if down && broken == "" {
 			broken, beyond, fronted = n, passed, atEdge && x.Kind == "http"
 		}
@@ -737,9 +752,9 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 			o.Facts["backend_state"], o.Facts["online_reported"], o.Facts["active_reported"] = "Running", "true", "true"
 			o.Facts["last_seen"] = t.Add(-2 * time.Second).UTC().Format(time.RFC3339)
 			o.Facts["transport_hint"] = "direct_endpoint_reported"
-			relay := !has(sc.Down, "hz") && (tunnel || has(sc.Blocked, peer) && cn || cross && hash(peer)%3 == 0)
+			relay := !has(sc.Down, "relay") && (tunnel || has(sc.Blocked, peer) && blockedObs || cross && hash(peer)%3 == 0)
 			if relay {
-				o.Facts["transport_hint"], o.Facts["relay"] = "relay_preference_reported", "hz"
+				o.Facts["transport_hint"], o.Facts["relay"] = "relay_preference_reported", "relay"
 			}
 		}
 		o.DurationMS = 3 + int64(noise*6)
@@ -859,7 +874,7 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 // selected mimics the proxy core's fallback group: the first candidate whose
 // hops are all usable right now.
 func (s *Sim) selected(observer string, sc Scenario, t time.Time) (string, float64) {
-	cn := s.china(s.obsNode[observer])
+	blocked := s.blockedObserver(observer)
 	for _, p := range s.base.Paths {
 		if p.Observer != observer || len(p.Candidates) == 0 {
 			continue
@@ -868,7 +883,7 @@ func (s *Sim) selected(observer string, sc Scenario, t time.Time) (string, float
 			q := s.paths[id]
 			ok, hops := true, []string{}
 			for i, n := range q.Nodes {
-				ok = ok && !has(sc.Down, n) && !(cn && has(sc.Blocked, n))
+				ok = ok && !has(sc.Down, n) && !(blocked && has(sc.Blocked, n))
 				if i > 0 && s.nodes[n].Kind != "external" {
 					hops = append(hops, s.nodes[n].Name)
 				}
@@ -880,6 +895,55 @@ func (s *Sim) selected(observer string, sc Scenario, t time.Time) (string, float
 		return "", 0
 	}
 	return "DIRECT", 1
+}
+
+func (s *Sim) blockedObserver(obs string) bool {
+	return obs == "obs-win" || obs == "obs-mac" || obs == "obs-relay"
+}
+
+func (s *Sim) crossBorder(observer string, reach []string) bool {
+	from := s.where[s.obsNode[observer]]
+	if from == nil {
+		return false
+	}
+	for _, n := range reach {
+		l := s.loc(n, observer)
+		if l != nil && !s.sameRegion(from, l) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Sim) sameRegion(a, b *model.Location) bool {
+	if a == nil || b == nil {
+		return true
+	}
+	if mainland(a) && mainland(b) {
+		return true
+	}
+	if isJapan(a) && isJapan(b) {
+		return true
+	}
+	if isNorthAmerica(a) && isNorthAmerica(b) {
+		return true
+	}
+	if isEurope(a) && isEurope(b) {
+		return true
+	}
+	return false
+}
+
+func isJapan(l *model.Location) bool {
+	return l != nil && l.Lat >= 30 && l.Lat <= 46 && l.Lon >= 128 && l.Lon <= 146
+}
+
+func isNorthAmerica(l *model.Location) bool {
+	return l != nil && l.Lat >= 24 && l.Lat <= 50 && l.Lon >= -125 && l.Lon <= -65
+}
+
+func isEurope(l *model.Location) bool {
+	return l != nil && l.Lat >= 35 && l.Lat <= 70 && l.Lon >= -10 && l.Lon <= 30
 }
 
 func has(list []string, v string) bool {

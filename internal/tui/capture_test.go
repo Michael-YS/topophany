@@ -28,16 +28,16 @@ type docShot struct {
 
 var docShots = []docShot{
 	{name: "overview", readme: true, tab: tabOverview},
-	{name: "network", tab: tabTopology, mapMode: "network", selected: "dmit"},
+	{name: "network", tab: tabTopology, mapMode: "network", selected: "transit"},
 	{name: "incident", tab: tabIncidents},
 }
 
-// shot is the TUI as it shows c in lang: half an hour into the DMIT
+// shot is the TUI as it shows c in lang: half an hour into the transit
 // outage, four seconds after the last snapshot.
 func shot(t *testing.T, c docShot, lang string) tour {
 	r := newRecorder(t, lang)
 	m := r.m
-	r.sim.SetScenario(slices.Index(r.sim.ScenarioIDs(), "dmit-blocked"), m.Now.Add(-30*time.Minute))
+	r.sim.SetScenario(slices.Index(r.sim.ScenarioIDs(), "transit-blocked"), m.Now.Add(-30*time.Minute))
 	r.fetch()
 	m.Now = m.Now.Add(4 * time.Second)
 	m.notice = ""
