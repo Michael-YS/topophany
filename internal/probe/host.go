@@ -29,6 +29,9 @@ type HostSample struct {
 }
 
 type HostDisk struct {
+	Basis      string
+	VolumeFree uint64
+
 	Total, Free, Available uint64
 	Inodes, InodesFree     uint64
 }
@@ -90,6 +93,11 @@ func ApplyHostSample(o *model.Observation, h model.HostOptions, s HostSample) er
 	pct("memory_used_percent", memoryPercent)
 	o.Facts["memory_basis"] = s.MemoryBasis
 	o.Facts["disk_path"] = h.DiskPath
+	if s.Disk.Basis == "windows_caller_quota" {
+		o.Facts["disk_basis"] = s.Disk.Basis
+		o.Facts["disk_inodes_basis"] = "unavailable_on_windows"
+		put("disk_volume_free_bytes", s.Disk.VolumeFree)
+	}
 	put("disk_total_bytes", s.Disk.Total)
 	put("disk_used_bytes", diskUsed)
 	put("disk_available_bytes", s.Disk.Available)

@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -102,6 +103,12 @@ func Generate(dir string, o Options) (Manifest, error) {
 	}
 	if err := os.Mkdir(dir, 0700); err != nil {
 		return m, fmt.Errorf("choose a new bundle directory: %w", err)
+	}
+	if runtime.GOOS == "windows" {
+		if e := restrictWindowsDirectory(context.Background(), dir); e != nil {
+			os.RemoveAll(dir)
+			return m, e
+		}
 	}
 	success := false
 	defer func() {

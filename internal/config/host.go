@@ -41,7 +41,7 @@ func validateHost(x model.Check, c model.Config) error {
 		return nil
 	}
 	h := x.Host
-	if h.DiskPath != "" && (!path.IsAbs(h.DiskPath) || path.Clean(h.DiskPath) != h.DiskPath || len(h.DiskPath) > 1024 || secure.Text(h.DiskPath) != h.DiskPath) {
+	if h.DiskPath != "" && (!cleanHostPath(h.DiskPath) || len(h.DiskPath) > 1024 || secure.Text(h.DiskPath) != h.DiskPath) {
 		return errors.New("host.disk_path must be a clean absolute local filesystem path (up to 1024 bytes)")
 	}
 	for _, n := range []float64{h.MaxCPUPercent, h.MaxMemoryPercent, h.MaxDiskPercent} {
@@ -59,4 +59,14 @@ func validateHost(x model.Check, c model.Config) error {
 		return errors.New("host process bounds require process_name")
 	}
 	return nil
+}
+
+// Windows drive paths are validated independently of the collector OS: a
+// Linux collector can review Windows worker checks without flattening paths.
+func cleanHostPath(value string) bool {
+	if len(value) >= 3 && value[1] == ':' && (value[2] == '/' || value[2] == '\\') && (value[0] >= 'A' && value[0] <= 'Z' || value[0] >= 'a' && value[0] <= 'z') {
+		normalized := strings.ReplaceAll(value, "\\", "/")
+		return len(normalized) == 3 || path.Clean(normalized) == normalized
+	}
+	return path.IsAbs(value) && path.Clean(value) == value
 }

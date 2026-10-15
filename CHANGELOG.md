@@ -1,5 +1,16 @@
 # Changelog
 
+
+## Unreleased
+
+- Add `topo capacity`, observer storage weights, configurable bounded collector state/receipt limits, and authenticated quota visibility before migration.
+- Expose worker-reported backlog, quarantine, sample ACK, contact and retry telemetry in Observers, with bounded heartbeat payloads and closed diagnostic codes.
+- Generate private server/worker/client installation bundles with role-scoped enrollment, TLS, native startup definitions, dry-run, read-only enrollment verification and rollback.
+- Centralize literal addresses with reviewed references and `topo address`; preview affected measurements without resetting equivalent history or flattening editor source.
+- Collect Windows host CPU, memory, caller-relative disk capacity and selected process working sets through native APIs; validate Windows drive paths on any collector OS.
+
+Upgrade collectors before workers that emit new heartbeat fields. Bundle creation and address editing remain local operations; live routes and proxy policies are untouched.
+
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

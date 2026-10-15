@@ -83,3 +83,20 @@ func TestHostRejectsRemoteAttributionAndInvalidOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestWindowsHostPathsAreReviewedOnAnyCollectorOS(t *testing.T) {
+	for _, p := range []string{"C:/", "C:/Users/Test User", "D:\\Data", "c:\\"} {
+		c := hostConfig()
+		c.Checks[0].Host.DiskPath = p
+		if e := config.Validate(c); e != nil {
+			t.Fatalf("%q: %v", p, e)
+		}
+	}
+	for _, p := range []string{"C:relative", "C:/Data/../Windows", "C:\\Data\\..\\Windows", "C://Data", "\\\\server\\share"} {
+		c := hostConfig()
+		c.Checks[0].Host.DiskPath = p
+		if e := config.Validate(c); e == nil {
+			t.Fatalf("unsafe or unclean path accepted: %q", p)
+		}
+	}
+}
