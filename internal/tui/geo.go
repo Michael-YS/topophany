@@ -333,6 +333,15 @@ func trimEnds(path [][2]float64, r float64) [][2]float64 {
 	return path[i:j]
 }
 
+// arcDash is how an arc is broken. The points view draws every arc dashed,
+// so the map is markers and dashed lines whatever kind of edge an arc came from.
+func arcDash(dash int, points bool) int {
+	if points && dash < 2 {
+		return 2
+	}
+	return dash
+}
+
 type geoArc struct {
 	a, b                     int // site indices, a < b
 	edge                     mapEdge
@@ -455,6 +464,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 			e.Kind = edgeLink
 		}
 		c, pri, dash := edgeStyle(e, mapFocus{})
+		dash = arcDash(dash, m.Points)
 		if a.focused {
 			c, pri = Mix(c, cGlow, .4), 8
 		}
@@ -509,14 +519,18 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		}
 	}
 	// With the map to itself, a plate also says what runs on each node.
+	// The points view leaves the markers and dashed arcs, and no plates.
 	var runs map[string][]span
-	if m.FullMap {
-		runs = m.nodeServices()
-	}
-	plates := m.plates(sites, nodes, f, w, mh, m.cellAspect(), landCells, arcCells, taken, runs)
-	for _, p := range plates {
-		if !p.beside {
-			p.leader(d, Mix(signalColor(p.site.signal), cInk, .25), g.ky)
+	var plates []plate
+	if !m.Points {
+		if m.FullMap {
+			runs = m.nodeServices()
+		}
+		plates = m.plates(sites, nodes, f, w, mh, m.cellAspect(), landCells, arcCells, taken, runs)
+		for _, p := range plates {
+			if !p.beside {
+				p.leader(d, Mix(signalColor(p.site.signal), cInk, .25), g.ky)
+			}
 		}
 	}
 	d.Blit(cv, x, y, 0)

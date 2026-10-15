@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- On the geo map, `p` hides every site plate and draws the arcs dashed,
+  leaving the markers and the lines. `p` again brings the plates back.
+  The key does nothing on the virtual geo or the network graph.
 - Long-term history. Collectors roll every sample they accept up into
   per-check rollups that outlive the raw journal: each sample's outcome
   stands until the next sample or until it goes stale, and the time it

@@ -111,7 +111,7 @@ topo --credentials ./demo/credentials.json
 | `Enter` | 显示所选行的证据 |
 | `/` | 筛选 |
 | `v` | 切换查看的观测点 |
-| `m` / `z` / `f` | 切换地图 / 缩放 / 只显示地图 |
+| `m` / `z` / `f` / `p` | 切换地图 / 缩放 / 只显示地图 / 地理图只留点和虚线 |
 | `q` | 退出 |
 
 也可以用鼠标操作。颜色会适配 truecolor、256 色和 `NO_COLOR` 终端。[用户指南](docs/GUIDE.md)（英文）介绍了每个标签页和地图，以及如何用 `topo status`、`topo show` 和 `topo history` 让脚本和智能体读取全部内容。

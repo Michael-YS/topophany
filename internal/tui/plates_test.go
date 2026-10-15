@@ -98,6 +98,110 @@ func TestGeoPlatesKeepClearOfEachOther(t *testing.T) {
 	}
 }
 
+// geoPanel is the geographic map from its title through the legend, cut
+// before the list beside it, so a name in the list is not a label on the map.
+func geoPanel(t *testing.T, m *Model) string {
+	t.Helper()
+	lines := strings.Split(visible(m), "\n")
+	start, cut := -1, 0
+	for i, l := range lines {
+		if start < 0 && strings.Contains(l, "geo map") {
+			start = i
+			if j := strings.Index(l, "NODES"); j > 0 {
+				cut = width(l[:j])
+			}
+			continue
+		}
+		if start >= 0 && strings.Contains(l, "no evidence") {
+			out := []string{}
+			for _, row := range lines[start : i+1] {
+				if cut > 0 {
+					row = clipCols(row, cut)
+				}
+				out = append(out, row)
+			}
+			return strings.Join(out, "\n")
+		}
+	}
+	t.Fatal("no geo map panel")
+	return ""
+}
+
+func clipCols(s string, cols int) string {
+	w, b := 0, strings.Builder{}
+	for _, r := range s {
+		if w+runeWidth(r) > cols {
+			break
+		}
+		w += runeWidth(r)
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// p, and only while the geo map is showing, hides every plate and draws the
+// arcs dashed. The markers stay. The other maps ignore the key.
+func TestGeoPointsHidesPlates(t *testing.T) {
+	if arcDash(0, false) != 0 || arcDash(1, false) != 1 || arcDash(2, true) != 2 || arcDash(0, true) != 2 || arcDash(1, true) != 2 {
+		t.Fatal("arc dash")
+	}
+	m := previewModel(t)
+	m.Width, m.Height = 211, 50
+	m.setTab(tabTopology)
+	m.MapMode = "geo"
+	out := mapText(m, 128)
+	for _, want := range []string{"▎ 成都", "▎ Tokyo", "Points"} {
+		if !strings.Contains(visible(m), want) && !strings.Contains(out, want) {
+			t.Fatalf("geo map lacks %q before p:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(visible(m), "Points") {
+		t.Fatal("geo footer lacks p")
+	}
+	m.Key("p")
+	if !m.Points {
+		t.Fatal("p did not hide the plates")
+	}
+	panel := geoPanel(t, m)
+	for _, gone := range []string{"▎", "成都", "Tokyo", "Windows 台式机", "OpenList 容器"} {
+		if strings.Contains(panel, gone) {
+			t.Fatalf("points view still shows %q:\n%s", gone, panel)
+		}
+	}
+	// The legend accounts for one of each glyph; the sites add the rest.
+	if n := strings.Count(panel, "●") + strings.Count(panel, "○") + strings.Count(panel, "▲") + strings.Count(panel, "✖"); n < 8 {
+		t.Fatal("points view dropped the markers", n)
+	}
+	if !strings.Contains(panel, "┄ path ok") || !strings.Contains(panel, "⠅") {
+		t.Fatal("points view lost the dashed legend or the map", panel)
+	}
+	foot := visible(m)
+	if !strings.Contains(foot, "Cards") || strings.Contains(foot, "Points") {
+		t.Fatal("no way back to the plates", foot[len(foot)-400:])
+	}
+	m.Key("p")
+	if m.Points || !strings.Contains(geoPanel(t, m), "▎ 成都") {
+		t.Fatal("p did not bring the plates back")
+	}
+	m.MapMode = "virtual"
+	before := mapText(m, 128)
+	m.Key("p")
+	if m.Points || mapText(m, 128) != before || strings.Contains(visible(m), "Points") {
+		t.Fatal("p acted on the virtual geo")
+	}
+	m.MapMode = "network"
+	m.Key("p")
+	if m.Points || strings.Contains(visible(m), "Points") {
+		t.Fatal("p acted on the network graph")
+	}
+	m.MapMode = "geo"
+	m.setTab(tabServices)
+	m.Key("p")
+	if m.Points {
+		t.Fatal("p acted with the geo map off screen")
+	}
+}
+
 // A site crowded with nodes lists them under its place, the selected node
 // lit, and when the map is short says how many it leaves out.
 func TestGeoPlateListsTheNodesOfItsPlace(t *testing.T) {

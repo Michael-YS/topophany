@@ -232,9 +232,13 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 		item('✖', cDown, "down")
 		item('○', cUnknown, "unknown")
 		cx += 2
-		item('━', Mix(cUp, cInk, .45), "path ok")
-		item('━', cWarn, "affected")
-		item('━', cDown, "failed")
+		line := '━'
+		if m.mapMode() == "geo" && m.Points {
+			line = '┄'
+		}
+		item(line, Mix(cUp, cInk, .45), "path ok")
+		item(line, cWarn, "affected")
+		item(line, cDown, "failed")
 		item('┄', Mix(cUnknown, cInk, .35), "no evidence")
 		for _, e := range edges {
 			if e.Kind == edgeVia {

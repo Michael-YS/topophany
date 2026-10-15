@@ -434,6 +434,13 @@ func (m *Model) footer(cv *Canvas, y int) {
 		if m.mapShown() {
 			add(3, "m", "Map", "m")
 			add(4, "z", "Zoom", "z")
+			if m.mapMode() == "geo" {
+				if m.Points {
+					add(2, "p", "Cards", "p")
+				} else {
+					add(2, "p", "Points", "p")
+				}
+			}
 			if m.FullMap {
 				add(1, "f", "Panels", "f")
 			} else {

@@ -48,6 +48,7 @@ type Model struct {
 	MapMode               string // "", "virtual", "geo" or "network"; "" picks virtual when locations exist
 	Zoom                  int
 	FullMap               bool    // the map alone fills the body where a tab has one (f)
+	Points                bool    // geo map: plates hidden, every arc dashed (p)
 	Edit                  *Editor // non-nil only for topo edit
 	Preview               Preview // non-nil only for topo preview
 	Debug                 bool    // performance/geometry overlay (D)
@@ -296,6 +297,11 @@ func (m *Model) Key(k string) string {
 		} else {
 			m.FullMap = !m.FullMap
 			m.Detail = false
+		}
+	case "p":
+		// Markers and dashed arcs, and only while the geo map is on screen.
+		if m.mapShown() && m.mapMode() == "geo" {
+			m.Points = !m.Points
 		}
 	case "x":
 		if m.Preview != nil {
