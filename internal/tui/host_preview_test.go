@@ -45,7 +45,7 @@ func TestFullPreviewServerCardsDisplayHostResources(t *testing.T) {
 	m := previewModel(t)
 	m.Key("3")
 	out := visible(m)
-	for _, text := range []string{"LOCAL RESOURCES", "CPU", "Memory", "Disk", "Processes"} {
+	for _, text := range []string{"LOCAL RESOURCES", "CPU", "MEM", "DISK", "CPUs", "GiB", "processes"} {
 		if !strings.Contains(out, text) {
 			t.Fatal("resource card missing", text, out)
 		}

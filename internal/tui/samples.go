@@ -94,7 +94,12 @@ func (m *Model) sampleLines(r Row, w int) []vline {
 			x = c
 		}
 	}
-	s := view.NewStrip(x, h.entries, m.Now, w)
+	n := w
+	if x.Kind == "host" {
+		// Room on the right for the charts' scale.
+		n = max(8, w-13)
+	}
+	s := view.NewStrip(x, h.entries, m.Now, n)
 	out := []vline{head(s.Span(m.Now) + " · " + s.Every())}
 	if h.err != "" {
 		for _, l := range wrap("Not refreshed: "+h.err, w) {
@@ -110,6 +115,11 @@ func (m *Model) sampleLines(r Row, w int) []vline {
 		strip = append(strip, span{view.SlotGlyph(sl.Outcome), fg(c)})
 	}
 	out = append(out, strip)
+	if x.Kind == "host" {
+		// A host check's elapsed time is how long it watched the CPU; what
+		// it measured is what to see.
+		return append(append(out, vline{{view.StripLegend, fg(cMuted).italic()}}, vline{}), m.checkCharts(x, s, h.entries)...)
+	}
 	if s.Latency.Samples > 0 {
 		out = append(out, vline{{view.Bars(s.Slots), fg(Mix(cAccent, cMuted, .5))}})
 	}
@@ -121,9 +131,11 @@ type fetchedSamples struct {
 	check   string
 	entries []model.Observation
 	err     error
+	trend   bool // read for a host check's charts, not the selected check's evidence
 }
 
-// sampler reads the samples the evidence needs, one read at a time.
+// sampler reads the samples the evidence needs, one read at a time, and
+// then the history of each host check its charts have not read.
 type sampler struct {
 	read    History
 	busy    bool
@@ -134,7 +146,10 @@ func (s *sampler) request(ctx context.Context, m *Model, refresh bool) {
 	if s.read == nil || s.busy {
 		return
 	}
-	id := m.wantSamples(refresh)
+	id, trend := m.wantSamples(refresh), false
+	if id == "" {
+		id, trend = m.wantTrend(), true
+	}
 	if id == "" {
 		return
 	}
@@ -142,7 +157,7 @@ func (s *sampler) request(ctx context.Context, m *Model, refresh bool) {
 	go func() {
 		entries, e := s.read(ctx, id, view.StripSamples)
 		select {
-		case s.results <- fetchedSamples{id, entries, e}:
+		case s.results <- fetchedSamples{id, entries, e, trend}:
 		case <-ctx.Done():
 		}
 	}()

@@ -61,10 +61,12 @@ type Model struct {
 	noticeErr             bool
 	noticeAt              time.Time
 	aboutAt               time.Time
-	aboutSpin             float64    // extra globe rotation from the mouse wheel
-	vcache                vCache     // the virtual map's wires, kept while its layout holds
-	pcache                plateCache // the geographic map's labels, kept while what they label holds
-	samples               samples    // the selected check's recent samples, as last read
+	aboutSpin             float64           // extra globe rotation from the mouse wheel
+	vcache                vCache            // the virtual map's wires, kept while its layout holds
+	pcache                plateCache        // the geographic map's labels, kept while what they label holds
+	samples               samples           // the selected check's recent samples, as last read
+	trends                map[string]*trend // each host check's recent samples, for its charts
+	absorbed              time.Time         // when the snapshot last taken into trends was generated
 	hits                  []hit
 	drawingModal          bool
 }

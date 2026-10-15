@@ -13,6 +13,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/preview"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 // The homepage (site/public) replays the real TUI: `make site` drives a preview
@@ -65,6 +66,12 @@ func newRecorder(t *testing.T, lang string) *recorder {
 	r.out.Size = [2]int{tourW, tourH}
 	r.out.Names = tabs
 	r.fetch()
+	// As the run loop's sampler does after the first snapshot, the charts
+	// read each host check's history.
+	for id := r.m.wantTrend(); id != ""; id = r.m.wantTrend() {
+		entries, e := sim.History(id, view.StripSamples, now)
+		r.m.KeepTrend(id, entries, e)
+	}
 	r.m.say("Preview: synthetic evidence only · x switch scenario · D debug overlay", false)
 	return r
 }

@@ -16,8 +16,14 @@ func (s *Sim) observeHost(x model.Check, at time.Time, sc Scenario, o model.Obse
 	if x.Host != nil {
 		h = *x.Host
 	}
-	wave := (1 + math.Sin(float64(at.Unix())/90+float64(hash(x.ID)%100))) / 2
-	cpu, memory, disk := 18+12*wave, 42+8*wave, 58+2*wave
+	// Load moves as a host's does: CPU jitters from sample to sample with
+	// the odd burst, memory drifts over minutes and the disk over hours.
+	phase, t := float64(hash(x.ID)%100), float64(at.Unix())
+	wave := func(period float64) float64 { return (1 + math.Sin(t/period+phase)) / 2 }
+	jitter, burst := unit(x.ID, at.Unix(), 1), unit(x.ID, at.Unix(), 2)
+	cpu := 12 + 12*wave(90) + 10*jitter + 18*max(0, burst-.92)/.08
+	memory := 40 + 8*wave(600) + 1.5*unit(x.ID, at.Unix(), 3)
+	disk := 57 + 3*wave(3600)
 	matching := max(1, h.MinProcesses)
 	if h.MaxProcesses > 0 {
 		matching = min(matching, h.MaxProcesses)
@@ -28,11 +34,11 @@ func (s *Sim) observeHost(x model.Check, at time.Time, sc Scenario, o model.Obse
 	}
 	switch issue {
 	case "cpu":
-		cpu = 97 + 2*wave
+		cpu = 94 + 3*wave(90) + 2.5*jitter
 	case "memory":
-		memory = 96 + 2*wave
+		memory = 95 + 2*wave(600) + 1.5*jitter
 	case "disk":
-		disk = 98 + wave
+		disk = 98 + wave(3600)
 	case "process":
 		matching = 0
 	}

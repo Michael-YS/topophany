@@ -39,26 +39,51 @@ func (v View) HostResources() map[string][]CardResource {
 		if !ok || o.Node == "" {
 			continue
 		}
-		name := o.Name
-		if name == "" {
-			name = o.ID
-		}
-		r := CardResource{Check: cs.ID, Observer: Ref{o.ID, name}, Health: cs.Health, Freshness: cs.Freshness}
-		if cs.Last != nil {
-			r.SampledAt = cs.Last.SampledAt
-		}
-		current := !v.Cached && !v.Draft && !Expired(v.Snapshot, v.Now) && cs.Freshness == "fresh" && cs.Last != nil && !cs.Last.SampledAt.After(v.Now.Add(5*time.Second)) && v.Now.Sub(cs.Last.SampledAt) <= time.Duration(x.StaleSeconds)*time.Second
-		if current && (cs.Last.Outcome == "ok" || cs.Last.Outcome == "policy") && cs.Last.Evidence == "reported" {
-			r.Facts = maps.Clone(cs.Last.Facts)
-		} else {
-			r.Health = "unknown"
-		}
-		if v.Cached || Expired(v.Snapshot, v.Now) {
-			r.Freshness = "cached"
-		}
-		out[o.Node] = append(out[o.Node], r)
+		out[o.Node] = append(out[o.Node], v.hostResource(cs, x, o))
 	}
 	return out
+}
+
+// HostResource is a host check's local telemetry, whether or not its
+// observer is on a node.
+func (v View) HostResource(id string) (CardResource, bool) {
+	for _, x := range v.Snapshot.Topology.Checks {
+		if x.ID != id || x.Kind != "host" {
+			continue
+		}
+		for _, cs := range v.Snapshot.Checks {
+			if cs.ID == id {
+				for _, o := range v.Snapshot.Topology.Observers {
+					if o.ID == x.Observer {
+						return v.hostResource(cs, x, o), true
+					}
+				}
+				return v.hostResource(cs, x, model.Observer{ID: x.Observer}), true
+			}
+		}
+	}
+	return CardResource{}, false
+}
+
+func (v View) hostResource(cs model.CheckState, x model.Check, o model.Observer) CardResource {
+	name := o.Name
+	if name == "" {
+		name = o.ID
+	}
+	r := CardResource{Check: cs.ID, Observer: Ref{o.ID, name}, Health: cs.Health, Freshness: cs.Freshness}
+	if cs.Last != nil {
+		r.SampledAt = cs.Last.SampledAt
+	}
+	current := !v.Cached && !v.Draft && !Expired(v.Snapshot, v.Now) && cs.Freshness == "fresh" && cs.Last != nil && !cs.Last.SampledAt.After(v.Now.Add(5*time.Second)) && v.Now.Sub(cs.Last.SampledAt) <= time.Duration(x.StaleSeconds)*time.Second
+	if current && (cs.Last.Outcome == "ok" || cs.Last.Outcome == "policy") && cs.Last.Evidence == "reported" {
+		r.Facts = maps.Clone(cs.Last.Facts)
+	} else {
+		r.Health = "unknown"
+	}
+	if v.Cached || Expired(v.Snapshot, v.Now) {
+		r.Freshness = "cached"
+	}
+	return r
 }
 
 // ResourceValues are the same compact summaries on a card and in CLI output.

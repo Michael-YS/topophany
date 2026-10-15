@@ -61,6 +61,7 @@ func (m *Model) draw() *Canvas {
 	if w < 30 || h < 10 {
 		return nil
 	}
+	m.absorb()
 	cv := NewCanvas(w, h)
 	cv.Hyperlinks = m.Hyperlinks
 	if !m.Transparent {

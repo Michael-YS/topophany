@@ -122,8 +122,24 @@ func (m *Model) detailBody(r Row, w int) []vline {
 	}
 	kw = min(kw, 22, max(8, w*2/5))
 	vw := max(8, w-kw-2)
+	// A node's local resources are drawn as charts in place of their lines.
+	var resources []view.CardResource
+	if r.Kind == "node" {
+		resources = m.view().HostResources()[r.ID]
+	}
+	charted := false
 	for _, raw := range r.Details {
 		l := strings.TrimSpace(raw)
+		if charted && l != "" {
+			continue
+		}
+		charted = false
+		if len(resources) > 0 && strings.HasPrefix(l, "Local resources: ") {
+			blank()
+			out = append(out, m.nodeResources(resources[0], w)...)
+			resources, charted = resources[1:], true
+			continue
+		}
 		if key, val, ok := detailKV(strings.TrimLeft(raw, " ")); ok && val == "" && l == key+":" {
 			if key != "ID" && key != "State" {
 				out = append(out, vline{{key + strings.Repeat(" ", max(0, kw-width(key))+2), fg(cMuted)}, {"—", fg(cFaint)}})

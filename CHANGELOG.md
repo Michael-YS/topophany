@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Host resources are drawn instead of listed. Each Servers card has a panel
+  for CPU, memory and disk that fills as far as the resource is used, its top
+  the last few minutes of samples, with the reading now and the capacity
+  beside it. A host check's evidence and its node's details chart CPU, memory
+  and disk on the samples' time axis with each configured limit drawn across,
+  in place of the probe's elapsed time. The TUI reads each host check's recent
+  history once and keeps newer snapshot samples (at most 240 per check, under
+  the current contract only); readings that are not current stay faint and
+  their values withheld. Preview CPU now jitters between samples and memory
+  and disk drift slowly.
+
 - Share host CPU, memory and selected-process aggregates briefly across checks,
   retaining the original sample timestamp and independent disk/assertion results.
   Linux CPU collection reads only the aggregate line instead of the entire

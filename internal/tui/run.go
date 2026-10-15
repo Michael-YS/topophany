@@ -248,7 +248,11 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 			}
 		case got := <-samples.results:
 			samples.busy = false
-			m.KeepSamples(got.check, got.entries, got.err)
+			if got.trend {
+				m.KeepTrend(got.check, got.entries, got.err)
+			} else {
+				m.KeepSamples(got.check, got.entries, got.err)
+			}
 			samples.request(ctx, m, false)
 			if e = draw(); e != nil {
 				return e

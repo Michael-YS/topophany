@@ -103,20 +103,8 @@ func (m *Model) card(f fleet, r Row, w int, selected bool) []cardRow {
 	add(cardRow{left: sub, right: where, bg: band, bar: hue})
 	if len(c.Resources) > 0 {
 		heading("LOCAL RESOURCES", len(c.Resources))
-		for _, resource := range c.Resources {
-			hit := "goto:check:" + resource.Check
-			add(cardRow{left: []span{{string(healthGlyph(resource.Health)) + " ", fg(healthColor(resource.Health))}, {resource.Observer.Name, fg(cMuted)}}, right: []span{{resource.Freshness, fg(cMuted)}}, hit: hit})
-			for _, pair := range view.ResourceValues(resource) {
-				color := cText
-				if resource.Health == "degraded" {
-					color = cWarn
-				}
-				if resource.Health == "unknown" {
-					color = cFaint
-				}
-				add(cardRow{left: []span{{pair[0], fg(cMuted)}}, right: []span{{pair[1], fg(color)}}, hit: hit})
-			}
-		}
+		rows[len(rows)-1].right = m.resourceAside(c.Resources)
+		rows = append(rows, m.resourceRows(c.Resources, w)...)
 	}
 
 	// What runs here, healthiest last so trouble reads first.
@@ -437,7 +425,11 @@ func (m *Model) drawCard(cv *Canvas, x, y, w int, rows []cardRow, r Row, index i
 			cx += cv.Text(cx, yy, ellipsis(s.s, x+2+lw-cx), on(s.st), x+2+lw-cx)
 		}
 		if row.rule {
-			for k := cx + 1; k < x+2+inner; k++ {
+			end := x + 2 + inner
+			if rw > 0 {
+				end -= rw + 1
+			}
+			for k := cx + 1; k < end; k++ {
 				cv.Set(k, yy, '─', fg(cLine).Bg(bg))
 			}
 		}
