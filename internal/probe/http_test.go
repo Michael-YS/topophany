@@ -1,6 +1,8 @@
 package probe
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -355,6 +357,54 @@ func TestDisabledAndUnsupportedAreNotInventedMeasurements(t *testing.T) {
 	}
 	if config.Revision(c) == "" {
 		t.Fatal("missing contract revision")
+	}
+}
+
+// gzipNothing answers with empty gzip members, each decoding to nothing,
+// until the client goes, and counts the requests that asked for gzip.
+func gzipNothing(asked *atomic.Int32) http.HandlerFunc {
+	var members bytes.Buffer
+	for members.Len() < 32<<10 {
+		gzip.NewWriter(&members).Close()
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept-Encoding") != "" {
+			asked.Add(1)
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		for r.Context().Err() == nil {
+			if _, e := w.Write(members.Bytes()); e != nil {
+				return
+			}
+		}
+	}
+}
+
+// A peer that streams compressed nothing cannot hold a check, or a Mihomo
+// read, for as long as it may take: the probe asks for no compression and
+// decodes none, so its budget counts what the peer sends and runs out at
+// once.
+func TestCompressedNothingRunsOutTheBudget(t *testing.T) {
+	var asked atomic.Int32
+	s := httptest.NewServer(gzipNothing(&asked))
+	defer s.Close()
+	x := httpCheck(s.URL)
+	x.TimeoutSeconds = 10
+	mihomo := httpCheck(s.URL)
+	mihomo.Kind, mihomo.TimeoutSeconds = "mihomo", 10
+	mihomo.Adapter.RootProxy = "proxy"
+	for _, tt := range []struct {
+		check model.Check
+		code  string
+	}{{x, "body_budget_exceeded"}, {mihomo, "response_limit_exceeded"}} {
+		start := time.Now()
+		o := (Runner{}).Run(context.Background(), testkit.Config(), tt.check)
+		if o.Code != tt.code || time.Since(start) > 3*time.Second {
+			t.Fatalf("%s: %s after %v", tt.check.Kind, o.Code, time.Since(start))
+		}
+	}
+	if asked.Load() != 0 {
+		t.Fatal("a probe asked for a compressed answer")
 	}
 }
 

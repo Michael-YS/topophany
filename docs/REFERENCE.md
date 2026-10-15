@@ -61,7 +61,7 @@ Defaults: `interval_seconds=60`, `timeout_seconds=8`, `stale_seconds=3*interval`
 
 `expected_exit` accepts an array of expected IP addresses or CIDR blocks. `exit_format` supports `plain`, `trace`, and `json` (with `exit_json_key`, default `ip`). When the observed egress IP violates constraints, `outcome` is set to `policy` while connectivity facts are preserved. Timestamps and configuration revisions are bound to measurements, preventing metric mixing across target changes.
 
-Default HTTP maximum response body size is 65,536 bytes (configurable up to 1 MiB). Exceeding this budget reports a monitor configuration error rather than target downtime. Throughput stress-testing modes are not provided; heavy payload validations should be performed via authorized external diagnostics.
+Default HTTP maximum response body size is 65,536 bytes (configurable up to 1 MiB). Exceeding this budget reports a monitor configuration error rather than target downtime. Probes, like every Topophany client, ask for no compression and decode none, so the budget, and a Mihomo controller's 2 MiB, count the bytes the peer sends: a body the server compresses anyway is checked as sent, and `contains` and `body_regex` see it compressed. Throughput stress-testing modes are not provided; heavy payload validations should be performed via authorized external diagnostics.
 
 ### Proxy Chains and Adapters
 

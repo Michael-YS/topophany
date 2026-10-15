@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counts them and sheds the oldest without visiting the rest; with a
   full share of floors, a write prunes them about as fast as with a
   thousand.
+- A peer can no longer hold a probe for its whole timeout by streaming
+  compressed nothing. HTTP and Mihomo probes asked for gzip and counted
+  their body budgets after decoding, so a target or controller sending
+  empty gzip members without end kept the check, and a scheduler slot,
+  busy until the check timed out, up to five minutes. Probes, workers,
+  viewers and webhooks now ask for no compression and decode none, so
+  each budget counts what the peer sends and runs out at once. A target
+  that compresses its body unasked is checked as sent: `contains` and
+  `body_regex` see it compressed.
 
 ## [0.8.1] - 2026-10-14
 

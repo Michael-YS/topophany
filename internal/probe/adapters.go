@@ -117,7 +117,9 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 	if e != nil {
 		return e
 	}
-	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, TLSClientConfig: tc, MaxResponseHeaderBytes: 32768, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
+	// Compression stays off, so the response limit counts what the
+	// controller sends, as for an HTTP check.
+	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, MaxResponseHeaderBytes: 32768, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
 		return d.DialContext(ctx, n, pinned(a, x.ResolveIP))
 	}}
 	defer tr.CloseIdleConnections()

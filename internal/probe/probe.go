@@ -177,7 +177,12 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if e != nil {
 		return e
 	}
-	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, TLSClientConfig: tc, ForceAttemptHTTP2: false, MaxResponseHeaderBytes: 32768, ResponseHeaderTimeout: time.Duration(x.TimeoutSeconds) * time.Second, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
+	// Compression stays off: a body the transport decoded would be counted
+	// after decoding, so a peer could stream compressed nothing, empty
+	// gzip members without end, for as long as the check may take while
+	// the body budget never filled. Undecoded, the budget counts what the
+	// peer sends.
+	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, ForceAttemptHTTP2: false, MaxResponseHeaderBytes: 32768, ResponseHeaderTimeout: time.Duration(x.TimeoutSeconds) * time.Second, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
 		return d.DialContext(ctx, n, pinned(a, x.ResolveIP))
 	}}
 	defer tr.CloseIdleConnections()

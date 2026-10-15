@@ -1,6 +1,8 @@
 package client
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -203,6 +205,37 @@ func TestMalformedSnapshotsAndBodyBudget(t *testing.T) {
 			t.Fatal("bad payload accepted")
 		}
 		s.Close()
+	}
+}
+
+// A collector that streams compressed nothing cannot hold a read for as
+// long as the client waits: the client asks for no compression and
+// decodes none, so its budget counts what the collector sends.
+func TestCompressedNothingRunsOutTheBudget(t *testing.T) {
+	var members bytes.Buffer
+	for members.Len() < 32<<10 {
+		gzip.NewWriter(&members).Close()
+	}
+	var asked atomic.Int32
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept-Encoding") != "" {
+			asked.Add(1)
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		for r.Context().Err() == nil {
+			if _, e := w.Write(members.Bytes()); e != nil {
+				return
+			}
+		}
+	}))
+	defer s.Close()
+	c := newClient(t, s.URL)
+	start := time.Now()
+	if _, _, e := c.Snapshot(context.Background(), ""); e == nil || time.Since(start) > 4*time.Second {
+		t.Fatal("compressed nothing held the read", e, time.Since(start))
+	}
+	if asked.Load() != 0 {
+		t.Fatal("the client asked for a compressed answer")
 	}
 }
 func TestNoRedirectCredentialLeak(t *testing.T) {

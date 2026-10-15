@@ -185,7 +185,8 @@ func TestWebhookFormats(t *testing.T) {
 	for _, f := range Formats {
 		wait(t, func() bool { return len(endpoints[f].received()) == 1 })
 		got := endpoints[f].received()[0]
-		if got.header.Get("Authorization") != "Bearer tk_"+f || !strings.HasPrefix(got.header.Get("User-Agent"), "Topophany/") {
+		// No compression is asked for: what is read of an answer is what was sent.
+		if got.header.Get("Authorization") != "Bearer tk_"+f || !strings.HasPrefix(got.header.Get("User-Agent"), "Topophany/") || got.header.Get("Accept-Encoding") != "" {
 			t.Fatalf("%s: headers %v", f, got.header)
 		}
 		body := string(got.body)

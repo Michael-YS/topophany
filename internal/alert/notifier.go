@@ -415,6 +415,7 @@ var defaultClient = &http.Client{
 	Timeout: 10 * time.Second,
 	Transport: &http.Transport{
 		Proxy:                 nil,
+		DisableCompression:    true, // what is read of an answer is what it sent
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
