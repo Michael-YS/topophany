@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   socket remains to evict. New connections no longer receive an intermittent
   EOF despite available capacity; source and global connection limits remain
   enforced.
+- Avoid false secret-reflection test failures when a contract digest happens
+  to contain a short hexadecimal fragment from the test credential.
 
 ## [0.9.0] - 2026-10-15
 

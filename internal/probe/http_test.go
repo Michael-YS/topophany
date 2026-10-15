@@ -465,7 +465,9 @@ func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 				return
 			}
 			b, _ := json.Marshal(o)
-			for _, part := range []string{token[:12], token[12:], "a1b2", "A1B2"} {
+			// Include an IPv6 separator so an unrelated contract digest cannot
+			// coincidentally match the reflected address fragment.
+			for _, part := range []string{token[:12], token[12:], "a1b2:c3d4", "A1B2:C3D4"} {
 				if strings.Contains(string(b), part) {
 					t.Fatalf("observation carries %q: %s", part, b)
 				}
