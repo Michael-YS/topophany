@@ -74,6 +74,19 @@ func TestSecretTransportBinding(t *testing.T) {
 	}
 }
 
+// The public topology of an SSH hop, its login and files withheld, still
+// validates, so a viewer reads a topology that has one.
+func TestPublicSSHHopValidates(t *testing.T) {
+	c := testkit.Config()
+	c.Paths[0].Proxies = []model.Proxy{{Kind: "ssh", Address: "192.0.2.50:22", SSHUser: "bastion-login", SSHIdentityFile: "/etc/topophany/id_ed25519", SSHKnownHosts: "/etc/topophany/known_hosts"}}
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.ValidatePublic(config.Public(c)); err != nil {
+		t.Fatal("the public topology of an SSH hop does not validate:", err)
+	}
+}
+
 func TestGraphDepthIsBoundedAcrossSharedDAGBranches(t *testing.T) {
 	c := testkit.Config()
 	for i := 0; i < 40; i++ {

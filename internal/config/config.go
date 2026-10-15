@@ -575,6 +575,7 @@ func Public(c model.Config) model.Config {
 			p := &out.Paths[i].Proxies[j]
 			p.Username = ""
 			p.PasswordEnv = ""
+			p.SSHUser = ""
 			p.SSHIdentityFile = ""
 			p.SSHKnownHosts = ""
 			p.CAFile = ""

@@ -186,9 +186,10 @@ func TestAPIReadBoundariesAndRedaction(t *testing.T) {
 	srv.Config.Checks[0].HTTP.BearerEnv = "PRIVATE_API_TOKEN"
 	srv.Config.Checks[0].Target = "https://example.invalid/health?secret=private#secret-fragment"
 	srv.Config.Endpoints[0].Address = "https://user:secret-password@example.invalid/#secret-fragment"
+	srv.Config.Paths[0].Proxies = []model.Proxy{{Kind: "ssh", Address: "192.0.2.50:22", SSHUser: "bastion-login-7f3", SSHIdentityFile: "/private/id_ed25519", SSHKnownHosts: "/private/known_hosts"}}
 	for _, path := range []string{"/v1/config", "/v1/snapshot"} {
 		w := request(h, "GET", path, viewerToken, "", nil)
-		for _, secret := range []string{"PRIVATE_API_TOKEN", "secret=private", "secret-fragment", "secret-password"} {
+		for _, secret := range []string{"PRIVATE_API_TOKEN", "secret=private", "secret-fragment", "secret-password", "bastion-login-7f3", "id_ed25519", "known_hosts"} {
 			if w.Code != 200 || strings.Contains(w.Body.String(), secret) {
 				t.Fatal(path, "configuration credentials leaked", secret, w.Body.String())
 			}

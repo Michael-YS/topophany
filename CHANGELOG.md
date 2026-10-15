@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rollup's outcomes. Every control is now written as a `\u` escape,
   which reads back the same, and a rollup whose outcomes are not named
   in plain text is refused.
+- Viewers no longer see an SSH hop's login. The topology a collector
+  gives viewers withheld a proxy's username, password, identity and
+  known-hosts files, but kept `ssh_user`, so `/v1/config` and every
+  snapshot named the account the worker logs into the bastion as. It is
+  now withheld with the rest, and changing it changes no public
+  revision or contract.
 
 ## [0.8.1] - 2026-10-14
 

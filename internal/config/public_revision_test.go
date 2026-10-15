@@ -2,6 +2,9 @@ package config
 
 import (
 	"encoding/json"
+	"maps"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -21,7 +24,7 @@ func revisionFixture(t testing.TB) model.Config {
 	c.Checks[0].CAFile = "/private/ca-a.pem"
 	p := &c.Paths[0].Proxies[0]
 	p.Username, p.PasswordEnv = "alice", "PASSWORD_A"
-	p.SSHIdentityFile, p.SSHKnownHosts, p.CAFile = "/private/key-a", "/private/hosts-a", "/private/proxy-ca-a"
+	p.SSHUser, p.SSHIdentityFile, p.SSHKnownHosts, p.CAFile = "bastion-a", "/private/key-a", "/private/hosts-a", "/private/proxy-ca-a"
 	return c
 }
 
@@ -67,13 +70,14 @@ func TestPublicRevisionIgnoresEveryRedactedField(t *testing.T) {
 		{"check_ca", func(c *model.Config) { c.Checks[0].CAFile = "/private/ca-b.pem" }},
 		{"proxy_user", func(c *model.Config) { c.Paths[0].Proxies[0].Username = "bob" }},
 		{"proxy_password", func(c *model.Config) { c.Paths[0].Proxies[0].PasswordEnv = "PASSWORD_B" }},
+		{"ssh_user", func(c *model.Config) { c.Paths[0].Proxies[0].SSHUser = "bastion-b" }},
 		{"ssh_identity", func(c *model.Config) { c.Paths[0].Proxies[0].SSHIdentityFile = "/private/key-b" }},
 		{"known_hosts", func(c *model.Config) { c.Paths[0].Proxies[0].SSHKnownHosts = "/private/hosts-b" }},
 		{"proxy_ca", func(c *model.Config) { c.Paths[0].Proxies[0].CAFile = "/private/proxy-ca-b" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := revisionFixture(t)
-			private, public := Revision(c), PublicRevision(c)
+			private, public, contracts := Revision(c), PublicRevision(c), PublicContracts(c)
 			tc.change(&c)
 			before, err := json.Marshal(c)
 			if err != nil {
@@ -82,7 +86,7 @@ func TestPublicRevisionIgnoresEveryRedactedField(t *testing.T) {
 			if Revision(c) == private {
 				t.Fatal("private execution identity ignored a private change")
 			}
-			if PublicRevision(c) != public {
+			if PublicRevision(c) != public || !maps.Equal(PublicContracts(c), contracts) {
 				t.Fatal("public digest provides an offline private-field oracle")
 			}
 			if PublicRevision(Public(c)) != public {
@@ -93,6 +97,27 @@ func TestPublicRevisionIgnoresEveryRedactedField(t *testing.T) {
 				t.Fatal("revision calculation mutated executor configuration")
 			}
 		})
+	}
+}
+
+// A proxy hop shows viewers what it is, where and, for TLS, the name it
+// verifies; every other field of it is how the executor authenticates
+// there, its login among them, and none reaches the public topology. A
+// field added to a hop is taken for private until it is named here.
+func TestPublicTopologyKeepsNoProxyCredential(t *testing.T) {
+	public := map[string]bool{"Kind": true, "Address": true, "Node": true, "ServerName": true}
+	c := revisionFixture(t)
+	p := reflect.ValueOf(&c.Paths[0].Proxies[0]).Elem()
+	for i := range p.NumField() {
+		if name := p.Type().Field(i).Name; !public[name] {
+			p.Field(i).SetString("private-" + strings.ToLower(name))
+		}
+	}
+	b, _ := json.Marshal(Public(c))
+	for i := range p.NumField() {
+		if name := p.Type().Field(i).Name; !public[name] && strings.Contains(string(b), "private-"+strings.ToLower(name)) {
+			t.Errorf("the public topology keeps a proxy's %s", name)
+		}
 	}
 }
 

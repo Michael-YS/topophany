@@ -95,8 +95,9 @@ func TargetQuery(c model.Config, x model.Check) bool {
 	return x.Kind == "http" && err == nil && u.RawQuery != ""
 }
 
-// ValidatePublic restores only redacted SSH file placeholders on an owned copy;
-// the public topology is never executable and must still pass all graph checks.
+// ValidatePublic restores only redacted SSH login and file placeholders on an
+// owned copy; the public topology is never executable and must still pass all
+// graph checks.
 func ValidatePublic(c model.Config) error {
 	raw, err := json.Marshal(c)
 	if err != nil {
@@ -110,6 +111,7 @@ func ValidatePublic(c model.Config) error {
 		for j := range copy.Paths[i].Proxies {
 			p := &copy.Paths[i].Proxies[j]
 			if p.Kind == "ssh" {
+				p.SSHUser = "redacted"
 				p.SSHIdentityFile = "redacted"
 				p.SSHKnownHosts = "redacted"
 			}
