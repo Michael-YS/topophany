@@ -5,6 +5,7 @@ import (
 	"maps"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 )
 
@@ -76,5 +77,5 @@ func (o Options) share(total int64, id string) int64 {
 	return total * int64(o.ObserverWeights[id]) / o.weightTotal
 }
 func (o Options) byteShare(id string) int64 {
-	return o.share(max(o.MaxStateBytes-1024-int64(len(o.Observers))*2048, 0), id)
+	return o.share(max(o.MaxStateBytes-1024-int64(len(o.Observers))*model.HeartbeatReservation, 0), id)
 }

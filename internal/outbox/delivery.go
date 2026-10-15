@@ -22,13 +22,17 @@ type destination struct {
 	failures  int
 	isolating bool
 	// Storage backpressure delays samples, not the executor's liveness.
-	separateBeat bool
+	separateBeat         bool
+	code                 string
+	lastAck, lastContact time.Time
+	quarantined          int64
 }
 type Delivery struct {
 	destinations []destination
 	Now          func() time.Time
 	Project      string
 	mu           sync.Mutex
+	reports      map[string]model.DeliveryStatus
 	revision     string // what the worker runs; a reload changes it mid-round
 }
 type Result struct {
@@ -128,6 +132,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	dest := &d.destinations[i]
 	rid := Recipient(dest.endpoint.URL)
 	result = Result{Recipient: rid}
+	defer func() { d.publish(q, dest, result) }()
 	revision := d.currentRevision()
 	now := d.Now()
 	if now.Before(dest.next) {
@@ -172,7 +177,8 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		}
 	}
 	if hb != nil && batch.Revision == revision && batch.Schema == model.BatchSchema {
-		h := *hb
+		h := model.CloneHeartbeat(*hb)
+		h.Delivery = d.Statuses()
 		batch.Heartbeat = &h
 	}
 	if len(batch.Observations) == 0 && batch.Heartbeat == nil {
@@ -180,7 +186,14 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	}
 	e := client.PostBatch(ctx, dest.http, dest.endpoint, batch)
 	if e == nil {
+		dest.lastContact = d.Now()
+		dest.code = ""
+	} else {
+		dest.code = deliveryCode(e)
+	}
+	if e == nil {
 		if e = q.Ack(ids, rid); e != nil {
+			dest.code = "local_ack_failed"
 			result.Error = "local acknowledgement persistence failed"
 			return
 		}
@@ -211,6 +224,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 			return
 		}
 		if qe := q.Quarantine(ids, rid, he.Error()); qe != nil {
+			dest.code = "local_quarantine_failed"
 			result.Error = "quarantine persistence failed"
 		} else {
 			// The collector answered and the refused item is set aside:
@@ -244,6 +258,11 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 // heartbeat consumes no pending item and never acknowledges observations.
 // It always describes the current worker, even while old samples wait.
 func (d *Delivery) heartbeat(ctx context.Context, dest *destination, revision string, hb *model.Heartbeat) error {
-	h := *hb
-	return client.PostBatch(ctx, dest.http, dest.endpoint, model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: revision, Heartbeat: &h})
+	h := model.CloneHeartbeat(*hb)
+	h.Delivery = d.Statuses()
+	err := client.PostBatch(ctx, dest.http, dest.endpoint, model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: revision, Heartbeat: &h})
+	if err == nil {
+		dest.lastContact = d.Now()
+	}
+	return err
 }

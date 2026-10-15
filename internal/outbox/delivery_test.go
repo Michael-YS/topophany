@@ -53,6 +53,7 @@ func TestDeliveryConcurrentMetadataAccess(t *testing.T) {
 					} else {
 						d.Close()
 					}
+					d.Statuses()
 					runtime.Gosched()
 				}
 			}()

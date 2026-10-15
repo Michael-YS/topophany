@@ -187,6 +187,9 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 			s.Health = "up"
 			s.Reason = "recent executor evidence; target health evaluated separately"
 		}
+		if h, ok := beats[o.ID]; ok && h.Project == c.Project {
+			s.Delivery = model.CloneHeartbeat(h).Delivery
+		}
 		if s.Contracts == "outdated" {
 			s.Reason += "; it measures an outdated topology, so samples of checks that changed are refused until it reloads"
 		}

@@ -200,6 +200,8 @@ type Observation struct {
 // Heartbeat says an executor is alive. Contracts digests the contracts of
 // its observer's checks as it runs them (see config.ObserverContracts).
 type Heartbeat struct {
+	Delivery []DeliveryStatus `json:"delivery,omitempty"`
+
 	Project    string    `json:"project,omitempty"`
 	Revision   string    `json:"revision,omitempty"`
 	Contracts  string    `json:"contracts,omitempty"`
@@ -328,6 +330,8 @@ type IncidentRecord struct {
 // samples of changed checks are refused until it reloads), or "" when it
 // has not said.
 type ObserverState struct {
+	Delivery []DeliveryStatus `json:"delivery,omitempty"`
+
 	ID        string    `json:"id"`
 	Health    string    `json:"health"`
 	LastSeen  time.Time `json:"last_seen"`

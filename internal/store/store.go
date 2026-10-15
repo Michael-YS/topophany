@@ -797,7 +797,7 @@ func (s *Store) View() ([]model.Observation, map[string]model.Heartbeat) {
 	rows := s.allRows()
 	beats := map[string]model.Heartbeat{}
 	for k, v := range s.beats {
-		beats[k] = v
+		beats[k] = model.CloneHeartbeat(v)
 	}
 	s.mu.Unlock()
 	b, _ := json.Marshal(rows)

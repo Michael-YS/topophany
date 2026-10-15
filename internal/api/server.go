@@ -560,6 +560,13 @@ func (g *generation) validateBatch(b model.Batch, observer string, now time.Time
 		}
 	}
 	if h := b.Heartbeat; h != nil {
+		encodedHeartbeat, _ := json.Marshal(h)
+		if len(encodedHeartbeat) > model.MaxHeartbeatBytes {
+			return "heartbeat_limit_exceeded", 400
+		}
+		if !model.ValidDelivery(h.Delivery, now) {
+			return "invalid_delivery_status", 400
+		}
 		if h.Observer != observer {
 			return "heartbeat_scope_violation", 403
 		}

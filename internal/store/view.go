@@ -24,7 +24,7 @@ func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]mod
 	}
 	beats := make(map[string]model.Heartbeat, len(s.beats))
 	for k, v := range s.beats {
-		beats[k] = v
+		beats[k] = model.CloneHeartbeat(v)
 	}
 	s.mu.Unlock()
 
