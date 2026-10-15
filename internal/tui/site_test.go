@@ -251,7 +251,13 @@ func (r *recorder) record() {
 
 	m.MapMode = "geo"
 	r.chapter("geo")
-	r.play(5*s, 140*milli, 140*milli)
+	r.play(3*s, 140*milli, 140*milli)
+	// Give the geographic map room, then show both presentations and
+	// return to the panels before moving on to the network graph.
+	for _, key := range []string{"f", "p", "p", "f"} {
+		m.Key(key)
+		r.play(3*s, 140*milli, 140*milli)
+	}
 
 	m.MapMode = "network"
 	r.chapter("network")

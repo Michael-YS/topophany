@@ -40,8 +40,8 @@ type docClip struct {
 }
 
 var docClips = []docClip{
-	// An outage arriving on the Overview, then its route and evidence.
-	{name: "outage", chapters: []string{"outage", "route"}},
+	// An outage, its route and evidence, then the geographic map controls.
+	{name: "outage", chapters: []string{"outage", "route", "geo"}},
 	// The network from two vantage points, then the three maps.
 	{name: "views", chapters: []string{"vantage", "virtual", "geo", "network"}},
 }
