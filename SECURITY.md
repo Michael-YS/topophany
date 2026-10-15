@@ -6,8 +6,8 @@ Topophany is pre-1.0. Security fixes are made on the latest minor release line o
 
 | Version | Supported |
 | ------- | --------- |
-| 0.3.x   | Yes       |
-| < 0.3   | No        |
+| 0.8.x   | Yes       |
+| < 0.8   | No        |
 
 ## Reporting a Vulnerability
 

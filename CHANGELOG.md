@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-14
+
+Everything since 0.3.0. No release was published between them.
+
 ### Added
 
 - On the geo map, `p` hides every site plate and draws the arcs dashed,
@@ -96,22 +100,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `topo preview [--scenario N] status` (or `show`, `history`) reads the
   synthetic evidence, and `topo preview scenarios` lists the scenarios, so
   scripts and agents can be rehearsed on a simulated outage.
-- The preview speaks English, Japanese and Chinese. Its built-in topology
-  is written once with references such as `@node.win`, and the names,
-  notes, places and scenarios come from one catalog per language in
-  `internal/preview/locales`; a language is supported when its catalog is
-  there. `topo preview --lang` picks one, and by default the first of
-  `LC_ALL`, `LC_MESSAGES` and `LANG` that is set decides, falling back to
-  English. `--print-topology` writes the topology in that language, and
-  `topo preview scenarios --json` gives each scenario an `id` that is the
-  same in every language. A test holds every language to the same
-  evidence, scenario by scenario.
+- The preview speaks English, Japanese and Chinese. Names, notes and
+  scenarios come from one catalog per language in
+  `internal/preview/locales`, through references such as `@node.win`; a
+  language is supported when its catalog is there. Each language also has
+  its own placed topology, so the home is Seattle, Osaka or Chengdu
+  rather than one private network shown in translation. The node IDs,
+  the scenarios and the evidence stay the same, and a test holds every
+  language to that. `topo preview --lang` picks one, and by default the
+  first of `LC_ALL`, `LC_MESSAGES` and `LANG` that is set decides,
+  falling back to English. `--print-topology` writes the topology in
+  that language, and `topo preview scenarios --json` gives each scenario
+  an `id` that is the same in every language.
 - The homepage is in English at `/`, Japanese at `/ja/` and Chinese at
   `/zh/`, each linking the others, with a language menu and a hint that
   offers a visitor arriving from elsewhere the page in their browser's
   language. The pages are written by `scripts/build_site.py` from one
   template per page in `site/src` and one catalog per language, and each
-  language replays a TUI recording of its own preview.
+  language replays a TUI recording of its own preview. It says what
+  Topophany is, and can be found as that: a sitemap naming every
+  language's page, `robots.txt`, and schema.org data for the site and
+  the software. Headings are lit dot by dot, the docs sit beside the
+  install, and the semantics are drawn as the TUI draws them. The page
+  is a line or two where it was the manual, and what was there for
+  effect is gone.
 - The README is translated into Japanese (`README.ja.md`) and Chinese
   (`README.zh.md`); a test keeps their commands, links and sections those
   of the original, and each shows the TUI in its own language.
@@ -176,9 +188,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-flight samples or renames its incident; changing what it measures
   still starts it afresh. `topo validate` prints every contract, snapshots
   and history show public contracts, and incidents are ordered by scope.
-  Collectors accept the schema 1 batches of 0.4 workers while the
+  Collectors accept the schema 1 batches of 0.3 workers while the
   topology is unchanged; upgrade collectors first, then workers, then
-  viewers, which read only schema 2 snapshots. Schema 2 clients ignore
+  viewers. 0.8 viewers read only 0.8 collectors. Schema 2 clients ignore
   snapshot fields they do not know, so later additions will not break
   them, and pass over a collector of another release rather than refuse.
 - What the TUI shows is derived in one place, `internal/view`, which the
@@ -187,6 +199,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `topo preview` follows the locale, so where none of its languages is
   asked for it now shows the built-in topology in English rather than
   Chinese; `--lang zh` shows it as before.
+- The reference lists every setting the TUI reads from the environment:
+  `NO_COLOR`, `COLORTERM`, `TOPO_BACKGROUND`, `TOPO_HYPERLINKS`,
+  `TOPO_CELL_ASPECT` and the locale variables the preview follows.
+- The acceptance checklist names what to confirm on live hardware for
+  the changes since 0.3.0, among them an overloaded worker, a check
+  flapping past its history, storage near capacity, one collector of a
+  pair answering slowly, anonymous load on a public collector, and a
+  webhook outage across a restart. They are procedures, not results.
 
 ### Fixed
 
@@ -316,7 +336,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory named `~`. The reference now says that a relative path is
   resolved against the worker's working directory, the security notes
   that `tailscale`, `wg` and `ssh` are found on `PATH` rather than at
-  fixed paths, `SECURITY.md` that 0.3.x is the supported line, and
+  fixed paths, `SECURITY.md` that 0.8.x is the supported line, and
   `--outbox-bytes` that quarantine has a budget of its own.
 
 ## [0.3.0] - 2026-10-14
@@ -482,7 +502,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/WhitenWhiten/topophany/compare/v0.3.0...v0.8.0
 [0.3.0]: https://github.com/WhitenWhiten/topophany/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/WhitenWhiten/topophany/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/WhitenWhiten/topophany/releases/tag/v0.1.0
