@@ -548,21 +548,8 @@ func (g *generation) validateBatch(b model.Batch, observer string, now time.Time
 		if v.Evidence != expected {
 			return "evidence_kind_mismatch", 400
 		}
-		if v.DurationMS < 0 || v.DurationMS > int64(x.TimeoutSeconds+5)*1000 || len(v.Detail) > 1024 || len(v.Code) > 96 || len(v.Stage) > 96 || len(v.PathEvidence) > 128 || len(v.Facts) > 32 || len(v.Timings) > 16 {
-			return "observation_budget_exceeded", 400
-		}
-		for k, val := range v.Facts {
-			if len(k) > 128 || len(val) > 2048 || secure.Text(k) != k || secure.Text(val) != val {
-				return "invalid_fact", 400
-			}
-		}
-		for k, n := range v.Timings {
-			if len(k) > 64 || secure.Text(k) != k || n < 0 || n > int64(x.TimeoutSeconds+5)*1000 {
-				return "invalid_timing", 400
-			}
-		}
-		if secure.Text(v.Detail) != v.Detail || secure.Text(v.Code) != v.Code || secure.Text(v.Stage) != v.Stage || secure.Text(v.PathEvidence) != v.PathEvidence {
-			return "unsafe_diagnostic_text", 400
+		if code := config.ObservationBounds(v, time.Duration(x.TimeoutSeconds+5)*time.Second); code != "" {
+			return code, 400
 		}
 	}
 	if h := b.Heartbeat; h != nil {

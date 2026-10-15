@@ -308,8 +308,11 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 		if len(h.Revision) != 64 || len(h.Contract) != 64 || h.Check != check || len(h.Entries) > limit {
 			return empty, "", errors.New("invalid collector history")
 		}
+		// Each entry is held to what the collector held it to when a
+		// worker sent it, so nothing drawn from it, such as a latency bar
+		// from its duration, meets a value a sample cannot have.
 		for _, v := range h.Entries {
-			if v.Check != check || v.Project != h.Project || v.Contract != h.Contract || v.Revision != "" || len(v.Facts) > 32 || len(v.Timings) > 16 {
+			if v.Check != check || v.Project != h.Project || v.Contract != h.Contract || v.Revision != "" || !validEvidence(v) {
 				return empty, "", errors.New("invalid collector history")
 			}
 		}

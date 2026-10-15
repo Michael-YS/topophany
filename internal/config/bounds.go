@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -94,6 +95,45 @@ func TargetQuery(c model.Config, x model.Check) bool {
 	u, err := url.Parse(Target(c, x))
 	return x.Kind == "http" && err == nil && u.RawQuery != ""
 }
+
+// ObservationBounds says what is wrong with an observation's values, as
+// the code a collector refuses it with, or "" if nothing: what a worker
+// may send a collector and a collector a viewer alike. It took no time
+// below zero or past took, its check's timeout and five seconds; its
+// outcome is one of the closed list; and its diagnostics are short, plain
+// text. Its identity and its place are checked by whoever reads it.
+func ObservationBounds(v model.Observation, took time.Duration) string {
+	limit := took.Milliseconds()
+	switch v.Outcome {
+	case "ok", "fail", "unknown", "error", "policy":
+	default:
+		return "invalid_outcome"
+	}
+	if v.DurationMS < 0 || v.DurationMS > limit || len(v.Detail) > 1024 || len(v.Code) > 96 || len(v.Stage) > 96 || len(v.PathEvidence) > 128 || len(v.Facts) > 32 || len(v.Timings) > 16 {
+		return "observation_budget_exceeded"
+	}
+	for k, val := range v.Facts {
+		if len(k) > 128 || len(val) > 2048 || secure.Text(k) != k || secure.Text(val) != val {
+			return "invalid_fact"
+		}
+	}
+	for k, n := range v.Timings {
+		if len(k) > 64 || secure.Text(k) != k || n < 0 || n > limit {
+			return "invalid_timing"
+		}
+	}
+	if secure.Text(v.Detail) != v.Detail || secure.Text(v.Code) != v.Code || secure.Text(v.Stage) != v.Stage || secure.Text(v.PathEvidence) != v.PathEvidence {
+		return "unsafe_diagnostic_text"
+	}
+	return ""
+}
+
+// MaxTook is the longest any sample may take: the longest timeout a check
+// may have, and five seconds.
+const MaxTook = (MaxTimeoutSeconds + 5) * time.Second
+
+// MaxTimeoutSeconds is the longest timeout a check may have.
+const MaxTimeoutSeconds = 300
 
 // ValidatePublic restores only redacted SSH login and file placeholders on an
 // owned copy; the public topology is never executable and must still pass all

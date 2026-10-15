@@ -70,6 +70,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snapshot named the account the worker logs into the bastion as. It is
   now withheld with the rest, and changing it changes no public
   revision or contract.
+- A collector can no longer stop `topo` or the TUI with a sample no
+  worker could have sent. A history holding one passing sample that took
+  some time and one that took less than none drew its latency bar below
+  the lowest height, and the TUI's evidence panel or `topo show` for that
+  check crashed. History entries and a snapshot's last samples are now
+  held to what a collector holds a worker's samples to, durations and
+  timings from zero to the longest a check may take, a known outcome and
+  plain-text diagnostics, and refused otherwise, which the evidence says;
+  latency bars are drawn whatever durations they are given.
 
 ## [0.8.1] - 2026-10-14
 

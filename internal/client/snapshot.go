@@ -61,7 +61,7 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 		if len(c.Contract) != 64 {
 			return errors.New("invalid snapshot check contract")
 		}
-		if v := c.Last; v != nil && (v.Check != c.ID || v.Observer != c.Observer || v.Project != s.Project || v.Contract != c.Contract || v.Revision != "" || len(v.Facts) > 32 || len(v.Timings) > 16) {
+		if v := c.Last; v != nil && (v.Check != c.ID || v.Observer != c.Observer || v.Project != s.Project || v.Contract != c.Contract || v.Revision != "" || !validEvidence(*v)) {
 			return errors.New("invalid snapshot observation")
 		}
 		if len(c.Availability) > 8 {
@@ -158,6 +158,12 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 		open[r.ID] = open[r.ID] || r.State != "closed"
 	}
 	return nil
+}
+
+// validEvidence reports whether v is a sample a collector could have
+// accepted from a worker, whatever its check.
+func validEvidence(v model.Observation) bool {
+	return config.ObservationBounds(v, config.MaxTook) == "" && (v.Evidence == "measured" || v.Evidence == "reported")
 }
 
 // validRollup reports whether r is a rollup a collector could have sent:

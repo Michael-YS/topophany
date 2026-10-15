@@ -1,6 +1,8 @@
 package view
 
 import (
+	"math"
+	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
@@ -79,5 +81,32 @@ func TestStripAbsorbsSchedulerDrift(t *testing.T) {
 	}
 	if got := Glyphs(NewStrip(x, entries, now, 200).Slots); got != strings.Repeat("●", 100) {
 		t.Fatalf("drifting samples leave holes: %q", got)
+	}
+}
+
+// Latency bars are drawn whatever durations slots carry, below zero,
+// none at all or as long as can be, mixed in any way: one column a slot,
+// a bar of the eight heights or a blank, never a place outside them.
+func TestBarsDrawAnyDurations(t *testing.T) {
+	durations := []int64{math.MinInt64, -1 << 40, -40, -1, 0, 1, 40, 1 << 40, math.MaxInt64}
+	outcomes := []string{"ok", "ok", "fail", "none"}
+	r := rand.New(rand.NewPCG(1, 2))
+	for range 2000 {
+		slots := make([]Slot, r.IntN(12))
+		for i := range slots {
+			slots[i] = Slot{Outcome: outcomes[r.IntN(len(outcomes))], ElapsedMS: durations[r.IntN(len(durations))]}
+		}
+		got := []rune(Bars(slots))
+		if len(got) != len(slots) {
+			t.Fatalf("%v: %d columns", slots, len(got))
+		}
+		for i, c := range got {
+			if (slots[i].Outcome == "ok") != strings.ContainsRune(string(bars), c) || slots[i].Outcome != "ok" && c != ' ' {
+				t.Fatalf("%v: column %d is %q", slots, i, c)
+			}
+		}
+	}
+	if got := Bars([]Slot{{Outcome: "ok", ElapsedMS: 40}, {Outcome: "ok", ElapsedMS: -40}}); got != "█▁" {
+		t.Fatalf("one sample taking 40 ms and one below zero: %q", got)
 	}
 }

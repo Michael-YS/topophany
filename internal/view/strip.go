@@ -172,7 +172,8 @@ func Glyphs(slots []Slot) string {
 var bars = []rune("▁▂▃▄▅▆▇█")
 
 // Bars draws what each passing sample among slots took as a bar, from
-// nothing to the slowest of them; a slot with no passing sample is blank.
+// nothing to the slowest of them; a slot with no passing sample is blank,
+// and one that took no time, or less, has the lowest bar.
 func Bars(slots []Slot) string {
 	slowest := int64(0)
 	for _, sl := range slots {
@@ -188,7 +189,7 @@ func Bars(slots []Slot) string {
 		case slowest == 0:
 			out[i] = bars[0]
 		default:
-			out[i] = bars[min(len(bars)-1, int(math.Round(float64(len(bars)-1)*float64(sl.ElapsedMS)/float64(slowest))))]
+			out[i] = bars[min(len(bars)-1, max(0, int(math.Round(float64(len(bars)-1)*float64(sl.ElapsedMS)/float64(slowest)))))]
 		}
 	}
 	return string(out)

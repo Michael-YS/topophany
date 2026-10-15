@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/WhitenWhiten/topophany/internal/client"
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
@@ -88,5 +90,33 @@ func TestRemoteJSONEscapesControls(t *testing.T) {
 	}
 	if decoded.Checks[0].Reason != snapshot.Checks[0].Reason {
 		t.Fatal("remote diagnostics changed")
+	}
+}
+
+// A collector that sends samples no worker could have, one taking 40 ms
+// beside one taking less than nothing, has its history refused: show
+// says so where the samples would be, rather than the process stopping.
+func TestImpossibleDurationsAreRefusedNotDrawn(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	snapshot := engine.Build(c, "remote", "", nil, nil, now)
+	contract := config.PublicContracts(c)["home-http"]
+	entries := []model.Observation{testkit.Observation(c, "home-http", 1, now.Add(-2*time.Minute), "ok"), testkit.Observation(c, "home-http", 2, now.Add(-time.Minute), "ok")}
+	entries[0].DurationMS, entries[1].DurationMS = 40, -40
+	for i := range entries {
+		entries[i].Contract = contract
+	}
+	token := strings.Repeat("a", 64)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/history" {
+			json.NewEncoder(w).Encode(client.History{Project: c.Project, Revision: config.PublicRevision(c), Check: "home-http", Contract: contract, Entries: entries})
+			return
+		}
+		json.NewEncoder(w).Encode(snapshot)
+	}))
+	defer server.Close()
+	out, _, err := invoke("", "show", "checks", "home-http", "--credentials", filepath.Join(t.TempDir(), "missing"), "--server", server.URL, "--project", c.Project, "--credential", token)
+	if err != nil || !strings.Contains(out, "unavailable: invalid collector history") {
+		t.Fatalf("%v\n%s", err, out)
 	}
 }

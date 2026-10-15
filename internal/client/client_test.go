@@ -397,7 +397,14 @@ func TestHistoryFailoverAndValidation(t *testing.T) {
 		name   string
 		status int
 		mutate func(*History)
-	}{{"auth", 401, nil}, {"unknown_check", 404, nil}, {"bad_request", 400, nil}, {"project", 200, func(h *History) { h.Project = "foreign" }}, {"check", 200, func(h *History) { h.Entries[0].Check = "home-ssh" }}, {"contract", 200, func(h *History) { h.Entries[0].Contract = strings.Repeat("0", 64) }}, {"revision", 200, func(h *History) { h.Entries[0].Revision = h.Revision }}, {"other_check", 200, func(h *History) { h.Check = "home-ssh" }}, {"too_many", 200, func(h *History) { h.Entries = append(h.Entries, h.Entries[0], h.Entries[0]) }}} {
+	}{{"auth", 401, nil}, {"unknown_check", 404, nil}, {"bad_request", 400, nil}, {"project", 200, func(h *History) { h.Project = "foreign" }}, {"check", 200, func(h *History) { h.Entries[0].Check = "home-ssh" }}, {"contract", 200, func(h *History) { h.Entries[0].Contract = strings.Repeat("0", 64) }}, {"revision", 200, func(h *History) { h.Entries[0].Revision = h.Revision }}, {"other_check", 200, func(h *History) { h.Check = "home-ssh" }}, {"too_many", 200, func(h *History) { h.Entries = append(h.Entries, h.Entries[0], h.Entries[0]) }},
+		// A sample a worker could not have sent is not drawn.
+		{"negative_duration", 200, func(h *History) { h.Entries[0].DurationMS = -40 }},
+		{"endless_duration", 200, func(h *History) { h.Entries[0].DurationMS = int64(config.MaxTook/time.Millisecond) + 1 }},
+		{"negative_timing", 200, func(h *History) { h.Entries[0].Timings = map[string]int64{"dns_ms": -1} }},
+		{"outcome", 200, func(h *History) { h.Entries[0].Outcome = "fine" }},
+		{"evidence", 200, func(h *History) { h.Entries[0].Evidence = "proven" }},
+		{"control", 200, func(h *History) { h.Entries[0].Detail = "\u009b2J" }}} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := history()
 			if tc.mutate != nil {
@@ -417,6 +424,29 @@ func TestHistoryFailoverAndValidation(t *testing.T) {
 	}
 	if _, _, e := newClient(t, good.URL).History(context.Background(), "home-http", 501); e == nil {
 		t.Fatal("limit out of range accepted")
+	}
+}
+
+// A snapshot's last samples are held to what a worker may send too.
+func TestSnapshotSamplesAreChecked(t *testing.T) {
+	c := testkit.Config()
+	contract := config.PublicContracts(c)["home-http"]
+	for name, mutate := range map[string]func(*model.Observation){
+		"valid":    func(*model.Observation) {},
+		"negative": func(v *model.Observation) { v.DurationMS = -40 },
+		"timing":   func(v *model.Observation) { v.Timings = map[string]int64{"tls_ms": -1} },
+		"outcome":  func(v *model.Observation) { v.Outcome = "fine" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := testkit.Observation(c, "home-http", 1, time.Now().UTC(), "ok")
+			v.Contract = contract
+			mutate(&v)
+			s := snapshot()
+			s.Checks = []model.CheckState{{ID: "home-http", Contract: contract, Observer: "home", Health: "up", Freshness: "fresh", Last: &v}}
+			if _, _, e := newClient(t, jsonServer(t, 200, s).URL).Snapshot(context.Background(), ""); (e == nil) != (name == "valid") {
+				t.Fatal(e)
+			}
+		})
 	}
 }
 
