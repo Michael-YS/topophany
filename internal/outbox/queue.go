@@ -20,7 +20,8 @@ import (
 var ErrFull = errors.New("outbox byte budget exhausted; execution must stop")
 
 // DegradedError reports destinations whose new evidence could not be queued.
-// Other destinations have already been durably queued; callers must continue delivery.
+// Other destinations have already been durably queued; callers must continue
+// delivery. Add returns ErrFull, never this, when no destination had room.
 type DegradedError struct{ Recipients []string }
 
 func (e *DegradedError) Error() string {
@@ -219,14 +220,14 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 			admitted = append(admitted, r)
 		}
 	}
-	if len(recipients) == 1 && len(admitted) == 0 {
+	// With room at no recipient the record is kept for none: that is a
+	// full outbox, however many recipients there are, not a degraded one.
+	if len(admitted) == 0 {
 		return ErrFull
 	}
 	v.Pending = admitted
-	if len(admitted) > 0 {
-		if err := q.write(v); err != nil {
-			return err
-		}
+	if err := q.write(v); err != nil {
+		return err
 	}
 	if len(rejected) > 0 {
 		return &DegradedError{Recipients: rejected}

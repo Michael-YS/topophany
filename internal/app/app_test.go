@@ -25,6 +25,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/outbox"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
@@ -461,5 +462,37 @@ func TestTopologyErrorsCarryNoControls(t *testing.T) {
 	fmt.Fprintf(secure.Terminal(&b), "topo: %s\n\tnext", bad)
 	if b.String() != "topo: x[2J]0;pwn31my\n\tnext" {
 		t.Fatalf("%q", b.String())
+	}
+}
+
+// A worker whose collectors have all stopped taking its samples stops
+// once its outbox has room for them at none, rather than sample on and
+// drop every sample.
+func TestWorkerStopsWhenNoCollectorHasRoom(t *testing.T) {
+	dir, c, _, _ := initialized(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"status":"ok"}`) }))
+	defer target.Close()
+	c.Endpoints[0].Address = target.URL
+	c.Checks[0].IntervalSeconds = 1
+	saveConfig(t, filepath.Join(dir, "topology.json"), c)
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
+	defer down.Close()
+	credPath := filepath.Join(dir, "worker-credentials.json")
+	cr, e := client.Load(credPath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p := cr.Profiles["demo"]
+	p.Servers = []client.Endpoint{{URL: down.URL + "/a", Token: p.Servers[0].Token}, {URL: down.URL + "/b", Token: p.Servers[0].Token}}
+	cr.Profiles["demo"] = p
+	if e = client.Save(credPath, cr); e != nil {
+		t.Fatal(e)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	a := &App{In: strings.NewReader(""), Out: io.Discard, Err: &lockedWriter{}}
+	e = a.Run(ctx, []string{"worker", "--config", filepath.Join(dir, "topology.json"), "--observer", "demo", "--credentials", credPath, "--data", filepath.Join(dir, "worker-data"), "--outbox-bytes", "4096"})
+	if !errors.Is(e, outbox.ErrFull) {
+		t.Fatal("worker went on with no collector taking its samples", e)
 	}
 }

@@ -497,3 +497,38 @@ func TestRefusedItemsDrainWithoutStallingDelivery(t *testing.T) {
 		t.Fatalf("pending %d, quarantined %d, delivered %d", n, quarantined, len(rows))
 	}
 }
+
+// A record no recipient has room for is not a degraded delivery: it is
+// kept for none, and the queue says it is full, so the worker stops
+// rather than sample on and lose every sample. A degraded delivery keeps
+// the record for the recipients that had room.
+func TestNoRecipientWithRoomIsFull(t *testing.T) {
+	q, e := Open(t.TempDir(), "lab", 8000)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer q.Close()
+	one, two := Recipient("one"), Recipient("two")
+	full := false
+	for i := uint64(1); i <= 30 && !full; i++ {
+		before, _ := q.Stats()
+		e := q.Add(makeBatch(i), []string{one, two})
+		var degraded *DegradedError
+		switch after, _ := q.Stats(); {
+		case errors.Is(e, ErrFull):
+			full = true
+			if after != before {
+				t.Fatal("a record kept for no one")
+			}
+		case errors.As(e, &degraded):
+			if after != before+1 {
+				t.Fatal("degraded, but kept for no recipient", i)
+			}
+		case e != nil:
+			t.Fatal(e)
+		}
+	}
+	if !full {
+		t.Fatal("two recipients that never acknowledge filled nothing")
+	}
+}

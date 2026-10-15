@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check timed out, while curl and OpenSSL reached the same server. Probes
   now offer only X25519, P-256, P-384 and P-521, as those clients do.
   Workers still offer the hybrid exchange to their collectors.
+- A worker with several collectors no longer probes on while it drops
+  every sample. Once each collector's share of the outbox was full, as
+  when all of them were down long enough, a new sample was kept for none
+  but reported as a degraded delivery, which a worker takes to mean
+  another collector still has it; it logged the loss and went on. With
+  room at no collector a worker now stops with the outbox's capacity
+  error, as one with a single collector always did, and keeps what it
+  queued.
 
 ### Security
 
