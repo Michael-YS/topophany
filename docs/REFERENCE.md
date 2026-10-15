@@ -54,6 +54,28 @@ Defaults: `interval_seconds=60`, `timeout_seconds=8`, `stale_seconds=3*interval`
 | `mihomo` | Controller API base URL; `adapter` object | Successfully queried runtime metadata; indicates reported state rather than end-to-end traffic success |
 | `tailscale` | `adapter.peer` matching peer DNS, IP, or ID | Local Tailscale client reported peer status; idle or relay indicators do not directly prove application service status |
 | `wireguard` | `adapter.interface`, `adapter.peer` (public key) | Local WireGuard status queried; older handshakes do not imply broken connectivity; private keys and PSKs are stripped |
+| `host` | Optional `host` object; Linux and macOS | Local CPU, memory, filesystem and process counters collected; configured resource assertions pass |
+
+### Host Resources
+
+`kind: "host"` reads the worker's OS view. It needs no endpoint or network target. It also works with `topo once` and `serve --observer`. Linux reads bounded `/proc` files; macOS uses fixed system paths for `top`, `sysctl`, `vm_stat` and `ps`, with a fixed C locale and no shell. Filesystem capacity comes from `statfs`. No third-party dependencies or root privileges are required on a normally configured host. An unsupported OS, denied access, missing tool, malformed counters or exhausted read budget yields a monitor `error`, never a target failure.
+
+| `host` option | Meaning |
+|---|---|
+| `disk_path` | Clean absolute path on a **local** filesystem; defaults to `/`. One filesystem per check; add checks for other mounts. It is resolved in the worker's mount namespace, including systemd sandbox mounts. |
+| `max_cpu_percent` | Maximum aggregate CPU use, 0..100; 0 disables the assertion. Linux samples a 200 ms interval, excluding idle and I/O wait and avoiding double-counted guest time; macOS uses the second of two `top` samples one second apart. |
+| `max_memory_percent` | Maximum physical memory use, 0..100; 0 disables the assertion. Linux uses `MemTotal - MemAvailable`. macOS estimates available memory as free + inactive + speculative pages; this is not Activity Monitor memory pressure. |
+| `max_disk_percent` | Maximum filesystem capacity use, 0..100; 0 disables the assertion. Used bytes = total − free; percent = used / (used + available to unprivileged callers), as in `df`, accounting for reserved blocks. This measures capacity, not disk I/O throughput. |
+| `process_name` | Optional exact process name, at most 15 bytes. Linux matches `/proc/PID/stat`'s `comm`; macOS matches the basename of `ps`'s executable path. No substring, argument or shell matching. Processes can change their names. |
+| `min_processes`, `max_processes` | Bounds on matching non-zombie processes; each defaults to 0 (disabled). Require `process_name`; set `min_processes: 1` to detect a missing process. |
+
+Host checks require `timeout_seconds >= 3` (default 8), and reject `endpoint`, `target`, `path`, `link` and dial/TLS options. A `service`, if supplied, must belong to the observer's node. A failed resource assertion emits `policy`, which the existing engine displays as degraded and records as a policy incident; equality with a maximum passes. Collection without enabled assertions succeeds when all counters are readable. Changing resource options changes the measurement contract.
+
+The observation's `facts` contain `cpu_used_percent`, `cpu_logical_count` (CPUs available to the worker process), `cpu_sample_ms`; `memory_total_bytes`, `memory_available_bytes`, `memory_used_bytes`, `memory_used_percent`, `memory_basis`; `disk_path`, `disk_total_bytes`, `disk_used_bytes`, `disk_available_bytes`, `disk_used_percent`, `disk_inodes_total`, `disk_inodes_free`; `process_count`, `process_zombie_count`, and, when selected, `process_name`, `process_matching_count`, `process_matching_rss_bytes`. `violations` lists any failed resource assertions. Matching RSS sums resident memory and may count shared pages more than once.
+
+Evidence is `reported`, with `path_evidence: local_host_runtime_reported`; collecting resources never proves a remote response or path connectivity. Process counts describe a non-atomic snapshot of **visible** processes: namespaces and OS permissions may restrict visibility. CPU and memory describe the OS view, not cgroup quotas; deploy the worker on the host for host measurements. No command arguments, environments, user names or complete process list are retained or uploaded.
+
+See [`examples/host-resources.json`](../examples/host-resources.json). Inspect current metrics with `topo show checks host-resources`, or raw samples with `topo history host-resources --json`. Existing long-term rollups summarize check outcomes and probe duration; they do not aggregate CPU/RAM/disk values into metric time series. Preview does not simulate host counters and reports them as unknown.
 
 ### HTTP Probe Specifications
 

@@ -288,6 +288,9 @@ func Validate(c model.Config) error {
 		if !obs[x.Observer] {
 			return fmt.Errorf("check %s: missing observer", x.ID)
 		}
+		if err := validateHost(x, c); err != nil {
+			return fmt.Errorf("check %s: %w", x.ID, err)
+		}
 		if x.Endpoint != "" {
 			ep, ok := ends[x.Endpoint]
 			if !ok {
@@ -396,6 +399,8 @@ func Validate(c model.Config) error {
 			if x.Adapter.Peer == "" || !regexp.MustCompile(`^[A-Za-z0-9_.-]{1,32}$`).MatchString(x.Adapter.Interface) {
 				return errors.New("wireguard needs interface and peer public key")
 			}
+		case "host":
+			// Validated above; this check reads only the observer's host.
 		default:
 			return fmt.Errorf("check %s: unsupported kind %q", x.ID, x.Kind)
 		}

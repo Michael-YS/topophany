@@ -32,6 +32,7 @@ type contract struct {
 	HTTP     model.HTTPOptions    `json:"http"`
 	DNS      model.DNSOptions     `json:"dns"`
 	Adapter  model.AdapterOptions `json:"adapter"`
+	Host     *model.HostOptions   `json:"host,omitempty"`
 	Proxies  []model.Proxy        `json:"proxies,omitempty"`
 }
 
@@ -43,7 +44,7 @@ func Contract(c model.Config, x model.Check) string {
 }
 
 func measurement(project string, x model.Check, target string, proxies []model.Proxy) string {
-	b, _ := json.Marshal(contract{Schema: 2, Project: project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: target, Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: x.HTTP, DNS: x.DNS, Adapter: x.Adapter, Proxies: proxies})
+	b, _ := json.Marshal(contract{Schema: 2, Project: project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: target, Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: x.HTTP, DNS: x.DNS, Adapter: x.Adapter, Host: x.Host, Proxies: proxies})
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }

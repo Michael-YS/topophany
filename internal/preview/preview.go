@@ -668,6 +668,12 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 		o.Outcome, o.Stage, o.Detail = "unknown", "setup", "check not executed"
 		return o
 	}
+	if x.Kind == "host" {
+		o.Evidence, o.PathEvidence = "reported", "local_host_runtime_reported"
+		o.Outcome, o.Stage, o.Code = "unknown", "host", "host_preview_unavailable"
+		o.Detail = "host resource counters are not simulated; run topo once or a worker to collect them"
+		return o
+	}
 	if len(s.paths[x.Path].Proxies) > 0 {
 		o.Facts["transport_hops"] = strconv.Itoa(len(s.paths[x.Path].Proxies))
 		o.PathEvidence = "explicit_proxy_transport"

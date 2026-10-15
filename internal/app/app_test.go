@@ -337,7 +337,7 @@ func TestServeTransportAndArgumentGuards(t *testing.T) {
 }
 
 func TestShippedTopologyExamplesValidateAndHomelabIsPaused(t *testing.T) {
-	for _, name := range []string{"minimal.json", "homelab.json"} {
+	for _, name := range []string{"minimal.json", "homelab.json", "host-resources.json"} {
 		t.Run(name, func(t *testing.T) {
 			c, err := config.Load(filepath.Join("..", "..", "examples", name))
 			if err != nil {

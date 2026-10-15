@@ -37,6 +37,10 @@ func Clone(c model.Config) model.Config {
 	c.Checks = slices.Clone(c.Checks)
 	for i := range c.Checks {
 		x := &c.Checks[i]
+		if x.Host != nil {
+			h := *x.Host
+			x.Host = &h
+		}
 		x.HTTP.Status = slices.Clone(x.HTTP.Status)
 		x.HTTP.ExpectedExit = slices.Clone(x.HTTP.ExpectedExit)
 		x.HTTP.Headers, x.HTTP.RequestHeaders = maps.Clone(x.HTTP.Headers), maps.Clone(x.HTTP.RequestHeaders)

@@ -566,7 +566,7 @@ func remove(c *model.Config, kind, id string) error {
 	return nil
 }
 
-var checkKinds = []string{"http", "tcp", "tls", "ssh-banner", "dns", "udp-echo", "icmp", "mihomo", "tailscale", "wireguard"}
+var checkKinds = []string{"http", "tcp", "tls", "ssh-banner", "dns", "udp-echo", "icmp", "mihomo", "tailscale", "wireguard", "host"}
 
 func (m *Model) openForm(kind, id string) {
 	c := m.Edit.Config
@@ -793,6 +793,7 @@ func (m *Model) openForm(kind, id string) {
 		f.add("HTTP contains", x.HTTP.Contains, fText, "http: required body substring")
 		f.add("DNS name", x.DNS.Name, fText, "dns: name to resolve")
 		f.add("DNS type", x.DNS.Type, fChoice, "dns: record type", "", "A", "AAAA")
+		addHostFields(f, x.Host)
 		f.add("Notes", x.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
 			x.ID, x.Name, x.Observer, x.Kind, x.Endpoint, x.Target, x.Service, x.Path, x.Notes = f.val("ID"), f.val("Name"), f.val("Observer"), f.val("Kind"), f.val("Endpoint"), f.val("Target"), f.val("Service"), f.val("Path"), f.val("Notes")
@@ -814,7 +815,11 @@ func (m *Model) openForm(kind, id string) {
 				x.HTTP.Status = append(x.HTTP.Status, n)
 			}
 			x.HTTP.Contains, x.DNS.Name, x.DNS.Type = f.val("HTTP contains"), f.val("DNS name"), f.val("DNS type")
-			var err error
+			host, err := hostFields(f, x.Kind)
+			if err != nil {
+				return err
+			}
+			x.Host = host
 			c.Checks, err = upsert(c.Checks, id, x, func(n model.Check) string { return n.ID })
 			return err
 		}

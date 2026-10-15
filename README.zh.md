@@ -101,6 +101,7 @@ topo --credentials ./demo/credentials.json
 ## 它能检查什么
 
 - **原生探针：** HTTP（状态码、正文、头部、出口 IP）、TCP、带证书校验的 TLS、SSH banner、DNS A/AAAA、UDP echo、ICMP（IPv4）。
+- **主机资源（Linux / macOS）：** CPU、内存、文件系统容量与 inode、进程数量及指定进程的内存占用；支持资源阈值和进程数量检查。参见 [`examples/host-resources.json`](examples/host-resources.json)。
 - **代理链：** HTTP CONNECT、HTTPS CONNECT、SOCKS5 和 OpenSSH `-W`，可多跳串联。
 - **只读适配器：** Mihomo、Tailscale、WireGuard。
 - **边缘与平台：** Cloudflare（包括 Workers 和 Pages）、Vercel、Supabase。边缘的应答只证明边缘本身，而不是它背后的源站。

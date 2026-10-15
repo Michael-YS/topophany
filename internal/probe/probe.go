@@ -29,6 +29,8 @@ type Command func(context.Context, string, ...string) ([]byte, error)
 type Runner struct {
 	Command      Command
 	ListenPacket func(string, string) (net.PacketConn, error)
+	// HostSample is injectable for hermetic resource tests. Production reads OS state.
+	HostSample func(context.Context, model.HostOptions) (HostSample, error)
 }
 
 func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Observation {
@@ -79,6 +81,11 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 	case "wireguard":
 		o.Evidence = "reported"
 		e = r.wireguard(ctx, x, &o)
+	case "host":
+		o.Evidence = "reported"
+		o.PathEvidence = "local_host_runtime_reported"
+		delete(o.Facts, "connection_semantics")
+		e = r.host(ctx, x, &o)
 	default:
 		e = local("setup", "unsupported_check")
 	}

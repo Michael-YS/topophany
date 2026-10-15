@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "project": "host-monitoring",
+  "nodes": [{"id": "local-host", "name": "Local host", "kind": "host"}],
+  "endpoints": [],
+  "services": [],
+  "observers": [{"id": "local", "name": "Local worker", "node": "local-host", "context": "Native Linux or macOS host"}],
+  "paths": [],
+  "checks": [{
+    "id": "host-resources",
+    "name": "Host resources",
+    "observer": "local",
+    "kind": "host",
+    "interval_seconds": 60,
+    "timeout_seconds": 8,
+    "host": {
+      "disk_path": "/",
+      "max_cpu_percent": 90,
+      "max_memory_percent": 90,
+      "max_disk_percent": 90,
+      "process_name": "topo",
+      "min_processes": 1
+    }
+  }]
+}

@@ -101,6 +101,7 @@ topo --credentials ./demo/credentials.json
 ## 計測できるもの
 
 - **ネイティブプローブ:** HTTP (ステータス、本文、ヘッダー、出口 IP)、TCP、証明書を検証する TLS、SSH バナー、DNS A/AAAA、UDP エコー、ICMP (IPv4)。
+- **ホストリソース（Linux / macOS）:** CPU、メモリ、ファイルシステム容量と inode、プロセス数、指定プロセスの RSS。リソースしきい値とプロセス数の検証に対応。[`examples/host-resources.json`](examples/host-resources.json) を参照。
 - **プロキシチェーン:** HTTP CONNECT、HTTPS CONNECT、SOCKS5、OpenSSH `-W` を、複数ホップにわたって連結。
 - **読み取り専用アダプター:** Mihomo、Tailscale、WireGuard。
 - **エッジとプラットフォーム:** Cloudflare (Workers と Pages を含む)、Vercel、Supabase。エッジからの応答が証明するのはエッジであって、その背後のオリジンではありません。

@@ -101,6 +101,7 @@ The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units
 ## What it checks
 
 - **Native probes:** HTTP (status, body, headers, egress IP), TCP, TLS with certificate validation, SSH banner, DNS A/AAAA, UDP echo, ICMP (IPv4).
+- **Host resources (Linux / macOS):** CPU, memory, filesystem capacity and inodes, process counts and selected-process RSS, with optional resource and process-count assertions. See [`examples/host-resources.json`](examples/host-resources.json).
 - **Proxy chains:** HTTP CONNECT, HTTPS CONNECT, SOCKS5 and OpenSSH `-W`, chained over several hops.
 - **Read-only adapters:** Mihomo, Tailscale, WireGuard.
 - **Edges and platforms:** Cloudflare (including Workers and Pages), Vercel, Supabase. An answer from the edge proves the edge, not the origin behind it.

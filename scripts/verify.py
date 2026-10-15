@@ -131,7 +131,7 @@ def main() -> int:
             run("build-" + goos + "-" + goarch,
                 ["go", "build", "-trimpath", "-o", str(target), "./cmd/topo"],
                 overrides={"GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "0"}, timeout=300)
-        for example in ("minimal", "homelab"):
+        for example in ("minimal", "homelab", "host-resources"):
             run("example-" + example, [str(binary), "validate", "--config", "examples/" + example + ".json"])
         help_sections = []
         for cmd in ("", "serve", "worker", "login", "init", "validate", "export", "once", "token"):

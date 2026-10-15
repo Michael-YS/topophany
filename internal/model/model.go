@@ -110,7 +110,7 @@ type Check struct {
 	Service           string         `json:"service,omitempty"`
 	Path              string         `json:"path,omitempty"`
 	Link              string         `json:"link,omitempty"`
-	Kind              string         `json:"kind"`             // http,tcp,tls,ssh-banner,dns,udp-echo,icmp,mihomo,tailscale,wireguard
+	Kind              string         `json:"kind"`             // http,tcp,tls,ssh-banner,dns,udp-echo,icmp,mihomo,tailscale,wireguard,host
 	Target            string         `json:"target,omitempty"` // endpoint address unless overridden explicitly
 	IntervalSeconds   int            `json:"interval_seconds"`
 	TimeoutSeconds    int            `json:"timeout_seconds"`
@@ -126,7 +126,20 @@ type Check struct {
 	HTTP              HTTPOptions    `json:"http,omitempty"`
 	DNS               DNSOptions     `json:"dns,omitempty"`
 	Adapter           AdapterOptions `json:"adapter,omitempty"`
+	Host              *HostOptions   `json:"host,omitempty"`
 	Notes             string         `json:"notes,omitempty"`
+}
+
+// HostOptions selects a local filesystem and optional resource assertions.
+// Zero thresholds collect without asserting; process names never include args.
+type HostOptions struct {
+	DiskPath         string  `json:"disk_path,omitempty"`
+	MaxCPUPercent    float64 `json:"max_cpu_percent,omitempty"`
+	MaxMemoryPercent float64 `json:"max_memory_percent,omitempty"`
+	MaxDiskPercent   float64 `json:"max_disk_percent,omitempty"`
+	ProcessName      string  `json:"process_name,omitempty"`
+	MinProcesses     int     `json:"min_processes,omitempty"`
+	MaxProcesses     int     `json:"max_processes,omitempty"`
 }
 type HTTPOptions struct {
 	Method         string            `json:"method,omitempty"`

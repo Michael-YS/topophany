@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Local host resource checks on Linux and macOS: CPU utilization, physical
+  memory, filesystem capacity/inodes, visible process and zombie counts,
+  and optional named-process count/RSS. Resource and process-count assertions
+  use existing policy incidents; metrics travel through worker buffering,
+  collector storage, check details and JSON history. Includes local editor
+  fields and a runnable `examples/host-resources.json` topology.
+
 ## [0.8.3] - 2026-10-15
 
 ### Security
