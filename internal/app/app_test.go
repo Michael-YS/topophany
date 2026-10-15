@@ -14,10 +14,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/WhitenWhiten/topophany/internal/api"
 	"github.com/WhitenWhiten/topophany/internal/client"
@@ -418,5 +420,46 @@ func TestServeTLSKeyMustBePrivate(t *testing.T) {
 	cancel()
 	if e = <-done; e != nil {
 		t.Fatal(e)
+	}
+}
+
+// A topology's values reach no terminal raw: an error naming one it
+// refuses quotes it, controls and bidi runes escaped, whichever command
+// loaded it, and what topo writes to stderr carries none.
+func TestTopologyErrorsCarryNoControls(t *testing.T) {
+	dir, base, _, _ := initialized(t)
+	path := filepath.Join(dir, "crafted.json")
+	bad := "x\x1b[2J\x1b]0;pwn\a\u009b31m‮⁦\x00y"
+	for name, craft := range map[string]func(c *model.Config){
+		"endpoint":   func(c *model.Config) { c.Endpoints[0].ID = bad },
+		"link":       func(c *model.Config) { c.Links = append(c.Links, model.Link{ID: bad}) },
+		"path":       func(c *model.Config) { c.Paths[0].ID = bad },
+		"path node":  func(c *model.Config) { c.Paths[0].Nodes = []string{bad} },
+		"dependency": func(c *model.Config) { c.Paths[0].DependsOn = []string{bad} },
+		"kind":       func(c *model.Config) { c.Checks[0].Kind = bad },
+	} {
+		c := base
+		c.Endpoints = slices.Clone(base.Endpoints)
+		c.Links = slices.Clone(base.Links)
+		c.Paths = slices.Clone(base.Paths)
+		c.Checks = slices.Clone(base.Checks)
+		craft(&c)
+		saveConfig(t, path, c)
+		for _, args := range [][]string{{"validate", "--config", path}, {"export", "--config", path}, {"once", "--config", path}, {"serve", "--config", path, "--auth", filepath.Join(dir, "auth.json"), "--data", filepath.Join(t.TempDir(), "data"), "--listen", "127.0.0.1:0"}} {
+			_, stderr, e := invoke("", args...)
+			if e == nil {
+				t.Fatal(name, args[0], "accepted")
+			}
+			for _, r := range e.Error() + stderr {
+				if unicode.IsControl(r) && r != '\n' || unicode.Is(unicode.Bidi_Control, r) {
+					t.Fatalf("%s, %s: %q", name, args[0], e.Error()+stderr)
+				}
+			}
+		}
+	}
+	var b bytes.Buffer
+	fmt.Fprintf(secure.Terminal(&b), "topo: %s\n\tnext", bad)
+	if b.String() != "topo: x[2J]0;pwn31my\n\tnext" {
+		t.Fatalf("%q", b.String())
 	}
 }

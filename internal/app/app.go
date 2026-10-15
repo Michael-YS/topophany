@@ -44,7 +44,7 @@ type App struct {
 }
 
 func New() *App {
-	return &App{In: os.Stdin, Out: os.Stdout, Err: os.Stderr, TerminalIn: os.Stdin, TerminalOut: os.Stdout, Now: time.Now}
+	return &App{In: os.Stdin, Out: os.Stdout, Err: secure.Terminal(os.Stderr), TerminalIn: os.Stdin, TerminalOut: os.Stdout, Now: time.Now}
 }
 
 const help = `Topophany — network evidence, topology and service monitoring

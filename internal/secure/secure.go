@@ -144,6 +144,27 @@ func Text(s string) string {
 	}
 	return b.String()
 }
+
+// Terminal writes to w what Text leaves of each write, newlines and tabs
+// kept, so that nothing a process says on its terminal, such as an error
+// or a log line naming a value from a file it read or a peer it asked,
+// carries a control or bidi rune there.
+func Terminal(w io.Writer) io.Writer { return terminal{w} }
+
+type terminal struct{ w io.Writer }
+
+func (t terminal) Write(p []byte) (int, error) {
+	var b strings.Builder
+	for _, r := range string(p) {
+		if r == '\n' || r == '\t' || !unicode.IsControl(r) && !unicode.Is(unicode.Bidi_Control, r) {
+			b.WriteRune(r)
+		}
+	}
+	if _, e := io.WriteString(t.w, b.String()); e != nil {
+		return 0, e
+	}
+	return len(p), nil
+}
 func ErrorCode(e error) string {
 	if e == nil {
 		return ""

@@ -53,6 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   taken longest ago go. The IDs they bound were received more than
   `--retention` and an hour ago, too long ago for their samples to be
   accepted again, and a boot still delivering keeps its floor.
+- A topology's values reach no terminal raw. Errors that refused an
+  endpoint, link or path ID, a path's node or dependency, a check's kind
+  or a repeated header name wrote the value as it was, so a crafted
+  topology could clear, retitle or reorder the terminal of whoever
+  validated, served or edited it. Those values are now quoted with their
+  controls escaped, and everything `topo` writes to stderr, its errors and
+  logs, leaves out terminal controls and bidi runes but for newlines and
+  tabs.
 
 ## [0.8.0] - 2026-10-14
 

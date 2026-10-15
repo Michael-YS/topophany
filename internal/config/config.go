@@ -158,7 +158,7 @@ func Validate(c model.Config) error {
 	}
 	for _, ep := range c.Endpoints {
 		if !ID(ep.ID) || ends[ep.ID].ID != "" || !nodes[ep.Node] || ep.Address == "" {
-			return fmt.Errorf("invalid endpoint %s", ep.ID)
+			return fmt.Errorf("invalid endpoint %q", ep.ID)
 		}
 		switch ep.Network {
 		case "public", "lan", "tailnet", "external":
@@ -186,13 +186,13 @@ func Validate(c model.Config) error {
 	}
 	for _, l := range c.Links {
 		if !ID(l.ID) || links[l.ID].ID != "" || !nodes[l.From] || !nodes[l.To] {
-			return fmt.Errorf("invalid link %s", l.ID)
+			return fmt.Errorf("invalid link %q", l.ID)
 		}
 		links[l.ID] = l
 	}
 	for _, p := range c.Paths {
 		if !ID(p.ID) || paths[p.ID].ID != "" || !obs[p.Observer] {
-			return fmt.Errorf("invalid path %s", p.ID)
+			return fmt.Errorf("invalid path %q", p.ID)
 		}
 		paths[p.ID] = p
 	}
@@ -200,7 +200,7 @@ func Validate(c model.Config) error {
 	for _, p := range c.Paths {
 		for _, n := range p.Nodes {
 			if !nodes[n] {
-				return fmt.Errorf("path %s: missing node %s", p.ID, n)
+				return fmt.Errorf("path %s: missing node %q", p.ID, n)
 			}
 		}
 		for i, id := range p.Links {
@@ -218,7 +218,7 @@ func Validate(c model.Config) error {
 		for _, id := range append(append([]string{}, p.Candidates...), p.DependsOn...) {
 			q, ok := paths[id]
 			if !ok || q.Observer != p.Observer {
-				return fmt.Errorf("path %s: missing/cross-observer dependency %s", p.ID, id)
+				return fmt.Errorf("path %s: missing/cross-observer dependency %q", p.ID, id)
 			}
 			graph[p.ID] = append(graph[p.ID], id)
 		}
@@ -364,7 +364,7 @@ func Validate(c model.Config) error {
 				}
 				// Header names ignore case, and only one of two can be sent.
 				if named[strings.ToLower(k)] {
-					return fmt.Errorf("check %s: HTTP header %s given twice", x.ID, k)
+					return fmt.Errorf("check %s: HTTP header %q given twice", x.ID, k)
 				}
 				named[strings.ToLower(k)] = true
 				if strings.EqualFold(k, "Host") && !hostHeader(v) {
@@ -411,7 +411,7 @@ func Validate(c model.Config) error {
 				return errors.New("wireguard needs interface and peer public key")
 			}
 		default:
-			return fmt.Errorf("check %s: unsupported kind %s", x.ID, x.Kind)
+			return fmt.Errorf("check %s: unsupported kind %q", x.ID, x.Kind)
 		}
 		if x.Kind == "dns" {
 			if len(x.DNS.Name) < 1 || len(x.DNS.Name) > 253 {
