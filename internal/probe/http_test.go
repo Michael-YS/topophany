@@ -195,6 +195,81 @@ func TestTLSVerificationAndPinnedDialAddress(t *testing.T) {
 		t.Fatal(o)
 	}
 }
+
+// A path that never delivers a large ClientHello looks, to the client, like
+// a server that never answers. Go's default key exchange adds a hybrid
+// post-quantum share of over a kilobyte; a probe must not need it to reach
+// a healthy service, over any hop it makes TLS on.
+func TestProbeClientHelloCrossesAPathThatDropsLargeOnes(t *testing.T) {
+	cert, key, ca := testkit.Certificate(t, "probe.example.test")
+	pair, e := tls.LoadX509KeyPair(cert, key)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var hybrid atomic.Int32
+	connect := connectHandler(t)
+	s := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "CONNECT" {
+			connect.ServeHTTP(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, "ready")
+	}))
+	s.TLS = &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12, GetConfigForClient: func(h *tls.ClientHelloInfo) (*tls.Config, error) {
+		for _, c := range h.SupportedCurves {
+			if c == tls.X25519MLKEM768 || c == tls.SecP256r1MLKEM768 || c == tls.SecP384r1MLKEM1024 {
+				hybrid.Add(1)
+			}
+		}
+		return nil, nil
+	}}
+	s.StartTLS()
+	t.Cleanup(s.Close)
+	path := testkit.Stream(t, func(c net.Conn) {
+		var h [5]byte
+		if _, e := io.ReadFull(c, h[:]); e != nil {
+			return
+		}
+		if int(h[3])<<8|int(h[4]) > 1024 {
+			_, _ = io.Copy(io.Discard, c)
+			return
+		}
+		up, e := net.Dial("tcp", s.Listener.Addr().String())
+		if e != nil {
+			return
+		}
+		_, _ = up.Write(h[:])
+		testkit.Relay(c, up)
+	})
+	_, port, _ := net.SplitHostPort(path)
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ready") }))
+	defer plain.Close()
+
+	x := httpCheck("")
+	x.Kind = "tls"
+	x.Target = "probe.example.test:" + port
+	x.ResolveIP = "127.0.0.1"
+	x.CAFile = ca
+	if o := (Runner{}).Run(context.Background(), testkit.Config(), x); o.Outcome != "ok" {
+		t.Fatal("tls check", o)
+	}
+	x = httpCheck("https://probe.example.test:" + port + "/")
+	x.ResolveIP = "127.0.0.1"
+	x.CAFile = ca
+	if o := (Runner{}).Run(context.Background(), testkit.Config(), x); o.Outcome != "ok" {
+		t.Fatal("https check", o)
+	}
+	c := testkit.Config()
+	c.Paths[0].Proxies = []model.Proxy{{Kind: "https-connect", Address: path, CAFile: ca}}
+	x = httpCheck(plain.URL)
+	x.Path = "direct"
+	if o := (Runner{}).Run(context.Background(), c, x); o.Outcome != "ok" {
+		t.Fatal("https-connect hop", o)
+	}
+	if n := hybrid.Load(); n != 0 {
+		t.Fatal("hybrid key exchange offered", n)
+	}
+}
 func TestHTTPNewClientStreamAndCancellation(t *testing.T) {
 	var connections atomic.Int32
 	s := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ok") }))

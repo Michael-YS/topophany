@@ -73,8 +73,17 @@ func hasInterface(zone string) bool {
 	_, e = net.InterfaceByIndex(n)
 	return e == nil
 }
+
+// probeCurves are the classical key exchanges. Go's default adds hybrid
+// post-quantum ones, whose key share makes a ClientHello over a kilobyte;
+// some paths never deliver one, and a healthy service then looks down
+// (tls: timeout). curl and OpenSSL 3.0 send no such share either.
+var probeCurves = []tls.CurveID{tls.X25519, tls.CurveP256, tls.CurveP384, tls.CurveP521}
+
+// TLSConfig is the client side of every TLS a probe makes: a check's own
+// and an https-connect hop's.
 func TLSConfig(name, caFile string) (*tls.Config, error) {
-	c := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: name}
+	c := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: name, CurvePreferences: probeCurves}
 	if caFile != "" {
 		b, e := secure.ReadBounded(caFile, 1<<20)
 		if e != nil {

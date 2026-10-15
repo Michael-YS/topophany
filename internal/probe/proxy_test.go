@@ -237,10 +237,10 @@ func TestSOCKSRemoteDNSAndAuthenticationRejection(t *testing.T) {
 		t.Fatal(o)
 	}
 }
-func TestHTTPSConnectVerifiesOuterCertificate(t *testing.T) {
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ready") }))
-	defer target.Close()
-	proxy, ca := tlsFixture(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+// connectHandler answers CONNECT by relaying to the host it names.
+func connectHandler(t *testing.T) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "CONNECT" {
 			http.Error(w, "CONNECT required", 405)
 			return
@@ -264,7 +264,12 @@ func TestHTTPSConnectVerifiesOuterCertificate(t *testing.T) {
 		_, _ = rw.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
 		_ = rw.Flush()
 		testkit.Relay(&bufferedConn{Conn: c, r: rw.Reader}, up)
-	}))
+	})
+}
+func TestHTTPSConnectVerifiesOuterCertificate(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ready") }))
+	defer target.Close()
+	proxy, ca := tlsFixture(t, connectHandler(t))
 	c := testkit.Config()
 	c.Paths[0].Proxies = []model.Proxy{{Kind: "https-connect", Address: strings.TrimPrefix(proxy.URL, "https://")}}
 	x := httpCheck(target.URL)

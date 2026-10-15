@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- TLS and HTTPS checks, and https-connect hops, no longer report a
+  healthy service as `tls: timeout` on a path that drops large
+  ClientHellos. Built with Go 1.26, a probe offered Go's default key
+  exchanges, led by the hybrid post-quantum X25519MLKEM768, whose key
+  share alone is over a kilobyte; where a path never delivered that
+  ClientHello, TCP connected and the handshake went unanswered until the
+  check timed out, while curl and OpenSSL reached the same server. Probes
+  now offer only X25519, P-256, P-384 and P-521, as those clients do.
+  Workers still offer the hybrid exchange to their collectors.
+
 ## [0.8.0] - 2026-10-14
 
 Everything since 0.3.0. No release was published between them.
