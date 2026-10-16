@@ -35,7 +35,10 @@ type Model struct {
 	Snapshot                                model.Snapshot
 	Server                                  string
 	Error                                   string
-	Loading                                 string // a request in flight while nothing current is shown
+	Loading                                 string   // a request in flight while nothing current is shown
+	Fetching                                bool     // a request for a snapshot is in flight
+	Collectors                              []string // the collectors the viewer asks, for the splash to name
+	Project                                 string   // the project the viewer expects
 	Observer                                string
 	Tab, Selected, Offset                   int
 	Width, Height                           int
@@ -71,6 +74,7 @@ type Model struct {
 	noticeErr                               bool
 	noticeAt                                time.Time
 	aboutAt                                 time.Time
+	splashAt                                time.Time         // when the splash came up
 	aboutSpin                               float64           // extra globe rotation from the mouse wheel
 	cardsTop                                int               // the Servers cards' scroll, kept while a card lies open
 	vcache                                  vCache            // the virtual map's wires, kept while its layout holds
@@ -145,8 +149,12 @@ func (m *Model) Animating() time.Duration {
 		return 70 * time.Millisecond // the wordmark and the lines come in
 	case m.Tab == tabAbout:
 		return 100 * time.Millisecond // then only the globe turns
-	case m.Loading != "":
-		return 90 * time.Millisecond // the spinner turns
+	case m.waiting() && m.Loading != "":
+		return 70 * time.Millisecond // the splash's globe turns and its wordmark comes in
+	case m.waiting() && !m.Fetching:
+		return 500 * time.Millisecond // nobody answered: the splash holds still
+	case m.Loading != "" || m.waiting():
+		return 90 * time.Millisecond // the spinner turns, retrying included
 	case m.notice != "" && m.Now.Sub(m.noticeAt) >= noticeFor-noticeFade && m.Now.Sub(m.noticeAt) < noticeFor:
 		return 100 * time.Millisecond // the notice fades out
 	case m.mapShown():

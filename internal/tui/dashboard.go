@@ -71,6 +71,9 @@ func (m *Model) verdict() (string, Color) {
 		}
 		return m.spinner() + " LOADING", cAccent2
 	}
+	if m.waiting() {
+		return "◌ OFFLINE", cWarn
+	}
 	v := m.view().Verdict()
 	return v.Glyph + " " + v.Text, verdictColors[v.State]
 }

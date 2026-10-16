@@ -62,6 +62,8 @@ func (m *Model) header(cv *Canvas) {
 		switch {
 		case m.Loading != "":
 			add(m.spinner()+" LOADING", cAccent2)
+		case m.waiting():
+			add("◌ OFFLINE", cWarn)
 		case m.Cached():
 			add("◌ CACHED", cWarn)
 		default:
@@ -385,7 +387,16 @@ func (m *Model) footer(cv *Canvas, y int) {
 		return
 	}
 	var keys []keycap
-	if m.modal != nil {
+	if m.waiting() && m.modal == nil {
+		// Before any evidence only these mean anything.
+		if m.Error != "" {
+			keys = append(keys, keycap{"r", "Retry now", "r"})
+		}
+		if m.Preview != nil {
+			keys = append(keys, keycap{"x", "Scenario", "x"})
+		}
+		keys = append(keys, keycap{",", "Settings", ","}, keycap{"?", "About", "?"}, keycap{"q", "Quit", "q"})
+	} else if m.modal != nil {
 		switch m.modal.kind {
 		case "preferences":
 			keys = []keycap{{"Tab/↑↓", "move", ""}, {"←→", "change", ""}, {"Enter", "select", "enter"}, {"Esc", "cancel", "esc"}}

@@ -28,7 +28,7 @@ func Run(ctx context.Context, c *client.Client, observer string, noColor bool, i
 		h, _, e := c.History(ctx, check, limit)
 		return h.Entries, e
 	}
-	m := &Model{Observer: observer, NoColor: noColor}
+	m := &Model{Observer: observer, NoColor: noColor, Collectors: c.URLs(), Project: c.Project()}
 	m.initializeStartup(options)
 	return loop(ctx, m, c.Snapshot, history, in, out)
 }
@@ -192,6 +192,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 			return
 		}
 		busy = true
+		m.Fetching = true
 		v := m.Observer
 		go func() {
 			began := time.Now()
@@ -207,7 +208,9 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 	request()
 	keys := time.NewTicker(30 * time.Millisecond)
 	defer keys.Stop()
-	every := 3 * time.Second
+	// A live view refreshes, and a view no collector answers asks again,
+	// this often; the preview moves every second.
+	every := retryEvery
 	if m.Preview != nil {
 		every = time.Second
 	}
@@ -236,6 +239,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 			return nil
 		case msg := <-ch:
 			busy = false
+			m.Fetching = false
 			m.perf.fetch, m.perf.fetches = msg.took, m.perf.fetches+1
 			if msg.view != m.Observer {
 				request()

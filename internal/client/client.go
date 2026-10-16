@@ -150,6 +150,19 @@ func HTTP(ep Endpoint) (*http.Client, error) {
 	tr := &http.Transport{Proxy: nil, DisableCompression: true, TLSClientConfig: tc, MaxResponseHeaderBytes: 32768, TLSHandshakeTimeout: 4 * time.Second, ResponseHeaderTimeout: 6 * time.Second, DialContext: (&net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}).DialContext, MaxIdleConnsPerHost: 2}
 	return &http.Client{Transport: tr, Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
 }
+
+// URLs are the collectors the client asks, in the order it asks them.
+func (c *Client) URLs() []string {
+	out := []string{}
+	for _, ep := range c.profile.Servers {
+		out = append(out, ep.URL)
+	}
+	return out
+}
+
+// Project is the project every answer must be of.
+func (c *Client) Project() string { return c.profile.Project }
+
 func (c *Client) Close() {
 	for _, h := range c.transports {
 		h.CloseIdleConnections()
@@ -180,6 +193,7 @@ func authorize(req *http.Request, ep Endpoint) error {
 func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot, string, error) {
 	var empty model.Snapshot
 	var skew error // a collector of another release, passed over
+	var missed misses
 	for i, ep := range c.profile.Servers {
 		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/snapshot", url.Values{"observer": {observer}}), nil)
 		if e != nil {
@@ -193,17 +207,20 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 			if ctx.Err() != nil {
 				return empty, "", ctx.Err()
 			}
+			missed.add(ep, unreachable(e))
 			continue
 		}
 		b, e := io.ReadAll(io.LimitReader(resp.Body, model.MaxSnapshotBytes+1))
 		resp.Body.Close()
 		if e != nil {
+			missed.add(ep, "answer cut off")
 			continue
 		}
 		if resp.StatusCode == 401 || resp.StatusCode == 403 {
 			return empty, "", errors.New("collector authentication/authorization rejected; not falling through silently")
 		}
 		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
+			missed.add(ep, unavailable(resp.StatusCode))
 			continue
 		}
 		if resp.StatusCode != 200 {
@@ -219,6 +236,7 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 			var schema errSchema
 			if errors.As(e, &schema) {
 				skew = schema
+				missed.add(ep, "another release")
 				continue
 			}
 			return empty, "", errors.New("invalid collector snapshot")
@@ -234,14 +252,15 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 		}
 		// A serving HTTP process with an old snapshot is not a healthy data source.
 		if c.Now().Sub(snap.GeneratedAt) > 30*time.Second || snap.GeneratedAt.After(c.Now().Add(30*time.Second)) {
+			missed.add(ep, "snapshot not current — are both clocks right?")
 			continue
 		}
 		return snap, ep.URL, nil
 	}
 	if skew != nil {
-		return empty, "", fmt.Errorf("%w with a current, matching snapshot: %v", ErrNoCollector, skew)
+		return empty, "", fmt.Errorf("%w with a current, matching snapshot: %v%s", ErrNoCollector, skew, missed)
 	}
-	return empty, "", fmt.Errorf("%w with a current, matching snapshot", ErrNoCollector)
+	return empty, "", fmt.Errorf("%w with a current, matching snapshot%s", ErrNoCollector, missed)
 }
 
 // ErrNoCollector is a read that no configured collector answered: each was
@@ -266,6 +285,7 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 	if !config.ID(check) || limit < 1 || limit > 500 {
 		return empty, "", errors.New("history needs a check ID and a limit of 1..500")
 	}
+	var missed misses
 	for i, ep := range c.profile.Servers {
 		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/history", url.Values{"check": {check}, "limit": {fmt.Sprint(limit)}}), nil)
 		if e != nil {
@@ -279,11 +299,13 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 			if ctx.Err() != nil {
 				return empty, "", ctx.Err()
 			}
+			missed.add(ep, unreachable(e))
 			continue
 		}
 		b, e := io.ReadAll(io.LimitReader(resp.Body, maxHistoryBytes+1))
 		resp.Body.Close()
 		if e != nil {
+			missed.add(ep, "answer cut off")
 			continue
 		}
 		switch {
@@ -292,6 +314,7 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 		case resp.StatusCode == 404:
 			return empty, "", fmt.Errorf("collector has no check %q", check)
 		case resp.StatusCode >= 500 || resp.StatusCode == 429:
+			missed.add(ep, unavailable(resp.StatusCode))
 			continue
 		case resp.StatusCode != 200:
 			return empty, "", fmt.Errorf("collector rejected read (HTTP %d)", resp.StatusCode)
@@ -318,7 +341,7 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 		}
 		return h, ep.URL, nil
 	}
-	return empty, "", fmt.Errorf("%w with the history of %s", ErrNoCollector, check)
+	return empty, "", fmt.Errorf("%w with the history of %s%s", ErrNoCollector, check, missed)
 }
 
 // A collector bounds history to 1 MiB of samples; the envelope adds little.
@@ -347,6 +370,7 @@ func (c *Client) Rollups(ctx context.Context, check, step, span string) (Rollups
 	if !config.ID(check) || len(step) > 8 || len(span) > 8 {
 		return empty, "", errors.New("rollups need a check ID, a step and a span")
 	}
+	var missed misses
 	for i, ep := range c.profile.Servers {
 		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/rollups", url.Values{"check": {check}, "step": {step}, "span": {span}}), nil)
 		if e != nil {
@@ -360,11 +384,13 @@ func (c *Client) Rollups(ctx context.Context, check, step, span string) (Rollups
 			if ctx.Err() != nil {
 				return empty, "", ctx.Err()
 			}
+			missed.add(ep, unreachable(e))
 			continue
 		}
 		b, e := io.ReadAll(io.LimitReader(resp.Body, maxRollupBytes+1))
 		resp.Body.Close()
 		if e != nil {
+			missed.add(ep, "answer cut off")
 			continue
 		}
 		switch {
@@ -375,6 +401,7 @@ func (c *Client) Rollups(ctx context.Context, check, step, span string) (Rollups
 		case resp.StatusCode == 400:
 			return empty, "", errors.New("collector refused the step or span; steps are 5m, 1h and 1d, spans up to 800d and 999 steps")
 		case resp.StatusCode >= 500 || resp.StatusCode == 429:
+			missed.add(ep, unavailable(resp.StatusCode))
 			continue
 		case resp.StatusCode != 200:
 			return empty, "", fmt.Errorf("collector rejected read (HTTP %d)", resp.StatusCode)
@@ -400,7 +427,7 @@ func (c *Client) Rollups(ctx context.Context, check, step, span string) (Rollups
 		}
 		return r, ep.URL, nil
 	}
-	return empty, "", fmt.Errorf("%w with the rollups of %s", ErrNoCollector, check)
+	return empty, "", fmt.Errorf("%w with the rollups of %s%s", ErrNoCollector, check, missed)
 }
 
 // A response of a thousand slots stays well under this.

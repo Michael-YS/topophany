@@ -3,6 +3,7 @@ package tui
 import (
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -70,6 +71,16 @@ func (m *Model) draw() *Canvas {
 	m.header(cv)
 	m.tabBar(cv, 1)
 	top := 3
+	if m.waiting() {
+		// Nothing to lay out yet: the splash says what is happening.
+		m.splash(cv, 0, 2, w, h-3)
+		m.footer(cv, h-1)
+		if m.modal != nil {
+			m.drawModalOver(cv)
+		}
+		return cv
+	}
+	m.splashAt = time.Time{}
 	if m.Tab == tabOverview && !m.hasNews() && !m.FullMap {
 		// The Overview's status card says everything the status row would;
 		// there the row is kept only for notices and errors, and while the
@@ -84,6 +95,14 @@ func (m *Model) draw() *Canvas {
 		m.drawDebug(cv)
 	}
 	if m.modal != nil {
+		m.drawModalOver(cv)
+	}
+	return cv
+}
+
+// drawModalOver dims the frame and draws the open modal over it.
+func (m *Model) drawModalOver(cv *Canvas) {
+	{
 		cv.Each(func(s Style) Style {
 			c, b := s.FG, s.BG
 			if c == 0 {
@@ -102,7 +121,6 @@ func (m *Model) draw() *Canvas {
 		m.drawModal(cv)
 		m.drawingModal = false
 	}
-	return cv
 }
 
 func (m *Model) body(cv *Canvas, x, y, w, h int) {

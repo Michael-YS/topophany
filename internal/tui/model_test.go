@@ -326,10 +326,10 @@ func TestOversizedFragmentedPasteNeverExecutesCommands(t *testing.T) {
 // repaints often enough for it to turn.
 func TestLoadingSpins(t *testing.T) {
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	m := &Model{Now: now, Width: 120, Height: 36, Server: "https://monitor.example.invalid:7447", Loading: "connecting to the collector"}
+	m := &Model{Now: now, Width: 120, Height: 36, Collectors: []string{"https://monitor.example.invalid:7447"}, Project: "home", Loading: "connecting to the collector"}
 	a := visible(m)
-	if !strings.Contains(a, "CONNECTING") || !strings.Contains(a, "connecting to the collector…") || !strings.Contains(a, "Waiting for the topology") {
-		t.Fatal("loading frame does not say what it waits for", a)
+	if !strings.Contains(a, "Connecting to monitor.example.invalid:7447") || !strings.Contains(a, "project home") || !strings.Contains(a, "LOADING") || strings.Contains(a, "0 up") {
+		t.Fatal("loading frame does not say what it waits for, or counts zeros", a)
 	}
 	m.Now = now.Add(90 * time.Millisecond)
 	if visible(m) == a {
@@ -342,6 +342,34 @@ func TestLoadingSpins(t *testing.T) {
 	m.Snapshot.GeneratedAt = now
 	if m.Animating() < 100*time.Millisecond {
 		t.Fatal("still spinning after loading")
+	}
+}
+
+// When no collector has ever answered, the screen says which did not and
+// why, that it keeps trying and what to check, and never counts zeros or
+// claims a cached view it does not have.
+func TestNoAnswerSaysWhyAndKeepsTrying(t *testing.T) {
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	m := &Model{Now: now, Width: 120, Height: 36, Collectors: []string{"https://monitor.example.invalid:7447"},
+		Error: "no configured collector answered with a current, matching snapshot (monitor.example.invalid:7447: connection refused — is the collector running?)"}
+	a := visible(m)
+	for _, want := range []string{"No collector answered", "monitor.example.invalid:7447", "connection refused — is the collector running?", "Trying again every 3 s", "Retry now", "OFFLINE"} {
+		if !strings.Contains(a, want) {
+			t.Fatalf("offline frame lacks %q:\n%s", want, a)
+		}
+	}
+	if strings.Contains(a, "CACHED") || strings.Contains(a, "0 up") {
+		t.Fatal("offline frame claims a cache or counts zeros", a)
+	}
+	if m.Animating() < 500*time.Millisecond {
+		t.Fatal("a still offline frame repaints often")
+	}
+	if m.title() == "" || !strings.Contains(m.title(), "offline") {
+		t.Fatal("window title does not say offline:", m.title())
+	}
+	m.Fetching = true
+	if b := visible(m); !strings.Contains(b, "Trying again…") || m.Animating() > 100*time.Millisecond {
+		t.Fatal("a retry in flight does not show", b)
 	}
 }
 

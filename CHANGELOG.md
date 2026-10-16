@@ -59,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collect Windows host CPU, memory, caller-relative disk capacity and selected
   process working sets through native APIs; validate Windows drive paths on
   any collector OS.
+- Before the first snapshot, the TUI shows the globe turning beside the
+  wordmark and names the collector it is asking, rather than empty views
+  counting zeros. When none answers, the scene goes still and says which
+  collector did not answer and why, that it tries again every 3 seconds
+  (`r` at once), and what to check.
 
 ### Changed
 
@@ -73,6 +78,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Enter` on the Servers tab opens the server's card rather than the
   evidence panel; a node's evidence panel is still on the Topology tab.
+- When no collector answers, the error names each one and why it gave no
+  answer: connection refused, timed out, a host name not found, a TLS
+  certificate from an authority not trusted here or for another name, an
+  http:// collector, a busy or failing collector, or a snapshot that is not
+  current. `topo status`, `show` and `history` give the same reasons.
 - Preferences that cannot be read no longer keep the TUI from opening: it
   starts with the built-in defaults and says why. `preferences show` still
   reports the error.
