@@ -1,11 +1,16 @@
 package outbox
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"runtime"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -129,5 +134,93 @@ func TestASlowCollectorDelaysNoOther(t *testing.T) {
 	}
 	if len(arrived) != 0 {
 		t.Fatal("the slow collector was sent another round before it answered the first")
+	}
+}
+
+// A collector that refuses a request carrying delivery telemetry, as one
+// older than the worker does (it knows no such field), costs no sample:
+// the request goes again at once without it, heartbeats go without it for
+// a while, then offer it again, and an upgraded collector receives it.
+// Samples the collector refuses bare are still set aside, one at a time.
+func TestRefusedTelemetryIsNotBlamedOnSamples(t *testing.T) {
+	c := testkit.Config()
+	inner, s := collector(t, c, nil)
+	target, _ := url.Parse(inner.URL)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	var old atomic.Bool // the collector predates delivery telemetry
+	old.Store(true)
+	var bad atomic.Value // the ID of an observation the collector refuses
+	bad.Store("")
+	var telemetry atomic.Int64
+	refuse := func(w http.ResponseWriter, code string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		io.WriteString(w, `{"error":"`+code+`"}`)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if bytes.Contains(body, []byte(`"delivery"`)) {
+			telemetry.Add(1)
+			if old.Load() {
+				refuse(w, "invalid_batch_json")
+				return
+			}
+		}
+		if id := bad.Load().(string); id != "" && bytes.Contains(body, []byte(id)) {
+			refuse(w, "sample_too_old")
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		proxy.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	d, e := NewDelivery(client.Profile{Project: c.Project, Servers: []client.Endpoint{{URL: srv.URL, Token: workerToken}}}, config.Revision(c))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	// The worker's clock runs behind, so its reports stay valid as it moves.
+	now := time.Now().Add(-3 * time.Hour)
+	d.Now = func() time.Time { return now }
+	q := queue(t)
+	seq := uint64(0)
+	round := func(add bool) Result {
+		t.Helper()
+		if add {
+			seq++
+			if e := q.Add(makeBatch(seq), d.Recipients()); e != nil {
+				t.Fatal(e)
+			}
+		}
+		return d.Tick(context.Background(), q, &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: time.Now()})[0]
+	}
+	want := func(r Result, accepted, quarantined int, err string, sent int64) {
+		t.Helper()
+		if r.Accepted != accepted || r.Quarantined != quarantined || !strings.Contains(r.Error, err) || err == "" && r.Error != "" || telemetry.Load() != sent {
+			t.Fatalf("got %+v with telemetry sent %d times; want %d accepted, %d quarantined, error %q, telemetry sent %d times", r, telemetry.Load(), accepted, quarantined, err, sent)
+		}
+	}
+
+	want(round(true), 1, 0, "", 0) // nothing to report yet
+	want(round(true), 0, 0, "invalid_batch_json; resending without delivery telemetry", 1)
+	want(round(false), 1, 0, "", 1)
+	want(round(true), 1, 0, "", 1) // still bare
+	now = now.Add(bareFor + time.Second)
+	want(round(true), 0, 0, "resending without", 2) // offered again, refused again
+	want(round(false), 1, 0, "", 2)
+
+	old.Store(false) // upgraded
+	now = now.Add(bareFor + time.Second)
+	want(round(true), 1, 0, "", 3)
+	if _, beats := s.View(); len(beats["home"].Delivery) != 1 {
+		t.Fatal("the upgraded collector holds no delivery telemetry", beats["home"])
+	}
+
+	bad.Store(makeBatch(seq + 1).Observations[0].ID)
+	want(round(true), 0, 0, "sample_too_old; resending without", 4)
+	want(round(false), 0, 1, "sample_too_old", 4) // refused bare: set aside
+	want(round(true), 1, 0, "", 5)                // and the telemetry is not withheld
+	if n, _ := q.Stats(); n != 0 {
+		t.Fatal("samples still pending", n)
 	}
 }

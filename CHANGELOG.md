@@ -8,12 +8,12 @@
 - Add application and environment organization, collapsible Services/Checks groups, persistent browsing scope, shared dependency navigation, and editor support without changing measurement contracts.
 
 - Add `topo capacity`, observer storage weights, configurable bounded collector state/receipt limits, and authenticated quota visibility before migration.
-- Expose worker-reported backlog, quarantine, sample ACK, contact and retry telemetry in Observers, with bounded heartbeat payloads and closed diagnostic codes.
+- Expose worker-reported backlog, quarantine, sample ACK, contact and retry telemetry in Observers, with bounded heartbeat payloads and closed diagnostic codes. A collector that refuses the telemetry (one not yet upgraded, or a worker clock running ahead) no longer has the samples quarantined with it: the worker resends without telemetry and withholds it from that collector for an hour.
 - Generate private server/worker/client installation bundles with role-scoped enrollment, TLS, native startup definitions, dry-run, read-only enrollment verification and rollback.
 - Centralize literal addresses with reviewed references and `topo address`; preview affected measurements without resetting equivalent history or flattening editor source.
 - Collect Windows host CPU, memory, caller-relative disk capacity and selected process working sets through native APIs; validate Windows drive paths on any collector OS.
 
-Upgrade collectors before workers that emit new heartbeat fields. Bundle creation and address editing remain local operations; live routes and proxy policies are untouched.
+A worker sending delivery telemetry to a collector not yet upgraded resends without it rather than quarantining samples. Bundle creation and address editing remain local operations; live routes and proxy policies are untouched.
 
 All notable changes to this project are documented in this file.
 

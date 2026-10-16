@@ -22,11 +22,24 @@ type destination struct {
 	failures  int
 	isolating bool
 	// Storage backpressure delays samples, not the executor's liveness.
-	separateBeat         bool
+	separateBeat bool
+	// A collector that refuses a request carrying delivery telemetry may be
+	// refusing the telemetry, not the samples: one older than it, or one
+	// that finds it invalid, as when the clocks disagree. The request goes
+	// again without it (probing) before any sample is blamed, and if that
+	// is accepted, heartbeats go without it until bareUntil.
+	probing              bool
+	bareUntil            time.Time
 	code                 string
 	lastAck, lastContact time.Time
 	quarantined          int64
 }
+
+// bareFor is how long heartbeats go without delivery telemetry once a
+// collector has refused it; it is offered again after, as the collector
+// may have been upgraded.
+const bareFor = time.Hour
+
 type Delivery struct {
 	destinations []destination
 	Now          func() time.Time
@@ -177,19 +190,37 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		}
 	}
 	if hb != nil && batch.Revision == revision && batch.Schema == model.BatchSchema {
-		h := model.CloneHeartbeat(*hb)
-		h.Delivery = d.Statuses()
+		h := d.beat(dest, hb, now)
 		batch.Heartbeat = &h
 	}
 	if len(batch.Observations) == 0 && batch.Heartbeat == nil {
 		return
 	}
+	telemetry := batch.Heartbeat != nil && len(batch.Heartbeat.Delivery) > 0
+	probed := dest.probing
 	e := client.PostBatch(ctx, dest.http, dest.endpoint, batch)
 	if e == nil {
 		dest.lastContact = d.Now()
 		dest.code = ""
 	} else {
 		dest.code = deliveryCode(e)
+	}
+	var he *client.HTTPError
+	permanent := errors.As(e, &he) && he.Permanent()
+	switch {
+	case telemetry && permanent:
+		// Not yet the samples' fault: they go again at once, bare.
+		dest.probing = true
+		dest.next = time.Time{}
+		result.Error = he.Error() + "; resending without delivery telemetry"
+		return
+	case probed && e == nil:
+		// The telemetry was what the collector refused.
+		dest.probing = false
+		dest.bareUntil = d.Now().Add(bareFor)
+	case probed && permanent:
+		// Refused bare too, so the samples are; the telemetry was not.
+		dest.probing = false
 	}
 	if e == nil {
 		if e = q.Ack(ids, rid); e != nil {
@@ -206,14 +237,13 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		result.Accepted = len(batch.Observations)
 		return
 	}
-	var he *client.HTTPError
 	dest.separateBeat = errors.As(e, &he) && (he.Status == 429 && he.Code == "observer_storage_quota" || he.Status == 503 && he.Code == "storage_receipt_capacity")
 	if dest.separateBeat && hb != nil {
 		if d.heartbeat(ctx, dest, revision, hb) != nil {
 			dest.separateBeat = false
 		}
 	}
-	if errors.As(e, &he) && he.Permanent() {
+	if permanent {
 		if len(ids) > 1 {
 			// A single expired or invalid item rejects the entire request.
 			// Retry original durable items separately before quarantining
@@ -258,11 +288,20 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 // heartbeat consumes no pending item and never acknowledges observations.
 // It always describes the current worker, even while old samples wait.
 func (d *Delivery) heartbeat(ctx context.Context, dest *destination, revision string, hb *model.Heartbeat) error {
-	h := model.CloneHeartbeat(*hb)
-	h.Delivery = d.Statuses()
+	h := d.beat(dest, hb, d.Now())
 	err := client.PostBatch(ctx, dest.http, dest.endpoint, model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: revision, Heartbeat: &h})
 	if err == nil {
 		dest.lastContact = d.Now()
 	}
 	return err
+}
+
+// beat is the heartbeat to send dest: hb with the delivery telemetry,
+// unless dest has refused it lately or is being asked whether it did.
+func (d *Delivery) beat(dest *destination, hb *model.Heartbeat, now time.Time) model.Heartbeat {
+	h := model.CloneHeartbeat(*hb)
+	if !dest.probing && !now.Before(dest.bareUntil) {
+		h.Delivery = d.Statuses()
+	}
+	return h
 }
