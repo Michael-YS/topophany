@@ -128,3 +128,19 @@ Interoperability across live OpenSSH, Tailscale, and WireGuard tunnels and nativ
 | Full shared IPv4 or IPv6 /64 pending quotas allow new authentication attempts; authenticated sockets survive pending floods, remain bounded per principal and globally, and cannot race eviction | `TestSharedSourceCanAuthenticateWhenPendingQuotaIsFull`, `TestSharedSourceFloodAllowsWorkerAndViewerOverHTTP`, `TestAuthenticatedConnectionBudgetsPreservePendingCapacity`, `TestAuthenticationCannotRacePendingEviction` |
 | Admission retries capacity released by concurrent authentication or pending socket closure, even when no pending socket remains to evict | `TestAuthenticationCannotRacePendingEviction`, `TestConnectionAdmissionCannotRacePendingClose` |
 | Cached evaluation plans own their configuration and published snapshots; a larger topology does not make config/history/rollup reads derive its contracts again | `TestConfigCloneDetachesEveryMutableField`, `TestPlanOwnsInputsAndEveryPublishedSnapshot`, `TestViewerReadsDoNotDeriveTheTopologyAgain`, `BenchmarkEngineTopology` |
+
+## Persistent monitor panels and logging
+
+| Scenario | Regression coverage |
+|---|---|
+| A previously healthy metric and aggregate expire without a new sample; projection does not modify source evidence | `TestEvidenceExpiresWithoutNewSample`, `TestSummaryExpiresAtItsEvidenceBoundary` |
+| Missing sources, ambiguous selectors, nonfinite values and worker/global capability mismatches cannot produce a normal progress bar | `TestAmbiguityInvalidValuesAndMissingSource`, `TestTemplateCapabilitiesAndAtomicConfig` |
+| Import persists template content; partial updates preserve omitted fields; invalid updates retain the previous configuration and output | `TestMonitorImportUpdateAndExport`, `TestMonitorInvalidUpdatePreservesConfiguration` |
+| Exclusive writers, unchanged-frame suppression, publisher renewal and nonsynchronous cache writes | `TestOutputLockDedupLeaseAndStop`, `TestOutputProtectsNonPanelAndAliases` |
+| A killed writer leaves a running file that becomes unavailable by deadline, and its process lock releases | `TestKilledPublisherExpiresAndReleasesLock` |
+| Slow subscribers receive the latest owned frame; shutdown is published to file and memory; file output can be omitted | `TestHubSnapshotIsolationAndSlowSubscriber`, `TestRuntimeShutdownWritesStopped`, `TestRuntimeWithoutFileOutput` |
+| Failed output replacement preserves the last complete snapshot and recovers; a native Windows reader denying delete sharing is handled without truncation | `TestWriteFailurePreservesSnapshotAndCanRecover`, `TestWindowsReaderWithoutDeleteSharing` (Windows execution required) |
+| Client uses authenticated snapshots; collector attachment reads without persistence side effects | `TestMonitorClientPublishesAuthenticatedSnapshot`, `TestMonitorCollectorAttachment`, `TestMonitorSnapshotDoesNotPersist` |
+| Worker local evidence preserves failure/recovery thresholds and resets on contract changes; output failure does not stop durable enqueue | `TestLocalThresholdCarryAndContractReload`, `TestMonitorWorkerOutputFailureDoesNotStopDurableEnqueue` |
+| Managed logs rotate with bounded retention and reopen after rotation; repeated errors summarize and recover with bounded grouping | `TestRotationBoundsRetentionAndReopens`, `TestRepeatedErrorSummaryRecoveryAndBound` |
+| I/O measurement remains race-safe without persisting its counters | `TestConcurrentCounters`, `TestMeasuredDurableWriteAndUnsyncedCache` |

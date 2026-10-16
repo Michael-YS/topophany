@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "title": "Topophany worker",
+  "icon": "server",
+  "bar": { "row": "status" },
+  "rows": [
+    { "id": "status", "label": "Local checks", "metric": "local.status", "visual": "text" },
+    { "id": "cpu", "label": "CPU", "metric": "host.cpu.used_percent", "select": { "check": "host-resources" }, "format": "percent", "visual": "bar" },
+    { "id": "delivery", "label": "Delivery", "metric": "delivery.status", "visual": "text" },
+    { "id": "queue", "label": "Pending records", "metric": "delivery.pending_records", "visual": "text" },
+    { "id": "writes", "label": "Queue operations", "metric": "storage.queue.operations", "visual": "text" }
+  ]
+}

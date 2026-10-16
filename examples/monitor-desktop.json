@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "title": "Topophany",
+  "icon": "server",
+  "bar": { "row": "status" },
+  "rows": [
+    { "id": "status", "label": "Status", "metric": "summary.status", "visual": "text" },
+    { "id": "cpu", "label": "CPU", "metric": "host.cpu.used_percent", "select": { "check": "host-resources" }, "format": "percent", "visual": "bar" },
+    { "id": "memory", "label": "Memory", "metric": "host.memory.used_percent", "select": { "check": "host-resources" }, "format": "percent", "visual": "bar" }
+  ]
+}

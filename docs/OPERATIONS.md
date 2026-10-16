@@ -95,3 +95,66 @@ Review `manifest.json`, `payload/topology.json` and `service`. `topo install --b
 Use `--platform`, `--binary`, `--install-dir`, `--data-dir` and `--user` to generate for another host. A cross-platform bundle requires a matching binary and explicit target paths. Installation checks the native platform, payload permissions and regenerated service definition. Unix service users cannot be root. Windows directories are restricted to the current user, SYSTEM and administrators.
 
 Installations save replaced files privately under `INSTALL_DIR/.backups`, restore them when installation/startup fails, and print the backup path. `topo install --rollback BACKUP` restores files and the prior service state, including a prior current-user interactive Windows task. It never copies or rewrites collector journals. Workers with pending outbox files are refused until their queue is drained or archived. Existing installations from another project and data directories with an active writer are refused. A fresh bundle alone does not migrate history: follow the stopped-writer backup procedure above. Review and retain signing material, backups and enrollment directories privately.
+
+## Monitor panels and managed logs
+
+See [persistent monitor panels](REFERENCE.md#persistent-monitor-panels) for the
+CLI and output protocol. Run standalone client panels under an existing process
+supervisor with `topo monitor run NAME`; no monitor command installs a service.
+An attached panel shares its host process lifecycle. Configuration changes,
+including disable and output path changes, require restarting that process.
+A panel startup configuration/lock error fails explicitly. A runtime output
+error does not interrupt collector acknowledgements or worker durable enqueue.
+
+Service accounts have different user configuration/cache directories from the
+interactive user. Configure a service panel with an explicit root, for example
+`--monitor-dir /etc/topophany/monitor`, an output in a service-writable cache
+location, and pass the same root on `serve`/`worker`. Keep output outside the
+journal/outbox directory. On sandboxed systemd services, grant that separate
+cache directory with `ReadWritePaths`; make its ownership and permissions match
+the service account. Review service definitions before restarting them. The
+monitor output and lock are local-machine artifacts, not network-share storage.
+
+`serve` and `worker` accept `--log-file PATH.log`, `--log-max-bytes BYTES` (default
+5 MiB, 64 KiB–1 GiB) and `--log-backups N` (default 3, 1–10). The process owns
+rotation and reopens the active log, preserving bounded numbered backups.
+There is one lock-protected writer per managed log. Without `--log-file`, logs
+continue to stderr. New macOS deployment bundles pass a managed
+`DATA_DIR/topophany.log` and direct launchd's raw stdout/stderr to `/dev/null`;
+normal service diagnostics go through the managed writer. Errors opening that
+log cannot be recorded there: inspect the service status and run the service
+command interactively when diagnosing startup permissions. Existing installed
+services are not rewritten automatically; regenerate/review/reinstall their
+service definition to opt in. Historical `stdout.log`/`stderr.log` files are not
+deleted by this change; archive or remove them after stopping the old writer.
+
+Delivery and ledger persistence errors retain a first report, summaries once a
+minute while repeated reports continue, and a recovery record. Groups include
+component, entity and error code, with report counts and first/last timestamps;
+there are at most 128 groups. Delivery backoff with an outstanding error does
+not count as recovery. Counts represent reports, not attempted connections.
+Monitor output errors likewise report the first failure, periodic failure
+counts and recovery. Existing incident records and state-change logs remain.
+
+Collector and Worker logs emit `storage_io_since_start` once a minute. The
+bounded, process-local counters include journal write calls/bytes/errors/time,
+checkpoint replacement calls/bytes/errors/time, logical queue file operations
+and written bytes, and separate file/directory synchronization calls/errors/time
+(in nanoseconds). Queue operations count reads, directory listings, metadata
+reads, removals and durable replacements; they do not count each nested syscall
+inside a replacement separately. Expected missing-file probes also contribute
+to operation error counts. Byte counts measure application writes, including
+temporary-file bytes written before a failed replacement. They do not measure
+filesystem/device write amplification or physical SSD wear. Counters reset on
+restart and are not persisted. The `storage.*` monitor metrics expose the most
+useful totals to local panels.
+
+To measure a deployment, record two counter snapshots over a fixed period,
+subtract them, and compare with the operating system's process/device I/O
+measurements for the same load. Include cold start, steady healthy sampling,
+delivery outage/recovery, checkpoint and log rotation separately. Display-only
+writes are rebuildable and do not force sync; they are not evidence deduplication.
+New observations with the same result still persist and count as monitoring
+evidence. Queue batching and checkpoint policy changes are intentionally deferred
+until these measurements justify them; acknowledgement remains after durable
+storage and reliable worker enqueue is unchanged.

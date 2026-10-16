@@ -135,8 +135,15 @@ def main() -> int:
                 overrides={"GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "0"}, timeout=300)
         for example in ("minimal", "homelab", "host-resources"):
             run("example-" + example, [str(binary), "validate", "--config", "examples/" + example + ".json"])
+        for panel, source in (("desktop", "collector"), ("worker", "worker")):
+            run("monitor-example-" + panel, [str(binary), "monitor", "configure", panel,
+                "--monitor-dir", str(build_dir / "panels"), "--source", source,
+                "--template", "examples/monitor-" + panel + ".json",
+                "--output", str(build_dir / (panel + "-metrics.json"))])
+            run("monitor-preview-" + panel, [str(binary), "monitor", "preview", panel,
+                "--monitor-dir", str(build_dir / "panels")])
         help_sections = []
-        for cmd in ("", "serve", "worker", "login", "init", "validate", "export", "once", "token"):
+        for cmd in ("", "serve", "worker", "login", "init", "validate", "export", "once", "token", "monitor"):
             name = "help-" + (cmd or "topo")
             command = [str(binary)] + ([cmd] if cmd else []) + ["--help"]
             run(name, command)

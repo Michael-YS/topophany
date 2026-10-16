@@ -235,3 +235,169 @@ Use a clean local drive path such as `C:/` or `D:\Data`; drive-relative paths, U
 `memory_basis` is `windows_AvailPhys`. Windows capacity is caller-relative under quotas: `disk_basis=windows_caller_quota`, total and available are the caller's counters, and used is their difference; the separately reported `disk_volume_free_bytes` is volume-wide. Inode counters are unavailable (`disk_inodes_basis=unavailable_on_windows`), and POSIX zombie semantics do not apply. See [GetDiskFreeSpaceExW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdiskfreespaceexw).
 
 Process matching is case-insensitive against the executable basename or its stem without `.exe`; the existing 15-byte configured-name bound still applies. Only selected names' counts/RSS are retained, never the inventory, arguments, environment or user names. RSS uses query-limited process handles; protected/unreadable selected processes produce a monitor error, and processes that exit during enumeration are skipped. Shared pages can be counted in more than one working set. Native acceptance must run on Windows; successful cross-compilation alone does not test these APIs.
+
+## Persistent monitor panels
+
+`topo monitor` manages named, local display panels. Templates use Topophany metric
+names and contain no executable expressions. File imports and stdin imports save
+the template content; the original file is not needed afterwards.
+
+```sh
+topo monitor configure desktop --template examples/monitor-desktop.json --source client --profile default
+topo monitor run desktop
+topo --monitor desktop
+
+topo monitor configure desktop --output ./topophany-metrics.json --interval 10s
+topo monitor show desktop
+topo monitor path desktop
+topo monitor preview desktop
+topo monitor export desktop
+topo monitor metrics
+topo monitor configure desktop --enabled=false
+```
+
+`--template -` reads one bounded JSON value from stdin, including a quoted heredoc.
+`export` prints the saved template. `metrics` lists metric names, types, units,
+selectors and supported sources. `path` prints only the output path. `preview`
+reads the last output and applies current freshness deadlines without writing or
+contacting a source. `show` reports saved configuration, observed publisher state,
+and the running configuration revision when its publisher lease is current.
+
+A first configuration requires a template. Later calls patch only explicitly
+provided settings. Invalid changes leave the previous configuration intact.
+**Changes take effect after restarting the panel's process.** In particular,
+`--enabled=false` prevents subsequent attachment/start; it does not stop a running
+Collector, Worker, TUI or standalone panel. A configuration command never installs
+or starts a background service.
+
+Configuration schema 1 embeds the template in one `config.json`, so configuration
+and template commit in a single durable replacement. Its default location is
+`<user-config-dir>/topophany/monitor/<name>/config.json`. The rebuildable output
+is `<user-cache-dir>/topophany/monitor/<name>/metrics.json`. `--monitor-dir DIR`
+selects an explicit configuration root on every monitor command and on `topo`,
+`serve` and `worker`. Relative output/credential paths become absolute during
+configuration. Output paths must end in `.json`. Existing unrelated files,
+symlink output targets, protected configuration names and attached-process data
+directories are refused. Parent directory aliases are resolved before locking.
+
+The configuration stores the named credential profile and absolute credential
+file path, never the bearer token. The active profile is resolved once at first
+configuration; changing the credential file's active profile later does not
+retarget the panel. An existing profile pins its project. A changed project
+requires explicit reconfiguration. Offline entities are allowed; unknown metric
+names, unsupported source capabilities, invalid row references and incompatible
+formats fail validation.
+
+### Sources and process ownership
+
+| Source | Process | Scope |
+|---|---|---|
+| `client` | `topo monitor run NAME` | Saved profile; optional `--observer` configured view |
+| `client` | `topo --monitor NAME` | The TUI's actual fetch results, including view switches and failures |
+| `collector` | `topo serve … --monitor NAME` | Current collector's complete project view, read without persistence side effects |
+| `worker` | `topo worker … --monitor NAME` | This worker's local observations, threshold state and separate delivery reports |
+
+The source must match the process role. Optional configured project/observer
+bindings must match at startup. An attached TUI also checks the saved profile's
+project and collector URLs against its actual connection; a mismatch fails
+explicitly. Its panel shares the TUI fetches, without opening another polling
+connection. Worker panels cannot use `summary.status`; `local.status` describes
+local checks and does not assert successful upload or global project health.
+
+For example:
+
+```sh
+topo monitor configure collector-panel --source collector --template examples/monitor-desktop.json
+topo serve --config topology.json --auth auth.json --data collector-data --monitor collector-panel
+
+topo monitor configure worker-panel --source worker --template examples/monitor-worker.json
+topo worker --config topology.json --credentials worker-credentials.json --observer local --data worker-data --monitor worker-panel
+```
+
+### Template and metric contract
+
+Templates have `schema: 1`, `title`, optional symbolic `icon`, `bar.row` and an
+ordered `rows` array (1–128 rows, at most 256 KiB for the saved configuration).
+Each row has a unique `id`, optional `label`, `metric`, optional `select`, optional
+`format` and `visual` (`text` or `bar`). `bar.row` references a row; it is metadata
+for a future system-bar consumer. Icons are symbolic names; consumer-specific
+icon rendering is not implemented here.
+
+The initial metric catalog includes:
+
+- `summary.status`: complete source-view verdict, independent of which other
+  rows the template displays; available to client/collector sources.
+- `local.status`: the worker's local view verdict.
+- `check.status`: one check's current health.
+- `host.cpu.used_percent`, `host.memory.used_percent`, `host.disk.used_percent`:
+  numeric percentages in **0–100**, suitable for `format: "percent"` and
+  `visual: "bar"`. CPU is whole-host normalized utilization over the sampler's
+  window. Output includes `sample_window_ms` when available, and `basis` for
+  CPU/memory/disk accounting; memory and disk retain the native sampler's
+  platform-specific definitions rather than silently normalizing unlike metrics.
+- `delivery.status`, `delivery.pending_records`, `delivery.pending_bytes`:
+  worker transport reports, selected by optional collector identity digest.
+  `ready` means no currently reported transport error, not proof all samples
+  have reached the collector; read the pending counts alongside it.
+- `storage.journal.write_bytes`, `storage.checkpoint.write_bytes` for collectors;
+  `storage.queue.operations`, `storage.queue.write_bytes` for workers;
+  `storage.sync.count`, `storage.sync.duration_ms` for both local service roles.
+  These are counters since process start, not remote client metrics.
+
+Check metrics accept `select: {"check":"ID"}`. Delivery metrics accept
+`select: {"collector":"16-character-lowercase-hex-digest"}`. A missing selector
+is permitted only when runtime matching yields exactly one entity. Zero matches
+produce `entity_missing`/`never_reported`; multiple matches produce
+`selector_ambiguous`. There is no implicit aggregation. With multiple delivery
+destinations, set the collector digest explicitly in each delivery row.
+
+### Output schema and freshness
+
+Panel output has its own `schema: 1`: `name`, `config_revision`, `instance`,
+`sequence`, `source`, `project`, optional `observer`, `lifecycle`, `generated_at`,
+`publisher_expires_at`, `title`, `icon`, `bar_row`, and ordered `rows`. Sequence
+numbers advance within a publisher instance and can skip for slow consumers.
+Each row includes its template fields, scalar `value`, `unit`, formatted `text`,
+`health`, `freshness`, optional `reason`, `sampled_at`, `valid_until`, and resolved
+check/observer/collector identity where applicable. Unknown numbers are `null`,
+never zero. Health and data freshness are separate dimensions.
+
+All rows are projected from one source snapshot at one evaluation time; their
+underlying samples can have different timestamps. Actual sample timestamps
+survive refresh and replay. Summary rows use the newest underlying check sample
+when one exists and expire at the earliest relevant fresh-evidence boundary.
+Source snapshots also expire after 15 seconds, independently of check TTLs.
+
+`--interval` defaults to 5 seconds and accepts 1 second through 1 hour. It does
+not reschedule checks. Source refresh is at most 5 seconds apart; evidence is
+aged every second. Changed evidence is written on the display cadence; health,
+freshness and lifecycle transitions can write sooner. Unchanged content skips
+writes, except publisher renewal at most 10 seconds apart, with a 30-second
+publisher lease. Thus a large interval does not suppress safety transitions or
+publisher renewal. A first configuration creates a `not_started` placeholder;
+reconfiguration never resets existing output. Startup publishes immediately;
+orderly shutdown publishes `stopped` and removes current values.
+
+**Readers must evaluate both `publisher_expires_at` and each row's `valid_until`
+against their current clock.** A killed process cannot write `stopped`; its file
+can still contain `running` after the lease has expired. Do not use mtime or
+`generated_at` as a substitute for the original sample time, or extend evidence
+validity because the publisher renewed its lease. Implausibly future timestamps
+are treated as unavailable. `monitor preview` applies this reader policy.
+
+Each output has one cooperating writer, protected by a process-lifetime lock in
+a separate stable file. Locks release after process termination. Writes create
+a complete temporary file beside the destination and replace the destination;
+Windows sharing violations receive bounded retries without deleting the old
+file. Readers should reopen by pathname and permit delete sharing on Windows.
+Only local filesystems are supported for lock/replacement guarantees. Output
+failures are reported and retried; the output path can become unavailable.
+Always retain freshness checks even when a previous complete file remains.
+
+The display cache does not force file/directory synchronization on each update.
+Configuration, journals, checkpoints and outboxes retain durable writes. File
+output runs separately from ingestion/sampling and coalesces only display
+frames. `monitor.Hub` exposes latest-snapshot retrieval and bounded subscriptions
+with the current frame included atomically; slow consumers skip intermediate
+frames. The core can run with no file sink. Native menu-bar/tray UI, IPC, charts,
+expression evaluation and history buffers remain future work.
