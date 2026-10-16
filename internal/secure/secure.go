@@ -81,15 +81,26 @@ func PrivateRead(path string) ([]byte, error) {
 	return ReadBounded(path, 1<<20)
 }
 func AtomicWrite(path string, b []byte, mode os.FileMode) error {
-	return atomicWrite(path, b, mode, true)
+	return atomicWrite(path, b, mode, true, nil)
 }
 
 // CacheWrite replaces rebuildable data without forcing stable storage. Durable
 // callers must continue to use AtomicWrite.
 func CacheWrite(path string, b []byte, mode os.FileMode) error {
-	return atomicWrite(path, b, mode, false)
+	return atomicWrite(path, b, mode, false, nil)
 }
-func atomicWrite(path string, b []byte, mode os.FileMode, durable bool) error {
+
+// AtomicWriteMeasured retains AtomicWrite's durability and counts bytes
+// actually written to the temporary file, even if replacement later fails.
+func AtomicWriteMeasured(path string, b []byte, mode os.FileMode, counter *ioaccount.Counter) error {
+	return atomicWrite(path, b, mode, true, counter)
+}
+func atomicWrite(path string, b []byte, mode os.FileMode, durable bool, counter *ioaccount.Counter) (result error) {
+	started := time.Now()
+	written := 0
+	if counter != nil {
+		defer func() { counter.Add(written, time.Since(started), result) }()
+	}
 	dir := filepath.Dir(path)
 	mkdir := os.MkdirAll
 	if durable {
@@ -108,7 +119,10 @@ func atomicWrite(path string, b []byte, mode os.FileMode, durable bool) error {
 	tmp := f.Name()
 	defer os.Remove(tmp)
 	if e = f.Chmod(mode); e == nil {
-		_, e = f.Write(b)
+		written, e = f.Write(b)
+		if e == nil && written != len(b) {
+			e = io.ErrShortWrite
+		}
 	}
 	if e == nil && durable {
 		e = ioaccount.Sync(f)

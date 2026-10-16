@@ -33,12 +33,11 @@ func queueRemove(path string) error {
 	return e
 }
 func queueWrite(path string, b []byte, mode os.FileMode) error {
-	start := time.Now()
-	e := secure.AtomicWrite(path, b, mode)
-	n := 0
-	if e == nil {
-		n = len(b)
-	}
-	ioaccount.Queue.Add(n, time.Since(start), e)
-	return e
+	return secure.AtomicWriteMeasured(path, b, mode, &ioaccount.Queue)
+}
+func queueInfo(entry os.DirEntry) (os.FileInfo, error) {
+	started := time.Now()
+	v, e := entry.Info()
+	ioaccount.Queue.Add(0, time.Since(started), e)
+	return v, e
 }

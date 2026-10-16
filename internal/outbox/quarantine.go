@@ -38,7 +38,7 @@ func (q *Queue) trimQuarantine(recipient, keep string, extra int64) error {
 		if len(name) != 86 || name[64] != '-' || strings.Trim(name[:64]+name[65:81], "0123456789abcdef") != "" || f.Type()&os.ModeSymlink != 0 || f.IsDir() {
 			return errors.New("invalid quarantine entry")
 		}
-		info, err := f.Info()
+		info, err := queueInfo(f)
 		if err != nil {
 			return err
 		}

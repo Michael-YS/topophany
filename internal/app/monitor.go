@@ -17,6 +17,10 @@ import (
 )
 
 func (a *App) monitor(ctx context.Context, args []string) error {
+	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help" || args[0] == "-h") {
+		_, e := fmt.Fprintln(a.Out, "topo monitor configure|run|show|path|preview|export NAME [--monitor-dir DIR]\ntopo monitor metrics\nConfigure imports a template; run starts a client panel; preview reads the current output. Changes apply after restart.")
+		return e
+	}
 	if len(args) == 1 && args[0] == "metrics" {
 		return printJSON(a.Out, monitor.Catalog())
 	}
@@ -54,24 +58,8 @@ func (a *App) monitor(ctx context.Context, args []string) error {
 			e = secure.Decode(bytes.NewReader(b), &p, 1<<20)
 		}
 		if e == nil && p.Name == c.Name {
+			p = monitor.Current(p, a.now())
 			state = p.Lifecycle
-			now := a.now()
-			if p.Lifecycle == "running" && !now.Before(p.PublisherExpiresAt) {
-				state = "publisher_expired"
-			}
-			for i := range p.Rows {
-				r := &p.Rows[i]
-				if state != "running" || !now.Before(r.ValidUntil) {
-					r.Value = nil
-					r.Text = "unknown"
-					r.Health = "unknown"
-					r.Freshness = "stale"
-					r.Reason = state
-					if state == "running" {
-						r.Reason = "sample_expired"
-					}
-				}
-			}
 		} else {
 			p = monitor.Build(c, monitor.Input{Unavailable: true}, a.now())
 		}
@@ -79,13 +67,17 @@ func (a *App) monitor(ctx context.Context, args []string) error {
 			p.Lifecycle = state
 			return printJSON(a.Out, p)
 		}
+		runningRevision := ""
+		if state == "running" {
+			runningRevision = p.ConfigRevision
+		}
 		return printJSON(a.Out, struct {
 			Config          monitor.Config `json:"config"`
 			ConfigPath      string         `json:"config_path"`
 			RunningRevision string         `json:"running_revision"`
 			State           string         `json:"state"`
 			RequiresRestart bool           `json:"requires_restart"`
-		}{c, path, p.ConfigRevision, state, p.ConfigRevision != c.Revision})
+		}{c, path, runningRevision, state, state == "running" && p.ConfigRevision != c.Revision})
 	case "run":
 		if c.Source != "client" {
 			return errors.New("monitor run requires source client; attach collector/worker panels to their process")

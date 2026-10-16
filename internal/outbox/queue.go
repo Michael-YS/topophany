@@ -86,7 +86,7 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 				return nil, errors.New("invalid outbox entry")
 			}
-			info, e := entry.Info()
+			info, e := queueInfo(entry)
 			if e != nil {
 				return nil, e
 			}

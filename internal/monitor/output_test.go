@@ -137,6 +137,10 @@ func TestRuntimeShutdownWritesStopped(t *testing.T) {
 	if p.Lifecycle != "stopped" {
 		t.Fatal(p)
 	}
+	latest, _ := h.Latest()
+	if latest.Lifecycle != "stopped" || latest.Rows[0].Value != nil {
+		t.Fatal("in-memory subscriber missed stopped state", latest)
+	}
 }
 
 func TestWriteFailurePreservesSnapshotAndCanRecover(t *testing.T) {
@@ -178,5 +182,32 @@ func TestWriteFailurePreservesSnapshotAndCanRecover(t *testing.T) {
 	b, _ = os.ReadFile(c.Output)
 	if string(b) == string(original) {
 		t.Fatal("did not recover")
+	}
+}
+
+func TestRuntimeWithoutFileOutput(t *testing.T) {
+	h := &Hub{}
+	frames, unsubscribe, e := h.Subscribe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer unsubscribe()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		Run(ctx, testConfig(), func(context.Context) (Input, error) { return hostInput(time.Now()), nil }, nil, h, nil)
+		close(done)
+	}()
+	select {
+	case <-frames:
+		cancel()
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("no memory snapshot")
+	}
+	<-done
+	p, _ := h.Latest()
+	if p.Lifecycle != "stopped" {
+		t.Fatal(p)
 	}
 }

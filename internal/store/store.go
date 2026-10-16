@@ -761,13 +761,7 @@ func (s *Store) checkpoint() error {
 	if len(b) > 256<<20 {
 		return ErrCapacity
 	}
-	started := time.Now()
-	e = secure.AtomicWrite(filepath.Join(s.dir, "checkpoint.json"), b, 0600)
-	written := 0
-	if e == nil {
-		written = len(b)
-	}
-	ioaccount.Checkpoint.Add(written, time.Since(started), e)
+	e = secure.AtomicWriteMeasured(filepath.Join(s.dir, "checkpoint.json"), b, 0600, &ioaccount.Checkpoint)
 	if e != nil {
 		return e
 	}

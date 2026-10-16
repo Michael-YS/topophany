@@ -79,3 +79,22 @@ func TestTemplateCapabilitiesAndAtomicConfig(t *testing.T) {
 		t.Fatal("worker accepted global metric")
 	}
 }
+
+func TestSummaryExpiresAtItsEvidenceBoundary(t *testing.T) {
+	now := time.Now()
+	c := testConfig()
+	c.Template.Rows = []Row{{ID: "status", Metric: "summary.status", Visual: "text"}}
+	c.Template.Bar.Row = "status"
+	in := hostInput(now)
+	before := Build(c, in, now).Rows[0]
+	if before.Value != "clear" || !before.ValidUntil.Equal(now.Add(10*time.Second)) {
+		t.Fatal(before)
+	}
+	after := Build(c, in, now.Add(11*time.Second)).Rows[0]
+	if after.Value == "clear" {
+		t.Fatal("summary retained expired healthy evidence", after)
+	}
+	if in.Snapshot.Checks[0].Freshness != "fresh" {
+		t.Fatal("projection mutated input")
+	}
+}

@@ -46,7 +46,10 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	if e != nil {
 		return e
 	}
-	localView := monitor.NewLocal(c, *observer)
+	var localView *monitor.Local
+	if panel != nil {
+		localView = monitor.NewLocal(c, *observer)
+	}
 	creds, e := client.Load(*credPath)
 	if e != nil {
 		return e
@@ -116,7 +119,9 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 			return e
 		}
 		running.stop()
-		localView.Reload(next)
+		if localView != nil {
+			localView.Reload(next)
+		}
 		running = background(ctx, &wg, s, failed)
 		d.SetRevision(config.Revision(next))
 		contractsDigest = config.ObserverContracts(next, *observer)

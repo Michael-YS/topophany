@@ -12,11 +12,14 @@ import (
 // Local retains one observation and one bounded threshold carry per local
 // check. It is display evidence, independent of durable outbox retention.
 type Local struct {
-	mu       sync.Mutex
-	topology model.Config
-	observer string
-	latest   map[string]model.Observation
-	carries  map[string]engine.Carry
+	mu        sync.Mutex
+	plan      *engine.Plan
+	contracts map[string]string
+	checks    map[string]model.Check
+	digest    string
+	observer  string
+	latest    map[string]model.Observation
+	carries   map[string]engine.Carry
 }
 
 func NewLocal(c model.Config, observer string) *Local {
@@ -27,8 +30,16 @@ func NewLocal(c model.Config, observer string) *Local {
 func (l *Local) Reload(c model.Config) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.topology = config.Clone(c)
+	l.plan = engine.NewPlan(c)
 	contracts := config.Contracts(c)
+	l.contracts = contracts
+	l.checks = map[string]model.Check{}
+	for _, check := range c.Checks {
+		if check.Observer == l.observer {
+			l.checks[check.ID] = check
+		}
+	}
+	l.digest = config.ObserverContracts(c, l.observer)
 	for id, v := range l.latest {
 		if contracts[id] != v.Contract {
 			delete(l.latest, id)
@@ -39,25 +50,23 @@ func (l *Local) Reload(c model.Config) {
 func (l *Local) Record(v model.Observation) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for _, c := range l.topology.Checks {
-		if c.ID != v.Check || c.Observer != l.observer || v.Contract != config.Contract(l.topology, c) {
-			continue
-		}
-		k := l.carries[c.ID]
-		if previous, ok := l.latest[c.ID]; ok {
-			k.Fold(previous, time.Duration(c.StaleSeconds)*time.Second)
-		}
-		if k.Holds(v) {
-			return
-		}
-		l.carries[c.ID] = k
-		l.latest[c.ID] = model.SummaryObservation(v)
+	c, ok := l.checks[v.Check]
+	if !ok || v.Observer != l.observer || v.Contract != l.contracts[v.Check] {
 		return
 	}
+	k := l.carries[c.ID]
+	if previous, ok := l.latest[c.ID]; ok {
+		k.Fold(previous, time.Duration(c.StaleSeconds)*time.Second)
+	}
+	if k.Holds(v) {
+		return
+	}
+	l.carries[c.ID] = k
+	l.latest[c.ID] = model.SummaryObservation(v)
 }
 func (l *Local) Snapshot(now time.Time) model.Snapshot {
 	l.mu.Lock()
-	c := l.topology
+	plan, digest := l.plan, l.digest
 	rows := make([]model.Observation, 0, len(l.latest))
 	carries := make([]engine.Carry, 0, len(l.carries))
 	for _, v := range l.latest {
@@ -67,8 +76,8 @@ func (l *Local) Snapshot(now time.Time) model.Snapshot {
 		carries = append(carries, v)
 	}
 	l.mu.Unlock()
-	beats := map[string]model.Heartbeat{l.observer: {Observer: l.observer, SampledAt: now, Contracts: config.ObserverContracts(c, l.observer)}}
-	return engine.BuildCarried(c, "worker", l.observer, rows, carries, beats, now)
+	beats := map[string]model.Heartbeat{l.observer: {Observer: l.observer, SampledAt: now, Contracts: digest}}
+	return plan.Build("worker", l.observer, rows, carries, beats, now)
 }
 
 // Feed holds an immutable source snapshot. Set transfers ownership; callers

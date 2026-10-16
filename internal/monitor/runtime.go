@@ -10,7 +10,8 @@ import (
 type Fetch func(context.Context) (Input, error)
 
 // Run isolates fetches and file writes from the sampling/ingestion path. All
-// queues have capacity one; only display frames may be coalesced.
+// queues have capacity one; only display frames may be coalesced. A nil output
+// publishes only in memory, for an embedded consumer.
 func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, report func(string)) {
 	if hub == nil {
 		hub = &Hub{}
@@ -20,7 +21,18 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	var frames <-chan Panel
+	var unsubscribe func()
+	if out != nil {
+		var err error
+		frames, unsubscribe, err = hub.Subscribe()
+		if err != nil {
+			report("monitor subscriber limit reached")
+			return
+		}
+	}
 	incoming := make(chan Input, 1)
+	producerDone := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		tick := time.NewTicker(min(c.Every(), 5*time.Second))
@@ -48,41 +60,40 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 			}
 		}
 	})
-	frames, unsubscribe, _ := hub.Subscribe()
-	wg.Go(func() {
-		defer unsubscribe()
-		failed := false
-		var failures uint64
-		var lastReport time.Time
-		write := func(p Panel, force bool) {
-			if e := out.Write(p, c.Every(), force); e != nil {
-				failures++
-				if !failed || time.Since(lastReport) >= time.Minute {
-					report(fmt.Sprintf("monitor output unavailable; retrying; failed_writes=%d", failures))
-					lastReport = time.Now()
+	if out != nil {
+		wg.Go(func() {
+			defer unsubscribe()
+			failed := false
+			var failures uint64
+			var lastReport time.Time
+			write := func(p Panel, force bool) {
+				if e := out.Write(p, c.Every(), force); e != nil {
+					failures++
+					if !failed || time.Since(lastReport) >= time.Minute {
+						report(fmt.Sprintf("monitor output unavailable; retrying; failed_writes=%d", failures))
+						lastReport = time.Now()
+					}
+					failed = true
+				} else if failed {
+					report("monitor output recovered")
+					failed = false
+					failures = 0
 				}
-				failed = true
-			} else if failed {
-				report("monitor output recovered")
-				failed = false
-				failures = 0
 			}
-		}
-		for {
-			select {
-			case <-ctx.Done():
-				if p, ok := hub.Latest(); ok {
-					p.Sequence++
-					p.GeneratedAt = time.Now().UTC()
-					p.Lifecycle = "stopped"
-					write(p, true)
+			for {
+				select {
+				case <-ctx.Done():
+					<-producerDone
+					if p, ok := hub.Latest(); ok {
+						write(p, true)
+					}
+					return
+				case p := <-frames:
+					write(p, false)
 				}
-				return
-			case p := <-frames:
-				write(p, false)
 			}
-		}
-	})
+		})
+	}
 	instance := time.Now().UTC().Format("20060102T150405.000000000")
 	var sequence uint64
 	in := Input{Unavailable: true}
@@ -100,6 +111,17 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 	for {
 		select {
 		case <-ctx.Done():
+			if p, ok := hub.Latest(); ok {
+				p.Sequence++
+				p.GeneratedAt = time.Now().UTC()
+				p.PublisherExpiresAt = p.GeneratedAt
+				p.Lifecycle = "stopped"
+				for i := range p.Rows {
+					p.Rows[i] = missing(p.Rows[i], "publisher_stopped")
+				}
+				hub.Publish(p)
+			}
+			close(producerDone)
 			wg.Wait()
 			return
 		case in = <-incoming:

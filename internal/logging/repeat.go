@@ -24,8 +24,8 @@ type Repeater struct {
 	entries map[string]repetition
 }
 
-func (r *Repeater) emit(event string, v repetition) {
-	fmt.Fprintf(r.Out, "event=%s component=%s entity=%s code=%s reports=%d first_at=%s last_at=%s\n", event, v.component, v.entity, v.code, v.count, v.first.UTC().Format(time.RFC3339), v.last.UTC().Format(time.RFC3339))
+func (r *Repeater) emit(event string, v repetition, now time.Time) {
+	fmt.Fprintf(r.Out, "at=%s event=%s component=%s entity=%s code=%s reports=%d first_at=%s last_at=%s\n", now.UTC().Format(time.RFC3339), event, v.component, v.entity, v.code, v.count, v.first.UTC().Format(time.RFC3339), v.last.UTC().Format(time.RFC3339))
 }
 func bounded(s string) string {
 	s = secure.Text(s)
@@ -48,13 +48,13 @@ func (r *Repeater) Update(component, entity, code string, now time.Time) {
 	v, ok := r.entries[key]
 	if code == "" {
 		if ok {
-			r.emit("recovered", v)
+			r.emit("recovered", v, now)
 			delete(r.entries, key)
 		}
 		return
 	}
 	if ok && v.code != code {
-		r.emit("changed", v)
+		r.emit("changed", v, now)
 		delete(r.entries, key)
 		ok = false
 	}
@@ -68,11 +68,11 @@ func (r *Repeater) Update(component, entity, code string, now time.Time) {
 					at = x.last
 				}
 			}
-			r.emit("evicted", r.entries[oldest])
+			r.emit("evicted", r.entries[oldest], now)
 			delete(r.entries, oldest)
 		}
 		v = repetition{component: component, entity: entity, code: code, first: now, last: now, emitted: now, count: 1}
-		r.emit("error", v)
+		r.emit("error", v, now)
 	} else {
 		v.last = now
 		v.count++
@@ -81,7 +81,7 @@ func (r *Repeater) Update(component, entity, code string, now time.Time) {
 			every = time.Minute
 		}
 		if now.Sub(v.emitted) >= every {
-			r.emit("repeated", v)
+			r.emit("repeated", v, now)
 			v.emitted = now
 		}
 	}

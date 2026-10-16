@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 )
@@ -97,7 +98,7 @@ func (t Template) Validate(source string) error {
 		if r.Select.Check != "" && (!config.ID(r.Select.Check) || m.Selector != "check") {
 			return fmt.Errorf("row %s: invalid check selector", r.ID)
 		}
-		if r.Select.Collector != "" && (len(r.Select.Collector) != 16 || m.Selector != "collector") {
+		if r.Select.Collector != "" && (len(r.Select.Collector) != 16 || strings.Trim(r.Select.Collector, "0123456789abcdef") != "" || m.Selector != "collector") {
 			return fmt.Errorf("row %s: invalid collector selector", r.ID)
 		}
 	}
