@@ -284,3 +284,56 @@ Test suites cover real local HTTP/TLS servers, DNS UDP/TCP resolution, UDP nonce
 [SCENARIOS.md](SCENARIOS.md) maps design scenarios to automated test cases without fabricating observations for unmonitored infrastructure. `scripts/verify.py` writes command logs, exit codes, test events, code coverage, fuzz results, cross-compilation builds, and live process acceptance logs to `.verify-build/verification/` (CI publishes them as the `verification` workflow artifact). When reviewing results, distinguish between top-level test functions, subtest events, and fuzz seeds; these are not conflated into independent feature scenarios.
 
 Production Windows TUN drivers, live third-party proxy core configurations, external proxy providers, live Tailscale/WireGuard tunnels, OpenSSH cryptographic handshakes, and live intermittent transit route issues were not executed on end-user hardware. Local protocol integration and structured fixtures verify software mechanics; cross-compilation passes do not substitute for native OS runtime acceptance. Prior to production deployment, complete the [Hardware Acceptance Checklist](ACCEPTANCE.md).
+
+## Applications and environments
+
+Declare optional `applications` in the topology and assign each service an
+`application` ID and an `environment` such as `production` or `staging`:
+
+```json
+"applications": [{"id": "shop", "name": "Shop"}],
+"services": [{"id": "api", "name": "API", "node": "app",
+              "application": "shop", "environment": "production"}]
+```
+
+See [`examples/applications.json`](../examples/applications.json) for a complete
+validated topology. Run `topo preview --config examples/applications.json` to try
+it with synthetic evidence, or `topo edit --config examples/applications.json`
+to edit it. Add an Application with `a`; service forms offer application and
+environment fields. In the editor, Browse also offers application editing and
+deletion; referenced applications cannot be deleted.
+
+Services defaults to collapsible application groups; Checks defaults to service
+groups. Each environment has its own summary. Topologies without applications
+keep their existing flat list. Unassigned services remain visible as Ungrouped.
+
+- `b` opens Browse: application/environment filters, grouping, attention only,
+  shared dependencies, expand/collapse all, and clear filters. Click the scope
+  line above the table to open the same menu.
+- `Enter` or `Space` on a group expands/collapses it. Enter on a member opens its
+  evidence; `i` opens full group evidence on narrow terminals. Fold state is remembered during the session.
+- `/` searches members and application names and temporarily reveals matching
+  groups. Clearing search restores remembered folds. Attention-only also reveals
+  matching members and includes unknown evidence.
+- `c` on an application group or a service opens its checks with application, environment and service
+  scope retained. Browse → Clear all filters restores the complete list.
+- Services can group by application or host; Checks by service, application,
+  observer or path. Both offer a flat view. The scope is retained between these
+  two tabs; other tabs retain their existing global/observer scope.
+
+Checks with a `service` inherit its application and environment. Set these fields
+only on independent checks; configuring both an inherited and explicit scope is
+rejected. Physical co-location never implies business ownership.
+
+A shared database or authentication service belongs to one application (for
+example `shared`) and is referenced through `depends_on`. Application group
+evidence lists shared dependencies once; Browse → Shared dependencies jumps to
+the original service. References do not inflate owned service or check counts.
+
+Group summaries describe member evidence, not business uptime. A failing member
+produces a warning rather than declaring the application down. Unknown, stale,
+paused and maintenance evidence do not produce an all-healthy summary; cached
+views remain unknown. Check totals in the evidence panel preserve freshness and
+pause counts separately. A successful edge check still proves only that edge.
+Organizational metadata does not change measurement contracts or reset check
+history. Reload the collector topology after edits to publish the new grouping.

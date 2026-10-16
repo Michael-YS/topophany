@@ -117,7 +117,7 @@ type modal struct {
 	pick  func(int) string // menu action; nil opens the add form for the item kind
 }
 
-var addItems = []menuItem{{"n", "Node — host, VM, container or external party", "node", ""}, {"l", "Link — directed connection between nodes", "link", ""}, {"p", "Endpoint — an address on a node", "endpoint", ""}, {"s", "Service — something hosted on a node", "service", ""}, {"o", "Observer — a place checks run from", "observer", ""}, {"t", "Path — declared route an observer takes", "path", ""}, {"c", "Check — a probe that produces evidence", "check", ""}}
+var addItems = []menuItem{{"b", "Application — business grouping", "application", ""}, {"n", "Node — host, VM, container or external party", "node", ""}, {"l", "Link — directed connection between nodes", "link", ""}, {"p", "Endpoint — an address on a node", "endpoint", ""}, {"s", "Service — something hosted on a node", "service", ""}, {"o", "Observer — a place checks run from", "observer", ""}, {"t", "Path — declared route an observer takes", "path", ""}, {"c", "Check — a probe that produces evidence", "check", ""}}
 
 func (m *Model) confirm(title string, lines []string, yes func() string) {
 	m.modal = &modal{kind: "confirm", title: title, lines: lines, yes: yes}
@@ -298,11 +298,19 @@ func (m *Model) choose(md *modal, i int) string {
 }
 
 func (m *Model) selectEntity(kind, id string) {
+	if kind == "application" {
+		m.setTab(tabServices)
+		m.Application = id
+		m.Environment, m.ServiceFilter, m.Search = "", "", ""
+		m.AttentionOnly = false
+		return
+	}
 	tab := map[string]int{"node": tabTopology, "endpoint": tabTopology, "link": tabTopology, "service": tabServices, "path": tabPaths, "check": tabChecks, "observer": tabObservers}[kind]
 	if m.Tab != tab {
 		m.setTab(tab)
 	}
 	m.Search = ""
+	m.revealBusinessEntity(kind, id)
 	for i, r := range m.Rows() {
 		if r.Kind == kind && r.ID == id {
 			m.Selected = i
@@ -546,6 +554,8 @@ func without[T any](list []T, id string, key func(T) string) []T {
 }
 func remove(c *model.Config, kind, id string) error {
 	switch kind {
+	case "application":
+		c.Applications = without(c.Applications, id, func(a model.Application) string { return a.ID })
 	case "node":
 		c.Nodes = without(c.Nodes, id, func(n model.Node) string { return n.ID })
 	case "link":
@@ -695,6 +705,22 @@ func (m *Model) openForm(kind, id string) {
 			c.Endpoints, err = upsert(c.Endpoints, id, ep, func(n model.Endpoint) string { return n.ID })
 			return err
 		}
+	case "application":
+		a := model.Application{}
+		for _, existing := range c.Applications {
+			if existing.ID == id {
+				a = existing
+			}
+		}
+		idField(a.ID)
+		f.add("Name", a.Name, fText, "Business application name")
+		f.commit = func(c *model.Config) error {
+			a.ID, a.Name = f.val("ID"), f.val("Name")
+			var err error
+			c.Applications, err = upsert(c.Applications, id, a, func(a model.Application) string { return a.ID })
+			return err
+		}
+
 	case "service":
 		s := model.Service{Node: selected}
 		for _, x := range c.Services {
@@ -704,6 +730,8 @@ func (m *Model) openForm(kind, id string) {
 		}
 		idField(s.ID)
 		f.add("Name", s.Name, fText, "")
+		f.add("Application", s.Application, fChoice, "Business application", optional(ids(c.Applications, func(a model.Application) string { return a.ID }))...)
+		f.add("Environment", s.Environment, fText, "For example production, staging or development")
 		f.add("Node", s.Node, fChoice, "Hosting node", nodes...)
 		f.add("Runtime", s.Runtime, fText, "How it runs there, e.g. workers, pages, functions, container")
 		f.add("Endpoints", strings.Join(s.Endpoints, ", "), fList, "Comma-separated endpoint IDs")
@@ -711,6 +739,7 @@ func (m *Model) openForm(kind, id string) {
 		f.add("Runbook", s.Runbook, fText, "Shown to operators; never executed")
 		f.add("Notes", s.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
+			s.Application, s.Environment = f.val("Application"), f.val("Environment")
 			s.ID, s.Name, s.Node, s.Runtime, s.Endpoints, s.DependsOn, s.Runbook, s.Notes = f.val("ID"), f.val("Name"), f.val("Node"), f.val("Runtime"), f.list("Endpoints"), f.list("Depends on"), f.val("Runbook"), f.val("Notes")
 			var err error
 			c.Services, err = upsert(c.Services, id, s, func(n model.Service) string { return n.ID })
@@ -776,6 +805,8 @@ func (m *Model) openForm(kind, id string) {
 		f.add("Kind", x.Kind, fChoice, "Probe type", checkKinds...)
 		f.add("Endpoint", x.Endpoint, fChoice, "Target endpoint (or set Target)", optional(ids(c.Endpoints, func(n model.Endpoint) string { return n.ID }))...)
 		f.add("Target", x.Target, fText, "Explicit override; otherwise the endpoint address")
+		f.add("Application", x.Application, fChoice, "Independent checks only; service checks inherit scope", optional(ids(c.Applications, func(a model.Application) string { return a.ID }))...)
+		f.add("Environment", x.Environment, fText, "Independent checks only; leave blank when Service is set")
 		f.add("Service", x.Service, fChoice, "Evidence counts toward this service", optional(ids(c.Services, func(n model.Service) string { return n.ID }))...)
 		f.add("Path", x.Path, fChoice, "Declared path (same observer)", optional(ids(c.Paths, func(n model.Path) string { return n.ID }))...)
 		f.add("Interval s", numStr(x.IntervalSeconds), fInt, "1…86400")
@@ -796,6 +827,7 @@ func (m *Model) openForm(kind, id string) {
 		addHostFields(f, x.Host)
 		f.add("Notes", x.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
+			x.Application, x.Environment = f.val("Application"), f.val("Environment")
 			x.ID, x.Name, x.Observer, x.Kind, x.Endpoint, x.Target, x.Service, x.Path, x.Notes = f.val("ID"), f.val("Name"), f.val("Observer"), f.val("Kind"), f.val("Endpoint"), f.val("Target"), f.val("Service"), f.val("Path"), f.val("Notes")
 			nums := []*int{&x.IntervalSeconds, &x.TimeoutSeconds, &x.StaleSeconds, &x.FailureThreshold, &x.RecoveryThreshold}
 			for i, label := range []string{"Interval s", "Timeout s", "Stale s", "Fail after", "Recover after"} {

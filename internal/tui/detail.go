@@ -211,6 +211,9 @@ func (m *Model) drawDetail(cv *Canvas, x, y, w, h int, r Row, scroll bool) {
 		cv.Text(x, y, strings.TrimSpace(r.Title), fg(cGlow).bold(), w-pw-1)
 		cv.Text(x+w-pw, y, label, st, -1)
 		sub := r.Kind + "  ·  " + r.ID
+		if r.Kind == "group" {
+			sub = "Member evidence · i expand · Enter fold"
+		}
 		if _, scope, ok := strings.Cut(r.ID, "/"); ok && r.Kind == "incident" {
 			scope, n, again := strings.Cut(scope, "#")
 			sub = "incident  ·  " + scope

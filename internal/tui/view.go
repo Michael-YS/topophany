@@ -116,8 +116,27 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 	}
 	title := strings.ToUpper(tabs[m.Tab])
 	tag := "· " + itoa(len(rows))
+	if m.businessTab() {
+		groups, members := 0, 0
+		for _, r := range rows {
+			if r.Kind == "group" {
+				groups++
+			} else {
+				members++
+			}
+		}
+		if groups > 0 {
+			tag = "· " + itoa(groups) + " groups · " + itoa(members) + " shown"
+		}
+	}
 	if m.Search != "" {
 		tag += " matching “" + m.Search + "”"
+	}
+	if m.businessTab() && !m.Detail {
+		cv.Text(x+1, y, ellipsis(m.businessStatus()+" · b Browse", w-2), fg(cMuted), w-2)
+		m.hit(x+1, y, w-2, "key:b")
+		y++
+		h--
 	}
 	if m.Tab == tabAbout {
 		ix, iy, iw, ih := m.panel(cv, x, y, w, h, "ABOUT", "· the appearance of place", false)
@@ -194,7 +213,11 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		lw := w / 2
 		ix, iy, iw, ih := m.panel(cv, x, y, lw, h, title, tag, true)
 		m.drawList(cv, ix, iy, iw, ih, rows)
-		ix, iy, iw, ih = m.panel(cv, x+lw, y, w-lw, h, "EVIDENCE", "Enter expand", false)
+		hint := "Enter expand"
+		if sel.Kind == "group" {
+			hint = "i expand · Enter fold"
+		}
+		ix, iy, iw, ih = m.panel(cv, x+lw, y, w-lw, h, "EVIDENCE", hint, false)
 		m.drawDetail(cv, ix, iy, iw, ih, sel, false)
 		return
 	}

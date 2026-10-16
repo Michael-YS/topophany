@@ -421,13 +421,27 @@ func (m *Model) footer(cv *Canvas, y int) {
 			add(1, "↵", "Back", "enter")
 			add(1, "↑↓", "Scroll", "")
 		} else {
-			add(1, "↵", "Details", "enter")
+			if r, ok := m.selectedRow(); ok && r.Kind == "group" {
+				add(1, "↵", "Fold", "enter")
+			} else {
+				add(1, "↵", "Details", "enter")
+			}
 		}
 		if m.Tab == tabServers && !m.Detail {
 			if m.Uniform {
 				add(2, "s", "Full cards", "s")
 			} else {
 				add(2, "s", "Uniform", "s")
+			}
+		}
+		if m.businessTab() && !m.Detail && len(m.Snapshot.Topology.Applications) > 0 {
+			add(1, "b", "Browse", "b")
+			if r, ok := m.selectedRow(); ok && r.Kind == "group" {
+				add(1, "Space", "Fold", " ")
+				add(2, "i", "Evidence", "i")
+			}
+			if m.Tab == tabServices {
+				add(2, "c", "Checks", "c")
 			}
 		}
 		add(1, "/", "Filter", "/")

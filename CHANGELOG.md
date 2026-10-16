@@ -3,6 +3,8 @@
 
 ## Unreleased
 
+- Add application and environment organization, collapsible Services/Checks groups, persistent browsing scope, shared dependency navigation, and editor support without changing measurement contracts.
+
 - Add `topo capacity`, observer storage weights, configurable bounded collector state/receipt limits, and authenticated quota visibility before migration.
 - Expose worker-reported backlog, quarantine, sample ACK, contact and retry telemetry in Observers, with bounded heartbeat payloads and closed diagnostic codes.
 - Generate private server/worker/client installation bundles with role-scoped enrollment, TLS, native startup definitions, dry-run, read-only enrollment verification and rollback.

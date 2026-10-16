@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "project": "applications-demo",
+  "applications": [
+    {
+      "id": "shop",
+      "name": "Shop"
+    },
+    {
+      "id": "shared",
+      "name": "Shared infrastructure"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "app",
+      "name": "Application host",
+      "kind": "host"
+    },
+    {
+      "id": "edge",
+      "name": "Cloudflare edge",
+      "kind": "edge",
+      "provider": "cloudflare"
+    }
+  ],
+  "observers": [
+    {
+      "id": "home",
+      "name": "Home",
+      "context": "Home network"
+    },
+    {
+      "id": "cloud",
+      "name": "Cloud",
+      "context": "Cloud network"
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "frontend",
+      "node": "app",
+      "address": "192.0.2.10:8080",
+      "network": "public"
+    },
+    {
+      "id": "api",
+      "node": "app",
+      "address": "192.0.2.10:8081",
+      "network": "public"
+    },
+    {
+      "id": "postgres",
+      "node": "app",
+      "address": "192.0.2.10:5432",
+      "network": "public"
+    },
+    {
+      "id": "redis",
+      "node": "app",
+      "address": "192.0.2.10:6379",
+      "network": "public"
+    },
+    {
+      "id": "auth",
+      "node": "app",
+      "address": "192.0.2.10:8082",
+      "network": "public"
+    },
+    {
+      "id": "worker",
+      "node": "edge",
+      "address": "192.0.2.10:443",
+      "network": "public"
+    }
+  ],
+  "services": [
+    {
+      "id": "frontend",
+      "name": "Frontend",
+      "node": "app",
+      "endpoints": [
+        "frontend"
+      ],
+      "application": "shop",
+      "environment": "production"
+    },
+    {
+      "id": "api",
+      "name": "Api",
+      "node": "app",
+      "endpoints": [
+        "api"
+      ],
+      "application": "shop",
+      "environment": "production",
+      "depends_on": [
+        "postgres",
+        "redis",
+        "auth"
+      ]
+    },
+    {
+      "id": "postgres",
+      "name": "Postgres",
+      "node": "app",
+      "endpoints": [
+        "postgres"
+      ],
+      "application": "shop",
+      "environment": "production"
+    },
+    {
+      "id": "redis",
+      "name": "Redis",
+      "node": "app",
+      "endpoints": [
+        "redis"
+      ],
+      "application": "shared",
+      "environment": "production"
+    },
+    {
+      "id": "auth",
+      "name": "Auth",
+      "node": "app",
+      "endpoints": [
+        "auth"
+      ],
+      "application": "shared",
+      "environment": "production"
+    },
+    {
+      "id": "worker",
+      "name": "Worker",
+      "node": "edge",
+      "endpoints": [
+        "worker"
+      ],
+      "application": "shop",
+      "environment": "production"
+    },
+    {
+      "id": "staging-api",
+      "name": "Staging API",
+      "node": "app",
+      "application": "shop",
+      "environment": "staging",
+      "notes": "Intentionally unmonitored; unknown rather than healthy."
+    },
+    {
+      "id": "notes",
+      "name": "Unassigned service",
+      "node": "app"
+    }
+  ],
+  "paths": [],
+  "checks": [
+    {
+      "id": "home-frontend",
+      "name": "Home → frontend",
+      "observer": "home",
+      "endpoint": "frontend",
+      "service": "frontend",
+      "kind": "tcp"
+    },
+    {
+      "id": "cloud-frontend",
+      "name": "Cloud → frontend",
+      "observer": "cloud",
+      "endpoint": "frontend",
+      "service": "frontend",
+      "kind": "tcp"
+    },
+    {
+      "id": "home-api",
+      "name": "Home → api",
+      "observer": "home",
+      "endpoint": "api",
+      "service": "api",
+      "kind": "tcp"
+    },
+    {
+      "id": "cloud-api",
+      "name": "Cloud → api",
+      "observer": "cloud",
+      "endpoint": "api",
+      "service": "api",
+      "kind": "tcp"
+    },
+    {
+      "id": "home-postgres",
+      "name": "Home → postgres",
+      "observer": "home",
+      "endpoint": "postgres",
+      "service": "postgres",
+      "kind": "tcp"
+    },
+    {
+      "id": "cloud-postgres",
+      "name": "Cloud → postgres",
+      "observer": "cloud",
+      "endpoint": "postgres",
+      "service": "postgres",
+      "kind": "tcp"
+    },
+    {
+      "id": "home-redis",
+      "name": "Home → redis",
+      "observer": "home",
+      "endpoint": "redis",
+      "service": "redis",
+      "kind": "tcp"
+    },
+    {
+      "id": "cloud-redis",
+      "name": "Cloud → redis",
+      "observer": "cloud",
+      "endpoint": "redis",
+      "service": "redis",
+      "kind": "tcp"
+    },
+    {
+      "id": "home-auth",
+      "name": "Home → auth",
+      "observer": "home",
+      "endpoint": "auth",
+      "service": "auth",
+      "kind": "tcp"
+    },
+    {
+      "id": "cloud-auth",
+      "name": "Cloud → auth",
+      "observer": "cloud",
+      "endpoint": "auth",
+      "service": "auth",
+      "kind": "tcp"
+    },
+    {
+      "id": "home-worker",
+      "name": "Home → worker",
+      "observer": "home",
+      "endpoint": "worker",
+      "service": "worker",
+      "kind": "tcp"
+    },
+    {
+      "id": "cloud-worker",
+      "name": "Cloud → worker",
+      "observer": "cloud",
+      "endpoint": "worker",
+      "service": "worker",
+      "kind": "tcp"
+    }
+  ]
+}

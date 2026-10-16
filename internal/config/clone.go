@@ -10,6 +10,7 @@ import (
 // Clone detaches every mutable field without a JSON encode/decode cycle.
 // Configurations and published snapshots must never share writable storage.
 func Clone(c model.Config) model.Config {
+	c.Applications = slices.Clone(c.Applications)
 	c.Addresses = maps.Clone(c.Addresses)
 	c.Nodes = slices.Clone(c.Nodes)
 	for i := range c.Nodes {

@@ -90,6 +90,14 @@ func (v View) List(tab int, search string) []Row {
 	filtered := rows[:0]
 	search = strings.ToLower(search)
 	for _, r := range rows {
+		if tab == Services || tab == Checks {
+			scope := EntityScope(v.Snapshot.Topology, r.Kind, r.ID)
+			if scope.Application != "" || scope.Environment != "" {
+				app := ApplicationName(v.Snapshot.Topology, scope.Application)
+				r.Meta += " · " + app + " / " + scope.Environment
+				r.Details = append(r.Details, "", "Application: "+app, "Environment: "+scope.Environment)
+			}
+		}
 		if search == "" || strings.Contains(strings.ToLower(r.ID+" "+r.Title+" "+r.Meta+" "+strings.Join(r.Cols, " ")), search) {
 			if v.Cached {
 				r.Health = "unknown"

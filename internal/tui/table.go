@@ -217,6 +217,16 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 			}
 			cv.Set(cx-1, y+i, mark, base)
 		}
+		if r.Kind == "group" {
+			label := r.Tree + r.Title
+			titleW := min(width(label), max(12, w/2))
+			cv.Text(cx, y+i, ellipsis(label, titleW), base.Fg(cText).bold(), titleW)
+			if len(r.Cols) > 0 {
+				cv.Text(cx+titleW+2, y+i, ellipsis(r.Cols[0], w-titleW-2), base.Fg(cMuted), max(0, w-titleW-2))
+			}
+			m.hit(x-1, y+i, w+2, "row:"+itoa(j))
+			continue
+		}
 		cv.Set(cx, y+i, healthGlyph(r.Health), base.Fg(healthColor(r.Health)).bold())
 		cx += 2
 		tw := lay.titleW

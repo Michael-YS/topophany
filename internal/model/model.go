@@ -19,7 +19,8 @@ const (
 const Version = "0.9.1"
 
 type Config struct {
-	Addresses map[string]string `json:"addresses,omitempty"`
+	Applications []Application     `json:"applications,omitempty"`
+	Addresses    map[string]string `json:"addresses,omitempty"`
 
 	Schema    int        `json:"schema"`
 	Project   string     `json:"project"`
@@ -55,15 +56,22 @@ type Endpoint struct {
 	Via      []string `json:"via,omitempty"`      // edge or proxy nodes that answer first, client side first
 	Notes    string   `json:"notes,omitempty"`
 }
+type Application struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type Service struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Node      string   `json:"node"`
-	Runtime   string   `json:"runtime,omitempty"` // how it is deployed: workers, pages, functions, container, …
-	Endpoints []string `json:"endpoints,omitempty"`
-	DependsOn []string `json:"depends_on,omitempty"`
-	Runbook   string   `json:"runbook,omitempty"`
-	Notes     string   `json:"notes,omitempty"`
+	Application string   `json:"application,omitempty"`
+	Environment string   `json:"environment,omitempty"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Node        string   `json:"node"`
+	Runtime     string   `json:"runtime,omitempty"` // how it is deployed: workers, pages, functions, container, …
+	Endpoints   []string `json:"endpoints,omitempty"`
+	DependsOn   []string `json:"depends_on,omitempty"`
+	Runbook     string   `json:"runbook,omitempty"`
+	Notes       string   `json:"notes,omitempty"`
 }
 type Observer struct {
 	StorageWeight int `json:"storage_weight,omitempty"` // trusted quota weight; zero means one
@@ -107,6 +115,8 @@ type Proxy struct {
 	SSHKnownHosts   string `json:"ssh_known_hosts,omitempty"`
 }
 type Check struct {
+	Application       string         `json:"application,omitempty"`
+	Environment       string         `json:"environment,omitempty"`
 	ID                string         `json:"id"`
 	Name              string         `json:"name"`
 	Observer          string         `json:"observer"`

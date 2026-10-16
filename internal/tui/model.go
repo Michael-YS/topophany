@@ -32,45 +32,49 @@ const (
 // Row is one selectable entry of a list (see view.Row).
 type Row = view.Row
 type Model struct {
-	Snapshot              model.Snapshot
-	Server                string
-	Error                 string
-	Loading               string // a request in flight while nothing current is shown
-	Observer              string
-	Tab, Selected, Offset int
-	Width, Height         int
-	Search                string
-	Searching             bool
-	Detail                bool
-	NoColor               bool
-	Colors                int // colorTrue or color256
-	Now                   time.Time
-	MapMode               string // "", "virtual", "geo" or "network"; "" picks virtual when locations exist
-	Zoom                  int
-	FullMap               bool    // the map alone fills the body where a tab has one (f)
-	Points                bool    // geo map: plates hidden, every arc dashed (p)
-	Uniform               bool    // Servers: a grid of uniform cards rather than the wall (s)
-	Edit                  *Editor // non-nil only for topo edit
-	Preview               Preview // non-nil only for topo preview
-	Debug                 bool    // performance/geometry overlay (D)
-	Transparent           bool    // keep the terminal background (TOPO_BACKGROUND=terminal)
-	Hyperlinks            bool    // write links as OSC 8 hyperlinks
-	Cell                  float64 // a cell's height over its width, as the terminal reports it; 0 when unknown
-	perf                  perf
-	modal                 *modal
-	notice                string
-	noticeErr             bool
-	noticeAt              time.Time
-	aboutAt               time.Time
-	aboutSpin             float64           // extra globe rotation from the mouse wheel
-	cardsTop              int               // the Servers cards' scroll, kept while a card lies open
-	vcache                vCache            // the virtual map's wires, kept while its layout holds
-	pcache                plateCache        // the geographic map's labels, kept while what they label holds
-	samples               samples           // the selected check's recent samples, as last read
-	trends                map[string]*trend // each host check's recent samples, for its charts
-	absorbed              time.Time         // when the snapshot last taken into trends was generated
-	hits                  []hit
-	drawingModal          bool
+	Snapshot                                model.Snapshot
+	Server                                  string
+	Error                                   string
+	Loading                                 string // a request in flight while nothing current is shown
+	Observer                                string
+	Tab, Selected, Offset                   int
+	Width, Height                           int
+	Application, Environment, ServiceFilter string
+	GroupBy                                 map[int]string
+	Expanded                                map[string]bool
+	AttentionOnly                           bool
+	Search                                  string
+	Searching                               bool
+	Detail                                  bool
+	NoColor                                 bool
+	Colors                                  int // colorTrue or color256
+	Now                                     time.Time
+	MapMode                                 string // "", "virtual", "geo" or "network"; "" picks virtual when locations exist
+	Zoom                                    int
+	FullMap                                 bool    // the map alone fills the body where a tab has one (f)
+	Points                                  bool    // geo map: plates hidden, every arc dashed (p)
+	Uniform                                 bool    // Servers: a grid of uniform cards rather than the wall (s)
+	Edit                                    *Editor // non-nil only for topo edit
+	Preview                                 Preview // non-nil only for topo preview
+	Debug                                   bool    // performance/geometry overlay (D)
+	Transparent                             bool    // keep the terminal background (TOPO_BACKGROUND=terminal)
+	Hyperlinks                              bool    // write links as OSC 8 hyperlinks
+	Cell                                    float64 // a cell's height over its width, as the terminal reports it; 0 when unknown
+	perf                                    perf
+	modal                                   *modal
+	notice                                  string
+	noticeErr                               bool
+	noticeAt                                time.Time
+	aboutAt                                 time.Time
+	aboutSpin                               float64           // extra globe rotation from the mouse wheel
+	cardsTop                                int               // the Servers cards' scroll, kept while a card lies open
+	vcache                                  vCache            // the virtual map's wires, kept while its layout holds
+	pcache                                  plateCache        // the geographic map's labels, kept while what they label holds
+	samples                                 samples           // the selected check's recent samples, as last read
+	trends                                  map[string]*trend // each host check's recent samples, for its charts
+	absorbed                                time.Time         // when the snapshot last taken into trends was generated
+	hits                                    []hit
+	drawingModal                            bool
 }
 type hit struct {
 	x, y, w int
@@ -101,7 +105,12 @@ func (m *Model) view() view.View {
 
 // Rows lists the current tab, filtered by the search and marked when the
 // view is cached or a local draft.
-func (m *Model) Rows() []Row { return m.view().List(m.Tab, m.Search) }
+func (m *Model) Rows() []Row {
+	if m.businessTab() {
+		return m.view().GroupedList(m.Tab, view.GroupOptions{Application: m.Application, Environment: m.Environment, Service: m.ServiceFilter, By: m.groupMode(), Search: m.Search, Attention: m.AttentionOnly, Expanded: m.Expanded})
+	}
+	return m.view().List(m.Tab, m.Search)
+}
 
 // tabRows builds the unfiltered rows of a tab.
 func (m *Model) tabRows(tab int) []Row { return m.view().Rows(tab) }
@@ -234,7 +243,9 @@ func (m *Model) Key(k string) string {
 	case strings.HasPrefix(k, "row:"):
 		if n, e := strconv.Atoi(k[4:]); e == nil {
 			if n == m.Selected && !m.Detail {
-				m.Detail = true
+				if !m.toggleGroup() {
+					m.Detail = true
+				}
 				m.Offset = 0
 			} else {
 				m.Selected = n
@@ -258,6 +269,28 @@ func (m *Model) Key(k string) string {
 		k = ""
 	case strings.HasPrefix(k, "key:"):
 		return m.Key(k[4:])
+	}
+	if m.businessTab() && !m.Detail {
+		switch k {
+		case "i":
+			m.Detail = true
+			m.Offset = 0
+			return ""
+		case "b":
+			m.businessMenu()
+			return ""
+		case " ":
+			if m.toggleGroup() {
+				return ""
+			}
+		case "enter":
+			if m.toggleGroup() {
+				return ""
+			}
+		case "c":
+			m.serviceChecks()
+			return ""
+		}
 	}
 	switch k {
 	case "q", "ctrl-c":

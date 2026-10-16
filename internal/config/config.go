@@ -112,6 +112,9 @@ func validateResolved(c model.Config) error {
 	if e := PresentationBounds(c); e != nil {
 		return e
 	}
+	if err := validateApplications(c); err != nil {
+		return err
+	}
 	nodes := map[string]bool{}
 	ends := map[string]model.Endpoint{}
 	services := map[string]bool{}
