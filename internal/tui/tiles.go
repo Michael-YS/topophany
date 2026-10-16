@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
@@ -24,11 +25,78 @@ func (m *Model) tile(f fleet, r Row, w int, selected bool) []cardRow {
 	c := f.Card(r.ID)
 	rows, _ := m.cardHead(f, r, c, selected)
 	rows = append(rows, cardRow{})
-	rows = append(rows, m.resourcePanel(reading(c.Resources), w)...)
+	rows = append(rows, m.tilePanel(f, r, c, w)...)
 	rows = append(rows, cardRow{})
 	rows = append(rows, m.tallies(f, r, c, w)...)
 	rows = append(rows, cardRow{}, m.knownAt(c))
 	return append(rows, memoRows(c.Memo, w, 2)...)
+}
+
+// tilePanel is the four rows under a card's header: a host's resources as
+// read. An edge or a platform has no machine of yours to read, so in their
+// place it says what it stands in front of and where it answered from; a
+// host nothing reads says why where the charts would be.
+func (m *Model) tilePanel(f fleet, r Row, c view.Card, w int) []cardRow {
+	if rd := reading(c.Resources); rd != nil {
+		return m.resourcePanel(*rd, w)
+	}
+	n := f.Nodes[r.ID]
+	switch {
+	case hosted(n.Kind):
+		return edgePanel(n, c)
+	case len(c.Observers) == 0:
+		return quietPanel("no worker runs here", "CPU, memory and disk unmeasured")
+	}
+	return quietPanel("its worker runs no host check", "CPU, memory and disk unmeasured")
+}
+
+// edgePanel lists the addresses an edge answers for, each with the server
+// behind it, and where it answered from; with none in front of anything,
+// who hosts it.
+func edgePanel(n model.Node, c view.Card) []cardRow {
+	pops := strings.Join(c.Pops, " · ")
+	if len(c.Fronts) == 0 {
+		host := "a managed " + n.Kind
+		if p := view.ProviderName(n.Provider); p != "" {
+			host = "hosted by " + p
+		}
+		if pops == "" {
+			return quietPanel(host, "no machine of yours to measure")
+		}
+		return quietPanel(host, "answered from "+pops)
+	}
+	rows := []cardRow{{left: []span{{"IN FRONT OF", fg(cMuted)}}, right: []span{{itoa(len(c.Fronts)), fg(cText)}}}}
+	room := 3
+	if pops != "" {
+		room = 2
+	}
+	for i, ep := range c.Fronts {
+		if i == room-1 && len(c.Fronts) > room {
+			rows = append(rows, cardRow{left: []span{{"+" + itoa(len(c.Fronts)-i) + " more", fg(cFaint)}}})
+			break
+		}
+		g, gc := endpointGlyph(ep.Health)
+		rows = append(rows, cardRow{left: []span{{string(g) + " ", fg(gc)}, {hostOf(ep.Address), fg(cText)}}, right: []span{{"→ " + ep.Node.Name, fg(cMuted)}}, hit: "select:endpoint:" + ep.ID})
+	}
+	if pops != "" {
+		hue := Mix(providerColor(n.Provider, cMuted), cText, .25)
+		rows = append(rows, cardRow{left: []span{{"answered from ", fg(cFaint)}, {pops, fg(hue)}}})
+	}
+	for len(rows) < 4 {
+		rows = append(rows, cardRow{})
+	}
+	return rows
+}
+
+// quietPanel stands in for a panel with nothing to show, saying what is
+// missing and why.
+func quietPanel(what, why string) []cardRow {
+	return []cardRow{
+		{},
+		{left: []span{{"◌ ", fg(cFaint)}, {what, fg(cMuted).italic()}}},
+		{left: []span{{"  " + why, fg(cFaint).italic()}}},
+		{},
+	}
 }
 
 // reading is the resources a uniform card shows of those read on a host:

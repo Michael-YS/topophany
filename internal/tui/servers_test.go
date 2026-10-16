@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 // cardText is what a card's rows say, a line a row.
@@ -100,11 +102,43 @@ func TestServersUniformGrid(t *testing.T) {
 			t.Fatalf("a panel row is %d wide, not 46: %q", w, cardText([]cardRow{r}))
 		}
 	}
-	// An edge reads no resources: the same places, empty.
-	cf := m.tile(f, row("cf"), 46, false)
-	text = cardText(cf)
-	if len(cf) != tileRows || !strings.Contains(text, "not measured") || !strings.Contains(text, "RUNS HERE") || strings.Contains(text, "%") {
-		t.Fatalf("the edge's uniform card:\n%s", text)
+	// An edge has no machine of yours to read: where a host's resources
+	// stand, what it is in front of and where it answered from; with
+	// nothing in front of it, who hosts it.
+	for id, want := range map[string][]string{
+		"cf":       {"IN FRONT OF", "www.example.invalid", "→ Oracle", "answered from EWR · FRA · LAX", "RUNS HERE"},
+		"vercel":   {"hosted by Vercel", "answered from fra1"},
+		"supabase": {"hosted by Supabase", "no machine of yours to measure"},
+	} {
+		edge := m.tile(f, row(id), 46, false)
+		text := cardText(edge)
+		if len(edge) != tileRows || strings.Contains(text, "CPU") || strings.Contains(text, "%") {
+			t.Fatalf("%s's uniform card draws resources:\n%s", id, text)
+		}
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Fatalf("%s's uniform card lacks %q:\n%s", id, w, text)
+			}
+		}
+	}
+	// A host nothing reads says why in their place, rather than charting
+	// nothing: its worker runs no host check, or no worker runs there.
+	topo := &m.Snapshot.Topology
+	topo.Checks = slices.DeleteFunc(slices.Clone(topo.Checks), func(x model.Check) bool { return x.ID == "host-git-node" })
+	for i, want := range []string{"its worker runs no host check", "no worker runs here"} {
+		if i == 1 {
+			topo.Observers = slices.Clone(topo.Observers)
+			for k := range topo.Observers {
+				if topo.Observers[k].Node == "git-node" {
+					topo.Observers[k].Node = ""
+				}
+			}
+		}
+		git := m.tile(m.fleet(), row("git-node"), 46, false)
+		text := cardText(git)
+		if len(git) != tileRows || strings.Contains(text, "—") || !strings.Contains(text, want) || !strings.Contains(text, "CPU, memory and disk unmeasured") {
+			t.Fatalf("an unread host's uniform card, want %q:\n%s", want, text)
+		}
 	}
 
 	many := make([]mark, 12)

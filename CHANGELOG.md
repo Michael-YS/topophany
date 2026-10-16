@@ -28,8 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saying the same things in the same places: the server's state, a panel
   each for CPU, memory and disk, how many services, addresses and checks it
   has with a mark for each in its state, the address it is known by and the
-  first two lines of its memo. What a server lacks keeps its place, empty;
-  `s` again brings back the wall of full cards.
+  first two lines of its memo. In the resources' place, an edge or a
+  platform, which has no machine of yours to read, says what it stands in
+  front of and where it answered from; a host nothing reads says why (no
+  worker runs there, or its worker runs no host check), and one whose
+  reading has gone silent says when it was last read. Anything else a
+  server lacks keeps its place, empty; `s` again brings back the wall of
+  full cards.
 - `Enter` on a server lays its card open over the others, which dim behind
   it, in either layout: the memo first, then its resources charted over the
   samples kept with their peaks and limits, everything that runs on it and

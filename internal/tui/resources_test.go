@@ -177,6 +177,10 @@ func TestServerCardResourcePanels(t *testing.T) {
 	if aside := m.resourceAside(rs); !strings.HasPrefix(aside[0].s, "cached · read ") {
 		t.Fatal("a cached card does not say so", aside)
 	}
+	// A uniform card has no heading to say it, so it says it under the panels.
+	if foot := text(m.resourcePanel(rs[0], 46)[3:]); !strings.HasPrefix(foot, "cached · read ") || width(strings.TrimSuffix(foot, "\n")) != 46 {
+		t.Fatalf("the panels do not say when they were read: %q", foot)
+	}
 }
 
 // A host check's evidence charts what it measured on the strip's time axis,
