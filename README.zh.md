@@ -16,6 +16,7 @@
   <a href="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml"><img src="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pkg.go.dev/github.com/WhitenWhiten/topophany"><img src="https://pkg.go.dev/badge/github.com/WhitenWhiten/topophany.svg" alt="Go Reference"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-社区认可-FFB003?logo=linux" alt="LINUX DO"></a>
 </p>
 
 **Topophany** 把整张网络摆在一块屏幕上：有哪些机器、各在何处，彼此之间走哪条路，上面跑着哪些服务。worker 从你真正上网的地方（家里、公司、海外的 VPS）发起检查，终端界面告诉你：哪里出了问题，是从哪里看到的，证据又是什么。这一切只是一个自托管的 Go 二进制文件：`topo`。
