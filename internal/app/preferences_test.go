@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/WhitenWhiten/topophany/internal/preferences"
@@ -70,5 +71,31 @@ func TestPreferencesResetRepairsInvalidFile(t *testing.T) {
 	}
 	if _, _, err := invoke("", "preferences", "show", "--preferences", path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Saved preferences that cannot be read do not keep the TUI from opening:
+// the defaults stand in and the TUI is told why; flags must still be valid.
+func TestUnreadablePreferencesOpenWithDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "preferences.json")
+	if err := os.WriteFile(path, []byte(`{"page":"invalid"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f := flag.NewFlagSet("topo", flag.ContinueOnError)
+	p := addPreferenceFlags(f)
+	if err := f.Parse([]string{"--preferences", path}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := p.startup()
+	if err != nil || s.Settings != preferences.Defaults() || !strings.Contains(s.Notice, "topo preferences reset") {
+		t.Fatal(s, err)
+	}
+	f = flag.NewFlagSet("topo", flag.ContinueOnError)
+	p = addPreferenceFlags(f)
+	if err := f.Parse([]string{"--preferences", path, "--page", "bogus"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.startup(); err == nil {
+		t.Fatal("an invalid --page accepted")
 	}
 }

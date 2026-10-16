@@ -40,7 +40,7 @@ func (a *App) view(ctx context.Context, args []string) error {
 	if a.TerminalIn == nil || a.TerminalOut == nil {
 		return errors.New("interactive terminal unavailable; use --json")
 	}
-	startup, err := startupFlags.resolve()
+	startup, err := startupFlags.startup()
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (a *App) edit(ctx context.Context, args []string) error {
 	if a.TerminalIn == nil || a.TerminalOut == nil {
 		return errors.New("interactive terminal unavailable")
 	}
-	startup, err := startupFlags.resolve()
+	startup, err := startupFlags.startup()
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	if a.TerminalIn == nil || a.TerminalOut == nil {
 		return errors.New("interactive terminal unavailable")
 	}
-	startup, err := startupFlags.resolve()
+	startup, err := startupFlags.startup()
 	if err != nil {
 		return err
 	}

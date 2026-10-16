@@ -3,6 +3,7 @@
 package preferences
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,15 +46,16 @@ func DefaultPath() (string, error) {
 }
 func Load(path string) (Settings, error) {
 	s := Defaults()
-	f, err := os.Open(path)
+	// Read as a bounded regular file: a FIFO or a device in its place must
+	// not hold up the TUI's start.
+	b, err := secure.ReadBounded(path, 16384)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
 	}
 	if err != nil {
-		return s, err
+		return s, fmt.Errorf("preferences: %w", err)
 	}
-	defer f.Close()
-	if err = secure.Decode(f, &s, 16384); err != nil {
+	if err = secure.Decode(bytes.NewReader(b), &s, 16384); err != nil {
 		return s, fmt.Errorf("preferences: %w", err)
 	}
 	return s, s.Validate()

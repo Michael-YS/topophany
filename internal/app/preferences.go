@@ -32,14 +32,27 @@ func (p *preferenceFlags) pathName() (string, error) {
 	}
 	return preferences.DefaultPath()
 }
-func (p *preferenceFlags) resolve() (tui.Startup, error) {
+func (p *preferenceFlags) resolve() (tui.Startup, error) { return p.resolveWith(false) }
+
+// startup resolves the TUI's startup settings. Saved preferences that
+// cannot be read keep nobody from their monitor: the built-in defaults
+// stand in for them and the TUI says why. Flags given on the command line
+// must still be valid.
+func (p *preferenceFlags) startup() (tui.Startup, error) { return p.resolveWith(true) }
+
+func (p *preferenceFlags) resolveWith(lenient bool) (tui.Startup, error) {
 	path, err := p.pathName()
-	if err != nil {
+	if err != nil && !lenient {
 		return tui.Startup{}, err
 	}
+	notice := ""
 	s, err := preferences.Load(path)
 	if err != nil {
-		return tui.Startup{}, fmt.Errorf("%s: %w", path, err)
+		if !lenient {
+			return tui.Startup{}, fmt.Errorf("%s: %w", path, err)
+		}
+		s = preferences.Defaults()
+		notice = "Saved preferences ignored, defaults used (" + err.Error() + "); topo preferences reset repairs them"
 	}
 	overrides := []string{}
 	p.flags.Visit(func(f *flag.Flag) {
@@ -61,7 +74,7 @@ func (p *preferenceFlags) resolve() (tui.Startup, error) {
 		}
 		overrides = append(overrides, f.Name)
 	})
-	return tui.Startup{Settings: s, Path: path, Overrides: overrides}, s.Validate()
+	return tui.Startup{Settings: s, Path: path, Overrides: overrides, Notice: notice}, s.Validate()
 }
 func (a *App) preferences(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {

@@ -1,15 +1,19 @@
 package tui
 
 import (
-	"github.com/WhitenWhiten/topophany/internal/preferences"
 	"slices"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/preferences"
 )
 
 // Startup carries the resolved defaults and the location to save explicitly.
+// Notice, when set, says why the saved defaults were not used.
 type Startup struct {
 	Settings  preferences.Settings
 	Path      string
 	Overrides []string
+	Notice    string
 }
 
 func (m *Model) initializeStartup(options []Startup) {
@@ -22,6 +26,12 @@ func (m *Model) initializeStartup(options []Startup) {
 	m.applyPreferences(s.Settings)
 	for i, field := range preferenceForm(s.Settings).fields {
 		m.preferenceInitial[i] = field.value
+	}
+	if s.Notice != "" {
+		if m.Now.IsZero() {
+			m.Now = time.Now()
+		}
+		m.say(s.Notice, true)
 	}
 }
 func (m *Model) applyPreferences(s preferences.Settings) {

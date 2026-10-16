@@ -73,6 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Enter` on the Servers tab opens the server's card rather than the
   evidence panel; a node's evidence panel is still on the Topology tab.
+- Preferences that cannot be read no longer keep the TUI from opening: it
+  starts with the built-in defaults and says why. `preferences show` still
+  reports the error.
 
 ### Fixed
 
@@ -96,6 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A bundle's private certificate authority can sign no intermediate
   authority, and the bundle's README says when the collector certificate
   expires and how to replace it.
+- The preferences file is read as a bounded regular file, so a FIFO or a
+  device in its place cannot hold up the TUI's start.
 
 ## [0.9.1] - 2026-10-15
 
