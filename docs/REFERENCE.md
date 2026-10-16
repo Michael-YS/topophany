@@ -238,6 +238,9 @@ Process matching is case-insensitive against the executable basename or its stem
 
 ## Persistent monitor panels
 
+For RunCat Neo, use the [five-row custom metrics example](../examples/runcat/README.md).
+It publishes RunCat's JSON format with host-online and application-health bars.
+
 `topo monitor` manages named, local display panels. Templates use Topophany metric
 names and contain no executable expressions. File imports and stdin imports save
 the template content; the original file is not needed afterwards.
