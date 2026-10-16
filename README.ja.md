@@ -16,6 +16,7 @@
   <a href="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml"><img src="https://github.com/WhitenWhiten/topophany/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pkg.go.dev/github.com/WhitenWhiten/topophany"><img src="https://pkg.go.dev/badge/github.com/WhitenWhiten/topophany.svg" alt="Go Reference"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-コミュニティ-FFB003?logo=linux" alt="LINUX DO"></a>
 </p>
 
 **Topophany** は、ネットワーク全体をひとつの画面に描き出します。どんなマシンがどこにあり、互いをどの経路で結び、その上で何のサービスが動いているのか。ワーカーが実際につなぐ場所 (自宅、オフィス、海外の VPS) からチェックし、ターミナル UI が、何が壊れているのか、それがどこから見えたのか、そして根拠は何かを示します。すべてはセルフホストの Go バイナリ 1 つ、`topo` で動きます。
