@@ -124,7 +124,7 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		m.drawAbout(cv, ix-1, iy, iw+2, ih)
 		return
 	}
-	if m.Detail {
+	if m.Detail && m.Tab != tabServers {
 		ix, iy, iw, ih := m.panel(cv, x, y, w, h, title+" · "+sel.Title, "Esc/Enter back · ↑↓ scroll", true)
 		m.drawDetail(cv, ix, iy, iw, ih, sel, true)
 		return
@@ -179,8 +179,15 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		m.overview(cv, x, y, w, h, rows, sel, tag)
 		return
 	case m.Tab == tabServers:
-		ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, tag, true)
+		// The cards stay where they were while one lies open over them.
+		if m.Uniform {
+			title += " · uniform"
+		}
+		ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, tag, !m.Detail)
 		m.drawServers(cv, ix, iy, iw, ih, rows)
+		if m.Detail && len(rows) > 0 {
+			m.drawSheet(cv, ix-1, iy, iw+2, ih, sel)
+		}
 		return
 	}
 	if w >= 100 {

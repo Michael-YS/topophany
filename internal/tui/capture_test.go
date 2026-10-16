@@ -21,15 +21,18 @@ import (
 
 type docShot struct {
 	name     string
-	readme   bool   // shown in each README, so captured in every language
-	tab      int    // the tab shown
-	mapMode  string // the map, where the tab has one
-	selected string // the ID of the row selected, else the first
+	readme   bool     // shown in each README, so captured in every language
+	tab      int      // the tab shown
+	mapMode  string   // the map, where the tab has one
+	selected string   // the ID of the row selected, else the first
+	keys     []string // pressed once the row is selected
 }
 
 var docShots = []docShot{
 	{name: "overview", readme: true, tab: tabOverview},
 	{name: "servers", tab: tabServers, selected: "app"},
+	{name: "servers-uniform", tab: tabServers, selected: "app", keys: []string{"s"}},
+	{name: "server-card", tab: tabServers, selected: "app", keys: []string{"s", "enter"}},
 	{name: "network", tab: tabTopology, mapMode: "network", selected: "transit"},
 	{name: "incident", tab: tabIncidents},
 }
@@ -78,6 +81,9 @@ func shot(t *testing.T, c docShot, lang string) tour {
 		if m.Selected < 0 {
 			t.Fatalf("%s: no row %q", c.name, c.selected)
 		}
+	}
+	for _, k := range c.keys {
+		m.Key(k)
 	}
 	r.chapter(c.name)
 	r.shoot(0)

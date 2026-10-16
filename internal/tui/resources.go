@@ -95,20 +95,13 @@ func processes(f map[string]string, h model.HostOptions) (named []span, total st
 }
 
 // resourceRows are the rows of a card's local resources, w wide: under
-// the observer's name when there are several, a panel each for CPU,
-// memory and disk, with the reading now over a chart of the last minutes
-// that fills as far as the resource is used and how much there is under
-// it, then the processes.
+// the observer's name when there are several, its resource panels, then
+// the processes.
 func (m *Model) resourceRows(rs []view.CardResource, w int) []cardRow {
 	rows := []cardRow{}
-	const gap = 2
-	pw := (w - 2*gap) / 3
-	extra := w - 2*gap - 3*pw
-	well := Mix(cInk, cLine, .35)
 	for _, r := range rs {
-		x, h := m.hostCheck(r.Check)
+		_, h := m.hostCheck(r.Check)
 		hit := "goto:check:" + r.Check
-		current := r.Facts != nil
 		if len(rs) > 1 {
 			// Several checks read this host, say of different disks: each
 			// under its observer, disk and how old its reading is.
@@ -119,46 +112,8 @@ func (m *Model) resourceRows(rs []view.CardResource, w int) []cardRow {
 			sub.right = m.resourceAside([]view.CardResource{r})
 			rows = append(rows, sub)
 		}
-		caps := capacities(r.Facts)
-		now := usageOf(model.Observation{Evidence: "reported", Outcome: "ok", Facts: r.Facts})
-		_, use := usageSlots(x, m.trendSamples(r.Check), m.Now, pw+extra)
-		panel := make([]cardRow, 4)
-		for i, mt := range metrics(h) {
-			n := pw
-			if i == 2 {
-				n += extra // the last panel takes what does not divide
-			}
-			if i > 0 {
-				for k := range panel {
-					panel[k].left = append(panel[k].left, span{strings.Repeat(" ", gap), Style{}})
-				}
-			}
-			v := mt.of(now)
-			value, vst := "—", fg(cFaint)
-			if current && !math.IsNaN(v) {
-				value, vst = pct(v, 0), fg(loadColor(v, mt.limit))
-				if mt.limit > 0 && v > mt.limit {
-					vst = vst.bold()
-				}
-			}
-			panel[0].left = append(panel[0].left, span{fit(mt.label, n-width(value)), fg(cMuted)}, span{value, vst})
-			vals := make([]float64, len(use))
-			for k, u := range use {
-				vals[k] = mt.of(u)
-			}
-			for k, line := range tank(padNaN(vals, n), 2, mt.limit, current, well) {
-				panel[1+k].left = append(panel[1+k].left, line...)
-			}
-			c := caps[i]
-			if !current {
-				c = ""
-			}
-			panel[3].left = append(panel[3].left, span{fit(c, n), fg(cFaint)})
-		}
-		for k := range panel {
-			panel[k].hit = hit
-		}
-		if !current {
+		panel := m.resourcePanel(&r, w)
+		if r.Facts == nil {
 			// Nothing to say of how much there is or what runs.
 			rows = append(rows, panel[:3]...)
 			continue
@@ -171,6 +126,75 @@ func (m *Model) resourceRows(rs []view.CardResource, w int) []cardRow {
 		rows = append(rows, cardRow{left: named, right: []span{{total, fg(cFaint)}}, hit: hit})
 	}
 	return rows
+}
+
+// resourcePanel is four rows across w with a panel each for CPU, memory
+// and disk: the reading now over a chart of the last minutes that fills
+// as far as the resource is used, and how much there is under it. With no
+// resources read (r nil) the wells stand empty.
+func (m *Model) resourcePanel(r *view.CardResource, w int) []cardRow {
+	const gap = 2
+	pw := (w - 2*gap) / 3
+	extra := w - 2*gap - 3*pw
+	well := Mix(cInk, cLine, .35)
+	var x model.Check
+	h := model.HostOptions{}
+	var facts map[string]string
+	var use []usage
+	if r != nil {
+		x, h = m.hostCheck(r.Check)
+		facts = r.Facts
+		_, use = usageSlots(x, m.trendSamples(r.Check), m.Now, pw+extra)
+	}
+	current := facts != nil
+	caps := capacities(facts)
+	now := usageOf(model.Observation{Evidence: "reported", Outcome: "ok", Facts: facts})
+	panel := make([]cardRow, 4)
+	for i, mt := range metrics(h) {
+		n := pw
+		if i == 2 {
+			n += extra // the last panel takes what does not divide
+		}
+		if i > 0 {
+			for k := range panel {
+				panel[k].left = append(panel[k].left, span{strings.Repeat(" ", gap), Style{}})
+			}
+		}
+		v := mt.of(now)
+		value, vst := "—", fg(cFaint)
+		if current && !math.IsNaN(v) {
+			value, vst = pct(v, 0), fg(loadColor(v, mt.limit))
+			if mt.limit > 0 && v > mt.limit {
+				vst = vst.bold()
+			}
+		}
+		label := fg(cMuted)
+		if r == nil {
+			label = fg(cFaint)
+		}
+		panel[0].left = append(panel[0].left, span{fit(mt.label, n-width(value)), label}, span{value, vst})
+		vals := make([]float64, len(use))
+		for k, u := range use {
+			vals[k] = mt.of(u)
+		}
+		for k, line := range tank(padNaN(vals, n), 2, mt.limit, current, well) {
+			panel[1+k].left = append(panel[1+k].left, line...)
+		}
+		c := caps[i]
+		if !current {
+			c = ""
+		}
+		if r == nil && i == 0 {
+			c = "not measured"
+		}
+		panel[3].left = append(panel[3].left, span{fit(c, n), fg(cFaint)})
+	}
+	if r != nil {
+		for k := range panel {
+			panel[k].hit = "goto:check:" + r.Check
+		}
+	}
+	return panel
 }
 
 // resourceAside is what a card's resources heading says on the right: how
