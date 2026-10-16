@@ -103,7 +103,9 @@ def main() -> int:
         cov_path = str((output / "coverage.out").relative_to(ROOT)) if (output / "coverage.out").is_relative_to(ROOT) else str(output / "coverage.out")
         run("tests-json", ["go", "test", "-json", "-count=1",
                            "-coverprofile=" + cov_path, "./..."])
-        run("race", ["go", "test", "-race", "-count=1", "./..."], timeout=300)
+        # The race detector runs the suite four to five times slower than
+        # tests-json; 300 s was spent by 0.9.1 and is outgrown.
+        run("race", ["go", "test", "-race", "-count=1", "./..."], timeout=600)
         run("repeat", ["go", "test", "-count=3", "./..."], timeout=300)
         run("coverage-summary", ["go", "tool", "cover", "-func=" + cov_path])
         fuzz = [
