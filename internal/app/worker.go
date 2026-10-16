@@ -11,6 +11,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/outbox"
 	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/runner"
@@ -18,6 +19,7 @@ import (
 
 func (a *App) worker(parent context.Context, args []string) error {
 	f := a.flags("worker")
+	panelFlags := addMonitorFlags(f)
 	path := f.String("config", "topology.json", "reviewed LOCAL topology; never downloaded as executable work")
 	observer := f.String("observer", "", "this executor's observer identity")
 	credPath := f.String("credentials", "worker-credentials.json", "0600 worker credential file")
@@ -32,6 +34,11 @@ func (a *App) worker(parent context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
+	panel, panelPath, e := panelFlags.load("worker", c.Project, *observer)
+	if e != nil {
+		return e
+	}
+	localView := monitor.NewLocal(c, *observer)
 	creds, e := client.Load(*credPath)
 	if e != nil {
 		return e
@@ -57,10 +64,20 @@ func (a *App) worker(parent context.Context, args []string) error {
 	ctx, cancel := context.WithCancel(parent)
 	var wg sync.WaitGroup
 	defer func() { cancel(); wg.Wait() }()
+	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(context.Context) (monitor.Input, error) {
+		return monitor.Input{Snapshot: localView.Snapshot(time.Now()), Delivery: d.Statuses()}, nil
+	}, *dir, *path, *credPath)
+	if e != nil {
+		return e
+	}
+	defer stopPanel()
 	// The checks under a topology; a reload replaces them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
 		revision := config.Revision(c)
 		return runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
+			if panel != nil {
+				localView.Record(v)
+			}
 			err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}}, d.Recipients())
 			var degraded *outbox.DegradedError
 			if errors.As(err, &degraded) {
@@ -91,6 +108,7 @@ func (a *App) worker(parent context.Context, args []string) error {
 			return e
 		}
 		running.stop()
+		localView.Reload(next)
 		running = background(ctx, &wg, s, failed)
 		d.SetRevision(config.Revision(next))
 		contractsDigest = config.ObserverContracts(next, *observer)

@@ -24,13 +24,27 @@ type fetched struct {
 }
 
 func Run(ctx context.Context, c *client.Client, observer string, noColor bool, in, out *os.File, options ...Startup) error {
+	return RunObserved(ctx, c, observer, noColor, in, out, nil, options...)
+}
+
+// RunObserved gives an optional display consumer the same fetch result as the
+// TUI, including errors and user-selected observer changes. History is unchanged.
+func RunObserved(ctx context.Context, c *client.Client, observer string, noColor bool, in, out *os.File, observed func(model.Snapshot, error), options ...Startup) error {
 	history := func(ctx context.Context, check string, limit int) ([]model.Observation, error) {
 		h, _, e := c.History(ctx, check, limit)
 		return h.Entries, e
 	}
 	m := &Model{Observer: observer, NoColor: noColor, Collectors: c.URLs(), Project: c.Project()}
 	m.initializeStartup(options)
-	return loop(ctx, m, c.Snapshot, history, in, out)
+	fetch := c.Snapshot
+	if observed != nil {
+		fetch = func(ctx context.Context, observer string) (model.Snapshot, string, error) {
+			snap, server, err := c.Snapshot(ctx, observer)
+			observed(snap, err)
+			return snap, server, err
+		}
+	}
+	return loop(ctx, m, fetch, history, in, out)
 }
 
 // RunWithFetch runs the viewer on fetch alone, without reading history.

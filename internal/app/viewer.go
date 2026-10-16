@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/preview"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/tui"
@@ -17,6 +19,7 @@ import (
 
 func (a *App) view(ctx context.Context, args []string) error {
 	f := a.flags("topo")
+	panelFlags := addMonitorFlags(f)
 	connect := a.connection(f)
 	observer := f.String("observer", "", "observer view (default all)")
 	jsonOut := f.Bool("json", false, "print one snapshot without terminal control")
@@ -30,6 +33,9 @@ func (a *App) view(ctx context.Context, args []string) error {
 		return e
 	}
 	defer c.Close()
+	if *jsonOut && *panelFlags.name != "" {
+		return errors.New("--monitor requires a running TUI; use monitor run for standalone output")
+	}
 	if *jsonOut {
 		snap, _, e := c.Snapshot(ctx, *observer)
 		if e != nil {
@@ -44,7 +50,30 @@ func (a *App) view(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	return tui.Run(ctx, c, *observer, *noColor, a.TerminalIn, a.TerminalOut, startup)
+	panel, path, e := panelFlags.load("client", c.Project(), *observer)
+	if e != nil {
+		return e
+	}
+	if panel == nil {
+		return tui.Run(ctx, c, *observer, *noColor, a.TerminalIn, a.TerminalOut, startup)
+	}
+	saved, e := monitorClient(*panel)
+	if e != nil {
+		return e
+	}
+	same := saved.Project() == c.Project() && slices.Equal(saved.URLs(), c.URLs())
+	saved.Close()
+	if !same {
+		return errors.New("monitor saved connection differs from TUI connection")
+	}
+	feed := &monitor.Feed{}
+	feed.Set(monitor.Input{Unavailable: true})
+	stop, e := a.attachMonitor(ctx, panel, path, func(context.Context) (monitor.Input, error) { return feed.Get(), nil })
+	if e != nil {
+		return e
+	}
+	defer stop()
+	return tui.RunObserved(ctx, c, *observer, *noColor, a.TerminalIn, a.TerminalOut, func(s model.Snapshot, e error) { feed.Set(monitor.Input{Snapshot: s, Unavailable: e != nil}) }, startup)
 }
 
 // edit opens the local topology editor. It never contacts a collector: the

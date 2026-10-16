@@ -3,6 +3,7 @@ package monitor
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -75,6 +76,18 @@ func resolve(r Row, source string, in Input, now time.Time) Value {
 		return missing(v, "source_unavailable")
 	}
 	s := in.Snapshot
+	s.Checks = slices.Clone(s.Checks)
+	stale := map[string]int{}
+	for _, check := range s.Topology.Checks {
+		stale[check.ID] = check.StaleSeconds
+	}
+	for i := range s.Checks {
+		cs := &s.Checks[i]
+		if cs.Freshness == "fresh" && cs.Last != nil && (cs.Last.SampledAt.After(now.Add(5*time.Second)) || !now.Before(cs.Last.SampledAt.Add(time.Duration(stale[cs.ID])*time.Second))) {
+			cs.Freshness = "stale"
+			cs.Health = "unknown"
+		}
+	}
 	if strings.HasPrefix(r.Metric, "delivery.") {
 		return deliveryValue(v, in.Delivery, now)
 	}
@@ -87,8 +100,18 @@ func resolve(r Row, source string, in Input, now time.Time) Value {
 		v.Value = verdict.State
 		v.Text = verdict.Text
 		v.Health = verdict.State
-		v.SampledAt = s.GeneratedAt
 		v.ValidUntil = s.GeneratedAt.Add(15 * time.Second)
+		for _, cs := range s.Checks {
+			if cs.Last != nil {
+				if cs.Last.SampledAt.After(v.SampledAt) {
+					v.SampledAt = cs.Last.SampledAt
+				}
+				expires := cs.Last.SampledAt.Add(time.Duration(stale[cs.ID]) * time.Second)
+				if cs.Freshness == "fresh" && expires.Before(v.ValidUntil) {
+					v.ValidUntil = expires
+				}
+			}
+		}
 		return v
 	}
 	var matches []model.CheckState

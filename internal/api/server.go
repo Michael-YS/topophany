@@ -225,6 +225,16 @@ func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.
 	return snap, changes, e
 }
 
+// MonitorSnapshot reads local collector evidence without advancing the ledger
+// or writing the journal. Hold the reload read lock across generation + store.
+func (s *Server) MonitorSnapshot(now time.Time) model.Snapshot {
+	s.reloadMu.RLock()
+	defer s.reloadMu.RUnlock()
+	g := s.generation()
+	rows, carries, beats := s.Store.StateView()
+	return g.engine.Build(s.Instance, "", rows, carries, beats, now)
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })

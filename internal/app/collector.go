@@ -16,6 +16,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/runner"
@@ -25,6 +26,7 @@ import (
 
 func (a *App) serve(parent context.Context, args []string) error {
 	f := a.flags("serve")
+	panelFlags := addMonitorFlags(f)
 	path := f.String("config", "topology.json", "reviewed local topology JSON")
 	authPath := f.String("auth", "auth.json", "0600 collector token-hash configuration")
 	alertsPath := f.String("alerts", "", "0600 webhook configuration; no alerts when empty")
@@ -72,6 +74,10 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if e != nil {
 		return e
 	}
+	panel, panelPath, e := panelFlags.load("collector", c.Project, "")
+	if e != nil {
+		return e
+	}
 	auth, e := api.LoadAuth(*authPath, c)
 	if e != nil {
 		return e
@@ -96,6 +102,14 @@ func (a *App) serve(parent context.Context, args []string) error {
 	backend := api.New(c, *instance, st, auth)
 	backend.MaxSampleAge = *retention
 	backend.Ledger = book
+	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(context.Context) (monitor.Input, error) {
+		return monitor.Input{Snapshot: backend.MonitorSnapshot(time.Now())}, nil
+	}, *dir, *path, *authPath, *alertsPath, *cert, *key)
+	if e != nil {
+		return e
+	}
+	defer stopPanel()
+
 	var notifier *alert.Notifier
 	if *alertsPath != "" {
 		notifier = &alert.Notifier{Project: c.Project, Instance: *instance, Path: filepath.Join(*dir, "alert-queue.json"), Log: func(format string, args ...any) { fmt.Fprintf(a.Err, format+"\n", args...) }}
