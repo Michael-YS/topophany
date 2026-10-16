@@ -4,7 +4,6 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -147,7 +146,6 @@ func (r *Remote) Frame(now time.Time, cols, rows int, force bool) *DemoFrame {
 	if !force && !resized && !changed && (r.closed || now.Sub(r.painted) < m.Animating()) {
 		return nil
 	}
-	start := time.Now()
 	cv := m.draw()
 	if len(r.encoder.styles) > 8192 {
 		r.encoder = cellEncoder{}
@@ -158,7 +156,9 @@ func (r *Remote) Frame(now time.Time, cols, rows int, force bool) *DemoFrame {
 		f.Text = strings.Join(cv.Lines(colorNone), "\n")
 	}
 	r.painted = now
-	encoded, _ := json.Marshal(f.CellFrame)
-	m.measured(time.Since(start), len(encoded), now)
 	return f
+}
+
+func (r *Remote) Measured(render time.Duration, bytes int, at time.Time) {
+	r.m.measured(render, bytes, at)
 }

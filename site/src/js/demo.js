@@ -1,4 +1,5 @@
 import { Screen } from './term.js';
+import { ViewerInput } from './viewer-input.js';
 
 const root = document.querySelector('#live-demo');
 const words = JSON.parse(document.querySelector('#strings').textContent);
@@ -23,6 +24,8 @@ let rows = 36;
 let previous = 0;
 let paintPending = false;
 let composing = false;
+let inputs = new ViewerInput();
+let startupTimer;
 
 function paint() {
   if (paintPending) return;
@@ -34,7 +37,25 @@ function paint() {
 }
 
 function send(action, extra = {}) {
+  pending = true;
   worker.postMessage({ action, mode: live ? 'live' : 'preview', reconnectHint: live ? t('connect.reconnect') : '', language: root.dataset.language, cols, rows, cellAspect, ...extra });
+}
+
+function stop() {
+  clearTimeout(startupTimer);
+  worker?.terminate();
+  worker = null;
+  pending = false;
+  inputs = new ViewerInput();
+}
+
+function quit() {
+  stop();
+  if (live) { showConnection(); return; }
+  ready = false; closed = true;
+  root.setAttribute('aria-busy', 'false');
+  showOverlay(t('demo.ended'), true);
+  loading.focus({ preventScroll: true });
 }
 
 function focusTerminal() {
@@ -43,7 +64,8 @@ function focusTerminal() {
 
 function key(value) {
   if (!ready || closed) return;
-  send('key', { key: value });
+  if (value === 'ctrl-c') { quit(); return; }
+  inputs.key(value);
 }
 
 function layout() {
@@ -56,7 +78,7 @@ function layout() {
   const nextRows = Math.min(90, Math.max(10, Math.floor(height / (cell * cellAspect))));
   if (cols !== nextCols || rows !== nextRows) {
     cols = nextCols; rows = nextRows;
-    if (ready) send('resize');
+    if (ready) inputs.resized = true;
   } else if (screen?.resize()) paint();
 }
 
@@ -69,24 +91,25 @@ function showOverlay(message, canRestart = false) {
 }
 
 function restart() {
+  // The loading overlay is also an immediate cancel control.
+  if (!ready && worker) { quit(); return; }
   if (live) { showConnection(); return; }
-  if (ready) { send('reset'); return; }
   try { start(); } catch (error) { fail(error); }
 }
 
 function fail(error) {
   console.error('Topophany preview:', error);
+  stop();
   ready = false;
   if (live) { showConnection(t('connect.failed')); return; }
   root.classList.remove('is-ready');
   root.setAttribute('aria-busy', 'false');
   showOverlay(t('demo.failed'), true);
   loading.focus({ preventScroll: true });
-  worker?.terminate();
 }
 
 function showConnection(error = '') {
-  worker?.terminate();
+  stop();
   ready = false; closed = false; pending = false; searching = false;
   root.classList.remove('is-ready');
   root.setAttribute('aria-busy', 'false');
@@ -102,18 +125,27 @@ function showConnection(error = '') {
 }
 
 function start(profile = {}) {
-  worker?.terminate();
+  stop();
   ready = false; closed = false; pending = false; searching = false;
   root.classList.remove('is-ready');
   root.setAttribute('aria-busy', 'true');
   if (connection) connection.hidden = true;
-  showOverlay(t('demo.loading'));
+  showOverlay(t('demo.loading'), true);
   worker = new Worker(root.dataset.worker, { type: 'module' });
-  worker.onerror = (event) => fail(event.message);
+  const current = worker;
+  // Runs on the page so stalled downloads, compilation and a wedged runtime
+  // can all be stopped, even when the worker cannot process another message.
+  startupTimer = setTimeout(() => {
+    if (worker === current) fail('viewer startup timed out');
+  }, 30000);
+  worker.onerror = (event) => { if (worker === current) fail(event.message); };
   worker.onmessage = ({ data }) => {
-    if (data.action === 'tick') pending = false;
+    if (worker !== current) return;
+    pending = false;
+    if (data.result) data = JSON.parse(data.result);
     if (data.error) { fail(data.error); return; }
     if (!data.frame) return;
+    clearTimeout(startupTimer);
     const frame = data.frame;
     if (live && frame.closed) { showConnection(); return; }
     const cell = cellWidth();
@@ -223,9 +255,9 @@ loading.addEventListener('keydown', (event) => {
 });
 new ResizeObserver(layout).observe(viewport);
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && ready) send('resume');
+  if (!document.hidden && ready) inputs.resumed = true;
 });
-addEventListener('pagehide', () => { worker?.terminate(); ready = false; });
+addEventListener('pagehide', () => { stop(); ready = false; });
 addEventListener('pageshow', (event) => {
   if (event.persisted) { if (live) showConnection(); else restart(); }
 });
@@ -234,8 +266,9 @@ document.fonts.ready.then(() => { if (screen) { screen.cw = 0; screen.resize(); 
 function tick(now) {
   requestAnimationFrame(tick);
   if (!ready || closed || pending || document.hidden || now - previous < 70) return;
-  previous = now; pending = true;
-  send('tick');
+  previous = now;
+  const next = inputs.next();
+  send(next.action, next);
 }
 
 // Startup and retry messages stay inside the terminal frame.

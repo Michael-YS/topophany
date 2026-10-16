@@ -13,25 +13,27 @@ import (
 )
 
 type browserInput struct {
-	Action        string  `json:"action"`
-	Mode          string  `json:"mode"`
-	Language      string  `json:"language"`
-	Key           string  `json:"key"`
-	Scenario      string  `json:"scenario"`
-	Server        string  `json:"server"`
-	Project       string  `json:"project"`
-	Token         string  `json:"token"`
-	Cols          int     `json:"cols"`
-	Rows          int     `json:"rows"`
-	Now           int64   `json:"now"`
-	CellAspect    float64 `json:"cellAspect"`
-	ReconnectHint string  `json:"reconnectHint"`
+	Action        string   `json:"action"`
+	Mode          string   `json:"mode"`
+	Language      string   `json:"language"`
+	Key           string   `json:"key"`
+	Keys          []string `json:"keys"`
+	Scenario      string   `json:"scenario"`
+	Server        string   `json:"server"`
+	Project       string   `json:"project"`
+	Token         string   `json:"token"`
+	Cols          int      `json:"cols"`
+	Rows          int      `json:"rows"`
+	Now           int64    `json:"now"`
+	CellAspect    float64  `json:"cellAspect"`
+	ReconnectHint string   `json:"reconnectHint"`
 }
 
 type browserSession interface {
 	Key(string, time.Time)
 	Frame(time.Time, int, int, bool) *tui.DemoFrame
 	Close()
+	Measured(time.Duration, int, time.Time)
 }
 
 type controller struct{ session browserSession }
@@ -70,11 +72,21 @@ func (c *controller) call(raw string) string {
 	if input.Action == "key" {
 		c.session.Key(input.Key, now)
 	}
+	if len(input.Keys) > 16 {
+		return failure("too many viewer inputs")
+	}
+	for _, key := range input.Keys {
+		if len(key) > 32768 {
+			return failure("viewer input too large")
+		}
+		c.session.Key(key, now)
+	}
 	if input.Action == "scenario" {
 		if p, ok := c.session.(interface{ SetScenario(string, time.Time) }); ok {
 			p.SetScenario(input.Scenario, now)
 		}
 	}
+	start := time.Now()
 	frame := c.session.Frame(now, input.Cols, input.Rows, input.Action != "tick")
 	if frame == nil {
 		return ""
@@ -85,6 +97,7 @@ func (c *controller) call(raw string) string {
 	if err != nil {
 		return failure("cannot encode viewer")
 	}
+	c.session.Measured(time.Since(start), len(out), now)
 	return string(out)
 }
 

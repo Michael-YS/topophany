@@ -249,7 +249,7 @@
   "live.noscript": "このターミナルには JavaScript が必要です。",
   "live.try": "ブラウザーで試す",
   "js.demo.title": "ターミナルを試す",
-  "js.demo.loading": "ターミナルを起動中…",
+  "js.demo.loading": "ターミナルを起動中… · クリックまたは Enter でキャンセル",
   "js.demo.ended": "セッション終了 · クリックまたは Enter で再開",
   "js.demo.failed": "起動できませんでした · クリックまたは Enter で再試行",
   "connect.title": "コレクターに接続",

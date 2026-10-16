@@ -50,7 +50,7 @@ and binary hashes in `site/public/data/demo.build.json`. Both WASM binaries and
 this build cache are ignored by Git; a fresh checkout must run `make site`
 before previewing the site. CI builds the binaries before acceptance checks.
 With `site/` as its root directory, Workers Builds automatically runs `npm ci`;
-the dependency-free `site/package.json` builds the binaries and pages in its
+`site/package.json` builds the binaries and pages in its
 `postinstall` script. Keep automatic dependency installation enabled. This
 does not depend on the dashboard's optional build command or its handling of
 Wrangler custom builds. Local Wrangler runs the same build from its configuration.
@@ -67,11 +67,28 @@ a window aspect ratio of 200/(50×2.6), about 1.54:1. Recorded homepage tours
 keep their original 2:1 cells. Scenario selection uses the TUI's own `x` menu;
 the preview clock runs at normal speed.
 
+Browser input has one request in flight, up to 64 queued keys, and at most
+16 keys per rendered frame. Repeated wheel events and resize notifications
+coalesce; Ctrl-C immediately destroys the worker. The startup overlay can
+cancel loading, and a page-side 30-second watchdog restores retry controls
+even if compilation or the worker stalls. Frames are JSON-encoded once in Go
+and parsed once on the page. Native editor forms and synthetic preview data
+are omitted from browser builds where they are unused.
+
+Run browser regressions with Node 20 or newer: `cd site && npm ci`,
+`npx playwright install chromium`, `npm test`, then `npm run test:browser`.
+Set `CHROME` to use an existing Chromium executable. Playwright is a pinned
+development dependency; production assets contain no npm dependencies.
+The loopback fixtures use synthetic credentials and check body deadlines,
+CORS, omitted cookies, rejected redirects, input bursts, and startup recovery.
+
 The real browser client at `/app/` (and its language-prefixed routes) uses
 `internal/tui/remote.go` and the existing validated collector client. Its WASM
 is built separately with `-tags=collector` into `collector.wasm`; the preview
 build excludes the network session and keeps its smaller download. Browser
 requests use Go's Fetch transport with cookies omitted and redirects refused.
+The eight-second deadline also closes an unfinished response body, releasing
+the pending read so snapshot polling can resume.
 `collector-worker.js` has its own CSP connection policy, leaving the demo's
 same-origin policy intact. Its token only lives in the current connection;
 `q` and navigation destroy that worker. `--web-origin` enables the collector's

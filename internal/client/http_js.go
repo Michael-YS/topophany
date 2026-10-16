@@ -3,8 +3,11 @@
 package client
 
 import (
+	"context"
 	"errors"
+	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -33,7 +36,43 @@ func (t browserTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Fetch follows redirects before net/http can check them; refuse them here
 	// so a collector cannot forward the bearer token to a redirected endpoint.
 	r.Header.Set("js.fetch:redirect", "error")
-	return t.inner.RoundTrip(r)
+	resp, err := t.inner.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+	// Go's Fetch transport only watches cancellation until response headers
+	// arrive. Closing its stream reader also releases a pending body Read.
+	body := &browserBody{ReadCloser: resp.Body, ctx: r.Context()}
+	body.stop = context.AfterFunc(r.Context(), func() { body.close() })
+	resp.Body = body
+	return resp, nil
 }
 
 func (t browserTransport) CloseIdleConnections() { t.inner.CloseIdleConnections() }
+
+type browserBody struct {
+	io.ReadCloser
+	ctx  context.Context
+	stop func() bool
+	once sync.Once
+	err  error
+}
+
+func (b *browserBody) close() { b.once.Do(func() { b.err = b.ReadCloser.Close() }) }
+
+func (b *browserBody) Read(p []byte) (int, error) {
+	if err := b.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := b.ReadCloser.Read(p)
+	if canceled := b.ctx.Err(); canceled != nil {
+		return n, canceled
+	}
+	return n, err
+}
+
+func (b *browserBody) Close() error {
+	b.stop()
+	b.close()
+	return b.err
+}

@@ -22,18 +22,25 @@ async function handle(data) {
     const wall = performance.now();
     if (data.action === 'init' || data.action === 'reset') {
       clock = Date.now();
-    } else if (data.action !== 'resume') {
+    } else if (!data.resume) {
       // Hidden tabs pause the demo; never simulate hours of missed samples.
       clock += Math.min(1000, Math.max(0, wall - last));
     }
     last = wall;
     const result = await globalThis.topophanyDemo(JSON.stringify({ ...data, now: Math.floor(clock) }));
-    self.postMessage({ action: data.action, ...(result ? JSON.parse(result) : {}) });
+    // Send the encoded frame directly: parse once on the page, avoiding a
+    // second object tree and its structured clone on every frame.
+    self.postMessage({ action: data.action, result });
   } catch (error) {
     self.postMessage({ action: data.action, error: String(error) });
   }
 }
 
-// Preserve input ordering while Go yields to browser Fetch and Promise callbacks.
-let queue = Promise.resolve();
-self.onmessage = ({ data }) => { queue = queue.then(() => handle(data)); };
+// The page waits for each reply before sending another bounded input batch.
+// Reject a broken producer instead of retaining an unbounded Promise chain.
+let busy = false;
+self.onmessage = ({ data }) => {
+  if (busy) { self.postMessage({ error: 'viewer request already in flight' }); return; }
+  busy = true;
+  handle(data).finally(() => { busy = false; });
+};

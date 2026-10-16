@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -83,7 +84,7 @@ func (e *Editor) Save() (string, error) {
 // rebuild derives a display snapshot from the draft; with no observations
 // every state is unknown, which is exactly what an unmonitored draft is.
 func (m *Model) rebuild() {
-	if m.Edit == nil {
+	if runtime.GOOS == "js" || m.Edit == nil {
 		return
 	}
 	if m.Now.IsZero() {
@@ -95,6 +96,9 @@ func (m *Model) rebuild() {
 }
 
 func (m *Model) save() {
+	if runtime.GOOS == "js" {
+		return
+	}
 	rev, err := m.Edit.Save()
 	if err != nil {
 		m.say("Save failed: "+err.Error(), true)
@@ -157,7 +161,7 @@ func (m *Model) editKey(k string) {
 			"    topo preview --config preview.json")
 		return
 	}
-	if m.Edit == nil {
+	if runtime.GOOS == "js" || m.Edit == nil {
 		what := "this topology"
 		if ok && editable(row.Kind) {
 			what = row.Kind + " " + row.ID
@@ -265,6 +269,9 @@ func (m *Model) modalKey(k string) string {
 			}
 		}
 	case "form":
+		if runtime.GOOS == "js" {
+			return ""
+		}
 		f := md.form
 		switch r := f.key(k); r {
 		case "cancel":
@@ -604,6 +611,10 @@ func remove(c *model.Config, kind, id string) error {
 var checkKinds = []string{"http", "tcp", "tls", "ssh-banner", "dns", "udp-echo", "icmp", "mihomo", "tailscale", "wireguard", "host"}
 
 func (m *Model) openForm(kind, id string) {
+	// Browser viewers never author topology; omit forms and their builders.
+	if runtime.GOOS == "js" {
+		return
+	}
 	c := m.Edit.Config
 	nodes := ids(c.Nodes, func(n model.Node) string { return n.ID })
 	observers := ids(c.Observers, func(n model.Observer) string { return n.ID })

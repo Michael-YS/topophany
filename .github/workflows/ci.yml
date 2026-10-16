@@ -69,6 +69,13 @@ jobs:
           cache: false
       - name: Build browser binaries from source
         run: python3 scripts/build_demo.py
+      - name: Browser transport and interaction regressions
+        working-directory: site
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+          npm test
+          npm run test:browser
       - name: Full acceptance suite
         run: python3 scripts/verify.py --output ${{ runner.temp }}/verification
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

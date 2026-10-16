@@ -17,6 +17,17 @@ type CellFrame struct {
 	Ops    [][]any  `json:"ops"`
 }
 
+type DemoFrame struct {
+	CellFrame
+	Title     string `json:"title"`
+	Scenario  string `json:"scenario"`
+	Observer  string `json:"observer"`
+	Tab       int    `json:"tab"`
+	Searching bool   `json:"searching"`
+	Closed    bool   `json:"closed"`
+	Text      string `json:"text,omitempty"`
+}
+
 type cellEncoder struct {
 	styles map[Style]int
 	prev   *Canvas

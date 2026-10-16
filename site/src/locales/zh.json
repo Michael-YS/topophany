@@ -249,7 +249,7 @@
   "live.noscript": "此终端需要 JavaScript。",
   "live.try": "在浏览器里试用",
   "js.demo.title": "亲手试试这个终端",
-  "js.demo.loading": "正在启动终端…",
+  "js.demo.loading": "正在启动终端… · 点击或按 Enter 取消",
   "js.demo.ended": "会话已结束 · 点击或按 Enter 重新开始",
   "js.demo.failed": "终端未能启动 · 点击或按 Enter 重试",
   "connect.title": "连接采集器",

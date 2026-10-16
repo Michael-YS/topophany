@@ -249,7 +249,7 @@
   "live.noscript": "This terminal needs JavaScript.",
   "live.try": "Try it in your browser",
   "js.demo.title": "Try the terminal",
-  "js.demo.loading": "Starting the terminal…",
+  "js.demo.loading": "Starting the terminal… · click or press Enter to cancel",
   "js.demo.ended": "Session ended · click or press Enter to restart",
   "js.demo.failed": "Terminal unavailable · click or press Enter to retry",
   "connect.title": "Connect to a collector",

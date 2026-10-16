@@ -1,7 +1,8 @@
+//go:build !js || !collector
+
 package tui
 
 import (
-	"encoding/json"
 	"slices"
 	"strings"
 	"time"
@@ -25,17 +26,6 @@ type DemoScenario struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Detail string `json:"detail"`
-}
-
-type DemoFrame struct {
-	CellFrame
-	Title     string `json:"title"`
-	Scenario  string `json:"scenario"`
-	Observer  string `json:"observer"`
-	Tab       int    `json:"tab"`
-	Searching bool   `json:"searching"`
-	Closed    bool   `json:"closed"`
-	Text      string `json:"text,omitempty"`
 }
 
 func NewDemo(lang string, now time.Time) (*Demo, error) {
@@ -134,7 +124,6 @@ func (d *Demo) Frame(now time.Time, cols, rows int, force bool) *DemoFrame {
 		entries, err := d.sim.History(id, view.StripSamples, now)
 		m.KeepSamples(id, entries, err)
 	}
-	start := time.Now()
 	cv := m.draw()
 	// Animated colors must not grow the browser palette without bound.
 	if len(d.encoder.styles) > 8192 {
@@ -147,7 +136,9 @@ func (d *Demo) Frame(now time.Time, cols, rows int, force bool) *DemoFrame {
 		f.Text = strings.Join(cv.Lines(colorNone), "\n")
 	}
 	d.painted = now
-	encoded, _ := json.Marshal(f.CellFrame)
-	m.measured(time.Since(start), len(encoded), now)
 	return f
+}
+
+func (d *Demo) Measured(render time.Duration, bytes int, at time.Time) {
+	d.m.measured(render, bytes, at)
 }
