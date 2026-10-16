@@ -8,6 +8,7 @@ import (
 
 func businessFixture() Model {
 	m := fixtureModel()
+	m.GroupsCollapsed = true
 	m.Snapshot.Topology.Applications = []model.Application{{ID: "shop", Name: "商城"}}
 	for i := range m.Snapshot.Topology.Services {
 		m.Snapshot.Topology.Services[i].Application = "shop"

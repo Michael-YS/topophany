@@ -42,6 +42,10 @@ type Model struct {
 	Application, Environment, ServiceFilter string
 	GroupBy                                 map[int]string
 	Expanded                                map[string]bool
+	GroupsCollapsed                         bool
+	PreferencesPath                         string
+	PreferenceOverrides                     []string
+	preferenceInitial                       [5]string
 	AttentionOnly                           bool
 	Search                                  string
 	Searching                               bool
@@ -107,7 +111,7 @@ func (m *Model) view() view.View {
 // view is cached or a local draft.
 func (m *Model) Rows() []Row {
 	if m.businessTab() {
-		return m.view().GroupedList(m.Tab, view.GroupOptions{Application: m.Application, Environment: m.Environment, Service: m.ServiceFilter, By: m.groupMode(), Search: m.Search, Attention: m.AttentionOnly, Expanded: m.Expanded})
+		return m.view().GroupedList(m.Tab, view.GroupOptions{Application: m.Application, Environment: m.Environment, Service: m.ServiceFilter, By: m.groupMode(), Search: m.Search, Attention: m.AttentionOnly, Expanded: m.Expanded, Collapsed: m.GroupsCollapsed})
 	}
 	return m.view().List(m.Tab, m.Search)
 }
@@ -293,6 +297,9 @@ func (m *Model) Key(k string) string {
 		}
 	}
 	switch k {
+	case ",":
+		m.openPreferences()
+		return ""
 	case "q", "ctrl-c":
 		if m.Edit != nil && m.Edit.Dirty && k == "q" {
 			m.confirm("Discard unsaved changes?", []string{"The draft has changes that are not written to", m.Edit.Path + ".", "", "Press y to quit without saving, or Esc to go back and ^S to save."}, func() string { return "quit" })

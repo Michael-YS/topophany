@@ -34,7 +34,11 @@ func (m *Model) toggleGroup() bool {
 	if m.Expanded == nil {
 		m.Expanded = map[string]bool{}
 	}
-	m.Expanded[r.ID] = !m.Expanded[r.ID]
+	expanded, known := m.Expanded[r.ID]
+	if !known {
+		expanded = !m.GroupsCollapsed
+	}
+	m.Expanded[r.ID] = !expanded
 	return true
 }
 func (m *Model) businessStatus() string {

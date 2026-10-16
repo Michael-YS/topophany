@@ -45,6 +45,7 @@ Usage:
   topo show TAB [ID]                print a tab, or the evidence behind one entry in it
   topo history CHECK                print a check's recent samples
   topo history CHECK --step 1h      print how a check fared, hour by hour, from its rollups
+  topo preferences show/set/reset   inspect, save or reset local startup defaults
   topo login                        save a verified remote connection
   topo serve                        run a collector (optional local checks)
   topo worker                       execute a reviewed topology from this location
@@ -75,6 +76,15 @@ v observer, ↑↓/jk navigation, Enter details, / filter, r refresh, m map
 (virtual geo/geo/network), z zoom, mouse clicks and wheel, q quit. In 'topo edit': a add, e edit,
 d delete, u undo, Ctrl-S save. In 'topo preview': x scenario, D debug overlay;
 evidence is synthetic and the topology is read-only.
+Startup display flags (also on preview/edit):
+  --page overview|topology|servers|services|paths|checks|incidents|observers|about
+  --groups-collapsed=false --uniform-cards=false --full-map=false
+  --map-mode auto|virtual|geo|network --preferences PATH
+Explicit flags override saved startup defaults for this launch only. Boolean
+flags accept =false to override a saved true. In the TUI, comma (,) opens Settings;
+Apply changes this session, Save changes future launches, Restore edits the form.
+Example: topo preferences set --page servers --uniform-cards=true
+Preferences default to the OS user config directory / topophany / preferences.json.
 Credentials default to the OS user config directory / topophany / credentials.json.
 No routes, proxy policies, TUN settings or services are changed by monitoring.
 `
@@ -100,6 +110,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.serve(ctx, args[1:])
 	case "worker":
 		return a.worker(ctx, args[1:])
+	case "preferences":
+		return a.preferences(args[1:])
 	case "login":
 		return a.login(ctx, args[1:])
 	case "init":

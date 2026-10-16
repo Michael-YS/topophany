@@ -20,6 +20,7 @@ func (a *App) view(ctx context.Context, args []string) error {
 	connect := a.connection(f)
 	observer := f.String("observer", "", "observer view (default all)")
 	jsonOut := f.Bool("json", false, "print one snapshot without terminal control")
+	startupFlags := addPreferenceFlags(f)
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
 	if e := parsed(f, args); e != nil {
 		return e
@@ -39,7 +40,11 @@ func (a *App) view(ctx context.Context, args []string) error {
 	if a.TerminalIn == nil || a.TerminalOut == nil {
 		return errors.New("interactive terminal unavailable; use --json")
 	}
-	return tui.Run(ctx, c, *observer, *noColor, a.TerminalIn, a.TerminalOut)
+	startup, err := startupFlags.resolve()
+	if err != nil {
+		return err
+	}
+	return tui.Run(ctx, c, *observer, *noColor, a.TerminalIn, a.TerminalOut, startup)
 }
 
 // edit opens the local topology editor. It never contacts a collector: the
@@ -48,6 +53,7 @@ func (a *App) edit(ctx context.Context, args []string) error {
 	f := a.flags("edit")
 	path := f.String("config", "topology.json", "local topology JSON to edit (created on first save if missing)")
 	project := f.String("project", "my-network", "project ID for a new topology file")
+	startupFlags := addPreferenceFlags(f)
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
 	if e := parsed(f, args); e != nil {
 		return e
@@ -65,7 +71,11 @@ func (a *App) edit(ctx context.Context, args []string) error {
 	if a.TerminalIn == nil || a.TerminalOut == nil {
 		return errors.New("interactive terminal unavailable")
 	}
-	return tui.RunEditor(ctx, *path, c, *noColor, a.TerminalIn, a.TerminalOut)
+	startup, err := startupFlags.resolve()
+	if err != nil {
+		return err
+	}
+	return tui.RunEditor(ctx, *path, c, *noColor, a.TerminalIn, a.TerminalOut, startup)
 }
 
 // preview opens the TUI on synthetic evidence. It never dials a collector.
@@ -79,6 +89,7 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	scenario := f.Int("scenario", 0, "initial scenario index, already in effect; x in the TUI lists names")
 	printTopo := f.Bool("print-topology", false, "write the built-in topology JSON to stdout and exit")
 	dump := f.Bool("json", false, "print one synthetic snapshot and exit")
+	startupFlags := addPreferenceFlags(f)
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
 	lang := f.String("lang", localeLanguage(), "language of the built-in topology and the scenarios: "+strings.Join(preview.Languages(), ", "))
 	if e := f.Parse(args); e != nil {
@@ -137,12 +148,16 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	if a.TerminalIn == nil || a.TerminalOut == nil {
 		return errors.New("interactive terminal unavailable")
 	}
+	startup, err := startupFlags.resolve()
+	if err != nil {
+		return err
+	}
 	return tui.RunPreview(ctx, sim, func(_ context.Context, view string) (model.Snapshot, string, error) {
 		snap, e := sim.Snapshot(view, time.Now())
 		return snap, "synthetic", e
 	}, func(_ context.Context, check string, limit int) ([]model.Observation, error) {
 		return sim.History(check, limit, time.Now())
-	}, *observer, *noColor, a.TerminalIn, a.TerminalOut)
+	}, *observer, *noColor, a.TerminalIn, a.TerminalOut, startup)
 }
 
 // localeLanguage is the preview language the environment asks for: the

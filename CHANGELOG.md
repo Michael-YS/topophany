@@ -3,6 +3,8 @@
 
 ## Unreleased
 
+- Add persistent startup display preferences, CLI overrides and `preferences show/set/reset`, plus a comma-key TUI settings dialog; application groups now start expanded by default.
+
 - Add application and environment organization, collapsible Services/Checks groups, persistent browsing scope, shared dependency navigation, and editor support without changing measurement contracts.
 
 - Add `topo capacity`, observer storage weights, configurable bounded collector state/receipt limits, and authenticated quota visibility before migration.

@@ -220,6 +220,8 @@ func (m *Model) editKey(k string) {
 func (m *Model) modalKey(k string) string {
 	md := m.modal
 	switch md.kind {
+	case "preferences":
+		return m.preferencesKey(k)
 	case "info":
 		if k == "ctrl-c" {
 			return "quit"

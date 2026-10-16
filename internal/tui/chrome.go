@@ -387,6 +387,8 @@ func (m *Model) footer(cv *Canvas, y int) {
 	var keys []keycap
 	if m.modal != nil {
 		switch m.modal.kind {
+		case "preferences":
+			keys = []keycap{{"Tab/↑↓", "move", ""}, {"←→", "change", ""}, {"Enter", "select", "enter"}, {"Esc", "cancel", "esc"}}
 		case "form":
 			keys = []keycap{{"Tab/↓", "next", ""}, {"↑", "prev", ""}, {"←→", "choose", ""}, {"Space", "toggle", ""}, {"^S", "apply", "btn:save"}, {"Esc", "cancel", "btn:cancel"}}
 		case "menu":
@@ -476,6 +478,7 @@ func (m *Model) footer(cv *Canvas, y int) {
 		if m.Preview != nil {
 			add(6, "D", "Debug", "D")
 		}
+		add(4, ",", "Settings", ",")
 		add(3, "?", "About", "?")
 		add(0, "q", "Quit", "q")
 		for {

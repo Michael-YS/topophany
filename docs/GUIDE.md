@@ -337,3 +337,60 @@ views remain unknown. Check totals in the evidence panel preserve freshness and
 pause counts separately. A successful edge check still proves only that edge.
 Organizational metadata does not change measurement contracts or reset check
 history. Reload the collector topology after edits to publish the new grouping.
+
+## Display and startup preferences
+
+The built-in startup defaults are Overview, expanded groups, non-uniform Servers
+cards, maps with surrounding panels, and automatic map mode. Startup display
+preferences are local to the user and separate from topology and credentials.
+
+```sh
+# Temporary overrides; never writes the saved defaults.
+topo --page servers --uniform-cards
+topo --page services --groups-collapsed
+topo --page topology --map-mode virtual --full-map
+
+# Save defaults for subsequent launches; no collector or terminal required.
+topo preferences set --page servers --uniform-cards=true
+topo preferences show
+topo preferences reset
+
+# Explicit false overrides a saved true for just this launch.
+topo --uniform-cards=false --groups-collapsed=false --full-map=false
+```
+
+`--page` accepts overview, topology, servers, services, paths, checks, incidents,
+observers or about. `--map-mode` accepts auto, virtual, geo or network. Full-map
+mode affects Overview and Topology; it does not override the selected startup
+page, and remains available when navigating from Servers to Topology.
+
+Explicit command-line flags override saved preferences; omitted flags retain
+saved values. Missing preferences use built-in defaults. `preferences set`
+updates only the supplied fields. An invalid file produces an error rather than
+silently losing defaults; `preferences reset` can replace it with built-in values.
+The default file is `topophany/preferences.json` within the OS user configuration
+directory (on Linux, `$XDG_CONFIG_HOME` or `~/.config`). `--preferences PATH`
+selects another file on both startup and preferences commands.
+
+These display flags also work on interactive `topo preview` and `topo edit`.
+Machine-readable snapshot and preview read commands do not load display defaults.
+
+Inside the TUI, press **`,`**, click **Settings** in the footer, or use the fixed
+**Display & startup preferences** entry on About. The footer hint may disappear
+on narrow terminals; the shortcut remains available. Search and editor text
+fields continue to accept a literal comma.
+
+The dialog opens with the current session's display settings. A `*` identifies a
+field still using an explicit command-line override. Use Tab/arrow keys to move,
+left/right to change values, and Enter to select an action; mouse clicks work too.
+
+- **Apply to this session** immediately changes the page and display settings,
+  resetting group folds to the chosen initial state. It writes no file.
+- **Save as startup defaults** saves the form for future launches, without
+  changing the current view. Errors keep the form open for correction.
+- **Restore built-in defaults** resets only the form. Apply or save to confirm,
+  or Esc to discard it.
+
+Only these five presentation preferences are saved. Search text, observer,
+service/application scope, selection, and individual group folds are not saved.
+Routine page switches and display shortcuts never rewrite startup defaults.

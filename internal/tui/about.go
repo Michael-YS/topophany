@@ -401,9 +401,10 @@ func (m *Model) drawWordmark(cv *Canvas, x, y int, t float64) int {
 }
 
 type aboutLine struct {
-	parts []span
-	url   string // the last part is a link to url
-	drop  int    // when rows are short, 2 goes first, then 1; 0 stays
+	parts  []span
+	action string
+	url    string // the last part is a link to url
+	drop   int    // when rows are short, 2 goes first, then 1; 0 stays
 }
 
 // Where Topophany lives.
@@ -433,6 +434,7 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 		{},
 		link("homepage", homepage),
 		link("source", repo),
+		{parts: []span{sp("[,] Display & startup preferences", fg(cAccent))}, action: "key:,"},
 		{},
 		{parts: []span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("`topo`", fg(cMuted))}},
 	}
@@ -581,6 +583,9 @@ func (m *Model) drawAbout(cv *Canvas, x, y, w, h int) {
 				cv.Link(cx, ty, n, l.url)
 			}
 			cx += n
+		}
+		if l.action != "" {
+			m.hit(tx, ty, tw, l.action)
 		}
 		ty++
 	}

@@ -23,26 +23,33 @@ type fetched struct {
 	took     time.Duration
 }
 
-func Run(ctx context.Context, c *client.Client, observer string, noColor bool, in, out *os.File) error {
+func Run(ctx context.Context, c *client.Client, observer string, noColor bool, in, out *os.File, options ...Startup) error {
 	history := func(ctx context.Context, check string, limit int) ([]model.Observation, error) {
 		h, _, e := c.History(ctx, check, limit)
 		return h.Entries, e
 	}
-	return loop(ctx, &Model{Observer: observer, NoColor: noColor}, c.Snapshot, history, in, out)
+	m := &Model{Observer: observer, NoColor: noColor}
+	m.initializeStartup(options)
+	return loop(ctx, m, c.Snapshot, history, in, out)
 }
 
 // RunWithFetch runs the viewer on fetch alone, without reading history.
-func RunWithFetch(parent context.Context, fetch Fetch, observer string, noColor bool, in, out *os.File) error {
-	return loop(parent, &Model{Observer: observer, NoColor: noColor}, fetch, nil, in, out)
+func RunWithFetch(parent context.Context, fetch Fetch, observer string, noColor bool, in, out *os.File, options ...Startup) error {
+	m := &Model{Observer: observer, NoColor: noColor}
+	m.initializeStartup(options)
+	return loop(parent, m, fetch, nil, in, out)
 }
 
 // RunEditor opens the editor on a local topology. It never contacts a
 // collector; the file changes only on an explicit save.
-func RunEditor(parent context.Context, path string, c model.Config, noColor bool, in, out *os.File) error {
+func RunEditor(parent context.Context, path string, c model.Config, noColor bool, in, out *os.File, options ...Startup) error {
 	m := &Model{NoColor: noColor, Edit: &Editor{Path: path, Config: c}, Now: time.Now()}
+	m.initializeStartup(options)
 	m.rebuild()
 	if len(c.Nodes) == 0 {
-		m.setTab(tabTopology)
+		if len(options) == 0 {
+			m.setTab(tabTopology)
+		}
 		m.say("New topology — press a to add your first node", false)
 	}
 	return loop(parent, m, nil, nil, in, out)

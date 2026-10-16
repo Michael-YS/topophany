@@ -11,6 +11,7 @@ import (
 // Scope is organizational metadata, never a claim about measurement or routing.
 type Scope struct{ Application, Environment, Service, Node, Observer, Path string }
 type GroupOptions struct {
+	Collapsed                                     bool
 	Application, Environment, Service, By, Search string
 	Attention                                     bool
 	Expanded                                      map[string]bool
@@ -186,7 +187,11 @@ func (v View) GroupedList(tab int, o GroupOptions) []Row {
 			health = "degraded"
 		}
 		tree := "▶ "
-		expanded := o.Expanded[id] || o.Search != "" || o.Attention
+		expanded, known := o.Expanded[id]
+		if !known {
+			expanded = !o.Collapsed
+		}
+		expanded = expanded || o.Search != "" || o.Attention
 		if expanded {
 			tree = "▼ "
 		}

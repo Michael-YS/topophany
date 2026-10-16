@@ -38,7 +38,7 @@ func TestPreviewScenarioMenuDebugAndReadOnly(t *testing.T) {
 	if !strings.Contains(out, "PREVIEW") || !strings.Contains(out, "全部正常") || !strings.Contains(out, "成都") {
 		t.Fatal("preview chrome or geography missing")
 	}
-	if !strings.Contains(out, "Scenario") || !strings.Contains(out, "Add") {
+	if !strings.Contains(out, "Scenario") || !strings.Contains(out, "Settings") {
 		t.Fatal("preview footer dropped a key", out[len(out)-400:])
 	}
 	m.Key("x")

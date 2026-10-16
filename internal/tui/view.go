@@ -269,6 +269,8 @@ func (m *Model) drawModal(cv *Canvas) {
 	md := m.modal
 	bg := Style{BG: cPanelBG}
 	switch md.kind {
+	case "preferences":
+		m.drawPreferences(cv)
 	case "info", "confirm":
 		mw := width(md.title) + 8
 		for _, l := range md.lines {

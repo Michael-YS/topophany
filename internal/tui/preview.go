@@ -18,8 +18,9 @@ type Preview interface {
 
 // RunPreview runs the ordinary viewer against a synthetic source. fetch and
 // history must never touch the network.
-func RunPreview(parent context.Context, p Preview, fetch Fetch, history History, observer string, noColor bool, in, out *os.File) error {
+func RunPreview(parent context.Context, p Preview, fetch Fetch, history History, observer string, noColor bool, in, out *os.File, options ...Startup) error {
 	m := &Model{Observer: observer, NoColor: noColor, Preview: p}
+	m.initializeStartup(options)
 	m.say("Preview: synthetic evidence only · x switch scenario · D debug overlay", false)
 	return loop(parent, m, fetch, history, in, out)
 }
