@@ -41,8 +41,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reaches it with nothing cut short, and the checks its state rests on, in
   two columns where the terminal is wide. `↑↓` scroll it; `Enter`, `Esc` or
   a click beside it closes it, and the cards behind keep their place.
+- Providers' logos where the terminal's font is a Nerd Font (v3.3 or
+  later): `--nerd-font-icons`, or Nerd Font icons in Settings. Nodes run by
+  Cloudflare, Vercel, Supabase, GCP, Azure, AWS, Oracle, Deno Deploy,
+  Linode or DigitalOcean wear their provider's logo before their names, on
+  their cards, on the maps and in the Services tab's HOST column, and so
+  does an edge wherever it is named in front of a service or an address.
+  Off by default, as a terminal cannot tell which font it draws with. The
+  homepage and the guide's stills draw the logos from their outlines.
 
 ### Changed
+
+- Where a card has no room for the edge a service or an address is reached
+  through, the edge's logo or its mark (`CF`, `▲`, `DO`, …) stands in for
+  its name, whole, rather than the name cut short and the address's state
+  pushed off the card.
+- Known providers are named in their own spelling, by any of their usual
+  names: a node's `provider` of `oracle` or `oci` reads Oracle, `gcp` or
+  `google` reads GCP, `digitalocean` reads DigitalOcean. Edges and
+  platforms keep their brand colors; a machine you run keeps its group's.
 
 - `Enter` on the Servers tab opens the server's card rather than the
   evidence panel; a node's evidence panel is still on the Topology tab.

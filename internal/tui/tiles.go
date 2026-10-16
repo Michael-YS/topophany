@@ -43,27 +43,27 @@ func (m *Model) tilePanel(f fleet, r Row, c view.Card, w int) []cardRow {
 	n := f.Nodes[r.ID]
 	switch {
 	case hosted(n.Kind):
-		return edgePanel(n, c)
+		return m.edgePanel(n, c)
 	case len(c.Observers) == 0:
-		return quietPanel("no worker runs here", "CPU, memory and disk unmeasured")
+		return quietPanel("CPU, memory and disk unmeasured", quiet("no worker runs here"))
 	}
-	return quietPanel("its worker runs no host check", "CPU, memory and disk unmeasured")
+	return quietPanel("CPU, memory and disk unmeasured", quiet("its worker runs no host check"))
 }
 
 // edgePanel lists the addresses an edge answers for, each with the server
 // behind it, and where it answered from; with none in front of anything,
 // who hosts it.
-func edgePanel(n model.Node, c view.Card) []cardRow {
+func (m *Model) edgePanel(n model.Node, c view.Card) []cardRow {
 	pops := strings.Join(c.Pops, " · ")
 	if len(c.Fronts) == 0 {
-		host := "a managed " + n.Kind
+		host := []span{quiet("a managed " + n.Kind)}
 		if p := view.ProviderName(n.Provider); p != "" {
-			host = "hosted by " + p
+			host = append(append([]span{quiet("hosted by ")}, m.logo(n.Provider)...), quiet(p))
 		}
 		if pops == "" {
-			return quietPanel(host, "no machine of yours to measure")
+			return quietPanel("no machine of yours to measure", host...)
 		}
-		return quietPanel(host, "answered from "+pops)
+		return quietPanel("answered from "+pops, host...)
 	}
 	rows := []cardRow{{left: []span{{"IN FRONT OF", fg(cMuted)}}, right: []span{{itoa(len(c.Fronts)), fg(cText)}}}}
 	room := 3
@@ -90,14 +90,17 @@ func edgePanel(n model.Node, c view.Card) []cardRow {
 
 // quietPanel stands in for a panel with nothing to show, saying what is
 // missing and why.
-func quietPanel(what, why string) []cardRow {
+func quietPanel(why string, what ...span) []cardRow {
 	return []cardRow{
 		{},
-		{left: []span{{"◌ ", fg(cFaint)}, {what, fg(cMuted).italic()}}},
+		{left: append([]span{{"◌ ", fg(cFaint)}}, what...)},
 		{left: []span{{"  " + why, fg(cFaint).italic()}}},
 		{},
 	}
 }
+
+// quiet is what a quiet panel says is missing.
+func quiet(s string) span { return span{s, fg(cMuted).italic()} }
 
 // reading is the resources a uniform card shows of those read on a host:
 // the first current, else the first; nil with none.

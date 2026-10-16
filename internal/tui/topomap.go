@@ -56,6 +56,13 @@ func (m *Model) graph() ([]mapNode, []mapEdge, map[string]Color) {
 		}
 	}
 	nodes, edges := m.view().Graph()
+	if m.NerdFont {
+		// Every map writes a node's name from here, so each leads it with
+		// its provider's logo.
+		for i := range nodes {
+			nodes[i].Name = m.logoText(nodes[i].Provider, nodes[i].Name)
+		}
+	}
 	return nodes, edges, groups
 }
 

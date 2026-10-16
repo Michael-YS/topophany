@@ -62,7 +62,9 @@ func newRecorder(t *testing.T, lang string) *recorder {
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	sim := preview.New(c, now, lang)
 	r := &recorder{t: t, sim: sim, styles: map[Style]int{}}
-	r.m = &Model{Now: now, Width: tourW, Height: tourH, Preview: sim, Server: "synthetic", Colors: colorTrue}
+	// The page draws the providers' logos itself, so the tour shows them as
+	// a terminal with a Nerd Font does.
+	r.m = &Model{Now: now, Width: tourW, Height: tourH, Preview: sim, Server: "synthetic", Colors: colorTrue, NerdFont: true}
 	r.out.Size = [2]int{tourW, tourH}
 	r.out.Names = tabs
 	r.fetch()

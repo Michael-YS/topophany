@@ -11,7 +11,7 @@ import (
 
 func TestPreferenceCLIOverridesAndPersistence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "preferences.json")
-	_, _, err := invoke("", "preferences", "set", "--preferences", path, "--page", "servers", "--uniform-cards", "--groups-collapsed", "--full-map", "--map-mode", "geo")
+	_, _, err := invoke("", "preferences", "set", "--preferences", path, "--page", "servers", "--uniform-cards", "--groups-collapsed", "--full-map", "--map-mode", "geo", "--nerd-font-icons")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestPreferenceCLIOverridesAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Settings.Page != "overview" || got.Settings.UniformCards || got.Settings.FullMap || !got.Settings.GroupsCollapsed || got.Settings.MapMode != "geo" {
+	if got.Settings.Page != "overview" || got.Settings.UniformCards || got.Settings.FullMap || !got.Settings.GroupsCollapsed || got.Settings.MapMode != "geo" || !got.Settings.NerdFontIcons {
 		t.Fatal(got)
 	}
 	after, _ := os.ReadFile(path)

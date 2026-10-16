@@ -79,7 +79,7 @@ evidence is synthetic and the topology is read-only.
 Startup display flags (also on preview/edit):
   --page overview|topology|servers|services|paths|checks|incidents|observers|about
   --groups-collapsed=false --uniform-cards=false --full-map=false
-  --map-mode auto|virtual|geo|network --preferences PATH
+  --map-mode auto|virtual|geo|network --nerd-font-icons=false --preferences PATH
 Explicit flags override saved startup defaults for this launch only. Boolean
 flags accept =false to override a saved true. In the TUI, comma (,) opens Settings;
 Apply changes this session, Save changes future launches, Restore edits the form.

@@ -8,7 +8,11 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/preferences"
 )
 
-var preferenceNames = []string{"page", "groups-collapsed", "uniform-cards", "full-map", "map-mode"}
+var preferenceNames = []string{"page", "groups-collapsed", "uniform-cards", "full-map", "map-mode", "nerd-font-icons"}
+
+// prefFields is how many preferences the dialog lists; its three buttons
+// follow them.
+const prefFields = 6
 
 func preferenceForm(s preferences.Settings) *Form {
 	f := &Form{}
@@ -27,10 +31,11 @@ func preferenceForm(s preferences.Settings) *Form {
 	f.add("Uniform cards", yes(s.UniformCards), fBool, "")
 	f.add("Full map", yes(s.FullMap), fBool, "")
 	f.add("Map mode", s.MapMode, fChoice, "", preferences.MapModes...)
+	f.add("Nerd Font icons", yes(s.NerdFontIcons), fBool, "")
 	return f
 }
 func formPreferences(f *Form) preferences.Settings {
-	return preferences.Settings{Page: f.val("Startup page"), GroupsCollapsed: f.val("Initial groups") == "collapsed", UniformCards: f.yes("Uniform cards"), FullMap: f.yes("Full map"), MapMode: f.val("Map mode")}
+	return preferences.Settings{Page: f.val("Startup page"), GroupsCollapsed: f.val("Initial groups") == "collapsed", UniformCards: f.yes("Uniform cards"), FullMap: f.yes("Full map"), MapMode: f.val("Map mode"), NerdFontIcons: f.yes("Nerd Font icons")}
 }
 func (m *Model) openPreferences() {
 	f := preferenceForm(m.currentPreferences())
@@ -50,21 +55,21 @@ func (m *Model) preferencesKey(k string) string {
 	case "ctrl-c":
 		return "quit"
 	case "tab", "down", "wheel-down":
-		f.focus = (f.focus + 1) % 8
+		f.focus = (f.focus + 1) % (prefFields + 3)
 		return ""
 	case "shift-tab", "up", "wheel-up":
-		f.focus = (f.focus + 7) % 8
+		f.focus = (f.focus + prefFields + 2) % (prefFields + 3)
 		return ""
 	case "enter":
-		if f.focus < 5 {
+		if f.focus < prefFields {
 			f.focus++
 			return ""
 		}
-		k = []string{"pref:apply", "pref:save", "pref:reset"}[f.focus-5]
+		k = []string{"pref:apply", "pref:save", "pref:reset"}[f.focus-prefFields]
 	}
 	if strings.HasPrefix(k, "pref:field:") {
 		i, err := strconv.Atoi(strings.TrimPrefix(k, "pref:field:"))
-		if err == nil && i >= 0 && i < 5 {
+		if err == nil && i >= 0 && i < prefFields {
 			f.focus = i
 			f.key("right")
 			m.modal.lines = slices.DeleteFunc(m.modal.lines, func(name string) bool { return name == preferenceNames[i] })
@@ -109,7 +114,7 @@ func (m *Model) preferencesKey(k string) string {
 		}
 		return ""
 	}
-	if f.focus < 5 {
+	if f.focus < prefFields {
 		before := f.fields[f.focus].value
 		f.key(k)
 		if f.fields[f.focus].value != before {
@@ -134,7 +139,7 @@ func (m *Model) drawPreferences(cv *Canvas) {
 	// Keep the focused item visible even on a short terminal.
 	available := max(1, h-4)
 	start := max(0, f.focus-available+1)
-	for i := start; i < min(8, start+available); i++ {
+	for i := start; i < min(prefFields+3, start+available); i++ {
 		yy := y + 2 + i - start
 		style := bg.Fg(cText)
 		if i == f.focus {
@@ -143,7 +148,7 @@ func (m *Model) drawPreferences(cv *Canvas) {
 			style = style.Bg(cSelBG)
 			cv.Set(x-1, yy, '›', style)
 		}
-		if i < 5 {
+		if i < prefFields {
 			label := f.fields[i].label
 			if slices.Contains(m.modal.lines, preferenceNames[i]) {
 				label += " *"
@@ -153,9 +158,9 @@ func (m *Model) drawPreferences(cv *Canvas) {
 			cv.Text(x+labelW+1, yy, ellipsis("‹ "+f.fields[i].value+" ›", w-labelW-1), style, w-labelW-1)
 			m.hit(x, yy, w, "pref:field:"+strconv.Itoa(i))
 		} else {
-			label := []string{"Apply to this session", "Save as startup defaults", "Restore built-in defaults"}[i-5]
+			label := []string{"Apply to this session", "Save as startup defaults", "Restore built-in defaults"}[i-prefFields]
 			cv.Text(x, yy, ellipsis("[ "+label+" ]", w), style, w)
-			m.hit(x, yy, w, []string{"pref:apply", "pref:save", "pref:reset"}[i-5])
+			m.hit(x, yy, w, []string{"pref:apply", "pref:save", "pref:reset"}[i-prefFields])
 		}
 	}
 	if f.err != "" {

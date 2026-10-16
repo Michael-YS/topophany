@@ -13,26 +13,59 @@ import (
 // "platform") hosts managed services, such as Supabase. Endpoints name the
 // edges and proxies in front of them in via.
 
-// providers are the providers named in evidence by their own spelling; any
-// other provider is shown as written.
-var providers = map[string]string{
-	"cloudflare": "Cloudflare",
-	"vercel":     "Vercel",
-	"supabase":   "Supabase",
-	"netlify":    "Netlify",
-	"fastly":     "Fastly",
-	"cloudfront": "CloudFront",
-	"aws":        "AWS",
-	"fly":        "Fly.io",
-	"render":     "Render",
-	"railway":    "Railway",
-	"deno":       "Deno Deploy",
+// Provider is how a provider is shown: its own spelling of its name, its
+// brand color as 0xRRGGBB (0 for none), its logo where the terminal's font
+// is a Nerd Font (0 for none) and a mark of a few letters that stands in
+// for its name where that has no room ("" for none).
+type Provider struct {
+	Name  string
+	Color uint32
+	Glyph rune
+	Mark  string
+}
+
+// providers are the providers the views know; any other provider is shown
+// as written. The logos are the Nerd Fonts' (nerdfonts.com, v3.3 or later).
+var providers = map[string]Provider{
+	"cloudflare":   {"Cloudflare", 0xF6821F, '\ue792', "CF"},
+	"vercel":       {"Vercel", 0xE5E7EB, '\ue8d3', "▲"},
+	"supabase":     {"Supabase", 0x3ECF8E, '\ue8b6', "SB"},
+	"gcp":          {"GCP", 0x4285F4, '\ue7f1', "GCP"},
+	"azure":        {"Azure", 0x0089D6, '\ue754', "AZ"},
+	"aws":          {"AWS", 0xFF9900, '\ue7ad', "AWS"},
+	"oracle":       {"Oracle", 0xC74634, '\U000F0EA1', "OCI"}, // a ring: the fonts' Oracle logo is a wordmark too thin to read
+	"deno":         {"Deno Deploy", 0x70FFAF, '\ue7c0', "DN"},
+	"linode":       {"Linode", 0x00A95C, '\uf2b8', "LN"},
+	"digitalocean": {"DigitalOcean", 0x0080FF, '\ue7ae', "DO"},
+	"netlify":      {"Netlify", 0x32E6E2, 0, ""},
+	"fastly":       {"Fastly", 0xFF5A5F, 0, ""},
+	"cloudfront":   {"CloudFront", 0xFF9900, 0, ""},
+	"fly":          {"Fly.io", 0xA78BFA, 0, ""},
+	"render":       {"Render", 0x46E3B7, 0, ""},
+	"railway":      {"Railway", 0xC4B5FD, 0, ""},
+}
+
+// providerAliases are other names a topology may give a known provider.
+var providerAliases = map[string]string{
+	"google": "gcp", "googlecloud": "gcp", "google-cloud": "gcp", "gce": "gcp",
+	"microsoft": "azure", "amazon": "aws", "oci": "oracle", "oraclecloud": "oracle",
+	"deno-deploy": "deno", "do": "digitalocean",
+}
+
+// LookupProvider finds a provider the views know, by any of its names.
+func LookupProvider(p string) (Provider, bool) {
+	k := strings.ToLower(strings.TrimSpace(p))
+	if a, ok := providerAliases[k]; ok {
+		k = a
+	}
+	v, ok := providers[k]
+	return v, ok
 }
 
 // ProviderName is how a provider is named, e.g. "Cloudflare".
 func ProviderName(p string) string {
-	if name, ok := providers[strings.ToLower(p)]; ok {
-		return name
+	if v, ok := LookupProvider(p); ok {
+		return v.Name
 	}
 	return p
 }

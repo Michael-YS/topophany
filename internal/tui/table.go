@@ -168,6 +168,7 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 		cv.Text(x, y, msg, fg(cMuted).italic(), w)
 		return
 	}
+	rows = m.logoRows(rows)
 	heads := m.tabColumns()
 	lay := layoutTable(rows, heads, w)
 	if len(heads) > 0 && h >= 6 {

@@ -52,8 +52,9 @@ func TestPreferencesApplySaveResetAndCancel(t *testing.T) {
 	}
 	m.modal.form.get("Startup page").value = "servers"
 	m.modal.form.get("Uniform cards").value = "yes"
+	m.modal.form.get("Nerd Font icons").value = "yes"
 	m.Key("pref:apply")
-	if m.Tab != tabServers || !m.Uniform {
+	if m.Tab != tabServers || !m.Uniform || !m.NerdFont {
 		t.Fatal("apply failed")
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -66,7 +67,7 @@ func TestPreferencesApplySaveResetAndCancel(t *testing.T) {
 		t.Fatal("saving changed session")
 	}
 	s, err := preferences.Load(path)
-	if err != nil || s.Page != "checks" || !s.UniformCards {
+	if err != nil || s.Page != "checks" || !s.UniformCards || !s.NerdFontIcons {
 		t.Fatal(s, err)
 	}
 	m.Key(",")
@@ -107,7 +108,7 @@ func TestPreferencesRenderAndSaveFailure(t *testing.T) {
 	}
 	for _, size := range [][2]int{{40, 16}, {80, 24}, {160, 48}} {
 		m.Width, m.Height = size[0], size[1]
-		for i := 0; i < 8; i++ {
+		for i := 0; i < prefFields+3; i++ {
 			m.modal.form.focus = i
 			out := m.Render()
 			for _, line := range out {

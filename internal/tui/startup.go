@@ -31,6 +31,7 @@ func (m *Model) applyPreferences(s preferences.Settings) {
 	m.Uniform = s.UniformCards
 	m.FullMap = s.FullMap
 	m.MapMode = s.MapMode
+	m.NerdFont = s.NerdFontIcons
 	if m.MapMode == "auto" {
 		m.MapMode = ""
 	}
@@ -40,5 +41,5 @@ func (m *Model) currentPreferences() preferences.Settings {
 	if mode == "" {
 		mode = "auto"
 	}
-	return preferences.Settings{Page: preferences.Pages[m.Tab], GroupsCollapsed: m.GroupsCollapsed, UniformCards: m.Uniform, FullMap: m.FullMap, MapMode: mode}
+	return preferences.Settings{Page: preferences.Pages[m.Tab], GroupsCollapsed: m.GroupsCollapsed, UniformCards: m.Uniform, FullMap: m.FullMap, MapMode: mode, NerdFontIcons: m.NerdFont}
 }

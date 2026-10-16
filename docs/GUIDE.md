@@ -213,6 +213,10 @@ Sites behind Cloudflare and apps on Cloudflare Workers or Pages, Vercel or Supab
 
 The edge answers first, and the evidence says so. Any answer from it, even an error page, proves the edge and nothing behind it. What an edge says of where its answer came from, a cache status such as `MISS` or `DYNAMIC` included, is the answer's own word, which the edge or the origin can send whatever happened, so it never proves the origin; an origin reached only through the edge reads unknown and says so. To know the origin's own state, give it a check that does not go through the edge. HTTP probes record which edge answered and from where (`CF-Ray`, `X-Vercel-Id`, `X-Amz-Cf-Pop`, `X-Served-By`) and whether its cache served the response, so a check's evidence reads, for example, *answered by Cloudflare NRT · cache DYNAMIC*. In the TUI, services list the way in (`Cloudflare ⇢ S1`) or where they run (`Cloudflare · workers`), and the maps draw an implied hop from an edge to the node behind it when no link declares one.
 
+Ten providers are known by name: Cloudflare, Vercel, Supabase, GCP, Azure, AWS, Oracle, Deno Deploy, Linode and DigitalOcean (a `provider` may also say `google`, `microsoft`, `amazon`, `oci` or `do`), with Netlify, Fastly, CloudFront, Fly.io, Render and Railway named and colored too; any other provider is shown as written. Edges and platforms take their provider's brand color, while a machine you run keeps its group's. Where a card has no room for the edge a service or an address is reached through, the edge's mark stands in for its name (`CF`, `▲`, `SB`, `GCP`, `AZ`, `AWS`, `OCI`, `DN`, `LN`, `DO`).
+
+With a [Nerd Font](https://www.nerdfonts.com) (v3.3 or later) in the terminal, `--nerd-font-icons` or **Nerd Font icons** in Settings has the nodes those ten run wear their provider's logo before their names: on their cards, on the maps and in the Services tab's HOST column, and an edge wherever it is named in front of something, its logo standing in for its name where that has no room. A terminal cannot tell which font it draws with, so the option is off by default; without such a font the logos show as boxes. A `Nerd Font` (rather than `Nerd Font Mono`) draws them about a letter and a half wide, into the space after each. Oracle's is an oval ring after its mark, since the fonts' Oracle logo is its wordmark, a line at the size of a letter. The logos are their owners' trademarks, shown to say who runs what.
+
 ## Multi-Location and Dual Collector Deployment
 
 The central server can execute its own baseline checks: `serve --observer observer-cloud-relay`. To measure local residential paths toward remote targets, run a worker on the local node: `worker --observer observer-local-workstation`; remote servers cannot substitute for local observation. Workers execute only locally reviewed configurations; collectors cannot dispatch arbitrary probe targets or commands to workers.
@@ -341,7 +345,7 @@ history. Reload the collector topology after edits to publish the new grouping.
 ## Display and startup preferences
 
 The built-in startup defaults are Overview, expanded groups, non-uniform Servers
-cards, maps with surrounding panels, and automatic map mode. Startup display
+cards, maps with surrounding panels, automatic map mode and no provider logos. Startup display
 preferences are local to the user and separate from topology and credentials.
 
 ```sh
@@ -352,6 +356,7 @@ topo --page topology --map-mode virtual --full-map
 
 # Save defaults for subsequent launches; no collector or terminal required.
 topo preferences set --page servers --uniform-cards=true
+topo preferences set --nerd-font-icons=true
 topo preferences show
 topo preferences reset
 
@@ -363,6 +368,8 @@ topo --uniform-cards=false --groups-collapsed=false --full-map=false
 observers or about. `--map-mode` accepts auto, virtual, geo or network. Full-map
 mode affects Overview and Topology; it does not override the selected startup
 page, and remains available when navigating from Servers to Topology.
+`--nerd-font-icons` draws providers' logos (see [Edges and
+Platforms](#edges-and-platforms)) and needs a Nerd Font in the terminal.
 
 Explicit command-line flags override saved preferences; omitted flags retain
 saved values. Missing preferences use built-in defaults. `preferences set`
@@ -391,6 +398,6 @@ left/right to change values, and Enter to select an action; mouse clicks work to
 - **Restore built-in defaults** resets only the form. Apply or save to confirm,
   or Esc to discard it.
 
-Only these five presentation preferences are saved. Search text, observer,
+Only these six presentation preferences are saved. Search text, observer,
 service/application scope, selection, and individual group folds are not saved.
 Routine page switches and display shortcuts never rewrite startup defaults.

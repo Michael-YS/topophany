@@ -20,6 +20,7 @@ type Settings struct {
 	UniformCards    bool   `json:"uniform_cards"`
 	FullMap         bool   `json:"full_map"`
 	MapMode         string `json:"map_mode"`
+	NerdFontIcons   bool   `json:"nerd_font_icons"`
 }
 
 var Pages = []string{"overview", "topology", "servers", "services", "paths", "checks", "incidents", "observers", "about"}

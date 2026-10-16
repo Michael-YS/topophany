@@ -45,7 +45,7 @@ type Model struct {
 	GroupsCollapsed                         bool
 	PreferencesPath                         string
 	PreferenceOverrides                     []string
-	preferenceInitial                       [5]string
+	preferenceInitial                       [6]string
 	AttentionOnly                           bool
 	Search                                  string
 	Searching                               bool
@@ -58,6 +58,7 @@ type Model struct {
 	FullMap                                 bool    // the map alone fills the body where a tab has one (f)
 	Points                                  bool    // geo map: plates hidden, every arc dashed (p)
 	Uniform                                 bool    // Servers: a grid of uniform cards rather than the wall (s)
+	NerdFont                                bool    // the terminal's font has the Nerd Fonts' logos, so providers wear them
 	Edit                                    *Editor // non-nil only for topo edit
 	Preview                                 Preview // non-nil only for topo preview
 	Debug                                   bool    // performance/geometry overlay (D)

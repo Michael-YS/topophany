@@ -22,9 +22,11 @@ const (
 )
 
 // cardRow is one line inside a card: spans from the left, spans pushed to
-// the right edge, an optional tint and a click target.
+// the right edge, what those say in fewer columns where they do not fit, an
+// optional tint and a click target.
 type cardRow struct {
 	left, right []span
+	tight       []span
 	bg          Color
 	bar         Color // a stripe at the card's inner left edge
 	rule        bool  // a hairline runs on from the left spans to the edge
@@ -70,10 +72,7 @@ func (m *Model) card(f fleet, r Row, w int, selected bool) []cardRow {
 // the provider's for what a platform hosts.
 func (m *Model) cardHead(f fleet, r Row, c view.Card, selected bool) ([]cardRow, Color) {
 	n := f.Nodes[r.ID]
-	hue := f.groups[n.Group]
-	if hosted(n.Kind) {
-		hue = providerColor(n.Provider, hue)
-	}
+	hue := nodeHue(n, f.groups[n.Group])
 	band := Mix(hue, cInk, .84)
 	switch {
 	case r.Health == "down":
@@ -100,7 +99,7 @@ func (m *Model) cardHead(f fleet, r Row, c view.Card, selected bool) ([]cardRow,
 		where = []span{{c.Where, fg(cMuted)}}
 	}
 	return []cardRow{
-		{left: []span{{r.Title, name}}, right: []span{{pill, pillStyle}}, bg: band, bar: hue},
+		{left: append(m.logo(n.Provider), span{r.Title, name}), right: []span{{pill, pillStyle}}, bg: band, bar: hue},
 		{left: sub, right: where, bg: band, bar: hue},
 	}, hue
 }
@@ -151,20 +150,16 @@ func (m *Model) cardSections(f fleet, r Row, c view.Card, hue Color, most int) [
 			if v.Affected && v.Health != "down" {
 				g, gc = '▲', cWarn
 			}
-			right := []span{}
+			right, tight := []span{}, []span(nil)
 			switch {
 			case len(v.Via) > 0:
-				names := []string{}
-				for _, ref := range v.Via {
-					names = append(names, ref.Name)
-				}
-				right = append(right, span{"via " + strings.Join(names, " ⇢ "), fg(providerColor(f.Nodes[v.Via[0].ID].Provider, cMuted))})
+				right, tight = m.via(f, "via ", v.Via)
 			case v.Runtime != "":
 				right = append(right, span{v.Runtime, fg(Mix(hue, cText, .2))})
 			case !v.Monitored:
 				right = append(right, span{"not monitored", fg(cFaint)})
 			}
-			add(cardRow{left: []span{{string(g) + " ", fg(gc)}, {v.Name, fg(cText)}}, right: right, hit: "goto:service:" + v.ID})
+			add(cardRow{left: []span{{string(g) + " ", fg(gc)}, {v.Name, fg(cText)}}, right: right, tight: tight, hit: "goto:service:" + v.ID})
 		}
 		done()
 	}
@@ -193,13 +188,20 @@ func (m *Model) cardSections(f fleet, r Row, c view.Card, hue Color, most int) [
 			if cut(i, len(c.Addresses), most) {
 				break
 			}
-			right := []span{}
+			right, tight := []span{}, []span(nil)
 			if len(ep.Via) > 0 {
-				right = append(right, span{"⇠ " + ep.Via[0].Name + " ", fg(providerColor(f.Nodes[ep.Via[0].ID].Provider, cMuted))})
+				right, tight = m.via(f, "⇠ ", ep.Via[:1])
+				right = append(right, span{" ", Style{}})
+				if tight != nil {
+					tight = append(tight, span{" ", Style{}})
+				}
 			}
 			g, gc := endpointGlyph(ep.Health)
 			right = append(right, span{string(g), fg(gc)})
-			add(cardRow{left: []span{{fit(ep.Network, 9), fg(netColor(ep.Network))}, {ep.Address, fg(cText)}}, right: right, hit: "select:endpoint:" + ep.ID})
+			if tight != nil {
+				tight = append(tight, span{string(g), fg(gc)})
+			}
+			add(cardRow{left: []span{{fit(ep.Network, 9), fg(netColor(ep.Network))}, {ep.Address, fg(cText)}}, right: right, tight: tight, hit: "select:endpoint:" + ep.ID})
 		}
 		done()
 	}
@@ -253,6 +255,29 @@ func (m *Model) cardSections(f fleet, r Row, c view.Card, hue Color, most int) [
 		done()
 	}
 	return out
+}
+
+// via names the edges and proxies in front of something after lead, each
+// led by its logo, in the color of the first; and, where every one has a
+// logo or a mark to stand in for it, that shorter form, else nil.
+func (m *Model) via(f fleet, lead string, refs []view.Ref) (long, tight []span) {
+	st := fg(nodeHue(f.Nodes[refs[0].ID], cMuted))
+	long, tight = []span{{lead, st}}, []span{{lead, st}}
+	for i, ref := range refs {
+		n := f.Nodes[ref.ID]
+		if i > 0 {
+			long = append(long, span{" ⇢ ", st})
+			tight = append(tight, span{" ", st})
+		}
+		long = append(append(long, m.logo(n.Provider)...), span{ref.Name, st})
+		in := m.standIn(n)
+		if in == nil || tight == nil {
+			tight = nil
+			continue
+		}
+		tight = append(tight, in...)
+	}
+	return long, tight
 }
 
 // netColor tints the network of an address.
@@ -495,12 +520,17 @@ func (m *Model) drawRow(cv *Canvas, x, y, w int, row cardRow, bg Color) {
 	// What a row names keeps its width first; what it says on the right
 	// stays whole when short (a state, an age) and otherwise gets what is
 	// left, but never less than a third.
-	lw0, rw := 0, 0
-	for _, s := range row.left {
-		lw0 += width(s.s)
+	spans := func(ss []span) int {
+		n := 0
+		for _, s := range ss {
+			n += width(s.s)
+		}
+		return n
 	}
-	for _, s := range row.right {
-		rw += width(s.s)
+	lw0, rw := spans(row.left), spans(row.right)
+	if row.tight != nil && lw0+1+rw > w {
+		// Where it does not fit, the shorter form, whole.
+		row.right, rw = row.tight, spans(row.tight)
 	}
 	if rw > 12 && lw0+1+rw > w {
 		rw = max(min(rw, w-lw0-1), min(rw, 12, w/3))

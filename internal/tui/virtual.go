@@ -173,7 +173,10 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 		if !in(c.y) {
 			return
 		}
-		hue := providerColor(n.Provider, groups[n.Group])
+		hue := groups[n.Group]
+		if hosted(n.Kind) {
+			hue = providerColor(n.Provider, hue)
+		}
 		chip := Mix(hue, cInk, .84)
 		st := fg(Mix(hue, cText, .35)).Bg(chip)
 		if n.Kind == "external" {
