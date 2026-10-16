@@ -11,6 +11,10 @@ const loading = root.querySelector('.demo-loading');
 const transcript = document.querySelector('#demo-transcript');
 const live = root.dataset.mode === 'live';
 const connection = root.querySelector('#collector-connect');
+// The window title bar, shown on wide screens, follows the TUI's own title.
+const windowTitle = root.querySelector('.live-title');
+const windowSize = root.querySelector('.live-size');
+const idleTitle = windowTitle?.textContent ?? '';
 const cellAspect = Number(getComputedStyle(root).getPropertyValue('--demo-cell-aspect'));
 const cellWidth = () => matchMedia('(max-width: 600px)').matches ? 7 : 8;
 let screen;
@@ -72,8 +76,11 @@ function layout() {
   // Keep a readable cell size on phones; the terminal scrolls horizontally
   // there instead of squeezing a 200-column screen into tiny text.
   const cell = cellWidth();
-  const width = Math.max(80 * cell, viewport.clientWidth);
-  const height = Math.max(10 * cell * cellAspect, viewport.clientHeight);
+  const box = getComputedStyle(viewport);
+  const innerW = viewport.clientWidth - parseFloat(box.paddingLeft) - parseFloat(box.paddingRight);
+  const innerH = viewport.clientHeight - parseFloat(box.paddingTop) - parseFloat(box.paddingBottom);
+  const width = Math.max(80 * cell, innerW);
+  const height = Math.max(10 * cell * cellAspect, innerH);
   const nextCols = Math.min(240, Math.floor(width / cell));
   const nextRows = Math.min(90, Math.max(10, Math.floor(height / (cell * cellAspect))));
   if (cols !== nextCols || rows !== nextRows) {
@@ -119,6 +126,7 @@ function showConnection(error = '') {
   connection.querySelector('#collector-error').textContent = error;
   connection.querySelector('#collector-token').value = '';
   transcript.textContent = '';
+  if (windowTitle) { windowTitle.textContent = idleTitle; windowSize.textContent = ''; }
   screen = null;
   canvas.width = canvas.width;
   connection.querySelector('#collector-server').focus({ preventScroll: true });
@@ -156,6 +164,7 @@ function start(profile = {}) {
     screen.resize();
     paint();
     canvas.setAttribute('aria-label', frame.title);
+    if (windowTitle) { windowTitle.textContent = frame.title; windowSize.textContent = `${frame.size[0]}×${frame.size[1]}`; }
     if (frame.text) transcript.textContent = frame.text;
     searching = frame.searching;
     closed = frame.closed;

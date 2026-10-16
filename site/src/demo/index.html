@@ -23,6 +23,11 @@
 <main class="live-main">
   <section id="live-demo" class="live-demo" aria-label="{{live.terminal}}" aria-busy="true"
     data-language="{{page.code}}" data-wasm="{{page.wasm}}" data-worker="{{page.demo-worker}}">
+    <div class="live-bar">
+      <a class="live-home" href="{{page.path}}" aria-label="{{nav.home}}"><img src="/favicon.svg" alt="" width="18" height="18">topophany</a>
+      <span class="live-title" aria-hidden="true">topo preview</span>
+      <span class="live-size" aria-hidden="true"></span>
+    </div>
     <div class="demo-viewport">
       <canvas id="demo-canvas" tabindex="0" role="application" aria-label="{{live.terminal}}"></canvas>
       <input class="demo-input" type="text" aria-label="{{live.input}}" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1">

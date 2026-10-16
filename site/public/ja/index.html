@@ -29,7 +29,7 @@
 <meta property="og:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
-<link rel="stylesheet" href="/css/site.dbf759af6dd5.css">
+<link rel="stylesheet" href="/css/site.648ffd30aff7.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.0f7e987ccb32.js"></script>
 <script type="application/json" id="strings">{"replay":"再生中","paused":"一時停止","pause":"再生を一時停止","play":"再生する","recording":"Topophany ターミナル UI の録画：{title}。{text}","missing":"{tab} はこの録画に含まれていません。{cmd} を実行すると見られます。","failed":"録画を読み込めませんでした","copy":"コピー","copied":"コピーしました","place.shanghai":"上海","place.tokyo":"東京","place.singapore":"シンガポール","place.frankfurt":"フランクフルト","place.london":"ロンドン","place.ashburn":"アッシュバーン","place.los-angeles":"ロサンゼルス","place.sao-paulo":"サンパウロ","place.sydney":"シドニー","place.mumbai":"ムンバイ","demo.title":"ターミナルを試す","demo.loading":"ターミナルを起動中… · クリックまたは Enter でキャンセル","demo.ended":"セッション終了 · クリックまたは Enter で再開","demo.failed":"起動できませんでした · クリックまたは Enter で再試行","connect.title":"自分のネットワーク","connect.failed":"接続を開始できませんでした。URL、プロジェクト、Viewer トークンを確認して再試行してください。","connect.reconnect":"q で接続画面に戻り、URL、プロジェクト、Viewer トークンを確認してください。","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
@@ -73,12 +73,8 @@
       <p class="lede">どこから、どの経路で、何に届いたのか — そして、何を根拠に。</p>
       <p class="sub">ネットワーク全体をひとつの画面に。どの経路がどこから通じているか、どのサービスが応答しているか、それぞれの状態の根拠まで。セルフホストで、Go のバイナリ 1 つ、ターミナルで読めます。</p>
       <div class="cta">
-        <a class="btn btn-primary" href="/ja/demo/">ブラウザーで試す</a>
-        <a class="btn" href="/ja/app/">自分のコレクターに接続</a>
-        <a class="btn" href="#install">インストール</a>
-        <a class="btn" href="https://github.com/WhitenWhiten/topophany">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>GitHub
-        </a>
+        <a class="btn btn-primary" href="/ja/demo/"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#play"/></svg>ライブデモ</a>
+        <a class="btn btn-go" href="/ja/app/">Web 版<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
       </div>
       <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest">
         <span class="cmd-prompt" aria-hidden="true">$</span>
@@ -455,6 +451,8 @@
   <symbol id="gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
   <symbol id="copy" viewBox="0 0 16 16"><path fill="currentColor" d="M5.5 1h7A2.5 2.5 0 0 1 15 3.5v7a2.5 2.5 0 0 1-2.5 2.5H11v1.5A1.5 1.5 0 0 1 9.5 16h-7A1.5 1.5 0 0 1 1 14.5v-7A1.5 1.5 0 0 1 2.5 6H4V3.5A2.5 2.5 0 0 1 5.5 1zM4 7.5H2.5v7h7V13h-4A1.5 1.5 0 0 1 4 11.5zm1.5-5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1z"/></symbol>
   <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
+  <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
+  <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>

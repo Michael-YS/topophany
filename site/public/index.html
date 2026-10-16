@@ -29,7 +29,7 @@
 <meta property="og:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
-<link rel="stylesheet" href="/css/site.dbf759af6dd5.css">
+<link rel="stylesheet" href="/css/site.648ffd30aff7.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.0f7e987ccb32.js"></script>
 <script type="application/json" id="strings">{"replay":"replay","paused":"paused","pause":"Pause the replay","play":"Play the replay","recording":"Recording of the Topophany terminal UI: {title}. {text}","missing":"{tab} is not in this recording. Run {cmd} to see it.","failed":"the recording could not be loaded","copy":"Copy","copied":"Copied","place.shanghai":"Shanghai","place.tokyo":"Tokyo","place.singapore":"Singapore","place.frankfurt":"Frankfurt","place.london":"London","place.ashburn":"Ashburn","place.los-angeles":"Los Angeles","place.sao-paulo":"São Paulo","place.sydney":"Sydney","place.mumbai":"Mumbai","demo.title":"Try the terminal","demo.loading":"Starting the terminal… · click or press Enter to cancel","demo.ended":"Session ended · click or press Enter to restart","demo.failed":"Terminal unavailable · click or press Enter to retry","connect.title":"Your network","connect.failed":"Could not start the connection. Check the URL, project and viewer token, then try again.","connect.reconnect":"Press q to reconnect. Check the address, project and viewer token.","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
@@ -73,12 +73,8 @@
       <p class="lede">From where, via which path, reaching&nbsp;what — and on what evidence.</p>
       <p class="sub">Your whole network on one screen: which paths work from which places, which services answer, and the evidence behind every state. Self-hosted, one Go binary, read in the terminal.</p>
       <div class="cta">
-        <a class="btn btn-primary" href="/demo/">Try it in your browser</a>
-        <a class="btn" href="/app/">Connect your collector</a>
-        <a class="btn" href="#install">Install</a>
-        <a class="btn" href="https://github.com/WhitenWhiten/topophany">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>GitHub
-        </a>
+        <a class="btn btn-primary" href="/demo/"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#play"/></svg>Live demo</a>
+        <a class="btn btn-go" href="/app/">Web app<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
       </div>
       <div class="cmd" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@latest">
         <span class="cmd-prompt" aria-hidden="true">$</span>
@@ -455,6 +451,8 @@
   <symbol id="gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
   <symbol id="copy" viewBox="0 0 16 16"><path fill="currentColor" d="M5.5 1h7A2.5 2.5 0 0 1 15 3.5v7a2.5 2.5 0 0 1-2.5 2.5H11v1.5A1.5 1.5 0 0 1 9.5 16h-7A1.5 1.5 0 0 1 1 14.5v-7A1.5 1.5 0 0 1 2.5 6H4V3.5A2.5 2.5 0 0 1 5.5 1zM4 7.5H2.5v7h7V13h-4A1.5 1.5 0 0 1 4 11.5zm1.5-5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1z"/></symbol>
   <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
+  <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
+  <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>

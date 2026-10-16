@@ -207,6 +207,9 @@ img, svg, canvas { display: block; }
 .btn:hover { color: var(--glow); border-color: #35506a; background: var(--key); }
 .btn-primary { color: #062420; background: var(--accent); border-color: var(--accent); }
 .btn-primary:hover { color: #031512; background: #8af3e2; border-color: #8af3e2; }
+.btn-primary svg { width: 13px; height: 13px; margin-left: -3px; }
+.btn-go svg { width: 15px; height: 15px; margin-right: -4px; color: var(--accent); transition: transform .15s; }
+.btn-go:hover svg { transform: translateX(3px); }
 
 .cmd {
   position: relative;

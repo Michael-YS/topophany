@@ -139,6 +139,7 @@ class SiteTests(unittest.TestCase):
             body = page.split("<body", 1)[1]
             self.assertNotRegex(body, r"<(header|nav|button|select|details)\b")
             self.assertIn('id="demo-canvas"', body)
+            self.assertIn(f'class="live-home" href="{where}"', body)
             home = pages[build_site.OUT / where.strip("/") / "index.html"]
             self.assertIn(f'href="{where}demo/"', home)
         policy = (SITE / "public/_headers").read_text()
@@ -156,6 +157,7 @@ class SiteTests(unittest.TestCase):
             self.assertIn('data-wasm="/data/viewer.wasm?v=', page)
             self.assertIn('data-worker="/js/collector-worker.', page)
             self.assertIn('id="collector-connect"', page)
+            self.assertIn(f'class="live-home" href="{where}"', page)
             self.assertIn('id="collector-token"', page)
             self.assertIn('type="password"', page)
             self.assertIn('minlength="32" maxlength="512"', page)

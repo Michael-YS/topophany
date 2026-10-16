@@ -60,7 +60,12 @@ through Go's automatic toolchain selection. After Go source or toolchain changes
 the generated runtime and binary match their inputs. The demo has no terminal
 server or real probes; hidden tabs pause its simulated clock. Its CSP permits
 WebAssembly compilation with `wasm-unsafe-eval`, without permitting JS eval.
-The demo page contains only the interactive terminal. `--demo-cell-aspect` in
+The demo page contains only the interactive terminal and a link home. Above
+600×500 px the terminal sits in a hardware terminal's casing whose chin holds
+that link, the TUI's own window title, its grid size and a power light; on
+smaller screens a plain bar holds them. `--frame-x` and `--frame-y` are what
+the frame adds around the screen, which the page subtracts when it fits the
+terminal to the window. `--demo-cell-aspect` in
 `site/src/css/demo.css` sets both the browser cell height/width and Go's map
 projection; the current value is 2.6. The reference 200×50 grid therefore has
 a window aspect ratio of 200/(50×2.6), about 1.54:1. Recorded homepage tours

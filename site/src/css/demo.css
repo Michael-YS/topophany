@@ -3,6 +3,9 @@
   --demo-cell-aspect: 2.6;
   --demo-window-aspect: calc(4 / var(--demo-cell-aspect));
   --demo-gutter: clamp(12px, 2vw, 32px);
+  /* What the frame adds around the screen, across and down. */
+  --frame-x: 2px;
+  --frame-y: 34px;
   min-height: 100svh;
   display: grid;
   place-items: center;
@@ -10,17 +13,49 @@
 }
 .live-main {
   width: 100%;
-  max-width: min(1600px, calc((100svh - var(--demo-gutter) * 2 - 2px) * var(--demo-window-aspect) + 2px));
+  max-width: min(1600px, calc((100svh - var(--demo-gutter) * 2 - var(--frame-y)) * var(--demo-window-aspect) + var(--frame-x)));
   min-width: 0;
 }
 .live-demo {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--ink);
   overflow: hidden;
 }
+/* The frame's bar: the way home, the TUI's own window title, and its size. */
+.live-bar {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  align-items: center;
+  gap: 16px;
+  height: 32px;
+  padding: 0 8px 0 6px;
+  background: var(--ink-hi);
+  border-bottom: 1px solid var(--line-soft);
+  font: 12.5px/1 var(--mono);
+  color: var(--muted);
+}
+.live-home {
+  justify-self: start;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border-radius: 6px;
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.live-home img { width: 18px; height: 18px; }
+.live-home::before { content: "‹"; margin-right: -1px; color: var(--muted); font-size: 16px; font-weight: 400; transition: transform .15s, color .15s; }
+.live-home:hover { color: var(--glow); background: rgba(255, 255, 255, .04); }
+.live-home:hover::before { color: var(--accent); transform: translateX(-2px); }
+.live-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; color: #a9b6c3; user-select: none; }
+.live-size { justify-self: end; color: var(--faint); white-space: nowrap; user-select: none; }
 .demo-viewport {
   position: relative;
+  display: flex;
   aspect-ratio: var(--demo-window-aspect);
   overflow: auto;
   overscroll-behavior: contain;
@@ -28,6 +63,9 @@
 }
 .demo-viewport canvas {
   display: block;
+  flex: none;
+  /* Centered, so the part of a cell the grid can't use is split evenly. */
+  margin: auto;
   max-width: none;
   touch-action: pan-x pan-y;
   outline: none;
@@ -47,28 +85,6 @@
 .demo-loading[hidden] { display: none; }
 .demo-loading.can-restart { cursor: pointer; }
 .demo-loading.can-restart:hover { color: var(--accent); }
-.collector-connect {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  align-content: center;
-  justify-items: stretch;
-  gap: 14px;
-  padding: 28px max(24px, calc((100% - 360px) / 2));
-  background: var(--ink);
-  overflow: auto;
-  font-size: 13px;
-}
-.collector-connect[hidden] { display: none; }
-.collector-connect h1 { margin-bottom: 6px; font-size: 20px; }
-.collector-connect label { display: grid; gap: 6px; color: var(--muted); }
-.collector-connect input {
-  width: 100%; min-width: 0; padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: 5px;
-  background: var(--panel); color: var(--text); font: 13px var(--mono);
-}
-.collector-connect button { padding: 10px 14px; border: 1px solid var(--accent-deep); border-radius: 5px; background: var(--sel); color: var(--accent); font: inherit; cursor: pointer; }
-#collector-error { min-height: 1.6em; color: var(--warn); font-size: 12px; }
 .demo-input {
   position: absolute;
   left: 4px;
@@ -80,10 +96,172 @@
   border: 0;
   font-size: 16px;
 }
+
+/* With room for it, the screen sits in the casing of a hardware terminal:
+   the way home on its chin, the TUI's own window title, and a power light
+   that follows the session. */
+@media (min-width: 601px) and (min-height: 501px) {
+  .live-page { --frame-x: 30px; --frame-y: 68px; }
+  .live-demo {
+    padding: 14px 14px 0;
+    border: 1px solid #1d2a35;
+    border-radius: 18px;
+    background: linear-gradient(#17212a, #10181f 60%, #0d141a);
+    box-shadow:
+      inset 0 1px rgba(255, 255, 255, .07),
+      inset 0 -2px 6px rgba(0, 0, 0, .35),
+      0 2px 0 #070b0f,
+      0 40px 90px -30px rgba(0, 0, 0, .9);
+    overflow: visible;
+  }
+  .demo-viewport {
+    order: 1;
+    padding: 10px 12px;
+    border-radius: 9px;
+    box-shadow:
+      0 0 0 1px #05080b,
+      0 1px 0 1px rgba(255, 255, 255, .05),
+      inset 0 0 14px 2px rgba(0, 0, 0, .65);
+  }
+  .live-bar {
+    order: 2;
+    grid-template-columns: 1fr minmax(0, auto) 1fr auto;
+    height: 52px;
+    padding: 0 6px 0 2px;
+    background: none;
+    border: 0;
+  }
+  .live-home { color: #93a2b1; letter-spacing: .14em; text-transform: uppercase; font-size: 11.5px; }
+  .live-home:hover { color: var(--glow); }
+  .live-title { color: var(--faint); }
+  .live-bar::after {
+    content: "";
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #2a3743;
+    box-shadow: inset 0 1px rgba(0, 0, 0, .4);
+    transition: background-color .3s, box-shadow .3s;
+  }
+  /* Phosphor, not a health colour: it says the terminal is on, not how the network is. */
+  .live-demo[aria-busy="true"] .live-bar::after { background: var(--accent-deep); opacity: .6; }
+  .live-demo.is-ready .live-bar::after { background: var(--accent); box-shadow: 0 0 8px rgba(94, 234, 212, .7); }
+}
+
+/* The sign-in is drawn as a screen of the TUI: a form dialog between a title
+   row and a key bar, with the TUI's own palette, field rows and offset shadow. */
+.collector-connect {
+  --field: #131f28;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--ink);
+  overflow: auto;
+  font: 13px/1.6 var(--mono);
+  color: var(--text);
+}
+.collector-connect[hidden] { display: none; }
+.connect-brand, .connect-keys {
+  margin: 0;
+  padding: 2px 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.connect-keys { background: var(--ink-hi); }
+.connect-brand b { color: var(--accent); font-weight: 700; letter-spacing: .02em; }
+.connect-keys kbd {
+  min-width: 0;
+  margin: 0 .6ch 0 0;
+  padding: 0 .8ch;
+  border: 0;
+  border-radius: 0;
+  background: var(--key);
+  color: var(--accent);
+  font: inherit;
+}
+.connect-keys kbd:not(:first-child) { margin-left: 1.6ch; }
+.connect-box {
+  position: relative;
+  align-self: center;
+  justify-self: center;
+  width: min(100% - 48px, 78ch);
+  margin: 36px 0 44px;
+  padding: 26px 26px 22px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 2ch;
+  row-gap: 8px;
+  background: var(--panel);
+  border: 1px solid #47a19a;
+  box-shadow: 16px 20px 0 rgba(0, 0, 0, .5);
+}
+.connect-box > :not(.connect-field) { grid-column: 1 / -1; }
+.connect-box h1 {
+  position: absolute;
+  top: 0; left: 2ch;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 0 1ch;
+  background: var(--accent);
+  color: var(--ink);
+  font: 700 13px/1.6 var(--mono);
+  letter-spacing: 0;
+}
+.connect-note { margin: 0 0 14px; color: var(--muted); text-wrap: balance; }
+.connect-field { display: contents; }
+.connect-field span {
+  align-self: center;
+  justify-self: end;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.connect-field input {
+  width: 100%; min-width: 0; height: 32px;
+  padding: 0 1ch;
+  border: 0; border-radius: 0;
+  background: var(--field);
+  color: var(--text);
+  font: 13px var(--mono);
+  caret-color: var(--accent);
+  box-shadow: inset 3px 0 transparent;
+  transition: background-color .12s, box-shadow .12s;
+}
+.connect-field input::placeholder { color: var(--faint); }
+.connect-field input:focus { outline: none; background: var(--key); color: var(--glow); box-shadow: inset 3px 0 var(--accent); }
+.connect-field:focus-within span { color: var(--accent); font-weight: 700; }
+.connect-field input:-webkit-autofill { -webkit-text-fill-color: var(--glow); box-shadow: inset 0 0 0 40px var(--key); }
+.connect-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 2ch;
+  margin-top: 10px;
+}
+#collector-error { flex: 1; margin: 4px 0 0; color: var(--warn); text-wrap: pretty; }
+#collector-error:not(:empty)::before { content: "▲ "; }
+.connect-box button {
+  flex: none;
+  padding: 4px 2ch;
+  border: 0; border-radius: 0;
+  background: var(--accent);
+  color: var(--ink);
+  font: 700 13px/1.6 var(--mono);
+  cursor: pointer;
+}
+.connect-box button:hover { background: #8af3e2; }
+.connect-box button:focus-visible { outline: 1px solid var(--glow); outline-offset: 2px; border-radius: 0; }
+.connect-box button:disabled { background: var(--key); color: var(--muted); cursor: default; }
+
 @media (max-width: 600px) {
   .live-page { --demo-gutter: 12px; }
   .live-main { max-width: none; }
-  .demo-viewport { aspect-ratio: auto; height: calc(100svh - 26px); }
-  .collector-connect input { min-height: 44px; font-size: 16px; }
-  .collector-connect button { min-height: 44px; }
+  .live-bar { grid-template-columns: 1fr auto; }
+  .live-title { display: none; }
+  .demo-viewport { aspect-ratio: auto; height: calc(100svh - var(--demo-gutter) * 2 - var(--frame-y)); }
+  .connect-box { grid-template-columns: minmax(0, 1fr); width: calc(100% - 32px); padding: 24px 18px 18px; box-shadow: 8px 10px 0 rgba(0, 0, 0, .5); }
+  .connect-field { display: grid; gap: 4px; }
+  .connect-field span { justify-self: start; }
+  .connect-field input { height: 44px; font-size: 16px; }
+  .connect-actions { flex-direction: column-reverse; align-items: stretch; gap: 8px; }
+  .connect-box button { min-height: 44px; }
 }
+@media (hover: none), (max-width: 600px) { .connect-keys { visibility: hidden; } }
