@@ -18,6 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `s` on the Servers tab lines the cards up in a grid at one size, each
+  saying the same things in the same places: the server's state, a panel
+  each for CPU, memory and disk, how many services, addresses and checks it
+  has with a mark for each in its state, the address it is known by and the
+  first two lines of its memo. What a server lacks keeps its place, empty;
+  `s` again brings back the wall of full cards.
+- `Enter` on a server lays its card open over the others, which dim behind
+  it, in either layout: the memo first, then its resources charted over the
+  samples kept with their peaks and limits, everything that runs on it and
+  reaches it with nothing cut short, and the checks its state rests on, in
+  two columns where the terminal is wide. `↑↓` scroll it; `Enter`, `Esc` or
+  a click beside it closes it, and the cards behind keep their place.
+
+### Changed
+
+- `Enter` on the Servers tab opens the server's card rather than the
+  evidence panel; a node's evidence panel is still on the Topology tab.
+
 ## [0.9.1] - 2026-10-15
 
 ### Fixed

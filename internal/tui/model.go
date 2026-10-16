@@ -49,6 +49,7 @@ type Model struct {
 	Zoom                  int
 	FullMap               bool    // the map alone fills the body where a tab has one (f)
 	Points                bool    // geo map: plates hidden, every arc dashed (p)
+	Uniform               bool    // Servers: a grid of uniform cards rather than the wall (s)
 	Edit                  *Editor // non-nil only for topo edit
 	Preview               Preview // non-nil only for topo preview
 	Debug                 bool    // performance/geometry overlay (D)
@@ -62,6 +63,7 @@ type Model struct {
 	noticeAt              time.Time
 	aboutAt               time.Time
 	aboutSpin             float64           // extra globe rotation from the mouse wheel
+	cardsTop              int               // the Servers cards' scroll, kept while a card lies open
 	vcache                vCache            // the virtual map's wires, kept while its layout holds
 	pcache                plateCache        // the geographic map's labels, kept while what they label holds
 	samples               samples           // the selected check's recent samples, as last read
@@ -117,6 +119,7 @@ func (m *Model) setTab(t int) {
 	m.Tab = t
 	m.Selected = 0
 	m.Offset = 0
+	m.cardsTop = 0
 	m.Detail = false
 }
 
@@ -304,6 +307,11 @@ func (m *Model) Key(k string) string {
 		// Markers and dashed arcs, and only while the geo map is on screen.
 		if m.mapShown() && m.mapMode() == "geo" {
 			m.Points = !m.Points
+		}
+	case "s":
+		// The Servers cards as a grid of one size, or the wall back.
+		if m.Tab == tabServers {
+			m.Uniform = !m.Uniform
 		}
 	case "x":
 		if m.Preview != nil {

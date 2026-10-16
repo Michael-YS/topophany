@@ -50,7 +50,7 @@
   "chapter.network.text": "Sources on the left, each link one column further right.",
   "chapter.network.tab": "Network",
   "chapter.servers.title": "Servers",
-  "chapter.servers.text": "A card per server: its services, addresses, containers and your notes.",
+  "chapter.servers.text": "A card per server: its services, addresses, containers and your notes. s sets every card to one size; Enter lays one open.",
   "chapter.servers.tab": "Servers",
   "chapter.incidents.title": "Incidents",
   "chapter.incidents.text": "What failed, what other observers still see, and guesses labeled as guesses.",

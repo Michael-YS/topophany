@@ -123,6 +123,7 @@ Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and net
 | `/` | filter |
 | `v` | switch the observer you view from |
 | `m` / `z` / `f` / `p` | cycle the map / zoom it / show it alone / geo markers and dashed arcs |
+| `s` | line the server cards up at one size |
 | `q` | quit |
 
 The mouse works too. Colors adapt to truecolor, 256-color and `NO_COLOR` terminals. The [user guide](docs/GUIDE.md) describes every tab and map, and how to read all of it from scripts and agents with `topo status`, `topo show` and `topo history`.

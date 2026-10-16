@@ -217,7 +217,7 @@ func TestHostCheckEvidenceChartsResources(t *testing.T) {
 func TestNodeEvidenceChartsLocalResources(t *testing.T) {
 	m := previewModel(t)
 	m.Height = 80
-	m.setTab(tabServers)
+	m.setTab(tabTopology)
 	m.Selected = slices.IndexFunc(m.Rows(), func(r Row) bool { return r.ID == "app" })
 	m.Detail = true
 	out := visible(m)

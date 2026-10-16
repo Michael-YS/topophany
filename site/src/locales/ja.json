@@ -50,7 +50,7 @@
   "chapter.network.text": "左に起点、リンクごとに 1 列ずつ右へ。",
   "chapter.network.tab": "ネットワーク",
   "chapter.servers.title": "サーバー",
-  "chapter.servers.text": "サーバーごとのカード：サービス、アドレス、コンテナ、そしてノート。",
+  "chapter.servers.text": "サーバーごとのカード：サービス、アドレス、コンテナ、そしてノート。s で同じ大きさに揃え、Enter で一枚を開きます。",
   "chapter.servers.tab": "サーバー",
   "chapter.incidents.title": "インシデント",
   "chapter.incidents.text": "失敗したもの、ほかの観測点から見えるもの。推測は推測と明記されます。",

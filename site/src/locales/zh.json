@@ -50,7 +50,7 @@
   "chapter.network.text": "源在左侧，每条链路向右推进一列。",
   "chapter.network.tab": "网络",
   "chapter.servers.title": "服务器",
-  "chapter.servers.text": "每台服务器一张卡片：服务、地址、容器和你的笔记。",
+  "chapter.servers.text": "每台服务器一张卡片：服务、地址、容器和你的笔记。按 s 统一卡片尺寸，按 Enter 展开其中一张。",
   "chapter.servers.tab": "服务器",
   "chapter.incidents.title": "事件",
   "chapter.incidents.text": "什么失败了，其他观测点还能看到什么；推测会标为推测。",

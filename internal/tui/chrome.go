@@ -423,6 +423,13 @@ func (m *Model) footer(cv *Canvas, y int) {
 		} else {
 			add(1, "↵", "Details", "enter")
 		}
+		if m.Tab == tabServers && !m.Detail {
+			if m.Uniform {
+				add(2, "s", "Full cards", "s")
+			} else {
+				add(2, "s", "Uniform", "s")
+			}
+		}
 		add(1, "/", "Filter", "/")
 		add(2, "v", "View", "v")
 		if m.Edit == nil {

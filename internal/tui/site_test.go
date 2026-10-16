@@ -217,7 +217,8 @@ const milli = time.Millisecond
 
 // record is the tour: an outage arriving on the Overview, its route and
 // evidence, the same network from two vantage points, the three maps, the
-// servers, the incidents and the About globe.
+// servers as a wall, as a grid and the main one laid open, the incidents
+// and the About globe.
 func (r *recorder) record() {
 	m := r.m
 	s := time.Second
@@ -277,6 +278,20 @@ func (r *recorder) record() {
 		m.Selected = i
 		r.play(1500*milli, 500*milli, 500*milli)
 	}
+	// The same cards at one size; then over to the main server, and its
+	// card laid open over them.
+	r.key("s", 2500*milli)
+	if app := slices.IndexFunc(m.Rows(), func(row Row) bool { return row.ID == "app" }); app >= 0 {
+		for m.Selected != app {
+			k := "j"
+			if m.Selected > app {
+				k = "k"
+			}
+			r.key(k, 400*milli)
+		}
+	}
+	r.key("enter", 4500*milli)
+	m.Detail, m.Uniform = false, false
 
 	m.setTab(tabIncidents)
 	r.chapter("incidents")
