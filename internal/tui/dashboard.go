@@ -185,12 +185,18 @@ func (m *Model) statusCard(cv *Canvas, x, y, w, h int) {
 	}
 }
 
-// servicesCard is a matrix of every service, problems first.
+// servicesCard shows every service, problems first: where the topology
+// declares applications, a line for each application with a mark for each
+// of its services; otherwise a matrix of the services' names.
 func (m *Model) servicesCard(cv *Canvas, x, y, w, h int) {
 	rows := m.tabRows(tabServices)
 	sort.SliceStable(rows, func(i, j int) bool { return serviceRank(rows[i]) < serviceRank(rows[j]) })
 	if len(rows) == 0 {
 		cv.Text(x, y, m.nothing("services"), fg(cMuted).italic(), w)
+		return
+	}
+	if apps := m.serviceApps(rows); len(apps) > 0 {
+		m.applicationsCard(cv, x, y, w, h, apps)
 		return
 	}
 	// As few columns as the height needs (no more than fit), filled evenly.
@@ -208,16 +214,9 @@ func (m *Model) servicesCard(cv *Canvas, x, y, w, h int) {
 			cv.Text(cx, cy, more, fg(cFaint), -1)
 			break
 		}
-		h0, note := r.Health, r.Note
-		if m.Cached() {
-			h0, note = "unknown", ""
-		}
-		g, gc := healthGlyph(h0), healthColor(h0)
-		if note == "affected" {
-			g, gc = '▲', cWarn
-		}
+		g, gc := m.serviceMark(r)
 		ts := fg(cMuted)
-		if h0 == "down" || h0 == "degraded" || note == "affected" {
+		if m.needsAttention(r) {
 			ts = fg(cText)
 		}
 		// A name with no cell to its right may run on to the edge.
@@ -229,6 +228,198 @@ func (m *Model) servicesCard(cv *Canvas, x, y, w, h int) {
 		n := cv.Text(cx+2, cy, ellipsis(r.Title, room), ts, room)
 		m.hit(cx, cy, n+2, "goto:service:"+r.ID)
 	}
+}
+
+// serviceMark is a service's mark in its state: an affected one wears the
+// warning triangle, and a cached view knows no state.
+func (m *Model) serviceMark(r Row) (rune, Color) {
+	h, note := r.Health, r.Note
+	if m.Cached() {
+		h, note = "unknown", ""
+	}
+	if note == "affected" {
+		return '▲', cWarn
+	}
+	return healthGlyph(h), healthColor(h)
+}
+
+// needsAttention reports whether a service is down, degraded or affected,
+// as the view currently knows.
+func (m *Model) needsAttention(r Row) bool {
+	return !m.Cached() && (r.Health == "down" || r.Health == "degraded" || r.Note == "affected")
+}
+
+// appLine is an application on the Overview: its services, problems first.
+type appLine struct {
+	id, name string
+	rows     []Row
+}
+
+// serviceApps groups rows, ranked problems first, by the application each
+// service belongs to: applications with the most urgent service first, by
+// name among equals, and the services of none last. Nil when the topology
+// declares no applications.
+func (m *Model) serviceApps(rows []Row) []appLine {
+	c := m.Snapshot.Topology
+	if len(c.Applications) == 0 {
+		return nil
+	}
+	at := map[string]int{}
+	apps := []appLine{}
+	for _, r := range rows {
+		id := view.EntityScope(c, "service", r.ID).Application
+		i, ok := at[id]
+		if !ok {
+			i = len(apps)
+			at[id] = i
+			apps = append(apps, appLine{id: id, name: view.ApplicationName(c, id)})
+		}
+		apps[i].rows = append(apps[i].rows, r)
+	}
+	sort.SliceStable(apps, func(i, j int) bool {
+		a, b := apps[i], apps[j]
+		if (a.id == "") != (b.id == "") {
+			return b.id == ""
+		}
+		if ra, rb := serviceRank(a.rows[0]), serviceRank(b.rows[0]); ra != rb {
+			return ra < rb
+		}
+		return a.name < b.name
+	})
+	return apps
+}
+
+// applicationsCard draws a line for each application: the mark of its most
+// urgent service, its name, a mark for each of its services and how many
+// need attention. Where the card has room, an application lists its
+// services under it instead, by name: those that need attention first,
+// then the others while they fit. A click opens the application, or the
+// service.
+func (m *Model) applicationsCard(cv *Canvas, x, y, w, h int, apps []appLine) {
+	nameW := 0
+	for _, a := range apps {
+		nameW = max(nameW, width(a.name))
+	}
+	nameW = min(nameW, max(8, w/3))
+	attention := func(a appLine) (n, unknown int) {
+		for _, r := range a.rows {
+			if m.needsAttention(r) {
+				n++
+			} else if r.Health == "unknown" && !m.Cached() {
+				unknown++
+			}
+		}
+		return
+	}
+	open := make([]bool, len(apps))
+	lines := len(apps)
+	for _, a := range apps {
+		lines += len(a.rows)
+	}
+	if lines <= h {
+		for i := range open {
+			open[i] = true
+		}
+	} else {
+		// Those that need attention open first, then the others in turn,
+		// each while its services fit.
+		lines = len(apps)
+		for _, first := range []bool{true, false} {
+			for i, a := range apps {
+				if n, _ := attention(a); !open[i] && (n > 0) == first && lines+len(a.rows) <= h {
+					open[i], lines = true, lines+len(a.rows)
+				}
+			}
+		}
+	}
+	cy := y
+	for i, a := range apps {
+		if cy >= y+h {
+			break
+		}
+		if cy == y+h-1 && i < len(apps)-1 && !open[i] {
+			cv.Text(x, cy, "+"+itoa(len(apps)-i)+" more", fg(cFaint), -1)
+			break
+		}
+		n, unknown := attention(a)
+		g, gc := m.serviceMark(a.rows[0])
+		cv.Set(x, cy, g, fg(gc))
+		ts := fg(cMuted)
+		if n > 0 {
+			ts = fg(cText).bold()
+		} else if open[i] {
+			ts = fg(cText)
+		}
+		cv.Text(x+2, cy, ellipsis(a.name, nameW), ts, nameW)
+		note, nc := "", cFaint
+		switch {
+		case n > 0:
+			note, nc = itoa(n)+" attention", cWarn
+		case unknown > 0:
+			note = itoa(unknown) + " unknown"
+		}
+		if !open[i] {
+			// A mark for each service, as many as fit before the note.
+			mx := x + 2 + nameW + 2
+			room := x + w - mx - width(note) - 1
+			shown := len(a.rows)
+			if 2*shown-1 > room {
+				shown = max(0, (room-3)/2)
+			}
+			for k := 0; k < shown; k++ {
+				mg, mc := m.serviceMark(a.rows[k])
+				cv.Set(mx+2*k, cy, mg, fg(mc))
+			}
+			if shown < len(a.rows) && room >= 2 {
+				cv.Text(mx+2*shown, cy, "+"+itoa(len(a.rows)-shown), fg(cFaint), -1)
+			}
+		}
+		if note != "" {
+			cv.Text(x+w-width(note), cy, note, fg(nc), -1)
+		}
+		id := a.id
+		if id == "" {
+			id = "-" // the services of no application
+		}
+		m.hit(x, cy, w, "goto:application:"+id)
+		cy++
+		if !open[i] {
+			continue
+		}
+		for _, r := range a.rows {
+			if cy >= y+h {
+				break
+			}
+			mg, mc := m.serviceMark(r)
+			cv.Set(x+2, cy, mg, fg(mc))
+			rs := fg(cMuted)
+			if m.needsAttention(r) {
+				rs = fg(cText)
+			}
+			k := cv.Text(x+4, cy, ellipsis(r.Title, w-4), rs, w-4)
+			m.hit(x+2, cy, k+2, "goto:service:"+r.ID)
+			cy++
+		}
+	}
+}
+
+// servicesTag is the SERVICES card's count: of services, and of the
+// applications they are grouped in where there are any.
+func (m *Model) servicesTag() string {
+	t := m.Snapshot.Topology
+	if len(t.Applications) == 0 {
+		return "· " + itoa(len(t.Services))
+	}
+	return "· " + itoa(len(t.Services)) + " in " + plural(len(t.Applications), "application")
+}
+
+// servicesNeed is how many lines the SERVICES card wants at its width:
+// a line an application, or the names two to a line.
+func (m *Model) servicesNeed() int {
+	if apps := m.serviceApps(m.tabRows(tabServices)); len(apps) > 0 {
+		return len(apps)
+	}
+	return (len(m.Snapshot.Topology.Services) + 1) / 2
 }
 
 // nothing is what an empty card says: nothing declared, or nothing known
@@ -314,7 +505,6 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 			}
 		}
 	}
-	nServices := len(t.Services)
 	nObservers := len(m.Snapshot.Observers)
 	switch {
 	case w >= 140 && h >= 24:
@@ -341,14 +531,21 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 			// keeps services and observers.
 			attention(x, y+mh, mw, h-mh, true)
 			vh := left - oh
-			ix, iy, iw, ih = m.panel(cv, x+mw, y+sh, sw, vh, "SERVICES", "· "+itoa(nServices), false)
+			ix, iy, iw, ih = m.panel(cv, x+mw, y+sh, sw, vh, "SERVICES", m.servicesTag(), false)
 			m.servicesCard(cv, ix, iy, iw, ih)
 			ix, iy, iw, ih = m.panel(cv, x+mw, y+sh+vh, sw, oh, "OBSERVERS", "", false)
 			m.observersCard(cv, ix, iy, iw, ih)
 			return
 		}
-		vh := min((nServices+1)/2+2, max(4, left/3))
-		if len(rows) == 0 && m.Search == "" {
+		vh := min(m.servicesNeed()+2, max(4, left/3))
+		switch calm := len(rows) == 0 && m.Search == ""; {
+		case calm && len(t.Applications) > 0:
+			// Nothing to attend to: a short all-clear, every observer that
+			// fits beside a line for each application, and the rest to the
+			// services, which list their names where they fit.
+			oh = min(nObservers+2, max(0, left-5-m.servicesNeed()-2))
+			vh = left - 5 - oh
+		case calm:
 			// Nothing to attend to: a short all-clear, and the room goes
 			// to the service matrix, as much as it can fill.
 			svc := m.tabRows(tabServices)
@@ -360,7 +557,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		}
 		ah := left - vh - oh
 		attention(x+mw, y+sh, sw, ah, true)
-		ix, iy, iw, ih = m.panel(cv, x+mw, y+sh+ah, sw, vh, "SERVICES", "· "+itoa(nServices), false)
+		ix, iy, iw, ih = m.panel(cv, x+mw, y+sh+ah, sw, vh, "SERVICES", m.servicesTag(), false)
 		m.servicesCard(cv, ix, iy, iw, ih)
 		if oh > 0 {
 			ix, iy, iw, ih = m.panel(cv, x+mw, y+sh+ah+vh, sw, oh, "OBSERVERS", "", false)
@@ -382,7 +579,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		under := h - mh - sh
 		if ah := 5; len(rows) == 0 && m.Search == "" && h-mh-ah >= 5 {
 			attention(x+sw, y+mh, w-sw, ah, true)
-			ix, iy, iw, ih = m.panel(cv, x+sw, y+mh+ah, w-sw, h-mh-ah, "SERVICES", "· "+itoa(nServices), false)
+			ix, iy, iw, ih = m.panel(cv, x+sw, y+mh+ah, w-sw, h-mh-ah, "SERVICES", m.servicesTag(), false)
 			m.servicesCard(cv, ix, iy, iw, ih)
 			if under >= 3 {
 				ix, iy, iw, ih = m.panel(cv, x, y+mh+sh, sw, under, "OBSERVERS", "", false)
@@ -392,7 +589,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		}
 		attention(x+sw, y+mh, w-sw, h-mh, true)
 		if under >= 4 {
-			ix, iy, iw, ih = m.panel(cv, x, y+mh+sh, sw, under, "SERVICES", "· "+itoa(nServices), false)
+			ix, iy, iw, ih = m.panel(cv, x, y+mh+sh, sw, under, "SERVICES", m.servicesTag(), false)
 			m.servicesCard(cv, ix, iy, iw, ih)
 		}
 	default:
@@ -416,7 +613,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 		}
 		if left := h - sh; len(rows) == 0 && m.Search == "" && left >= 9 {
 			attention(x, y+sh, w, 4, true)
-			ix, iy, iw, ih = m.panel(cv, x, y+sh+4, w, left-4, "SERVICES", "· "+itoa(nServices), false)
+			ix, iy, iw, ih = m.panel(cv, x, y+sh+4, w, left-4, "SERVICES", m.servicesTag(), false)
 			m.servicesCard(cv, ix, iy, iw, ih)
 			return
 		}

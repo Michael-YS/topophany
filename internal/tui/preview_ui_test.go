@@ -413,13 +413,14 @@ func TestWindowTitleIsTheVerdict(t *testing.T) {
 }
 
 // At 80x24 the Overview still gives the verdict its big number and puts the
-// rest of the room to use: observers beside it, then the service matrix
-// when nothing needs attention, or the attention list when something does.
+// rest of the room to use: observers beside it, then the services by
+// application when nothing needs attention, or the attention list when
+// something does.
 func TestSmallOverviewUsesItsRoom(t *testing.T) {
 	m := previewModel(t)
 	m.Width, m.Height = 80, 24
 	out := visible(m)
-	for _, want := range []string{"ALL CLEAR", "checks passing", "OBSERVERS", "成都 Windows", "Nothing needs attention", "SERVICES", "Clash Verge"} {
+	for _, want := range []string{"ALL CLEAR", "checks passing", "OBSERVERS", "成都 Windows", "Nothing needs attention", "SERVICES · 23 in 6 applications", view.ApplicationName(m.Snapshot.Topology, "main-site")} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("healthy 80x24 overview lacks %q\n%s", want, out)
 		}

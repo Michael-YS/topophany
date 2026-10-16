@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counting zeros. When none answers, the scene goes still and says which
   collector did not answer and why, that it tries again every 3 seconds
   (`r` at once), and what to check.
+- Where the topology declares applications, the Overview's services card
+  gives each application a line, with a mark for each of its services and
+  how many need attention, and lists the services by name under their
+  application where it has room, those needing attention first. A click
+  opens the application, or the service, in the Services tab.
 
 ### Changed
 
@@ -106,6 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A group is named by its application alone where no service or check
   names an environment, rather than "Shop / Unspecified" on every group,
   and the scope line says "by application".
+- On a calm Overview the all-clear keeps to a few lines, and the services
+  and observers take the room.
 
 ### Fixed
 
