@@ -52,6 +52,12 @@ func Catalog() []Metric {
 		{Name: "delivery.status", Type: "text", Sources: []string{"worker"}, Selector: "collector"},
 		{Name: "delivery.pending_records", Type: "number", Unit: "count", Sources: []string{"worker"}, Selector: "collector"},
 		{Name: "delivery.pending_bytes", Type: "number", Unit: "bytes", Sources: []string{"worker"}, Selector: "collector"},
+		{Name: "storage.journal.write_bytes", Type: "number", Unit: "bytes", Sources: []string{"collector"}},
+		{Name: "storage.checkpoint.write_bytes", Type: "number", Unit: "bytes", Sources: []string{"collector"}},
+		{Name: "storage.queue.operations", Type: "number", Unit: "count", Sources: []string{"worker"}},
+		{Name: "storage.queue.write_bytes", Type: "number", Unit: "bytes", Sources: []string{"worker"}},
+		{Name: "storage.sync.count", Type: "number", Unit: "count", Sources: []string{"collector", "worker"}},
+		{Name: "storage.sync.duration_ms", Type: "number", Unit: "milliseconds", Sources: []string{"collector", "worker"}},
 	}
 }
 func metric(name string) (Metric, bool) {

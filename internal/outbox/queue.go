@@ -75,7 +75,7 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 		}
 	}()
 	for _, sub := range []string{"pending", "quarantine"} {
-		entries, e := os.ReadDir(filepath.Join(dir, sub))
+		entries, e := queueReadDir(filepath.Join(dir, sub))
 		if e != nil {
 			return nil, e
 		}
@@ -101,7 +101,7 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 				q.quarantineUsed += info.Size()
 				continue
 			}
-			b, e := secure.ReadBounded(filepath.Join(dir, sub, entry.Name()), 2<<20)
+			b, e := queueRead(filepath.Join(dir, sub, entry.Name()), 2<<20)
 			if e != nil {
 				return nil, e
 			}
@@ -149,13 +149,13 @@ func (q *Queue) write(v Item) error {
 		return errors.New("outbox record exceeds 1 MiB")
 	}
 	old := int64(0)
-	if st, e := os.Stat(q.file(v.ID)); e == nil {
+	if st, e := queueStat(q.file(v.ID)); e == nil {
 		old = st.Size()
 	}
 	if q.used-q.quarantineUsed-old+int64(len(b)) > q.max {
 		return ErrFull
 	}
-	if e = secure.AtomicWrite(q.file(v.ID), b, 0600); e != nil {
+	if e = queueWrite(q.file(v.ID), b, 0600); e != nil {
 		return e
 	}
 	q.used = q.used - old + int64(len(b))
@@ -305,11 +305,11 @@ func (q *Queue) ack(id, recipient string) error {
 	}
 	v.Pending = pending
 	if len(pending) == 0 {
-		st, e := os.Stat(q.file(id))
+		st, e := queueStat(q.file(id))
 		if e != nil {
 			return e
 		}
-		if e = os.Remove(q.file(id)); e != nil {
+		if e = queueRemove(q.file(id)); e != nil {
 			return e
 		}
 		q.used -= st.Size()
@@ -348,13 +348,13 @@ func (q *Queue) Quarantine(ids []string, recipient, reason string) error {
 			return e
 		}
 		old := int64(0)
-		if st, e := os.Stat(file); e == nil {
+		if st, e := queueStat(file); e == nil {
 			old = st.Size()
 		}
 		if e := q.trimQuarantine(recipient, filepath.Base(file), int64(len(b))-old); e != nil {
 			return e
 		}
-		if e = secure.AtomicWrite(file, b, 0600); e != nil {
+		if e = queueWrite(file, b, 0600); e != nil {
 			return e
 		}
 		q.used = q.used - old + int64(len(b))

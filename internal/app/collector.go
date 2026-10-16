@@ -14,6 +14,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/alert"
 	"github.com/WhitenWhiten/topophany/internal/api"
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/ioaccount"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
@@ -103,7 +104,7 @@ func (a *App) serve(parent context.Context, args []string) error {
 	backend.MaxSampleAge = *retention
 	backend.Ledger = book
 	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(context.Context) (monitor.Input, error) {
-		return monitor.Input{Snapshot: backend.MonitorSnapshot(time.Now())}, nil
+		return monitor.Input{IO: ioaccount.Read(), Snapshot: backend.MonitorSnapshot(time.Now())}, nil
 	}, *dir, *path, *authPath, *alertsPath, *cert, *key)
 	if e != nil {
 		return e
@@ -277,6 +278,7 @@ func (a *App) watchStorage(ctx context.Context, st *store.Store, every time.Dura
 			return
 		case <-tick.C:
 		}
+		a.logIO()
 		for _, o := range st.Usage().Observers {
 			name := o.Observer
 			if name == "" {

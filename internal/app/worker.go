@@ -10,6 +10,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/ioaccount"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/outbox"
@@ -65,7 +66,7 @@ func (a *App) worker(parent context.Context, args []string) error {
 	var wg sync.WaitGroup
 	defer func() { cancel(); wg.Wait() }()
 	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(context.Context) (monitor.Input, error) {
-		return monitor.Input{Snapshot: localView.Snapshot(time.Now()), Delivery: d.Statuses()}, nil
+		return monitor.Input{IO: ioaccount.Read(), Snapshot: localView.Snapshot(time.Now()), Delivery: d.Statuses()}, nil
 	}, *dir, *path, *credPath)
 	if e != nil {
 		return e
@@ -132,6 +133,8 @@ func (a *App) worker(parent context.Context, args []string) error {
 			}
 		})
 	})
+	ioTick := time.NewTicker(time.Minute)
+	defer ioTick.Stop()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
@@ -145,6 +148,8 @@ func (a *App) worker(parent context.Context, args []string) error {
 				fmt.Fprintf(a.Err, "reload refused; still running revision %s: %v\n", config.Revision(c)[:12], e)
 			}
 			heartbeat()
+		case <-ioTick.C:
+			a.logIO()
 		case <-tick.C:
 			heartbeat()
 		}

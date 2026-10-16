@@ -21,7 +21,7 @@ func (q *Queue) trimQuarantine(recipient, keep string, extra int64) error {
 		at              time.Time
 	}
 	dir := filepath.Join(q.dir, "quarantine")
-	files, err := os.ReadDir(dir)
+	files, err := queueReadDir(dir)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (q *Queue) trimQuarantine(recipient, keep string, extra int64) error {
 		if sizes[v.recipient] <= perRecipient && total <= global && counts[v.recipient] <= 1024 && count <= 8192 {
 			continue
 		}
-		if err := os.Remove(filepath.Join(dir, v.name)); err != nil {
+		if err := queueRemove(filepath.Join(dir, v.name)); err != nil {
 			return err
 		}
 		sizes[v.recipient] -= v.size

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/WhitenWhiten/topophany/internal/ioaccount"
 	"io"
 	"net"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unicode"
 )
 
@@ -109,7 +111,7 @@ func atomicWrite(path string, b []byte, mode os.FileMode, durable bool) error {
 		_, e = f.Write(b)
 	}
 	if e == nil && durable {
-		e = f.Sync()
+		e = ioaccount.Sync(f)
 	}
 	ce := f.Close()
 	if e == nil {
@@ -186,7 +188,10 @@ func SyncDir(path string) error {
 		return e
 	}
 	defer f.Close()
-	if e = f.Sync(); e != nil {
+	started := time.Now()
+	e = f.Sync()
+	ioaccount.DirectorySync.Add(0, time.Since(started), e)
+	if e != nil {
 		return e
 	}
 	if f := synced.Load(); f != nil {

@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/ioaccount"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 type Input struct {
+	IO          ioaccount.Snapshot
 	Snapshot    model.Snapshot
 	Delivery    []model.DeliveryStatus
 	Unavailable bool
@@ -35,6 +37,8 @@ type Panel struct {
 	Rows               []Value   `json:"rows"`
 }
 type Value struct {
+	Basis          string `json:"basis,omitempty"`
+	SampleWindowMS int64  `json:"sample_window_ms,omitempty"`
 	Row
 	Value      any       `json:"value"`
 	Unit       string    `json:"unit,omitempty"`
@@ -94,6 +98,27 @@ func resolve(r Row, source string, in Input, now time.Time) Value {
 	if s.GeneratedAt.IsZero() || s.GeneratedAt.After(now.Add(5*time.Second)) || view.Expired(s, now) {
 		v.Freshness = "stale"
 		return missing(v, "source_expired")
+	}
+	if strings.HasPrefix(r.Metric, "storage.") {
+		switch r.Metric {
+		case "storage.journal.write_bytes":
+			v.Value = in.IO.Journal.Bytes
+		case "storage.checkpoint.write_bytes":
+			v.Value = in.IO.Checkpoint.Bytes
+		case "storage.queue.operations":
+			v.Value = in.IO.Queue.Count
+		case "storage.queue.write_bytes":
+			v.Value = in.IO.Queue.Bytes
+		case "storage.sync.count":
+			v.Value = in.IO.FileSync.Count + in.IO.DirectorySync.Count
+		case "storage.sync.duration_ms":
+			v.Value = float64(in.IO.FileSync.Nanoseconds+in.IO.DirectorySync.Nanoseconds) / 1e6
+		}
+		v.Text = fmt.Sprint(v.Value)
+		v.Health = "up"
+		v.SampledAt = s.GeneratedAt
+		v.ValidUntil = s.GeneratedAt.Add(15 * time.Second)
+		return v
 	}
 	if m.Selector == "" {
 		verdict := (view.View{Snapshot: s, Now: now}).Verdict()
@@ -181,6 +206,15 @@ func resolve(r Row, source string, in Input, now time.Time) Value {
 		return missing(v, "invalid_value")
 	}
 	v.Value = n
+	switch r.Metric {
+	case "host.cpu.used_percent":
+		v.Basis = "host_normalized_0_100"
+		v.SampleWindowMS, _ = strconv.ParseInt(resource.Facts["cpu_sample_ms"], 10, 64)
+	case "host.memory.used_percent":
+		v.Basis = resource.Facts["memory_basis"]
+	case "host.disk.used_percent":
+		v.Basis = resource.Facts["disk_basis"]
+	}
 	v.Text = fmt.Sprintf("%.1f%%", n)
 	return v
 }

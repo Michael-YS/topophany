@@ -25,6 +25,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
+	"github.com/WhitenWhiten/topophany/internal/ioaccount"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -228,7 +229,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 				if er := s.file.Truncate(offset); er != nil {
 					return nil, er
 				}
-				if er := s.file.Sync(); er != nil {
+				if er := ioaccount.Sync(s.file); er != nil {
 					return nil, er
 				}
 			}
@@ -593,12 +594,14 @@ func (s *Store) Put(b model.Batch) error {
 		return e
 	}
 	record = append(record, '\n')
+	started := time.Now()
 	n, e := s.file.Write(record)
+	ioaccount.Journal.Add(n, time.Since(started), e)
 	if e == nil && n != len(record) {
 		e = io.ErrShortWrite
 	}
 	if e == nil {
-		e = s.file.Sync()
+		e = ioaccount.Sync(s.file)
 	}
 	if e != nil {
 		s.poisoned = fmt.Errorf("journal durability failure; restart required: %w", e)
@@ -758,7 +761,14 @@ func (s *Store) checkpoint() error {
 	if len(b) > 256<<20 {
 		return ErrCapacity
 	}
-	if e = secure.AtomicWrite(filepath.Join(s.dir, "checkpoint.json"), b, 0600); e != nil {
+	started := time.Now()
+	e = secure.AtomicWrite(filepath.Join(s.dir, "checkpoint.json"), b, 0600)
+	written := 0
+	if e == nil {
+		written = len(b)
+	}
+	ioaccount.Checkpoint.Add(written, time.Since(started), e)
+	if e != nil {
 		return e
 	}
 	// If a crash occurs before truncation, replay is safe because the checkpoint
@@ -769,7 +779,7 @@ func (s *Store) checkpoint() error {
 	if _, e = s.file.Seek(0, io.SeekStart); e != nil {
 		return e
 	}
-	if e = s.file.Sync(); e != nil {
+	if e = ioaccount.Sync(s.file); e != nil {
 		return e
 	}
 	s.bytes = 0
