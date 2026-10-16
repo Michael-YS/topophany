@@ -105,6 +105,20 @@ This document lists the finite, verifiable scenario contracts for version 1.0.0,
 | A probe's credential, a bearer or adapter token or an HTTP target's query, travels only over HTTPS or to a direct literal loopback target with no remote `resolve_ip` and no proxy, and a credentialed proxy only over HTTPS CONNECT or as a first literal-loopback hop; validation refuses anything else, and so does the probe before it dials | `TestSecretTransportBinding`, `TestUnsafeCredentialTransportFailsBeforeDial` |
 | Addresses viewers see, URLs or not, lose user information, query values and fragments; a proxy hop keeps only its kind, address, node and TLS name, never a login, password, key or file, an SSH hop's `ssh_user` included, and still validates; changing only what is withheld leaves the public revision unchanged | `TestPublicURLKeepsNoUserQueryOrFragment`, `TestPublicRevisionIgnoresEveryRedactedField`, `TestPublicTopologyKeepsNoProxyCredential`, `TestPublicSSHHopValidates`, `TestAPIReadBoundariesAndRedaction` |
 
+## Browser preview
+
+| Scenario and invariant | Automated evidence |
+|---|---|
+| Character patches reconstruct the Go canvas across palette changes, wide characters, combining marks and terminal resizing | `TestCellFramesReconstructCanvas` |
+| A simulated route fault creates confirmed incidents and inspectable evidence; another observer retains its own view; recovery retains closed incident history | `TestDemoFaultEvidenceVantageAndRecovery` |
+| Keyboard scenario selection and sample history use the same simulated clock, including time acceleration | `TestDemoUsesOneClockForScenarioMenuAndHistory` |
+| Search and resize preserve session state; idle frames respect animation cadence and quit stops updates | `TestDemoInputResizeIdleAndQuit` |
+| The static demo ships the matching Go runtime and binary, links each language, and permits WASM compilation without JavaScript eval | `test_browser_demo_is_current_and_local` |
+| Browser origins are explicit and exact; preflight exposes no evidence and cannot authorize viewer data or worker writes | `TestBrowserOriginMustBeExplicitAndExact`, `TestBrowserPreflightNeverGrantsDataOrWorkerWrites` |
+| A remote browser session reads a real collector's observer view and samples, rejects another project or token, retains cached evidence on disconnect, and cancels a pending read on quit without blocking input | `TestRemoteReadsRealCollectorViewsAndHistory`, `TestRemoteRefusesWrongProjectAndTokenWithoutPreviewFallback`, `TestRemoteDisconnectKeepsCachedEvidence`, `TestRemotePendingReadDoesNotBlockKeysAndQuitCancels` |
+| The browser connection form accepts the native token length contract, including existing 43-character viewer tokens | `test_collector_client_has_separate_runtime_and_connection_form` |
+| A local browser bridge keeps saved viewer tokens behind verified TLS, rejects other origins and write routes, and refuses redirects, project mismatches and oversized responses | `LocalViewerTests` in `scripts/test_serve_site.py` |
+
 ## Boundaries Beyond Automated Suite Claims
 
 Verifying whether virtual network interfaces or host tunnel adapters successfully bypass underlying physical drivers requires empirical testing on target hardware. Mock scripts, cross-compilation passes, and loopback unit tests do not substitute for live hardware verification.

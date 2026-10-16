@@ -143,6 +143,9 @@ func (m *Model) splashLines(offline bool) []vline {
 		return out
 	}
 	head, why, hint := trouble(m.Error)
+	if m.ReconnectHint != "" {
+		hint = m.ReconnectHint
+	}
 	out = append(out, vline{{"◌  ", fg(cWarn)}, {head, fg(cWarn).bold()}})
 	for _, w := range why {
 		host, reason, ok := strings.Cut(w, ": ")

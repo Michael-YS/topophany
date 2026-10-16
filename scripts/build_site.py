@@ -36,7 +36,7 @@ import unicodedata
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "site" / "src"
 OUT = ROOT / "site" / "public"
-PAGES = ("index.html", "404.html")
+PAGES = ("index.html", "404.html", "demo/index.html", "app/index.html")
 STATIC = ("css", "js")
 PLACEHOLDER = re.compile(r"\{\{([a-z0-9][a-z0-9._-]*)\}\}")
 IMPORT = re.compile(r"""(\b(?:from|import)\s*)(['"])\./([\w.-]+\.js)\2""")
@@ -106,6 +106,9 @@ def assets(src: Path = SRC, out: Path = OUT) -> dict[str, tuple[Path, str]]:
 
         for name in sources:
             publish(name)
+    license_file = src / "js/wasm_exec.LICENSE"
+    if license_file.is_file():
+        published["/js/wasm_exec.LICENSE"] = (out / "js/wasm_exec.LICENSE", license_file.read_text())
     return published
 
 
@@ -127,13 +130,13 @@ def tour_size(out: Path, code: str) -> dict[str, str]:
 
 
 def page_values(site: dict, catalogs: dict, code: str, urls: dict[str, str] | None = None,
-                out: Path = OUT) -> dict[str, str]:
+                out: Path = OUT, suffix: str = "") -> dict[str, str]:
     words = catalogs[code]
     here = path_of(site, code)
     urls = urls or {}
     links, items, offers, locales = [], [], [], []
     for other in languages(site, catalogs):
-        theirs, where = catalogs[other], path_of(site, other)
+        theirs, where = catalogs[other], path_of(site, other) + suffix
         tag = escape(theirs["lang.tag"])
         links.append(f'<link rel="alternate" hreflang="{tag}" href="{escape(site["origin"] + where)}">')
         if other != code and "lang.locale" in theirs:
@@ -142,18 +145,24 @@ def page_values(site: dict, catalogs: dict, code: str, urls: dict[str, str] | No
         items.append(f'<li><a href="{where}" hreflang="{tag}" lang="{tag}"{current}>{escape(theirs["lang.name"])}</a></li>')
         offers.append({"tag": theirs["lang.tag"], "href": where, "name": theirs["lang.name"],
                        "suggest": theirs["lang.suggest"], "dismiss": theirs["lang.dismiss"]})
-    links.append(f'<link rel="alternate" hreflang="x-default" href="{escape(site["origin"] + "/")}">')
+    links.append(f'<link rel="alternate" hreflang="x-default" href="{escape(site["origin"] + "/" + suffix)}">')
     strings = {key[3:]: expand(value, site, {}) for key, value in words.items() if key.startswith("js.")}
     strings["languages"] = offers
     # A data block is not run, but "</" could still end the element early.
     data = json.dumps(strings, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     files = {"page.style": urls.get("/css/site.css"), "page.script": urls.get("/js/site.js"),
+             "page.demo-style": urls.get("/css/demo.css"), "page.demo-script": urls.get("/js/demo.js"),
+             "page.demo-worker": urls.get("/js/demo-worker.js"), "page.wasm": data_url(out, "demo.wasm"),
+             "page.collector-worker": urls.get("/js/collector-worker.js"),
+             "page.collector-wasm": data_url(out, "collector.wasm"),
              "page.land": data_url(out, "land.bin"), "page.tour": data_url(out, f"tour.{code}.json")}
     return {
         "page.code": code,
         "page.path": here,
         "page.origin": site["origin"],
-        "page.url": site["origin"] + here,
+        "page.url": site["origin"] + here + suffix,
+        "page.demo": here + "demo/",
+        "page.app": here + "app/",
         "page.alternates.html": "\n".join(links),
         "page.languages.html": "".join(items),
         "page.strings.html": f'<script type="application/json" id="strings">{data}</script>',
@@ -390,11 +399,13 @@ def escape(text: str) -> str:
 
 def sitemap(site: dict, catalogs: dict) -> str:
     """Every language's page, each naming all of them as its alternates."""
-    alternates = [(catalogs[c]["lang.tag"], site["origin"] + path_of(site, c)) for c in languages(site, catalogs)]
-    alternates.append(("x-default", site["origin"] + "/"))
-    links = "".join(f'\n    <xhtml:link rel="alternate" hreflang="{escape(tag)}" href="{escape(href)}"/>'
-                    for tag, href in alternates)
-    urls = "".join(f"\n  <url>\n    <loc>{escape(href)}</loc>{links}\n  </url>" for tag, href in alternates[:-1])
+    urls = ""
+    for suffix in ("", "demo/", "app/"):
+        alternates = [(catalogs[c]["lang.tag"], site["origin"] + path_of(site, c) + suffix) for c in languages(site, catalogs)]
+        alternates.append(("x-default", site["origin"] + "/" + suffix))
+        links = "".join(f'\n    <xhtml:link rel="alternate" hreflang="{escape(tag)}" href="{escape(href)}"/>'
+                        for tag, href in alternates)
+        urls += "".join(f"\n  <url>\n    <loc>{escape(href)}</loc>{links}\n  </url>" for tag, href in alternates[:-1])
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">'
             f"{urls}\n</urlset>\n")
@@ -415,8 +426,9 @@ def build(src: Path = SRC, out: Path = OUT) -> dict[Path, str]:
     urls = {path: "/" + file.relative_to(out).as_posix() for path, (file, _) in published.items()}
     pages, used = {file: text for file, text in published.values()}, set()
     for code in languages(site, catalogs):
-        values = page_values(site, catalogs, code, urls, out)
         for name, template in templates.items():
+            suffix = name.removesuffix("index.html") if name in ("demo/index.html", "app/index.html") else ""
+            values = page_values(site, catalogs, code, urls, out, suffix)
             pages[out / path_of(site, code).strip("/") / name] = render(template, name, site, catalogs[code], values, used)
     unused = sorted(key for key in catalogs[site["default"]]
                     if key not in used and not key.startswith(("js.", "lang.")))

@@ -46,33 +46,49 @@ const isLogo = (chr) => chr !== undefined && LOGOS[chr.codePointAt(0)] !== undef
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
 export class Screen {
-  constructor(canvas, cols, rows, styles) {
+  constructor(canvas, cols, rows, styles, cellAspect = 2) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
+    this.cellAspect = cellAspect;
+    this.reset(cols, rows, styles);
+  }
+
+  reset(cols, rows, styles) {
     this.cols = cols;
     this.rows = rows;
     this.chars = new Array(cols * rows).fill(' ');
     this.style = new Int32Array(cols * rows);
-    this.styles = styles.map(([fg, bg, attr]) => ({
-      fg: fg < 0 ? TEXT : hex(fg), bg: hex(bg), bold: !!(attr & 1), italic: !!(attr & 4), underline: !!(attr & 8),
-    }));
+    this.styles = [];
+    this.addStyles(styles);
     this.dirty = new Uint8Array(cols * rows).fill(1);
+    this.cw = 0;
     this.resize();
   }
 
-  // resize fits the canvas to its box: cells are twice as tall as wide, so
-  // braille dots form a square grid.
+  addStyles(styles) {
+    this.styles.push(...styles.map(([fg, bg, attr]) => ({
+      fg: fg < 0 ? TEXT : hex(fg), bg: hex(bg), bold: !!(attr & 1), italic: !!(attr & 4), underline: !!(attr & 8),
+    })));
+  }
+
+  patch(frame) {
+    if (frame.reset) this.reset(...frame.size, frame.styles);
+    else this.addStyles(frame.styles);
+    this.apply(frame.ops);
+  }
+
+  // Match the cell shape the Go renderer uses to keep maps and globes round.
   resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const cssW = this.canvas.clientWidth || this.canvas.parentElement.clientWidth;
     const w = Math.max(1, Math.round(cssW * dpr));
     const cw = w / this.cols;
-    const h = Math.round(cw * 2 * this.rows);
-    if (w === this.canvas.width && h === this.canvas.height) return false;
+    const h = Math.round(cw * this.cellAspect * this.rows);
+    if (w === this.canvas.width && h === this.canvas.height && cw === this.cw) return false;
     this.canvas.width = w;
     this.canvas.height = h;
     this.cw = cw;
-    this.ch = cw * 2;
+    this.ch = cw * this.cellAspect;
     const c = this.ctx;
     c.font = `100px ${FONT}`;
     const adv = c.measureText('M').width / 100 || 0.6;

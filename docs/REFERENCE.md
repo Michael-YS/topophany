@@ -171,6 +171,16 @@ Each webhook has its own queue of 64 alerts, delivered in order, at least once. 
 
 ## HTTP API Specifications
 
+`topo serve --web-origin https://topophany.com` enables browser reads for one
+exact origin. The default is empty (no CORS opt-in); wildcard origins, paths,
+credentials and non-loopback HTTP origins are rejected. CORS preflight only
+allows `GET` with `Authorization` on `/v1/snapshot`, `/v1/config`,
+`/v1/history` and `/v1/rollups`. Actual reads still require a viewer token;
+preflights pass through the existing anonymous admission/rate budgets and
+never promote a socket to authenticated. Cookies and worker ingestion are
+not enabled by this option. The origin is fixed at startup, independently of
+configuration/auth reloads.
+
 | Method / Path | Role | Description |
 |---|---|---|
 | `GET /healthz` | Unauthenticated | Indicates collector HTTP daemon is running; does not indicate observation freshness |

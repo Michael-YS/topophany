@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="{{lang.tag}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a1016">
+<title>{{live.title}} · Topophany</title>
+<meta name="description" content="{{live.description}}">
+<link rel="canonical" href="{{page.url}}">
+{{page.alternates.html}}
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{live.title}} · Topophany">
+<meta property="og:description" content="{{live.description}}">
+<meta property="og:url" content="{{page.url}}">
+<meta property="og:image" content="{{page.origin}}/og.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="{{page.style}}">
+<link rel="stylesheet" href="{{page.demo-style}}">
+{{page.strings.html}}
+<script type="module" src="{{page.demo-script}}"></script>
+</head>
+<body class="live-page">
+<main class="live-main">
+  <section id="live-demo" class="live-demo" aria-label="{{live.terminal}}" aria-busy="true"
+    data-language="{{page.code}}" data-wasm="{{page.wasm}}" data-worker="{{page.demo-worker}}">
+    <div class="demo-viewport">
+      <canvas id="demo-canvas" tabindex="0" role="application" aria-label="{{live.terminal}}"></canvas>
+      <input class="demo-input" type="text" aria-label="{{live.input}}" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1">
+      <div class="demo-loading" role="status"><noscript>{{live.noscript}}</noscript></div>
+    </div>
+    <pre id="demo-transcript" class="sr-only" aria-label="{{live.terminal}}"></pre>
+  </section>
+</main>
+</body>
+</html>

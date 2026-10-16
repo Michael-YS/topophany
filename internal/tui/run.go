@@ -1,3 +1,5 @@
+//go:build !js
+
 package tui
 
 import (
@@ -15,6 +17,15 @@ import (
 )
 
 type Fetch func(context.Context, string) (model.Snapshot, string, error)
+
+// RunPreview runs the ordinary viewer against synthetic evidence only.
+func RunPreview(parent context.Context, p Preview, fetch Fetch, history History, observer string, noColor bool, in, out *os.File, options ...Startup) error {
+	m := &Model{Observer: observer, NoColor: noColor, Preview: p}
+	m.initializeStartup(options)
+	m.say("Preview: synthetic evidence only · x switch scenario · D debug overlay", false)
+	return loop(parent, m, fetch, history, in, out)
+}
+
 type fetched struct {
 	view     string
 	snapshot model.Snapshot

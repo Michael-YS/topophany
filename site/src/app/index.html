@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="{{lang.tag}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a1016">
+<title>{{connect.title}} · Topophany</title>
+<meta name="description" content="{{connect.description}}">
+<link rel="canonical" href="{{page.url}}">
+{{page.alternates.html}}
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{connect.title}} · Topophany">
+<meta property="og:description" content="{{connect.description}}">
+<meta property="og:url" content="{{page.url}}">
+<meta property="og:image" content="{{page.origin}}/og.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="{{page.style}}">
+<link rel="stylesheet" href="{{page.demo-style}}">
+{{page.strings.html}}
+<script type="module" src="{{page.demo-script}}"></script>
+</head>
+<body class="live-page">
+<main class="live-main">
+  <section id="live-demo" class="live-demo" aria-label="{{live.terminal}}" aria-busy="true"
+    data-mode="live" data-language="{{page.code}}" data-wasm="{{page.collector-wasm}}" data-worker="{{page.collector-worker}}">
+    <div class="demo-viewport">
+      <canvas id="demo-canvas" tabindex="0" role="application" aria-label="{{live.terminal}}"></canvas>
+      <input class="demo-input" type="text" aria-label="{{live.input}}" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1">
+      <div class="demo-loading" role="status"><noscript>{{live.noscript}}</noscript></div>
+      <form id="collector-connect" class="collector-connect" autocomplete="off" hidden>
+        <h1>{{connect.title}}</h1>
+        <label for="collector-server">{{connect.server}}<input id="collector-server" name="server" type="url" placeholder="https://monitor.example.com" required></label>
+        <label for="collector-project">{{connect.project}}<input id="collector-project" name="project" type="text" required autocapitalize="off" spellcheck="false"></label>
+        <label for="collector-token">{{connect.token}}<input id="collector-token" name="token" type="password" autocomplete="off" minlength="32" maxlength="512" required></label>
+        <button type="submit">{{connect.submit}}</button>
+        <p id="collector-error" role="status"></p>
+      </form>
+    </div>
+    <pre id="demo-transcript" class="sr-only" aria-label="{{live.terminal}}"></pre>
+  </section>
+</main>
+</body>
+</html>

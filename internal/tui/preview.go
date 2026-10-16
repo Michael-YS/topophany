@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"context"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,15 +12,6 @@ type Preview interface {
 	Scenarios() []string
 	Scenario() int
 	SetScenario(i int, at time.Time)
-}
-
-// RunPreview runs the ordinary viewer against a synthetic source. fetch and
-// history must never touch the network.
-func RunPreview(parent context.Context, p Preview, fetch Fetch, history History, observer string, noColor bool, in, out *os.File, options ...Startup) error {
-	m := &Model{Observer: observer, NoColor: noColor, Preview: p}
-	m.initializeStartup(options)
-	m.say("Preview: synthetic evidence only · x switch scenario · D debug overlay", false)
-	return loop(parent, m, fetch, history, in, out)
 }
 
 const scenarioKeys = "1234567890abcdefghilnoprstuvwy"
@@ -45,7 +34,7 @@ func (m *Model) scenarioMenu() {
 	}
 	cur := m.Preview.Scenario()
 	m.modal = &modal{kind: "menu", title: "Preview scenario", items: items, sel: cur, pick: func(i int) string {
-		m.Preview.SetScenario(i, time.Now())
+		m.Preview.SetScenario(i, m.Now)
 		name, _ := scenarioName(list[i])
 		m.say("Scenario: "+name+" — states change as new samples arrive", false)
 		return "refresh"

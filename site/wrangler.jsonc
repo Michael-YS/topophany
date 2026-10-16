@@ -2,6 +2,10 @@
   // The homepage at topophany.com: static files only, no Worker code.
   "name": "topophany",
   "compatibility_date": "2026-10-01",
+  // Local deployments build too. Workers Builds runs package.json's postinstall.
+  "build": {
+    "command": "python3 ../scripts/build_demo.py && python3 ../scripts/build_site.py"
+  },
   "assets": {
     "directory": "./public",
     "not_found_handling": "404-page"

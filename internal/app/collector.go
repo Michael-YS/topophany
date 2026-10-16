@@ -35,6 +35,7 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	alertsPath := f.String("alerts", "", "0600 webhook configuration; no alerts when empty")
 	dir := f.String("data", "./collector-data", "exclusive local journal directory")
 	listen := f.String("listen", "127.0.0.1:7447", "collector listen address")
+	webOrigin := f.String("web-origin", "", "exact origin allowed to read viewer APIs in a browser (disabled by default)")
 	instance := f.String("instance", "collector", "visible collector instance ID")
 	observer := f.String("observer", "", "optional local observer ID; otherwise collect only")
 	workers := f.Int("concurrency", 4, "bounded local probe concurrency (1..32)")
@@ -47,6 +48,9 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	maxHistory := f.Int("max-history", 20000, "maximum retained raw history rows; per-check state tails retained separately")
 	rollupBytes := f.Int64("rollup-bytes", 32<<20, "hard cap on long-term rollups, in encoded bytes (64 KiB..64 MiB)")
 	if e := parsed(f, args); e != nil {
+		return e
+	}
+	if e := api.ValidateWebOrigin(*webOrigin); e != nil {
 		return e
 	}
 	finishLog, logErr := a.serviceLog(logs)
@@ -108,6 +112,7 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	defer func() { cancel(); wg.Wait() }()
 	failures := make(chan error, 2)
 	backend := api.New(c, *instance, st, auth)
+	backend.WebOrigin = *webOrigin
 	backend.MaxSampleAge = *retention
 	backend.Ledger = book
 	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(context.Context) (monitor.Input, error) {

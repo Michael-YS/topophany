@@ -31,8 +31,8 @@
 <meta name="twitter:image:alt" content="Topophany 字标，旁边是点阵地球，上海、东京、新加坡、孟买和悉尼亮起并由路径相连。">
 <link rel="stylesheet" href="/css/site.dbf759af6dd5.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
-<script type="module" src="/js/site.d97bac176b98.js"></script>
-<script type="application/json" id="strings">{"replay":"回放","paused":"已暂停","pause":"暂停回放","play":"播放回放","recording":"Topophany 终端界面的录像：{title}。{text}","missing":"这段录像里没有 {tab}。运行 {cmd} 即可查看。","failed":"无法加载录像","copy":"复制","copied":"已复制","place.shanghai":"上海","place.tokyo":"东京","place.singapore":"新加坡","place.frankfurt":"法兰克福","place.london":"伦敦","place.ashburn":"阿什本","place.los-angeles":"洛杉矶","place.sao-paulo":"圣保罗","place.sydney":"悉尼","place.mumbai":"孟买","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
+<script type="module" src="/js/site.0f7e987ccb32.js"></script>
+<script type="application/json" id="strings">{"replay":"回放","paused":"已暂停","pause":"暂停回放","play":"播放回放","recording":"Topophany 终端界面的录像：{title}。{text}","missing":"这段录像里没有 {tab}。运行 {cmd} 即可查看。","failed":"无法加载录像","copy":"复制","copied":"已复制","place.shanghai":"上海","place.tokyo":"东京","place.singapore":"新加坡","place.frankfurt":"法兰克福","place.london":"伦敦","place.ashburn":"阿什本","place.los-angeles":"洛杉矶","place.sao-paulo":"圣保罗","place.sydney":"悉尼","place.mumbai":"孟买","demo.title":"亲手试试这个终端","demo.loading":"正在启动终端…","demo.ended":"会话已结束 · 点击或按 Enter 重新开始","demo.failed":"终端未能启动 · 点击或按 Enter 重试","connect.title":"你的网络","connect.failed":"连接未能启动。请检查地址、项目和 Viewer 令牌后重试。","connect.reconnect":"按 q 返回连接界面，检查地址、项目和 Viewer 令牌。","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/zh/","inLanguage":"zh-Hans","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"在终端里查看的自托管网络监控：你的机器、路径和服务尽在一张实时地图上，从你真正上网的地方发起检查，每个状态都附有证据。只有一个 Go 二进制文件。","softwareVersion":"1.0.0"}]}</script>
 </head>
 <body>
@@ -73,7 +73,9 @@
       <p class="lede">从哪里出发，经由哪条路径，抵达了什么——依据又是什么。</p>
       <p class="sub">整张网络尽在一屏：哪条路径从哪里走得通，哪些服务有应答，每个状态背后的证据是什么。自托管，一个 Go 二进制文件，在终端里查看。</p>
       <div class="cta">
-        <a class="btn btn-primary" href="#install">安装</a>
+        <a class="btn btn-primary" href="/zh/demo/">在浏览器里试用</a>
+        <a class="btn" href="/zh/app/">连接自己的采集器</a>
+        <a class="btn" href="#install">安装</a>
         <a class="btn" href="https://github.com/WhitenWhiten/topophany">
           <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>GitHub
         </a>
@@ -97,7 +99,7 @@
     <div class="head">
       <p class="eyebrow"><span>01</span> 终端界面</p>
       <h2>有没有出问题？在哪里？</h2>
-      <p class="lead"><code>topo preview</code> 的录屏：真实的 TUI，合成的证据。</p>
+      <p class="lead"><code>topo preview</code> 的录屏：真实的 TUI，合成的证据。 <a href="/zh/demo/">在浏览器里试用 →</a></p>
     </div>
 
     <figure class="term" id="term" data-tour="/data/tour.zh.json?v=a4c250bfe562">

@@ -1,0 +1,145 @@
+package tui
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/api"
+	"github.com/WhitenWhiten/topophany/internal/client"
+	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/secure"
+	"github.com/WhitenWhiten/topophany/internal/store"
+	"github.com/WhitenWhiten/topophany/internal/testkit"
+)
+
+const remoteViewerToken = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+func remoteFixture(t *testing.T) (*httptest.Server, client.Profile) {
+	t.Helper()
+	c := testkit.Config()
+	st, err := store.Open(t.TempDir(), store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err = st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", 1, time.Now().Add(-time.Second), "ok")}}); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(api.New(c, "real-collector", st, api.Auth{Schema: 1, Tokens: []api.Principal{{TokenSHA256: secure.Hash(remoteViewerToken), Role: "viewer"}}}).Handler())
+	t.Cleanup(srv.Close)
+	return srv, client.Profile{Project: c.Project, Servers: []client.Endpoint{{URL: srv.URL, Token: remoteViewerToken}}}
+}
+
+func waitRemote(t *testing.T, r *Remote, done func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		r.Frame(time.Now(), 120, 36, false)
+		if done() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("remote viewer did not reach expected state", r.m.Error)
+}
+
+func TestRemoteReadsRealCollectorViewsAndHistory(t *testing.T) {
+	_, p := remoteFixture(t)
+	r, err := NewRemote(p, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	waitRemote(t, r, func() bool { return !r.m.Snapshot.GeneratedAt.IsZero() })
+	if r.m.Preview != nil || r.m.Snapshot.Project != p.Project || r.m.Snapshot.Instance != "real-collector" {
+		t.Fatal("real viewer used preview data")
+	}
+	r.Key("v", time.Now())
+	waitRemote(t, r, func() bool { return !r.m.Snapshot.GeneratedAt.IsZero() && r.m.Snapshot.ViewObserver == r.m.Observer })
+	r.Key("6", time.Now())
+	selectFirstEntry(t, r.m)
+	waitRemote(t, r, func() bool { return len(r.m.samples.entries) > 0 })
+	if r.m.samples.entries[0].Check != "home-http" {
+		t.Fatal("wrong sample history")
+	}
+}
+
+func TestRemoteRefusesWrongProjectAndTokenWithoutPreviewFallback(t *testing.T) {
+	_, profile := remoteFixture(t)
+	for _, kind := range []string{"project", "token"} {
+		t.Run(kind, func(t *testing.T) {
+			p := client.Profile{Project: profile.Project, Servers: append([]client.Endpoint(nil), profile.Servers...)}
+			if kind == "project" {
+				p.Project = "another-project"
+			} else {
+				p.Servers[0].Token = strings.Repeat("d", 64)
+			}
+			r, err := NewRemote(p, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			waitRemote(t, r, func() bool { return r.m.Error != "" })
+			if !r.m.Snapshot.GeneratedAt.IsZero() || r.m.Preview != nil || strings.Contains(r.m.Error, p.Servers[0].Token) {
+				t.Fatal("rejected connection exposed data or substituted demo")
+			}
+		})
+	}
+}
+
+func TestRemoteDisconnectKeepsCachedEvidence(t *testing.T) {
+	srv, p := remoteFixture(t)
+	r, err := NewRemote(p, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	waitRemote(t, r, func() bool { return !r.m.Snapshot.GeneratedAt.IsZero() })
+	before := r.m.Snapshot.GeneratedAt
+	srv.Close()
+	r.Key("r", time.Now())
+	waitRemote(t, r, func() bool { return r.m.Error != "" })
+	if !r.m.Snapshot.GeneratedAt.Equal(before) || !r.m.Cached() {
+		t.Fatal("disconnect lost or refreshed old evidence")
+	}
+}
+
+func TestRemotePendingReadDoesNotBlockKeysAndQuitCancels(t *testing.T) {
+	started, canceled := make(chan struct{}), make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-r.Context().Done(); close(canceled) }))
+	defer srv.Close()
+	r, err := NewRemote(client.Profile{Project: "test", Servers: []client.Endpoint{{URL: srv.URL, Token: remoteViewerToken}}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	start := time.Now()
+	r.Frame(start, 120, 36, true)
+	if time.Since(start) > time.Second {
+		t.Fatal("frame blocked on collector")
+	}
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("read not started")
+	}
+	r.Key("3", time.Now())
+	r.Frame(time.Now(), 120, 36, true)
+	if r.m.Tab != tabServers || r.m.Loading == "" {
+		t.Fatal("pending read blocked navigation")
+	}
+	r.Key("q", time.Now())
+	select {
+	case <-canceled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("quit did not cancel network request")
+	}
+	if r.ctx.Err() != context.Canceled {
+		t.Fatal("session context still alive")
+	}
+}

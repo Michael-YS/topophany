@@ -44,6 +44,35 @@ Until the first snapshot arrives, the TUI shows the globe turning beside the wor
 
 Custom or self-signed certificates require `--ca-file /path/to/ca.pem` rather than disabling certificate verification. Except for literal loopback addresses, plaintext HTTP connections are rejected by default. Use `--allow-insecure` only when plaintext transport across a secure private tunnel is explicitly intended.
 
+## Browser Client
+
+Open [topophany.com/app/](https://topophany.com/app/) (also `/zh/app/` and
+`/ja/app/`) to connect the browser TUI to your own collector. Enter its URL,
+the `project` from your topology, and a viewer token. The connection form is
+inside the terminal frame and disappears once the viewer starts. `q` closes
+the connection and returns to that form.
+
+With the current collector binary, add `--web-origin https://topophany.com`
+to your existing `topo serve` command. This permits that exact origin to read
+the viewer APIs; authentication remains mandatory. Origins have no trailing
+slash or path. To test the static site locally on port 8000, use
+`--web-origin http://127.0.0.1:8000` and open
+`http://127.0.0.1:8000/app/`. The collector's HTTP loopback URL may be
+`http://127.0.0.1:7447`; other connections require HTTPS trusted by the browser.
+
+The browser uses the same project, snapshot and history validation as the
+native viewer. Failed reads retain existing evidence as cached; they never
+substitute preview data. Credentials stay in the current tab/worker session,
+are cleared from the form on submission, and are not put in URLs, cookies or
+browser storage. Closing the session or leaving the page discards its worker.
+Custom CA files, environment-variable tokens and insecure non-loopback HTTP
+are native-client features; the browser uses its own TLS trust and an explicit
+viewer token. Fetch redirects are refused before forwarding credentials.
+
+`/demo/` remains a synthetic preview and uses a separate WASM build. The
+browser client reads the collector's evidence; monitoring continues in the
+collector and workers when the page is closed.
+
 ## Terminal Interface
 
 The TUI is built to answer one question before anything is read: *is anything wrong, and where?*

@@ -22,8 +22,9 @@ cross-builds and resource-budget behavior. JSON topology is the sole writable
 configuration authority in version 1.0.
 
 The homepage at topophany.com is the static site in `site/public/`, published
-as is by a Cloudflare Worker (`site/wrangler.jsonc`) with no build step, and
-redeployed by Workers Builds on every push to `main` that touches `site/`;
+by a Cloudflare Worker (`site/wrangler.jsonc`). Workers Builds compiles the
+browser binaries and regenerates the pages before deploying on pushes to `main`
+that touch `site/`;
 `site/go.mod` keeps it out of the Go module. Its pages are written, one per
 language, from the templates in `site/src/` with `{{key}}` where words go and
 the words of each language in `site/src/locales/<language>.json`; edit those,
@@ -37,6 +38,54 @@ the TUI's own renderer. Run `make site` after changing the TUI, the templates,
 the words, the styles or the scripts to write them again (`python3
 scripts/build_site.py` alone when the TUI is unchanged);
 `scripts/test_site.py` fails while they are stale.
+
+The interactive preview at `/demo/` (and `/zh/demo/`, `/ja/demo/`) runs the
+real viewer and synthetic source in browser WebAssembly. `internal/tui/demo.go`
+owns its session; `cell_frame.go` encodes the same character patches used by
+the recorded tour. `site/src/js/demo-worker.js` runs Go off the page's main
+thread, and `demo.js` connects browser input and the existing `term.js` canvas.
+`make site` also runs `scripts/build_demo.py`, which compiles `cmd/topo-demo`,
+copies the matching Go `wasm_exec.js` and its license, and records the source
+and binary hashes in `site/public/data/demo.build.json`. Both WASM binaries and
+this build cache are ignored by Git; a fresh checkout must run `make site`
+before previewing the site. CI builds the binaries before acceptance checks.
+With `site/` as its root directory, Workers Builds automatically runs `npm ci`;
+the dependency-free `site/package.json` builds the binaries and pages in its
+`postinstall` script. Keep automatic dependency installation enabled. This
+does not depend on the dashboard's optional build command or its handling of
+Wrangler custom builds. Local Wrangler runs the same build from its configuration.
+The build image's Go toolchain follows the version in the repository's `go.mod`
+through Go's automatic toolchain selection. After Go source or toolchain changes, run
+`make site`; `python3 scripts/build_demo.py --check` checks that
+the generated runtime and binary match their inputs. The demo has no terminal
+server or real probes; hidden tabs pause its simulated clock. Its CSP permits
+WebAssembly compilation with `wasm-unsafe-eval`, without permitting JS eval.
+The demo page contains only the interactive terminal. `--demo-cell-aspect` in
+`site/src/css/demo.css` sets both the browser cell height/width and Go's map
+projection; the current value is 2.6. The reference 200×50 grid therefore has
+a window aspect ratio of 200/(50×2.6), about 1.54:1. Recorded homepage tours
+keep their original 2:1 cells. Scenario selection uses the TUI's own `x` menu;
+the preview clock runs at normal speed.
+
+The real browser client at `/app/` (and its language-prefixed routes) uses
+`internal/tui/remote.go` and the existing validated collector client. Its WASM
+is built separately with `-tags=collector` into `collector.wasm`; the preview
+build excludes the network session and keeps its smaller download. Browser
+requests use Go's Fetch transport with cookies omitted and redirects refused.
+`collector-worker.js` has its own CSP connection policy, leaving the demo's
+same-origin policy intact. Its token only lives in the current connection;
+`q` and navigation destroy that worker. `--web-origin` enables the collector's
+exact-origin, read-only CORS wrapper inside existing admission budgets.
+
+To test `/app/` with an existing private-CA collector without changing its
+service or browser trust, run `python3 scripts/serve_site.py --profile NAME`
+and open `http://127.0.0.1:8001/zh/app/`. This development server binds only
+to loopback, uses the saved viewer profile and CA, and automatically connects
+through a fixed read-only bridge. The browser receives a temporary local
+token, never the saved collector token. It applies the site's CSP headers,
+refuses other origins, redirects and worker routes, and verifies project
+identity. Nothing is injected into the published static files. Do not expose
+this credentialed development server through a tunnel or reverse proxy.
 
 The TUI stills in `docs/assets` (`<name>.<language>.png`) are captured from the
 preview the same way: the README's in every language, the guide's in English.

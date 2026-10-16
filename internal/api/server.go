@@ -86,6 +86,7 @@ type Server struct {
 	Store              *store.Store
 	Ledger             *ledger.Ledger // what snapshots carry of past incidents; nil for none
 	Auth               Auth
+	WebOrigin          string // explicit CORS origin, fixed before serving; empty disables browser access
 	configMu           sync.RWMutex
 	gen                *generation  // what Config and Auth give every request; nil until first asked
 	reloadMu           sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
@@ -244,6 +245,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/history", s.authorize("viewer", s.history))
 	mux.HandleFunc("GET /v1/rollups", s.authorize("viewer", s.rollups))
 	mux.HandleFunc("POST /v1/observations", s.authorize("worker", s.ingest))
+	handler := s.browser(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -268,7 +270,7 @@ func (s *Server) Handler() http.Handler {
 				writeError(w, 429, "rate_limited")
 				return
 			}
-			mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authorityKey{}, a)))
+			handler.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authorityKey{}, a)))
 			return
 		}
 		select {
@@ -282,7 +284,7 @@ func (s *Server) Handler() http.Handler {
 			writeError(w, 429, "preauth_rate_limited")
 			return
 		}
-		mux.ServeHTTP(w, r)
+		handler.ServeHTTP(w, r)
 	})
 }
 

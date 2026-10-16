@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a1016">
+<title>Connect to a collector · Topophany</title>
+<meta name="description" content="Use the Topophany terminal in your browser to read your collector’s live network evidence.">
+<link rel="canonical" href="https://topophany.com/app/">
+<link rel="alternate" hreflang="en" href="https://topophany.com/app/">
+<link rel="alternate" hreflang="ja" href="https://topophany.com/ja/app/">
+<link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/app/">
+<link rel="alternate" hreflang="x-default" href="https://topophany.com/app/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Connect to a collector · Topophany">
+<meta property="og:description" content="Use the Topophany terminal in your browser to read your collector’s live network evidence.">
+<meta property="og:url" content="https://topophany.com/app/">
+<meta property="og:image" content="https://topophany.com/og.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/css/site.dbf759af6dd5.css">
+<link rel="stylesheet" href="/css/demo.92cc098c42b5.css">
+<script type="application/json" id="strings">{"replay":"replay","paused":"paused","pause":"Pause the replay","play":"Play the replay","recording":"Recording of the Topophany terminal UI: {title}. {text}","missing":"{tab} is not in this recording. Run {cmd} to see it.","failed":"the recording could not be loaded","copy":"Copy","copied":"Copied","place.shanghai":"Shanghai","place.tokyo":"Tokyo","place.singapore":"Singapore","place.frankfurt":"Frankfurt","place.london":"London","place.ashburn":"Ashburn","place.los-angeles":"Los Angeles","place.sao-paulo":"São Paulo","place.sydney":"Sydney","place.mumbai":"Mumbai","demo.title":"Try the terminal","demo.loading":"Starting the terminal…","demo.ended":"Session ended · click or press Enter to restart","demo.failed":"Terminal unavailable · click or press Enter to retry","connect.title":"Your network","connect.failed":"Could not start the connection. Check the URL, project and viewer token, then try again.","connect.reconnect":"Press q to reconnect. Check the address, project and viewer token.","languages":[{"tag":"en","href":"/app/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/app/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/app/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
+<script type="module" src="/js/demo.a393c12153d3.js"></script>
+</head>
+<body class="live-page">
+<main class="live-main">
+  <section id="live-demo" class="live-demo" aria-label="Interactive Topophany terminal" aria-busy="true"
+    data-mode="live" data-language="en" data-wasm="/data/collector.wasm?v=650657fc2801" data-worker="/js/collector-worker.d0611fc08889.js">
+    <div class="demo-viewport">
+      <canvas id="demo-canvas" tabindex="0" role="application" aria-label="Interactive Topophany terminal"></canvas>
+      <input class="demo-input" type="text" aria-label="Type a terminal search" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1">
+      <div class="demo-loading" role="status"><noscript>This terminal needs JavaScript.</noscript></div>
+      <form id="collector-connect" class="collector-connect" autocomplete="off" hidden>
+        <h1>Connect to a collector</h1>
+        <label for="collector-server">Collector URL<input id="collector-server" name="server" type="url" placeholder="https://monitor.example.com" required></label>
+        <label for="collector-project">Project ID<input id="collector-project" name="project" type="text" required autocapitalize="off" spellcheck="false"></label>
+        <label for="collector-token">Viewer token<input id="collector-token" name="token" type="password" autocomplete="off" minlength="32" maxlength="512" required></label>
+        <button type="submit">Connect</button>
+        <p id="collector-error" role="status"></p>
+      </form>
+    </div>
+    <pre id="demo-transcript" class="sr-only" aria-label="Interactive Topophany terminal"></pre>
+  </section>
+</main>
+</body>
+</html>

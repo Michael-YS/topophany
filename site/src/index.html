@@ -69,7 +69,9 @@
       <p class="lede">{{hero.lede.html}}</p>
       <p class="sub">{{hero.sub}}</p>
       <div class="cta">
-        <a class="btn btn-primary" href="#install">{{hero.install}}</a>
+        <a class="btn btn-primary" href="{{page.demo}}">{{live.try}}</a>
+        <a class="btn" href="{{page.app}}">{{connect.open}}</a>
+        <a class="btn" href="#install">{{hero.install}}</a>
         <a class="btn" href="https://github.com/WhitenWhiten/topophany">
           <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>{{hero.source}}
         </a>
@@ -93,7 +95,7 @@
     <div class="head">
       <p class="eyebrow"><span>01</span> {{demo.eyebrow}}</p>
       <h2>{{demo.title.html}}</h2>
-      <p class="lead">{{demo.lead.html}}</p>
+      <p class="lead">{{demo.lead.html}} <a href="{{page.demo}}">{{live.try}} →</a></p>
     </div>
 
     <figure class="term" id="term" data-tour="{{page.tour}}">

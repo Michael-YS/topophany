@@ -4,6 +4,20 @@ The threat model of Topophany assumes that the network, probe targets, and proxy
 
 ## Credentials and Transport
 
+The browser viewer connects directly to a user-selected collector using a
+viewer token held in its worker's memory. The token is cleared from the form
+on submission, is not written to URLs, cookies or browser storage, and is
+discarded with the worker on disconnect/navigation. Browser TLS trust applies;
+there is no certificate bypass. Fetch omits cookies and rejects redirects
+before following them. Collector reads retain the native client's project,
+schema, body-budget and freshness checks. Only the collector worker's CSP
+allows outbound HTTPS (and literal `127.0.0.1` HTTP for local development);
+the synthetic demo retains a same-origin connection policy. A collector must
+explicitly opt in to a browser origin with `--web-origin`. This permits CORS
+reads, never unauthenticated evidence or ingestion, and its preflights remain
+subject to the existing anonymous admission budgets. The web origin's scripts
+and the user's browser/extensions are part of the trusted client environment.
+
 The collector's `auth.json` stores only SHA-256 digests of 256-bit random bearer tokens. The viewer role is strictly read-only; the worker role can only write results within its scoped observer boundary that match the current project and configuration contract. A worker report remains evidence supplied by a trusted executor rather than hardware remote attestation; stealing a worker token allows spoofing that specific observer perspective, so tokens should be rotated immediately and the collector restarted to reload `auth.json`.
 
 Client and executor tokens use private files or `token_env`. HTTP probe bearer tokens and proxy passwords also reference environment variables; placing plaintext Authorization or Cookie headers directly in request header configurations is prohibited. Note that environment variables can still be read by other processes running under the same user privileges and do not constitute a full secrets management service. Do not place URLs containing tokens in notes, runbooks, screenshots, or commit histories; generic note fields cannot automatically sanitize all secrets.

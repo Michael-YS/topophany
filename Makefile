@@ -22,6 +22,7 @@ banner:
 	TOPO_BANNER=$(CURDIR)/docs/assets/banner.png go test -count=1 -run '^TestBanner$$' ./internal/tui
 site:
 	TOPO_SITE=$(CURDIR)/site/public/data go test -count=1 -run '^TestSite$$' ./internal/tui
+	python3 scripts/build_demo.py
 	python3 scripts/build_site.py
 captures:
 	python3 scripts/capture.py $(if $(FONTS),--fonts $(FONTS))

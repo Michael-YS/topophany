@@ -8,8 +8,13 @@
 *.test
 *.out
 
+# Browser binaries and their local build cache are generated before deployment.
+/site/public/data/*.wasm
+/site/public/data/demo.build.json
+
 # Local runtime state created by `topo init`, `serve` and `worker`
 /demo/
+/demo-web/
 /topophany-demo/
 /collector-data/
 /worker-data/
@@ -24,6 +29,7 @@
 
 # Wrangler's local cache, written when deploying the homepage from site/
 .wrangler/
+/site/node_modules/
 
 # Go workspace
 go.work

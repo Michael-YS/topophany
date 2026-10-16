@@ -1,4 +1,4 @@
-import { Screen } from './term.0398c444d2be.js';
+import { Screen } from './term.48019be56a9f.js';
 import { Globe, Wordmark, loadLand, land, bayer8 } from './globe.e04feafd00bd.js';
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;

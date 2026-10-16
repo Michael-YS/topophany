@@ -9,7 +9,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/preview"
@@ -52,9 +51,8 @@ type recorder struct {
 	m       *Model
 	sim     *preview.Sim
 	fetched time.Time
-	styles  map[Style]int
+	encoder cellEncoder
 	out     tour
-	prev    []cell
 }
 
 func newRecorder(t *testing.T, lang string) *recorder {
@@ -64,7 +62,7 @@ func newRecorder(t *testing.T, lang string) *recorder {
 	}
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	sim := preview.New(c, now, lang)
-	r := &recorder{t: t, sim: sim, styles: map[Style]int{}}
+	r := &recorder{t: t, sim: sim}
 	// The page draws the providers' logos itself, so the tour shows them as
 	// a terminal with a Nerd Font does.
 	r.m = &Model{Now: now, Width: tourW, Height: tourH, Preview: sim, Server: "synthetic", Colors: colorTrue, NerdFont: true}
@@ -92,23 +90,7 @@ func (r *recorder) fetch() {
 // chapter starts a new chapter with a full frame, so the page can jump to it.
 func (r *recorder) chapter(id string) {
 	r.out.Chapters = append(r.out.Chapters, tourChapter{ID: id, Tab: r.m.Tab})
-	r.prev = nil
-}
-
-func (r *recorder) style(st Style) int {
-	if st.BG == 0 {
-		st.BG = cInk
-	}
-	if i, ok := r.styles[st]; ok {
-		return i
-	}
-	fgc := -1
-	if st.FG != 0 {
-		fgc = int(st.FG & 0xFFFFFF)
-	}
-	r.styles[st] = len(r.out.Styles)
-	r.out.Styles = append(r.out.Styles, [3]int{fgc, int(st.BG & 0xFFFFFF), int(st.Attr)})
-	return r.styles[st]
+	r.encoder.prev = nil
 }
 
 // shoot renders the model and records the cells that changed, held for d.
@@ -125,58 +107,9 @@ func (r *recorder) shoot(d time.Duration) {
 			}
 		}
 	}
-	ops := [][]any{}
-	for y := 0; y < cv.H; y++ {
-		row := cv.cells[y*cv.W : (y+1)*cv.W]
-		same := func(x int) bool { return r.prev != nil && r.prev[y*cv.W+x] == row[x] }
-		for x := 0; x < cv.W; {
-			if same(x) {
-				x++
-				continue
-			}
-			// A run of changes, closing gaps of up to six unchanged cells
-			// and never splitting a wide rune from its right half.
-			end, gap := x, 0
-			for i := x; i < cv.W && gap <= 6; i++ {
-				if same(i) {
-					gap++
-					continue
-				}
-				end, gap = i+1, 0
-			}
-			start := x
-			if row[start].cont && start > 0 {
-				start--
-			}
-			if end < cv.W && row[end].cont {
-				end++
-			}
-			var text strings.Builder
-			runs := []int{}
-			for i := start; i < end; i++ {
-				p := row[i]
-				switch {
-				case p.cont:
-					text.WriteRune(1)
-				case utf8.RuneCountInString(p.ch) != 1:
-					rn, _ := utf8.DecodeRuneInString(p.ch)
-					text.WriteRune(rn)
-				default:
-					text.WriteString(p.ch)
-				}
-				s := r.style(p.st)
-				if n := len(runs); n > 0 && runs[n-2] == s {
-					runs[n-1]++
-				} else {
-					runs = append(runs, s, 1)
-				}
-			}
-			ops = append(ops, []any{y, start, text.String(), runs})
-			x = end
-		}
-	}
-	ch.Frames = append(ch.Frames, tourFrame{D: int(d / time.Millisecond), Ops: ops})
-	r.prev = append([]cell(nil), cv.cells...)
+	f := r.encoder.encode(cv)
+	r.out.Styles = append(r.out.Styles, f.Styles...)
+	ch.Frames = append(ch.Frames, tourFrame{D: int(d / time.Millisecond), Ops: f.Ops})
 }
 
 // play runs the model for total of simulated time, a frame every step,

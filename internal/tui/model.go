@@ -32,6 +32,7 @@ const (
 // Row is one selectable entry of a list (see view.Row).
 type Row = view.Row
 type Model struct {
+	ReconnectHint                           string // optional browser connection guidance, supplied by its language catalog
 	Snapshot                                model.Snapshot
 	Server                                  string
 	Error                                   string

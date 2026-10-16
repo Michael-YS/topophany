@@ -21,4 +21,46 @@
     <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://topophany.com/"/>
   </url>
+  <url>
+    <loc>https://topophany.com/demo/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://topophany.com/demo/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://topophany.com/ja/demo/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/demo/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://topophany.com/demo/"/>
+  </url>
+  <url>
+    <loc>https://topophany.com/ja/demo/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://topophany.com/demo/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://topophany.com/ja/demo/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/demo/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://topophany.com/demo/"/>
+  </url>
+  <url>
+    <loc>https://topophany.com/zh/demo/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://topophany.com/demo/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://topophany.com/ja/demo/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/demo/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://topophany.com/demo/"/>
+  </url>
+  <url>
+    <loc>https://topophany.com/app/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://topophany.com/app/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://topophany.com/ja/app/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/app/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://topophany.com/app/"/>
+  </url>
+  <url>
+    <loc>https://topophany.com/ja/app/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://topophany.com/app/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://topophany.com/ja/app/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/app/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://topophany.com/app/"/>
+  </url>
+  <url>
+    <loc>https://topophany.com/zh/app/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://topophany.com/app/"/>
+    <xhtml:link rel="alternate" hreflang="ja" href="https://topophany.com/ja/app/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://topophany.com/zh/app/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://topophany.com/app/"/>
+  </url>
 </urlset>
