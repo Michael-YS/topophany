@@ -1,20 +1,5 @@
 # Changelog
 
-
-## Unreleased
-
-- Add persistent startup display preferences, CLI overrides and `preferences show/set/reset`, plus a comma-key TUI settings dialog; application groups now start expanded by default.
-
-- Add application and environment organization, collapsible Services/Checks groups, persistent browsing scope, shared dependency navigation, and editor support without changing measurement contracts.
-
-- Add `topo capacity`, observer storage weights, configurable bounded collector state/receipt limits, and authenticated quota visibility before migration.
-- Expose worker-reported backlog, quarantine, sample ACK, contact and retry telemetry in Observers, with bounded heartbeat payloads and closed diagnostic codes. A collector that refuses the telemetry (one not yet upgraded, or a worker clock running ahead) no longer has the samples quarantined with it: the worker resends without telemetry and withholds it from that collector for an hour.
-- Generate private server/worker/client installation bundles with role-scoped enrollment, TLS, native startup definitions, dry-run, read-only enrollment verification and rollback.
-- Centralize literal addresses with reviewed references and `topo address`; preview affected measurements without resetting equivalent history or flattening editor source.
-- Collect Windows host CPU, memory, caller-relative disk capacity and selected process working sets through native APIs; validate Windows drive paths on any collector OS.
-
-A worker sending delivery telemetry to a collector not yet upgraded resends without it rather than quarantining samples. Bundle creation and address editing remain local operations; live routes and proxy policies are untouched.
-
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -49,6 +34,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does an edge wherever it is named in front of a service or an address.
   Off by default, as a terminal cannot tell which font it draws with. The
   homepage and the guide's stills draw the logos from their outlines.
+- Add persistent startup display preferences, CLI overrides and `preferences
+  show/set/reset`, plus a comma-key TUI settings dialog; application groups
+  now start expanded by default.
+- Add application and environment organization, collapsible Services/Checks
+  groups, persistent browsing scope, shared dependency navigation, and editor
+  support without changing measurement contracts.
+- Add `topo capacity`, observer storage weights, configurable bounded
+  collector state/receipt limits, and authenticated quota visibility before
+  migration.
+- Expose worker-reported backlog, quarantine, sample ACK, contact and retry
+  telemetry in Observers, with bounded heartbeat payloads and closed
+  diagnostic codes. A collector that refuses the telemetry (one not yet
+  upgraded, or a worker clock running ahead) no longer has the samples
+  quarantined with it: the worker resends without telemetry and withholds it
+  from that collector for an hour.
+- Generate private server/worker/client installation bundles with role-scoped
+  enrollment, TLS, native startup definitions, dry-run, read-only enrollment
+  verification and rollback.
+- Centralize literal addresses with reviewed references and `topo address`;
+  preview affected measurements without resetting equivalent history or
+  flattening editor source. Bundle creation and address editing remain local
+  operations; live routes and proxy policies are untouched.
+- Collect Windows host CPU, memory, caller-relative disk capacity and selected
+  process working sets through native APIs; validate Windows drive paths on
+  any collector OS.
 
 ### Changed
 
