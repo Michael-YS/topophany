@@ -20,7 +20,7 @@ SITE = ROOT / "site"
 @unittest.skipUnless(SITE.is_dir(), "the site is not part of a source export")
 class SiteTests(unittest.TestCase):
     def test_browser_binaries_are_generated_outside_git(self):
-        outputs = ["site/public/data/demo.wasm", "site/public/data/collector.wasm",
+        outputs = ["site/public/data/demo.wasm", "site/public/data/viewer.wasm",
                    "site/public/data/demo.build.json"]
         tracked = subprocess.check_output(["git", "ls-files", "--", *outputs], cwd=ROOT, text=True)
         self.assertEqual(tracked, "", "browser binaries and build cache must not enter Git history")
@@ -148,12 +148,12 @@ class SiteTests(unittest.TestCase):
     def test_collector_client_has_separate_runtime_and_connection_form(self):
         site, catalogs = build_site.load()
         pages = build_site.build()
-        self.assertEqual((SITE / "public/data/collector.wasm").read_bytes()[:4], b"\x00asm")
+        self.assertEqual((SITE / "public/data/viewer.wasm").read_bytes()[:4], b"\x00asm")
         for code in catalogs:
             where = build_site.path_of(site, code)
             page = pages[build_site.OUT / where.strip("/") / "app/index.html"]
             self.assertIn('data-mode="live"', page)
-            self.assertIn('data-wasm="/data/collector.wasm?v=', page)
+            self.assertIn('data-wasm="/data/viewer.wasm?v=', page)
             self.assertIn('data-worker="/js/collector-worker.', page)
             self.assertIn('id="collector-connect"', page)
             self.assertIn('id="collector-token"', page)

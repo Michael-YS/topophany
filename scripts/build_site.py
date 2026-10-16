@@ -154,7 +154,7 @@ def page_values(site: dict, catalogs: dict, code: str, urls: dict[str, str] | No
              "page.demo-style": urls.get("/css/demo.css"), "page.demo-script": urls.get("/js/demo.js"),
              "page.demo-worker": urls.get("/js/demo-worker.js"), "page.wasm": data_url(out, "demo.wasm"),
              "page.collector-worker": urls.get("/js/collector-worker.js"),
-             "page.collector-wasm": data_url(out, "collector.wasm"),
+             "page.viewer-wasm": data_url(out, "viewer.wasm"),
              "page.land": data_url(out, "land.bin"), "page.tour": data_url(out, f"tour.{code}.json")}
     return {
         "page.code": code,

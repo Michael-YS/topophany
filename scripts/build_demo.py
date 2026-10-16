@@ -43,11 +43,11 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     source, runtime, license_text = inputs()
-    wasm, collector, manifest = OUT / "demo.wasm", OUT / "collector.wasm", OUT / "demo.build.json"
+    wasm, viewer, manifest = OUT / "demo.wasm", OUT / "viewer.wasm", OUT / "demo.build.json"
     try:
         previous = json.loads(manifest.read_text())
         current = (previous["inputs"] == source and previous["wasm"] == sha(wasm.read_bytes())
-                   and previous["collector"] == sha(collector.read_bytes())
+                   and previous["viewer"] == sha(viewer.read_bytes())
                    and RUNTIME.read_bytes() == runtime and LICENSE.read_bytes() == license_text)
     except (OSError, KeyError, ValueError):
         current = False
@@ -60,19 +60,21 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="topophany-wasm-") as temp:
         binary = Path(temp) / "demo.wasm"
         binaries = {}
-        for mode in ("demo", "collector"):
+        for mode in ("demo", "viewer"):
             command = ["go", "build", "-trimpath", "-buildvcs=false", "-ldflags=-s -w"]
-            if mode == "collector":
+            if mode == "viewer":
                 command += ["-tags=collector"]
             subprocess.run(command + ["-o", str(binary), "./cmd/topo-demo"], cwd=ROOT, env=env, check=True)
             binaries[mode] = binary.read_bytes()
     OUT.mkdir(parents=True, exist_ok=True)
     wasm.write_bytes(binaries["demo"])
-    collector.write_bytes(binaries["collector"])
+    viewer.write_bytes(binaries["viewer"])
+    # Retire the old artifact so an existing checkout does not publish both.
+    (OUT / "collector.wasm").unlink(missing_ok=True)
     RUNTIME.write_bytes(runtime)
     LICENSE.write_bytes(license_text)
     manifest.write_text(json.dumps({"inputs": source, "wasm": sha(binaries["demo"]),
-                                    "collector": sha(binaries["collector"])}, indent=2) + "\n")
+                                    "viewer": sha(binaries["viewer"])}, indent=2) + "\n")
     for mode, data in binaries.items():
         print(f"built browser {mode} ({len(data):,} bytes, {source['go']})")
     return 0

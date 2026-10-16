@@ -84,7 +84,7 @@ CORS, omitted cookies, rejected redirects, input bursts, and startup recovery.
 
 The real browser client at `/app/` (and its language-prefixed routes) uses
 `internal/tui/remote.go` and the existing validated collector client. Its WASM
-is built separately with `-tags=collector` into `collector.wasm`; the preview
+is built separately with `-tags=collector` into `viewer.wasm`; the preview
 build excludes the network session and keeps its smaller download. Browser
 requests use Go's Fetch transport with cookies omitted and redirects refused.
 The eight-second deadline also closes an unfinished response body, releasing
