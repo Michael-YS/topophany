@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -228,7 +229,12 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		return
 	}
 	if w >= 100 {
+		// The list leads: it gets a little more than half, so names read
+		// whole, and the evidence keeps the rest.
 		lw := w / 2
+		if w >= 120 {
+			lw = w * 56 / 100
+		}
 		ix, iy, iw, ih := m.panel(cv, x, y, lw, h, title, tag, true)
 		m.drawList(cv, ix, iy, iw, ih, rows)
 		hint := "Enter expand"
@@ -313,12 +319,13 @@ func (m *Model) drawModal(cv *Canvas) {
 			m.button(cv, x+w-24+n+2, by, "Esc No", "btn:no", false)
 		}
 	case "menu":
-		mw, hint := 60, 0
+		mw, hint, keyed := 60, 0, false
 		for _, it := range md.items {
 			mw = max(mw, width(it.label)+12)
 			if it.hint != "" {
 				hint = 4
 			}
+			keyed = keyed || it.key != ""
 		}
 		if hint > 0 {
 			mw = max(mw, 72)
@@ -340,8 +347,16 @@ func (m *Model) drawModal(cv *Canvas) {
 				cv.Fill(x-1, y+1+i, w+2, 1, st)
 				cv.Set(x-1, y+1+i, '▌', fg(cAccent).Bg(cSelBG))
 			}
-			cv.Text(x+1, y+1+i, " "+it.key+" ", fg(cGlow).Bg(cKeyBG).bold(), -1)
-			cv.Text(x+5, y+1+i, it.label, st, w-6)
+			// Items chosen by key wear it on a keycap; a menu without keys
+			// (a list of choices) starts its labels where the caps would.
+			lx := x + 1
+			if keyed {
+				if it.key != "" {
+					cv.Text(x+1, y+1+i, " "+it.key+" ", fg(cGlow).Bg(cKeyBG).bold(), -1)
+				}
+				lx = x + 5
+			}
+			cv.Text(lx, y+1+i, it.label, st, x+w-1-lx)
 			m.hit(x-1, y+1+i, w+2, "menu:"+itoa(i))
 		}
 	case "form":
@@ -351,21 +366,33 @@ func (m *Model) drawModal(cv *Canvas) {
 
 func (m *Model) drawForm(cv *Canvas, f *Form) {
 	n := len(f.fields)
-	x, y, w, h := m.modalBox(cv, 86, n+8, f.title)
-	bg := Style{BG: cPanelBG}
-	visible := max(1, h-5)
-	if f.focus < n {
-		if f.focus < f.scroll {
-			f.scroll = f.focus
-		}
-		if f.focus >= f.scroll+visible {
-			f.scroll = f.focus - visible + 1
+	// Only the fields on show take rows; the label column is as wide as
+	// their longest label, so none runs out of the dialog.
+	order := []int{}
+	labelW := 0
+	for i, fd := range f.fields {
+		if f.shown(i) {
+			order = append(order, i)
+			labelW = max(labelW, width(fd.label))
 		}
 	}
-	labelW := 15
-	vw := max(4, w-labelW-2)
-	for i := 0; i < visible && f.scroll+i < n; i++ {
-		j := f.scroll + i
+	x, y, w, h := m.modalBox(cv, 86, len(order)+8, f.title)
+	bg := Style{BG: cPanelBG}
+	visible := max(1, h-5)
+	if at := slices.Index(order, f.focus); at >= 0 {
+		if at < f.scroll {
+			f.scroll = at
+		}
+		if at >= f.scroll+visible {
+			f.scroll = at - visible + 1
+		}
+	}
+	f.scroll = max(0, min(f.scroll, len(order)-visible))
+	labelW = min(max(labelW, 8), 24, max(8, w/3)) + 1
+	vx := x + labelW + 1
+	vw := max(4, w-labelW-1)
+	for i := 0; i < visible && f.scroll+i < len(order); i++ {
+		j := order[f.scroll+i]
 		fd := f.fields[j]
 		ry := y + 1 + i
 		focused := j == f.focus
@@ -373,16 +400,16 @@ func (m *Model) drawForm(cv *Canvas, f *Form) {
 		if focused {
 			ls = bg.Fg(cAccent).bold()
 		}
-		lbl := fd.label
-		cv.Text(x+labelW-width(lbl)-1, ry, lbl, ls, labelW)
-		box := Style{FG: cText, BG: Mix(cPanelBG, cKeyBG, .6)}
+		lbl := ellipsis(fd.label, labelW-1)
+		cv.Text(x+labelW-1-width(lbl), ry, lbl, ls, labelW-1)
+		box := Style{FG: cText, BG: Mix(cPanelBG, cKeyBG, .45)}
 		if focused {
 			box = Style{FG: cGlow, BG: cKeyBG}
+			cv.Set(vx-1, ry, '▐', fg(cAccent).Bg(cPanelBG))
 		}
 		if fd.readonly {
 			box = bg.Fg(cMuted)
 		}
-		vx := x + labelW + 1
 		cv.Fill(vx, ry, vw, 1, box)
 		switch fd.kind {
 		case fChoice:
@@ -390,13 +417,16 @@ func (m *Model) drawForm(cv *Canvas, f *Form) {
 			if v == "" {
 				v = "(none)"
 			}
-			cv.Text(vx, ry, "‹ "+v+" ›", box, vw)
+			cv.Text(vx+1, ry, "‹ "+v+" ›", box, vw-1)
 		case fBool:
-			mark := "[ ] no"
+			mark := "○ no"
 			if fd.value == "yes" {
-				mark = "[x] yes"
+				mark = "● yes"
 			}
-			cv.Text(vx, ry, mark, box, vw)
+			if m.NoColor {
+				mark = map[bool]string{true: "[x] yes", false: "[ ] no"}[fd.value == "yes"]
+			}
+			cv.Text(vx+1, ry, mark, box, vw-1)
 		default:
 			r := []rune(fd.value)
 			cur := min(max(fd.cursor, 0), len(r))
@@ -404,12 +434,12 @@ func (m *Model) drawForm(cv *Canvas, f *Form) {
 			// the controls Text drops.
 			shown := func(from int) int { return width(secure.Text(string(r[from:cur]))) }
 			start := 0
-			for shown(start) > vw-2 {
+			for shown(start) > vw-3 {
 				start++
 			}
-			cv.Text(vx, ry, string(r[start:]), box, vw)
+			cv.Text(vx+1, ry, string(r[start:]), box, vw-1)
 			if focused && !fd.readonly {
-				cxp := vx + shown(start)
+				cxp := vx + 1 + shown(start)
 				ch := ' '
 				if cur < len(r) {
 					ch = r[cur]
@@ -425,8 +455,8 @@ func (m *Model) drawForm(cv *Canvas, f *Form) {
 		}
 		m.hit(x, ry, w, "field:"+itoa(j))
 	}
-	if n > visible {
-		pos := itoa(min(n, f.scroll+visible)) + "/" + itoa(n)
+	if len(order) > visible {
+		pos := itoa(min(len(order), f.scroll+visible)) + "/" + itoa(len(order))
 		cv.Text(x+w-width(pos), y, pos, bg.Fg(cFaint), -1)
 	}
 	hy := y + h - 3

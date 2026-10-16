@@ -83,6 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   certificate from an authority not trusted here or for another name, an
   http:// collector, a busy or failing collector, or a snapshot that is not
   current. `topo status`, `show` and `history` give the same reasons.
+- Lists leave out a column in which every row says the same word (every
+  check `fresh`, every item an `incident`); it comes back as soon as a row
+  differs. On terminals 120 columns or wider the list takes a little more
+  than half the width, so names read whole.
+- A long label in the evidence panel keeps a short value beside it rather
+  than hanging it on the next line, and `true` and `false` read yes and no.
+- The Check form shows only the options of the kind chosen; what the others
+  hold is kept.
+- The Settings dialog explains the focused setting and has buttons like the
+  other dialogs: Apply now, Save as startup defaults, Restore defaults.
 - Preferences that cannot be read no longer keep the TUI from opening: it
   starts with the built-in defaults and says why. `preferences show` still
   reports the error.
@@ -93,6 +103,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `EnvironmentFile=`, which systemd refuses, so installing such a bundle
   on Linux failed and rolled back. A new test checks the unit with
   `systemd-analyze verify` where it is installed.
+- `topo preview` said how to switch scenarios before its clock started, so
+  the hint was gone before the first frame.
+- Editor labels longer than the form's label column ran out of the dialog;
+  the Browse menu drew an empty key column; an evidence title too long for
+  its panel was cut without an ellipsis.
 
 ### Security
 

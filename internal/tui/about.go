@@ -434,9 +434,9 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 		{},
 		link("homepage", homepage),
 		link("source", repo),
-		{parts: []span{sp("[,] Display & startup preferences", fg(cAccent))}, action: "key:,"},
+		{parts: []span{sp(", ", fg(cAccent).bold()), sp(fit("settings", 10), latin), sp("display & startup preferences", fg(cAccent2))}, action: "key:,"},
 		{},
-		{parts: []span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("`topo`", fg(cMuted))}},
+		{parts: []span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("topo", fg(cText).bold())}},
 	}
 	if c.Project != "" {
 		lines = append(lines, aboutLine{parts: []span{sp(c.Project, fg(cText)), sp("  ·  "+plural(len(c.Nodes), "node")+"  ·  "+plural(len(c.Links), "link")+"  ·  "+plural(len(c.Checks), "check"), fg(cMuted))}})

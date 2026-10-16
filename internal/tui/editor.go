@@ -338,6 +338,7 @@ type field struct {
 	readonly           bool
 	cursor             int
 	blur               func(*Form)
+	when               func(*Form) bool // shown, and focused, only while it holds; nil for always
 }
 type Form struct {
 	kind, orig, title string
@@ -385,6 +386,14 @@ func (f *Form) num(label string) (int, error) {
 }
 func (f *Form) yes(label string) bool { return f.val(label) == "yes" }
 
+// shown reports whether field i is on the form: a field that only means
+// something for another kind of check stays out of the way.
+func (f *Form) shown(i int) bool {
+	return i >= len(f.fields) || f.fields[i].when == nil || f.fields[i].when(f)
+}
+
+// move leaves the focused field and steps d places through the fields on
+// show and the two buttons after them.
 func (f *Form) move(d int) {
 	if f.focus < len(f.fields) {
 		if b := f.fields[f.focus].blur; b != nil {
@@ -392,7 +401,20 @@ func (f *Form) move(d int) {
 		}
 	}
 	n := len(f.fields) + 2
-	f.focus = (f.focus + d + n) % n
+	for ; d != 0; d -= sign(d) {
+		next := (f.focus + sign(d) + n) % n
+		for next != f.focus && !f.shown(next) {
+			next = (next + sign(d) + n) % n
+		}
+		f.focus = next
+	}
+}
+
+func sign(d int) int {
+	if d < 0 {
+		return -1
+	}
+	return 1
 }
 func (f *Form) key(k string) string {
 	switch {
@@ -404,8 +426,9 @@ func (f *Form) key(k string) string {
 		f.move(0)
 		return "submit"
 	case strings.HasPrefix(k, "field:"):
-		if n, e := strconv.Atoi(k[6:]); e == nil && n >= 0 && n < len(f.fields) {
-			f.move(n - f.focus)
+		if n, e := strconv.Atoi(k[6:]); e == nil && n >= 0 && n < len(f.fields) && f.shown(n) {
+			f.move(0)
+			f.focus = n
 		}
 		return ""
 	case k == "tab" || k == "down" || k == "wheel-down":
@@ -822,11 +845,14 @@ func (m *Model) openForm(kind, id string) {
 		for _, s := range x.HTTP.Status {
 			status = append(status, strconv.Itoa(s))
 		}
-		f.add("HTTP status", strings.Join(status, ", "), fList, "http: accepted status codes, e.g. 200, 204")
-		f.add("HTTP contains", x.HTTP.Contains, fText, "http: required body substring")
-		f.add("DNS name", x.DNS.Name, fText, "dns: name to resolve")
-		f.add("DNS type", x.DNS.Type, fChoice, "dns: record type", "", "A", "AAAA")
-		addHostFields(f, x.Host)
+		// Options of one kind of probe show only while it is chosen; what
+		// they hold is kept, and saved as before, whatever is chosen.
+		kindIs := func(k string) func(*Form) bool { return func(f *Form) bool { return f.val("Kind") == k } }
+		f.add("HTTP status", strings.Join(status, ", "), fList, "http: accepted status codes, e.g. 200, 204").when = kindIs("http")
+		f.add("HTTP contains", x.HTTP.Contains, fText, "http: required body substring").when = kindIs("http")
+		f.add("DNS name", x.DNS.Name, fText, "dns: name to resolve").when = kindIs("dns")
+		f.add("DNS type", x.DNS.Type, fChoice, "dns: record type", "", "A", "AAAA").when = kindIs("dns")
+		addHostFields(f, x.Host, kindIs("host"))
 		f.add("Notes", x.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
 			x.Application, x.Environment = f.val("Application"), f.val("Environment")

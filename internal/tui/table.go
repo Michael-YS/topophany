@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
@@ -31,17 +32,20 @@ func stateWord(r Row) (string, Style) {
 
 type tableLayout struct {
 	titleW int
-	cols   []int  // widths of the Row.Cols shown; dropped columns are absent
-	right  []bool // numeric columns are right-aligned
+	idx    []int  // the Row.Cols shown, in order; dropped columns are absent
+	cols   []int  // their widths
+	right  []bool // and which are numeric, so right-aligned
 	stateW int
 }
 
 const tableGap = 2
 
 // layoutTable sizes columns from every row, not just the visible ones, so the
-// table does not jitter while scrolling. When space is short the widest
-// column gives way first; a column is dropped (rightmost first) only when
-// every column is already at its minimum.
+// table does not jitter while scrolling. A column of words that every row
+// shares (all "fresh", all "incident") says nothing per row and is left
+// out. When space is short the widest column gives way first; a column is
+// dropped (rightmost first) only when every column is already at its
+// minimum.
 func layoutTable(rows []Row, heads []string, w int) tableLayout {
 	l := tableLayout{}
 	ncol := 0
@@ -54,6 +58,26 @@ func layoutTable(rows []Row, heads []string, w int) tableLayout {
 		if s != "" {
 			l.stateW = max(l.stateW, width(s))
 		}
+	}
+	shared := make([]bool, ncol)
+	for i := range shared {
+		first, n := "", 0
+		shared[i] = true
+		for _, r := range rows {
+			if r.Kind == "group" {
+				continue
+			}
+			v := ""
+			if i < len(r.Cols) {
+				v = r.Cols[i]
+			}
+			if n == 0 {
+				first = v
+			}
+			shared[i] = shared[i] && v == first
+			n++
+		}
+		shared[i] = shared[i] && n >= 3 && first != "" && (first[0] < '0' || first[0] > '9')
 	}
 	// A state every row shares (a draft is all "unknown", a cached view all
 	// "cached") says nothing per row; the header already says it.
@@ -84,12 +108,20 @@ func layoutTable(rows []Row, heads []string, w int) tableLayout {
 		pref[i] = min(pref[i], 28)
 		l.right[i] = numeric
 	}
-	for len(pref) > 0 && pref[len(pref)-1] == 0 {
-		pref = pref[:len(pref)-1]
+	keep := []int{}
+	for i := range pref {
+		if pref[i] > 0 && !shared[i] {
+			keep = append(keep, i)
+		}
 	}
+	numeric := l.right
 	title := l.titleW
-	for n := len(pref); n >= 0; n-- {
-		l.cols = append(l.cols[:0], pref[:n]...)
+	for n := len(keep); n >= 0; n-- {
+		l.idx = keep[:n]
+		l.cols = l.cols[:0]
+		for _, i := range l.idx {
+			l.cols = append(l.cols, pref[i])
+		}
 		l.titleW = title
 		total := 2 + l.titleW
 		for _, c := range l.cols {
@@ -100,9 +132,9 @@ func layoutTable(rows []Row, heads []string, w int) tableLayout {
 		}
 		for total > w {
 			widest, at := l.titleW-14, -1
-			for i, c := range l.cols {
-				if c-min(9, pref[i]) > widest {
-					widest, at = c-min(9, pref[i]), i
+			for k, c := range l.cols {
+				if c-min(9, pref[l.idx[k]]) > widest {
+					widest, at = c-min(9, pref[l.idx[k]]), k
 				}
 			}
 			if widest <= 0 {
@@ -129,13 +161,16 @@ func layoutTable(rows []Row, heads []string, w int) tableLayout {
 				}
 			}
 			grow(&l.titleW, natTitle)
-			for i := len(l.cols) - 1; i >= 0; i-- {
-				grow(&l.cols[i], natural[i])
+			for k := len(l.cols) - 1; k >= 0; k-- {
+				grow(&l.cols[k], natural[l.idx[k]])
 			}
 			break
 		}
 	}
-	l.right = l.right[:len(l.cols)]
+	l.right = make([]bool, len(l.idx))
+	for k, i := range l.idx {
+		l.right[k] = numeric[i]
+	}
 	return l
 }
 
@@ -161,11 +196,26 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 		return
 	}
 	if len(rows) == 0 {
-		msg := "No matching entries / no current evidence."
-		if m.Edit != nil && m.Search == "" {
+		// Say why the list is empty, and how to fill it where a key can.
+		msg, hint := "No "+strings.ToLower(tabs[m.Tab])+" declared.", ""
+		switch {
+		case m.Search != "":
+			msg, hint = "Nothing matches “"+m.Search+"”.", "Esc clears the filter."
+		case m.Edit != nil:
 			msg = "Nothing here yet — press a to add."
+		case m.AttentionOnly && m.businessTab():
+			msg, hint = "Nothing here needs attention.", "b Browse shows everything again."
+		case m.Tab == tabIncidents:
+			msg = "No incidents: none open, and none closed in the last day."
+		case m.Tab == tabTopology:
+			msg = "No nodes declared."
+		case m.businessTab() && (m.Application != "" || m.Environment != "" || m.ServiceFilter != ""):
+			msg, hint = "Nothing in this application or environment.", "b Browse picks another, or clears the filters."
 		}
-		cv.Text(x, y, msg, fg(cMuted).italic(), w)
+		cv.Text(x, y, ellipsis(msg, w), fg(cMuted).italic(), w)
+		if hint != "" && h > 1 {
+			cv.Text(x, y+1, ellipsis(hint, w), fg(cFaint), w)
+		}
 		return
 	}
 	rows = m.logoRows(rows)
@@ -178,8 +228,8 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 		cx += lay.titleW
 		for i, cw := range lay.cols {
 			cx += tableGap
-			if i+1 < len(heads) {
-				head := fitHead(heads[i+1], cw)
+			if c := lay.idx[i]; c+1 < len(heads) {
+				head := fitHead(heads[c+1], cw)
 				if lay.right[i] {
 					head = strings.Repeat(" ", max(0, cw-width(head))) + head
 				}
@@ -245,13 +295,15 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 		case r.Kind == "node" && r.Tree == "":
 			ts = ts.bold()
 		}
-		cv.Text(cx, y+i, ellipsis(r.Title, tw), ts, tw)
+		shown := ellipsis(r.Title, tw)
+		cv.Text(cx, y+i, shown, ts, tw)
+		m.highlight(cv, cx, y+i, shown, base)
 		cx += tw
 		for k, cw := range lay.cols {
 			cx += tableGap
-			if k < len(r.Cols) {
+			if c := lay.idx[k]; c < len(r.Cols) {
 				cs := base.Fg(cMuted)
-				if k == 0 && r.Kind == "node" {
+				if c == 0 && r.Kind == "node" {
 					if c, ok := groups[r.Cols[0]]; ok {
 						cs = base.Fg(c)
 					}
@@ -259,7 +311,7 @@ func (m *Model) drawList(cv *Canvas, x, y, w, h int, rows []Row) {
 				if r.Kind == "endpoint" || r.Kind == "link" {
 					cs = base.Fg(Mix(cMuted, cFaint, .35))
 				}
-				v := ellipsis(r.Cols[k], cw)
+				v := ellipsis(r.Cols[c], cw)
 				if c, ok := cellTone[v]; ok {
 					cs = base.Fg(c)
 				}
@@ -297,4 +349,28 @@ func (m *Model) groupColors() map[string]Color {
 		}
 	}
 	return out
+}
+
+// highlight marks where the filter matches the title drawn at (x, y), so
+// the eye finds why each row is in the list.
+func (m *Model) highlight(cv *Canvas, x, y int, shown string, base Style) {
+	q := []rune(strings.ToLower(m.Search))
+	if len(q) == 0 || m.NoColor {
+		return
+	}
+	rs := []rune(shown)
+	for i := 0; i+len(q) <= len(rs); i++ {
+		match := true
+		for j := range q {
+			if unicode.ToLower(rs[i+j]) != q[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			at := width(string(rs[:i]))
+			cv.Text(x+at, y, string(rs[i:i+len(q)]), base.Fg(cGlow).Bg(Mix(cAccent, cInk, .55)).bold(), -1)
+			return
+		}
+	}
 }

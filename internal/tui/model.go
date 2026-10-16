@@ -103,7 +103,12 @@ func (m *Model) Cached() bool {
 	return m.Error != "" || view.Expired(m.Snapshot, m.Now)
 }
 func (m *Model) say(msg string, isErr bool) {
-	m.notice, m.noticeErr, m.noticeAt = secure.Text(msg), isErr, m.Now
+	at := m.Now
+	if at.IsZero() {
+		// Said before the first frame, it shows from the first frame.
+		at = time.Now()
+	}
+	m.notice, m.noticeErr, m.noticeAt = secure.Text(msg), isErr, at
 }
 
 // view is what the model shows, as the view package derives it for the

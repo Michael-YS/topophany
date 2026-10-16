@@ -89,8 +89,13 @@ func valueStyle(key, v string) (string, Style) {
 		}
 		return v, fg(cMuted)
 	}
-	if v == "" {
+	switch v {
+	case "":
 		return "—", fg(cFaint)
+	case "true":
+		return "yes", fg(cText)
+	case "false":
+		return "no", fg(cMuted)
 	}
 	return v, fg(cText)
 }
@@ -167,10 +172,15 @@ func (m *Model) detailBody(r Row, w int) []vline {
 				}
 				val, st := valueStyle(key, val)
 				if width(key) > kw {
-					// A long key takes its own line; the value hangs below it.
+					// A long key keeps a short value beside it; a long
+					// value hangs below the key, in the value column.
+					if width(key)+2+width(val) <= w {
+						out = append(out, append(vline{{key + "  ", fg(cMuted)}}, arrows(val, st)...))
+						continue
+					}
 					out = append(out, vline{{key, fg(cMuted)}})
 				}
-				for i, v := range wrap(val, vw) {
+				for i, v := range wrapParts(val, vw) {
 					lead := strings.Repeat(" ", kw+2)
 					if i == 0 && width(key) <= kw {
 						lead = key + strings.Repeat(" ", max(0, kw-width(key))+2)
@@ -208,7 +218,7 @@ func (m *Model) drawDetail(cv *Canvas, x, y, w, h int, r Row, scroll bool) {
 	if h >= 6 {
 		label, st := statePill(r)
 		pw := width(label)
-		cv.Text(x, y, strings.TrimSpace(r.Title), fg(cGlow).bold(), w-pw-1)
+		cv.Text(x, y, ellipsis(strings.TrimSpace(r.Title), w-pw-1), fg(cGlow).bold(), w-pw-1)
 		cv.Text(x+w-pw, y, label, st, -1)
 		sub := r.Kind + "  ·  " + r.ID
 		if r.Kind == "group" {
@@ -246,4 +256,25 @@ func (m *Model) drawDetail(cv *Canvas, x, y, w, h int, r Row, scroll bool) {
 		more := " ↓ " + itoa(len(lines)-off-bh) + " more "
 		cv.Text(x+w-width(more), y+h, more, fg(cFaint), -1)
 	}
+}
+
+// wrapParts wraps a value at its " · " separators before anywhere else, so
+// a part such as "down 39m" stays whole on the line it moves to.
+func wrapParts(v string, w int) []string {
+	if width(v) <= w || !strings.Contains(v, " · ") {
+		return wrap(v, w)
+	}
+	out, cur := []string{}, ""
+	for _, part := range strings.Split(v, " · ") {
+		switch {
+		case cur == "":
+			cur = part
+		case width(cur)+3+width(part) <= w:
+			cur += " · " + part
+		default:
+			out = append(out, wrap(cur, w)...)
+			cur = part
+		}
+	}
+	return append(out, wrap(cur, w)...)
 }

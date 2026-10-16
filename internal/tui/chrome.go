@@ -354,7 +354,11 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 		cv.Set(x, y, '◎', fg(c))
 		x += 2
 		x += cv.Text(x, y, itoa(live)+"/"+itoa(all), fg(cText).bold(), -1)
-		cv.Text(x, y, " observers live", fg(cMuted), cv.W-x-1)
+		label := " observers live"
+		if x+width(label) > cv.W-1 {
+			label = " live" // a word, not most of two
+		}
+		cv.Text(x, y, label, fg(cMuted), cv.W-x-1)
 	}
 }
 
