@@ -265,3 +265,7 @@
   .connect-box button { min-height: 44px; }
 }
 @media (hover: none), (max-width: 600px) { .connect-keys { visibility: hidden; } }
+/* A page the TUI is fitted to (a phone's) is its own width and takes every
+   touch: a swipe turns a tab or scrolls a list, two fingers pinch the map. */
+.live-demo.is-fit .demo-viewport { overflow: hidden; }
+.live-demo.is-fit .demo-viewport canvas { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }

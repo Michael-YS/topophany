@@ -26,6 +26,9 @@ type DemoFrame struct {
 	Searching bool   `json:"searching"`
 	Closed    bool   `json:"closed"`
 	Text      string `json:"text,omitempty"`
+	// Device is what the frame is laid out for ("fit" on a phone), or ""
+	// for the terminal; the page sizes its cells to match.
+	Device string `json:"device,omitempty"`
 }
 
 type cellEncoder struct {

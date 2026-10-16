@@ -115,9 +115,10 @@ func (m *Model) columnRail(cv *Canvas, s display) {
 }
 
 // cornerPad is how far a bar along the top keeps from the screen's left
-// corner where no inset keeps it away: the glass rounds there.
+// corner where no inset keeps it away: the glass rounds there. A fitted
+// screen is a page in a browser, square at its corners.
 func cornerPad(s display) int {
-	if s.page.x == 0 && s.page.y == 0 {
+	if s.page.x == 0 && s.page.y == 0 && !s.Fit {
 		return 2
 	}
 	return 0
@@ -281,10 +282,15 @@ func (m *Model) drawCompactCards(cv *Canvas, x, y, w, h int, rows []Row, open bo
 
 func (m *Model) wide(cv *Canvas, s display) {
 	p := s.page
-	cv.Fill(p.x, p.y, railW, p.h, Style{BG: cInkHi})
-	m.tabRail(cv, rect{p.x, p.y + (p.h-len(tabs)*touchRows)/2, railW - 1, len(tabs) * touchRows})
-	// The drawer comes out with a swipe from the edge; the rail fills the
-	// height with the tabs alone.
+	if all := len(tabs) * touchRows; all <= p.h {
+		// The drawer comes out with a swipe from the edge; the rail fills
+		// the height with the tabs alone.
+		cv.Fill(p.x, p.y, railW, p.h, Style{BG: cInkHi})
+		m.tabRail(cv, rect{p.x, p.y + (p.h-all)/2, railW - 1, all})
+	} else {
+		// Too short for them all: the drawer's button over those that fit.
+		m.sideRail(cv, rect{p.x, p.y, railW, p.h})
+	}
 	c := rect{p.x + railW, p.y, p.w - railW, p.h}
 	m.appBar(cv, c.x, c.y, c.w, 0)
 	body := rect{c.x, c.y + 1, c.w, c.h - 1}

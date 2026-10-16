@@ -18,7 +18,7 @@ func deviceFlag(f *flag.FlagSet) *string {
 	for _, d := range tui.Devices() {
 		ids = append(ids, d.ID)
 	}
-	return f.String("device", "", "lay the TUI out for a device's screen and simulate it in the terminal: "+strings.Join(ids, ", ")+"; [ and ] fold through its poses, \\ picks the next device")
+	return f.String("device", "", "lay the TUI out for a device's screen and simulate it in the terminal: "+strings.Join(ids, ", ")+"; [ and ] fold through its poses, \\ picks the next device; fit lays out the terminal itself for touch, at its own size")
 }
 
 // withDevice checks --device and puts it in the TUI's startup.

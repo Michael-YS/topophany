@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/device_shots.py` pictures each device's screen in its frame,
   iPhone Duo's part-folded poses rendered in 3D with the iPhone Duo
   simulator kit.
+- On a phone, the website's live demo and collector viewer take the phone
+  layout at the page's own width instead of scrolling an 80-column
+  terminal sideways: the tabs in a sidebar rail, controls a finger tall,
+  and taps, swipes and two-finger pinches read as on a device. A page
+  wider than a phone is the terminal again. `--device fit` lays out the
+  terminal itself for touch the same way.
 
 ### Changed
 

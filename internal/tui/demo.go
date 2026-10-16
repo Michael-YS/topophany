@@ -69,6 +69,8 @@ func (d *Demo) Key(key string, now time.Time) {
 	case "view":
 		d.m.NextObserver()
 		d.fetched = time.Time{}
+	case "observe": // a touch screen's menu has picked the observer
+		d.fetched = time.Time{}
 	case "refresh":
 		d.fetched = time.Time{}
 	}
@@ -131,7 +133,7 @@ func (d *Demo) Frame(now time.Time, cols, rows int, force bool) *DemoFrame {
 	}
 	f := &DemoFrame{CellFrame: d.encoder.encode(cv), Title: m.title(), Tab: m.Tab,
 		Observer: m.Observer, Scenario: d.sim.ScenarioIDs()[d.sim.Scenario()],
-		Searching: m.Searching, Closed: d.closed}
+		Searching: m.Searching, Closed: d.closed, Device: m.deviceID()}
 	if force || resized || refreshed {
 		f.Text = strings.Join(cv.Lines(colorNone), "\n")
 	}

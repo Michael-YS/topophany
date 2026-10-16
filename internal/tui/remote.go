@@ -69,13 +69,17 @@ func (r *Remote) Key(key string, now time.Time) {
 		return
 	}
 	r.m.Now = now
-	switch r.m.Key(key) {
+	switch cmd := r.m.Key(key); cmd {
 	case "quit":
 		r.Close()
 	case "refresh":
 		r.requested = time.Time{}
-	case "view":
-		r.m.NextObserver()
+	case "view", "observe":
+		// v steps to the next observer; a touch screen's menu has already
+		// picked one.
+		if cmd == "view" {
+			r.m.NextObserver()
+		}
 		r.m.Snapshot = model.Snapshot{Topology: r.m.Snapshot.Topology}
 		r.m.Error, r.m.Loading = "", "loading the observer view"
 		r.requested = time.Time{}
@@ -151,7 +155,7 @@ func (r *Remote) Frame(now time.Time, cols, rows int, force bool) *DemoFrame {
 		r.encoder = cellEncoder{}
 	}
 	f := &DemoFrame{CellFrame: r.encoder.encode(cv), Title: m.title(), Observer: m.Observer,
-		Tab: m.Tab, Searching: m.Searching, Closed: r.closed}
+		Tab: m.Tab, Searching: m.Searching, Closed: r.closed, Device: m.deviceID()}
 	if force || resized || changed {
 		f.Text = strings.Join(cv.Lines(colorNone), "\n")
 	}

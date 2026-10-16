@@ -73,6 +73,13 @@ viewer token. Fetch redirects are refused before forwarding credentials.
 browser client reads the collector's evidence; monitoring continues in the
 collector and workers when the page is closed.
 
+On a phone, both pages lay the TUI out for the page itself rather than
+scrolling an 80-column terminal sideways: the phone layout of
+[Device layouts](DEVICES.md#fitted-to-the-page), at the page's own width, with
+the tabs in a sidebar rail and controls a finger tall. A tap selects or opens,
+a swipe across turns the tab, two fingers pinch the map. Wider than a phone,
+the page is the terminal again.
+
 ## Terminal Interface
 
 The TUI is built to answer one question before anything is read: *is anything wrong, and where?*
@@ -167,7 +174,7 @@ The full `topo preview --lang zh` topology includes independent CPU, memory, dis
 
 ![Servers cards with local CPU, memory, disk and process summaries in the full preview topology](assets/servers.en.png)
 
-`--device` lays the TUI out for the screen of an iPhone, an iPhone Duo or an iPad, and simulates that screen in the middle of the terminal: `topo preview --device duo-upright` puts the map above iPhone Duo's hinge and the events below it. `[` and `]` fold and unfold through the device's poses and `\` picks the next device; a click is a tap, a drag a swipe and the wheel over the map a pinch. [Device layouts](DEVICES.md) describes each device's layout and the touch design, and how `scripts/device_shots.py` pictures them.
+`--device` lays the TUI out for the screen of an iPhone, an iPhone Duo or an iPad, and simulates that screen in the middle of the terminal: `topo preview --device duo-upright` puts the map above iPhone Duo's hinge and the events below it. `[` and `]` fold and unfold through the device's poses and `\` picks the next device; a click is a tap, a drag a swipe and the wheel over the map a pinch. `--device fit` lays out the terminal itself for touch, at its own size, as a terminal app on a phone wants. [Device layouts](DEVICES.md) describes each device's layout and the touch design, and how `scripts/device_shots.py` pictures them.
 
 When collectors are unreachable, cached data is retained but items transition to `unknown` and are marked CACHED; `topo status`, which keeps no cache, exits 4 instead. Switching to a backup collector never silently changes the observer vantage point. The TUI queries the HTTP API every 3 seconds (preview mode regenerates synthetic snapshots every second); SSE and browser-based frontends are not implemented.
 

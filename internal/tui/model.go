@@ -221,7 +221,32 @@ func (m *Model) NextObserver() {
 	}
 }
 
-// Key returns quit/refresh/view actions; it never performs network calls itself.
+// useDevice lays the TUI out for the device with id, or for the terminal
+// with "". The same device again changes nothing, so the map's
+// magnification and the list's scroll survive a page that repeats itself.
+func (m *Model) useDevice(id string) {
+	var d *Device
+	if id != "" {
+		var e error
+		if d, e = DeviceByID(id); e != nil {
+			return
+		}
+	}
+	if d == nil && m.Device == nil || d != nil && m.Device != nil && d.ID == m.Device.ID {
+		return
+	}
+	m.Device, m.touch = d, touch{}
+}
+
+// deviceID is the device the TUI is laid out for, "" for the terminal.
+func (m *Model) deviceID() string {
+	if m.Device == nil {
+		return ""
+	}
+	return m.Device.ID
+}
+
+// Key returns quit/refresh/view/observe actions; it never performs network calls itself.
 func (m *Model) Key(k string) string {
 	if c, ok := strings.CutPrefix(k, "cell:"); ok {
 		// The terminal's answer to CSI 16 t: a cell's height and width in
@@ -232,6 +257,13 @@ func (m *Model) Key(k string) string {
 		if e1 == nil && e2 == nil && ch > 0 && cw > 0 {
 			m.Cell = float64(ch) / float64(cw)
 		}
+		return ""
+	}
+	if id, ok := strings.CutPrefix(k, "device:"); ok {
+		// A page that knows its screen, the website's viewer on a phone,
+		// lays the TUI out for it ("device:fit"); "device:" goes back to
+		// the terminal's own layouts.
+		m.useDevice(id)
 		return ""
 	}
 	if strings.HasPrefix(k, "mouse:") {

@@ -48,7 +48,16 @@ type Device struct {
 	Column string
 	Scale  float64 // pixels per point
 	Angle  float64 // the hinge's opening, degrees; 180 lying flat
+	// Fit makes the window the whole terminal, at whatever size it is,
+	// with nothing of the system's in it: the website's viewer on a phone,
+	// whose browser keeps the status bar outside the page.
+	Fit bool
 }
+
+// fitted is the terminal's own screen laid out for touch (--device fit, and
+// the website's viewer on a phone): the layout comes from its size alone.
+var fitted = Device{ID: "fit", Model: "Touch screen", Pose: "fit", About: "the terminal's own size, laid out for touch",
+	Scale: 1, Angle: 180, Fit: true}
 
 // devices are the screens the TUI is laid out for, each model's poses in
 // the order they unfold.
@@ -84,9 +93,14 @@ var devices = []Device{
 func Devices() []Device { return append([]Device{}, devices...) }
 
 // DeviceByID finds a device by its ID, or by its model's first word
-// ("iphone", "duo", "ipad") for that model's first pose.
+// ("iphone", "duo", "ipad") for that model's first pose; "fit" is the
+// terminal's own screen.
 func DeviceByID(id string) (*Device, error) {
 	id = strings.ToLower(strings.TrimSpace(id))
+	if id == fitted.ID {
+		d := fitted
+		return &d, nil
+	}
 	for i := range devices {
 		if devices[i].ID == id {
 			d := devices[i]
@@ -103,7 +117,7 @@ func DeviceByID(id string) (*Device, error) {
 	for _, d := range devices {
 		ids = append(ids, d.ID)
 	}
-	return nil, errors.New("no device " + id + "; one of " + strings.Join(ids, ", "))
+	return nil, errors.New("no device " + id + "; one of " + strings.Join(ids, ", ") + " or " + fitted.ID)
 }
 
 // poses are the device's model in each of its poses.

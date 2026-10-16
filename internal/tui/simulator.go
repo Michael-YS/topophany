@@ -20,12 +20,27 @@ var (
 	cGlass = Hex(0x000000) // the Dynamic Island, the cameras
 )
 
+// screen measures the device the TUI is on; a fitted one is the
+// terminal's size.
+func (m *Model) screen() display {
+	d := *m.Device
+	if d.Fit {
+		d.Size = [2]float64{float64(m.Width) * cellW, float64(m.Height) * cellH}
+	}
+	return d.display()
+}
+
 // simulate draws the device's screen in the terminal.
 func (m *Model) simulate() *Canvas {
+	s := m.screen()
+	if m.Device.Fit {
+		// The screen is the terminal: no bezel and no simulator's bar.
+		m.touch.origin = [2]int{}
+		return m.drawScreen(s)
+	}
 	cv := NewCanvas(m.Width, m.Height)
 	cv.Hyperlinks = m.Hyperlinks
 	cv.Base = cDesk
-	s := m.Device.display()
 	needW, needH := s.w+4, s.h+3
 	if m.Width < needW || m.Height < needH {
 		m.stage = nil
@@ -129,6 +144,9 @@ func (m *Model) simBar(cv *Canvas, y int) {
 // simKey handles the simulator's own keys and controls; ok is false for
 // any other key.
 func (m *Model) simKey(k string) (string, bool) {
+	if m.Device.Fit {
+		return "", false // no simulator: the screen is the terminal
+	}
 	if id, found := strings.CutPrefix(k, "sim:"); found {
 		if d, e := DeviceByID(id); e == nil {
 			m.setDevice(d)
@@ -226,11 +244,11 @@ func (m *Model) swipe(start [2]int, dx, dy int) string {
 		m.drag(dx, dy)
 		return ""
 	}
-	s := m.Device.display()
+	s := m.screen()
 	if abs(dx) > 2*abs(dy) {
 		// Across: from the left edge the drawer comes out; elsewhere on a
 		// phone's page, the next or the previous tab.
-		if dx > 0 && start[0] <= s.page.x+1 && m.touch.layout == layoutCompact {
+		if dx > 0 && start[0] <= s.page.x+1 && (m.touch.layout == layoutCompact || m.touch.layout == layoutWide) {
 			m.touch.drawer = true
 			return ""
 		}

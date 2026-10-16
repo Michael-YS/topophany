@@ -6,6 +6,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/preview"
 )
 
 // The device layouts keep the rules iPhone Duo's adaptation guide sets out,
@@ -53,20 +56,39 @@ func TestDeviceGeometry(t *testing.T) {
 
 // screens draws every tab on every device, as it opens and with a row's
 // evidence open, and calls check with each frame.
+// fitSizes are phones' browsers in cells, as the website's viewer fits
+// them (--device fit): upright, a small phone upright, and on its side.
+var fitSizes = [][2]int{{52, 42}, {42, 28}, {120, 20}}
+
 func screens(t *testing.T, check func(t *testing.T, name string, m *Model, s display, cv *Canvas)) {
+	type screen struct {
+		id   string
+		size [2]int // a fitted screen's, in cells
+	}
+	all := []screen{}
 	for _, d := range Devices() {
+		all = append(all, screen{id: d.ID})
+	}
+	for _, size := range fitSizes {
+		all = append(all, screen{"fit", size})
+	}
+	for _, sc := range all {
 		for tab := range tabs {
 			for _, detail := range []bool{false, true} {
-				r := deviceRecorder(t, d.ID)
+				r := deviceRecorder(t, sc.id)
 				m := r.m
+				m.Width, m.Height = sc.size[0], sc.size[1]
 				m.setTab(tab)
-				s := m.Device.display()
+				s := m.screen()
 				m.drawScreen(s)
 				if detail {
 					m.Key("enter")
 				}
 				cv := m.drawScreen(s)
-				name := d.ID + " " + tabs[tab]
+				name := sc.id + " " + tabs[tab]
+				if m.Device.Fit {
+					name = sc.id + " " + itoa(s.w) + "×" + itoa(s.h) + " " + tabs[tab]
+				}
 				if detail {
 					name += " (evidence open)"
 				}
@@ -140,6 +162,17 @@ func TestDeviceScreensReachEveryTabAndAction(t *testing.T) {
 		keys := map[string]bool{}
 		for _, h := range m.hits {
 			keys[h.key] = true
+		}
+		if !keys["touch:tab:"+itoa(m.Tab)] {
+			t.Errorf("%s: the tab on show is not on the rail", name)
+		}
+		// A page too short for every tab has the drawer, which names them.
+		if keys["touch:drawer"] {
+			m.Key("touch:drawer")
+			m.drawScreen(s)
+			for _, h := range m.hits {
+				keys[h.key] = true
+			}
 		}
 		for i := range tabs {
 			if !keys["touch:tab:"+itoa(i)] {
@@ -309,5 +342,93 @@ func TestSimulatorSaysWhenTheTerminalIsTooSmall(t *testing.T) {
 	text := strings.Join(m.draw().Lines(colorNone), "\n")
 	if !strings.Contains(text, "needs 99×70 cells") || !strings.Contains(text, "SIMULATOR") {
 		t.Fatalf("too small a terminal:\n%s", text)
+	}
+}
+
+func TestFitLaysTheTerminalItselfOutForTouch(t *testing.T) {
+	r := newRecorder(t, preview.DefaultLanguage)
+	m := r.m
+	m.Width, m.Height = 52, 42
+	plain := strings.Join(m.draw().Lines(colorNone), "\n")
+	// A page that knows it is on a phone asks for the fitted screen; the
+	// same request again keeps the place, and "device:" goes back.
+	m.Key("device:fit")
+	cv := m.draw()
+	if cv.W != 52 || cv.H != 42 || m.touch.layout != layoutCompact || m.touch.origin != [2]int{} {
+		t.Fatalf("fitted at 52×42: %d×%d, %s layout, origin %v", cv.W, cv.H, m.touch.layout, m.touch.origin)
+	}
+	text := strings.Join(cv.Lines(colorNone), "\n")
+	if strings.Contains(text, "SIMULATOR") || strings.Contains(text, m.Now.Format("15:04")) {
+		t.Fatalf("a fitted screen drew the simulator or a system's clock:\n%s", text)
+	}
+	m.touch.zoom = 2
+	m.Key("device:fit")
+	if m.touch.zoom != 2 {
+		t.Fatal("asking for the same screen again reset the map")
+	}
+	// The simulator's keys are the TUI's own here.
+	m.Key("]")
+	if m.Device == nil || !m.Device.Fit {
+		t.Fatal("] left the fitted screen")
+	}
+	// A tap is a press and a lift where it went down, in the page's own cells.
+	x, y := at(t, m, "touch:tab:6")
+	m.Key("mouse:0:" + itoa(x) + ":" + itoa(y) + ":M")
+	m.Key("mouse:0:" + itoa(x) + ":" + itoa(y) + ":m")
+	if m.Tab != tabIncidents {
+		t.Fatalf("a tap on Incidents left tab %d", m.Tab)
+	}
+	// On its side the page is wide. Too short for every tab, its rail
+	// keeps the one on show and has the drawer, which a swipe from the
+	// edge opens too.
+	m.Width, m.Height = 120, 20
+	m.draw()
+	if m.touch.layout != layoutWide {
+		t.Fatalf("120×20 fitted: %s layout", m.touch.layout)
+	}
+	at(t, m, "touch:tab:6")
+	at(t, m, "touch:drawer")
+	m.Key("mouse:0:1:12:M")
+	m.Key("mouse:0:30:12:m")
+	if !m.touch.drawer {
+		t.Fatal("a swipe from the edge left the drawer shut")
+	}
+	m.Key("device:")
+	m.Width, m.Height = 52, 42
+	m.setTab(tabOverview)
+	if m.Device != nil || strings.Join(m.draw().Lines(colorNone), "\n") != plain {
+		t.Fatal("device: did not give back the terminal's own layout")
+	}
+	m.Key("device:nonesuch")
+	if m.Device != nil {
+		t.Fatal("an unknown device was laid out")
+	}
+}
+
+func TestDemoFitsAPhone(t *testing.T) {
+	d, now := demoAt(t)
+	d.Key("device:fit", now)
+	f := d.Frame(now, 52, 42, true)
+	if f.Device != "fit" || f.Size != [2]int{52, 42} || d.m.touch.layout != layoutCompact {
+		t.Fatalf("a phone's page: device %q, %v, %s layout", f.Device, f.Size, d.m.touch.layout)
+	}
+	// The touch menu picks the observer itself; the demo fetches its view
+	// rather than stepping on to the next.
+	d.Key("touch:observers", now)
+	if d.m.modal == nil {
+		t.Fatal("no observer menu")
+	}
+	d.m.modal.sel = 0
+	d.Key("enter", now)
+	if d.m.Observer != "" || !d.fetched.IsZero() {
+		t.Fatalf("picked all observers: observer %q, fetched %v", d.m.Observer, d.fetched)
+	}
+	now = now.Add(time.Second)
+	if f = d.Frame(now, 52, 42, true); f.Observer != "" || d.fetched != now {
+		t.Fatalf("the next frame: observer %q, fetched %v", f.Observer, d.fetched)
+	}
+	d.Key("device:", now)
+	if f = d.Frame(now, 120, 36, true); f.Device != "" || !f.Reset {
+		t.Fatalf("back in the terminal's layout: device %q, reset %v", f.Device, f.Reset)
 	}
 }

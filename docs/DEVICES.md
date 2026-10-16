@@ -54,11 +54,18 @@ The controls are the terminal's own shapes: chips in rounded frames, segmented c
 - **The column.** Where the system draws its vertical bar (shut, and open sideways) the tabs go in its column, under the clock and the camera. Upright there is no column, and the tabs go along the foot of the lower half.
 - **Clear of the system.** No control stands on the crease, under the Dynamic Island, the clock or the status cluster, or outside the safe area. The tests check every tab on every device.
 
+## Fitted to the page
+
+The website's viewers, [`/demo/`](https://topophany.com/demo/) and [`/app/`](https://topophany.com/app/), take the phone layout on a phone. A page no wider than 600 px is its own screen at its own size, with no simulator around it and nothing of the system's drawn in it (the browser keeps the status bar outside the page), in cells 7 px wide and 14 tall. A 390 px phone gets 52 columns, and the layout comes from the page's shape as on any device: compact upright, wide on its side, regular from 80 columns and 36 rows. The page sends the TUI a finger's presses and lifts, so a tap, a swipe, a pull and the drawer from the edge work as above, two fingers pinch the map a step for each quarter they spread, and a wheel over the page pinches or scrolls. Wider than a phone, the page goes back to the terminal's own layouts, 80 columns or more, in the terminal's cells.
+
+`--device fit` does the same in a terminal: the terminal itself, at its size, laid out for touch, as a terminal app on a phone wants. A page shorter than the rail's tabs keeps the tab on show in its rail, under `≡`, and the drawer lists the tabs in two columns where one would not fit.
+
 ## Simulating it in a terminal
 
 ```sh
 topo preview --device duo-upright      # or iphone, iphone-landscape, duo-cover, duo-open, duo-book, duo-laptop, ipad, ipad-portrait
 topo --device iphone                   # the same against a real collector
+topo --device fit                      # the terminal itself, laid out for touch
 ```
 
 The simulator draws the device's screen at its size in cells, in its bezel, in the middle of the terminal; the terminal needs a few cells more than the device has (99×70 for iPhone Duo upright). `[` and `]` fold and unfold through the device's poses and `\` picks the next device; the bar under the screen does the same with a click. The mouse stands in for a finger: a click is a tap, a drag a swipe, the wheel over the map a pinch. The keyboard works as it does in the terminal, as a tablet's keyboard would.

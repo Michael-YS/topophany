@@ -294,7 +294,13 @@ func tabCount(n int) string {
 func (m *Model) tabRail(cv *Canvas, r rect) int {
 	named := r.w >= 11
 	y := r.y
-	for i := range tabs {
+	first := 0
+	if fits := r.h / touchRows; fits > 0 && fits < len(tabs) {
+		// Too short for every tab, as a phone's browser on its side is:
+		// the run of them around the active one. The drawer names them all.
+		first = min(max(0, m.Tab-fits/2), len(tabs)-fits)
+	}
+	for i := first; i < len(tabs); i++ {
 		if y+touchRows > r.bottom() {
 			break
 		}
@@ -463,35 +469,47 @@ func (m *Model) drawer(cv *Canvas, page rect) {
 		sub += " · " + m.Server
 	}
 	cv.Text(x+2, y+2, ellipsis(sub, w-4), bg.Fg(cFaint), w-4)
-	row := func(yy int, icon rune, label, note string, nc Color, act string, active bool) {
+	row := func(xx, yy, ww int, icon rune, label, note string, nc Color, act string, active bool) {
 		st, is := bg.Fg(cText), bg.Fg(cMuted)
 		if active {
-			cv.Fill(x, yy, w, touchRows, Style{BG: cSelBG})
+			cv.Fill(xx, yy, ww, touchRows, Style{BG: cSelBG})
 			for k := 0; k < touchRows; k++ {
-				cv.Set(x, yy+k, '▌', fg(cAccent).Bg(cSelBG))
+				cv.Set(xx, yy+k, '▌', fg(cAccent).Bg(cSelBG))
 			}
 			st, is = fg(cGlow).Bg(cSelBG).bold(), fg(cAccent).Bg(cSelBG).bold()
 		}
-		cv.Set(x+2, yy+1, icon, is)
-		room := w - 7 - width(note)
-		cv.Text(x+4, yy+1, ellipsis(label, room), st, room)
+		cv.Set(xx+2, yy+1, icon, is)
+		room := ww - 7 - width(note)
+		cv.Text(xx+4, yy+1, ellipsis(label, room), st, room)
 		if note != "" {
-			cv.Text(x+w-2-width(note), yy+1, note, Style{FG: nc, BG: st.BG}.bold(), -1)
+			cv.Text(xx+ww-2-width(note), yy+1, note, Style{FG: nc, BG: st.BG}.bold(), -1)
 		}
-		m.hitArea(x, yy, w, touchRows, act)
+		m.hitArea(xx, yy, ww, touchRows, act)
 	}
 	y += 4
+	// A page too short for a column of the tabs, a phone on its side, has
+	// them in two, named without their keys.
+	cols := 1
+	if y+len(tabs)*touchRows > page.bottom() {
+		cols = 2
+	}
+	cw := w / cols
 	for i := range tabs {
-		if y+touchRows > page.bottom() {
+		xx, yy := x+i%cols*cw, y+i/cols*touchRows
+		if yy+touchRows > page.bottom() {
 			return
 		}
 		note, c := "", cFaint
 		if n, nc := m.badge(i); n > 0 {
 			note, c = itoa(n), nc
 		}
-		row(y, tabIcons[i], itoa(i+1)+"  "+tabs[i], note, c, "touch:tab:"+itoa(i), i == m.Tab)
-		y += touchRows
+		label := itoa(i+1) + "  " + tabs[i]
+		if cols > 1 {
+			label = tabs[i]
+		}
+		row(xx, yy, cw, tabIcons[i], label, note, c, "touch:tab:"+itoa(i), i == m.Tab)
 	}
+	y += (len(tabs) + cols - 1) / cols * touchRows
 	for k := x + 2; k < x+w-2; k++ {
 		cv.Set(k, y, '─', bg.Fg(cLine))
 	}
@@ -521,7 +539,7 @@ func (m *Model) drawer(cv *Canvas, page rect) {
 		if y+touchRows > page.bottom() {
 			return
 		}
-		row(y, e.icon, e.label, e.note, cMuted, e.act, false)
+		row(x, y, w, e.icon, e.label, e.note, cMuted, e.act, false)
 		y += touchRows
 	}
 }
