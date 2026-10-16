@@ -138,3 +138,45 @@ func TestRuntimeShutdownWritesStopped(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestWriteFailurePreservesSnapshotAndCanRecover(t *testing.T) {
+	c := testConfig()
+	c.Revision = "fixture"
+	dir := t.TempDir()
+	c.Output = filepath.Join(dir, "metrics.json")
+	out, e := OpenOutput(c.Output, c.Name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer out.Close()
+	now := time.Now().UTC()
+	p := Build(c, hostInput(now), now)
+	if e = out.Write(p, time.Second, true); e != nil {
+		t.Fatal(e)
+	}
+	original, _ := os.ReadFile(c.Output)
+	// A directory replacing the destination is a deterministic write failure,
+	// including when tests run as root; no chmod-based fault assumption.
+	backup := filepath.Join(dir, "previous.json")
+	if e = os.Rename(c.Output, backup); e != nil {
+		t.Fatal(e)
+	}
+	os.Mkdir(c.Output, 0700)
+	p.GeneratedAt = now.Add(time.Minute)
+	if e = out.Write(p, time.Second, true); e == nil {
+		t.Fatal("write failure ignored")
+	}
+	b, _ := os.ReadFile(backup)
+	if string(b) != string(original) {
+		t.Fatal("last complete snapshot changed")
+	}
+	os.Remove(c.Output)
+	os.Rename(backup, c.Output)
+	if e = out.Write(p, time.Second, true); e != nil {
+		t.Fatal(e)
+	}
+	b, _ = os.ReadFile(c.Output)
+	if string(b) == string(original) {
+		t.Fatal("did not recover")
+	}
+}

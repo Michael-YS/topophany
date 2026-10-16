@@ -11,6 +11,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/ioaccount"
+	"github.com/WhitenWhiten/topophany/internal/logging"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/outbox"
@@ -18,9 +19,10 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/runner"
 )
 
-func (a *App) worker(parent context.Context, args []string) error {
+func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	f := a.flags("worker")
 	panelFlags := addMonitorFlags(f)
+	logs := addLogFlags(f)
 	path := f.String("config", "topology.json", "reviewed LOCAL topology; never downloaded as executable work")
 	observer := f.String("observer", "", "this executor's observer identity")
 	credPath := f.String("credentials", "worker-credentials.json", "0600 worker credential file")
@@ -31,6 +33,11 @@ func (a *App) worker(parent context.Context, args []string) error {
 	if e := parsed(f, args); e != nil {
 		return e
 	}
+	finishLog, logErr := a.serviceLog(logs)
+	if logErr != nil {
+		return logErr
+	}
+	defer func() { finishLog(retErr) }()
 	c, e := config.Load(*path)
 	if e != nil {
 		return e
@@ -126,11 +133,20 @@ func (a *App) worker(parent context.Context, args []string) error {
 		beat.Store(&model.Heartbeat{Observer: *observer, Boot: running.Boot, SampledAt: time.Now().UTC(), Contracts: contractsDigest})
 	}
 	heartbeat()
+	repeats := &logging.Repeater{Out: a.Err, Every: time.Minute}
 	wg.Go(func() {
 		d.Run(ctx, q, 2*time.Second, beat.Load, func(r outbox.Result) {
-			if r.Error != "" {
-				fmt.Fprintf(a.Err, "collector=%s accepted=%d quarantined=%d: %s; %s\n", r.Recipient, r.Accepted, r.Quarantined, r.Error, q)
+			code := ""
+			for _, status := range d.Statuses() {
+				if status.Collector == r.Recipient {
+					code = status.Code
+					break
+				}
 			}
+			if code == "" && r.Error != "" {
+				code = "delivery_retry"
+			}
+			repeats.Update("delivery", r.Recipient, code, time.Now())
 		})
 	})
 	ioTick := time.NewTicker(time.Minute)

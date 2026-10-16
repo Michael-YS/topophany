@@ -24,6 +24,9 @@ func command(o Options) []string {
 	} else {
 		args = append(args, "worker", "--config", targetPath(o.InstallDir, "topology.json"), "--credentials", targetPath(o.InstallDir, "worker-credentials.json"), "--data", o.DataDir, "--observer", o.Observer)
 	}
+	if o.Platform == "darwin" {
+		args = append(args, "--log-file", targetPath(o.DataDir, "topophany.log"), "--log-max-bytes", "5242880", "--log-backups", "3")
+	}
 	return args
 }
 func unitQuote(s string) string {
@@ -62,8 +65,8 @@ func service(o Options) (name, file string, raw []byte, err error) {
 		text("Label", name)
 		text("UserName", o.User)
 		text("WorkingDirectory", o.DataDir)
-		text("StandardOutPath", targetPath(o.DataDir, "stdout.log"))
-		text("StandardErrorPath", targetPath(o.DataDir, "stderr.log"))
+		text("StandardOutPath", "/dev/null")
+		text("StandardErrorPath", "/dev/null")
 		b.WriteString("<key>ProgramArguments</key><array>")
 		for _, a := range args {
 			fmt.Fprintf(&b, "<string>%s</string>", escape(a))

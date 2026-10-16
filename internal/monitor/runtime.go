@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -51,15 +52,20 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 	wg.Go(func() {
 		defer unsubscribe()
 		failed := false
+		var failures uint64
+		var lastReport time.Time
 		write := func(p Panel, force bool) {
 			if e := out.Write(p, c.Every(), force); e != nil {
-				if !failed {
-					report("monitor output unavailable; retrying")
+				failures++
+				if !failed || time.Since(lastReport) >= time.Minute {
+					report(fmt.Sprintf("monitor output unavailable; retrying; failed_writes=%d", failures))
+					lastReport = time.Now()
 				}
 				failed = true
 			} else if failed {
 				report("monitor output recovered")
 				failed = false
+				failures = 0
 			}
 		}
 		for {

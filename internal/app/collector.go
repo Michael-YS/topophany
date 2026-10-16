@@ -16,6 +16,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/ioaccount"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
+	"github.com/WhitenWhiten/topophany/internal/logging"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/probe"
@@ -25,9 +26,10 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/store"
 )
 
-func (a *App) serve(parent context.Context, args []string) error {
+func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	f := a.flags("serve")
 	panelFlags := addMonitorFlags(f)
+	logs := addLogFlags(f)
 	path := f.String("config", "topology.json", "reviewed local topology JSON")
 	authPath := f.String("auth", "auth.json", "0600 collector token-hash configuration")
 	alertsPath := f.String("alerts", "", "0600 webhook configuration; no alerts when empty")
@@ -47,6 +49,11 @@ func (a *App) serve(parent context.Context, args []string) error {
 	if e := parsed(f, args); e != nil {
 		return e
 	}
+	finishLog, logErr := a.serviceLog(logs)
+	if logErr != nil {
+		return logErr
+	}
+	defer func() { finishLog(retErr) }()
 	if !config.ID(*instance) {
 		return errors.New("invalid instance ID")
 	}
@@ -303,7 +310,7 @@ func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Durati
 	started := time.Now()
 	tick := time.NewTicker(2 * time.Second)
 	defer tick.Stop()
-	failing := false
+	repeats := &logging.Repeater{Out: a.Err, Every: time.Minute}
 	for {
 		select {
 		case <-ctx.Done():
@@ -317,13 +324,11 @@ func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Durati
 			if notifier != nil {
 				notifier.Observe(snap, changes, settled)
 			}
-			switch {
-			case e != nil && !failing:
-				fmt.Fprintf(a.Err, "incident ledger not written; keeping it in memory: %v\n", e)
-			case e == nil && failing:
-				fmt.Fprintln(a.Err, "incident ledger written again")
+			code := ""
+			if e != nil {
+				code = "persist_failed"
 			}
-			failing = e != nil
+			repeats.Update("incident_ledger", backend.Instance, code, now)
 		}
 	}
 }
