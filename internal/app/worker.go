@@ -141,13 +141,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	repeats := &logging.Repeater{Out: a.Err, Every: time.Minute}
 	wg.Go(func() {
 		d.Run(ctx, q, 2*time.Second, beat.Load, func(r outbox.Result) {
-			code := ""
-			for _, status := range d.Statuses() {
-				if status.Collector == r.Recipient {
-					code = status.Code
-					break
-				}
-			}
+			code := r.Code
 			if code == "" && r.Error != "" {
 				code = "delivery_retry"
 			}

@@ -62,3 +62,21 @@ func (d *Delivery) publish(q *Queue, dest *destination, result Result) {
 	}
 	d.reports[id] = report
 }
+
+// diagnosticCode preserves actionable protocol failures without logging arbitrary
+// response text. Wire delivery health retains its existing broader categories.
+func diagnosticCode(err error) string {
+	var h *client.HTTPError
+	if errors.As(err, &h) {
+		switch h.Code {
+		case "contract_mismatch", "observation_contract_mismatch", "revision_mismatch", "project_mismatch",
+			"observer_scope_violation", "sample_time_out_of_range", "unsupported_batch_schema",
+			"invalid_batch_revision", "invalid_batch_size", "invalid_observation_identity",
+			"received_at_is_collector_owned", "invalid_outcome", "evidence_kind_mismatch",
+			"heartbeat_limit_exceeded", "invalid_delivery_status", "invalid_batch_json",
+			"observer_storage_quota", "storage_receipt_capacity", "authentication_required", "invalid_token", "role_forbidden":
+			return h.Code
+		}
+	}
+	return deliveryCode(err)
+}

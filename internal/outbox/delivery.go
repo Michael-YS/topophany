@@ -31,6 +31,7 @@ type destination struct {
 	probing              bool
 	bareUntil            time.Time
 	code                 string
+	diagnostic           string
 	lastAck, lastContact time.Time
 	quarantined          int64
 }
@@ -49,6 +50,7 @@ type Delivery struct {
 	revision     string // what the worker runs; a reload changes it mid-round
 }
 type Result struct {
+	Code        string // stable diagnostic code for logs; retained during retry backoff
 	Recipient   string
 	Accepted    int
 	Quarantined int
@@ -145,7 +147,13 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	dest := &d.destinations[i]
 	rid := Recipient(dest.endpoint.URL)
 	result = Result{Recipient: rid}
-	defer func() { d.publish(q, dest, result) }()
+	defer func() {
+		result.Code = dest.diagnostic
+		if result.Code == "" || dest.code == "local_ack_failed" || dest.code == "local_quarantine_failed" {
+			result.Code = dest.code
+		}
+		d.publish(q, dest, result)
+	}()
 	revision := d.currentRevision()
 	now := d.Now()
 	if now.Before(dest.next) {
@@ -202,8 +210,10 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	if e == nil {
 		dest.lastContact = d.Now()
 		dest.code = ""
+		dest.diagnostic = ""
 	} else {
 		dest.code = deliveryCode(e)
+		dest.diagnostic = diagnosticCode(e)
 	}
 	var he *client.HTTPError
 	permanent := errors.As(e, &he) && he.Permanent()

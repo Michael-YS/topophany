@@ -144,3 +144,4 @@ Interoperability across live OpenSSH, Tailscale, and WireGuard tunnels and nativ
 | Worker local evidence preserves failure/recovery thresholds and resets on contract changes; output failure does not stop durable enqueue | `TestLocalThresholdCarryAndContractReload`, `TestMonitorWorkerOutputFailureDoesNotStopDurableEnqueue` |
 | Managed logs rotate with bounded retention and reopen after rotation; repeated errors summarize and recover with bounded grouping | `TestRotationBoundsRetentionAndReopens`, `TestRepeatedErrorSummaryRecoveryAndBound` |
 | I/O measurement remains race-safe without persisting its counters | `TestConcurrentCounters`, `TestMeasuredDurableWriteAndUnsyncedCache` |
+| Repeated delivery failures retain specific contract-mismatch diagnostics without logging arbitrary upstream response text | `TestDeliveryDiagnosticsPreserveContractMismatch`, `TestServeAndWorkerReloadOnHangup` |

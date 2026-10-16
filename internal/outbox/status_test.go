@@ -69,3 +69,12 @@ func TestDeliveryReportsBackpressureAndDataACKSeparately(t *testing.T) {
 		t.Fatal("reports share memory")
 	}
 }
+
+func TestDeliveryDiagnosticsPreserveContractMismatch(t *testing.T) {
+	if got := diagnosticCode(&client.HTTPError{Status: 409, Code: "contract_mismatch"}); got != "contract_mismatch" {
+		t.Fatal(got)
+	}
+	if got := diagnosticCode(&client.HTTPError{Status: 409, Code: "fixture-private-response"}); got != "sample_rejected" {
+		t.Fatal("arbitrary upstream response reached diagnostic", got)
+	}
+}
