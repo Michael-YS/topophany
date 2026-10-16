@@ -129,6 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Recognize Windows socket errors in collector diagnostics, so connection
   failures report the same actionable reasons as on Linux and macOS.
+- Wait for the failed webhook attempt to be persisted before stopping the
+  notifier in the restart test, avoiding a scheduling-dependent CI failure.
 - The systemd units of server and worker bundles quoted `WorkingDirectory=`
   and `EnvironmentFile=`, which systemd refuses, so installing such a bundle
   on Linux failed and rolled back. A new test checks the unit with

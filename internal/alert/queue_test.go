@@ -22,8 +22,15 @@ func TestAlertsWaitAcrossRestarts(t *testing.T) {
 		t.Fatal(e)
 	}
 	first.Configure(Config{Schema: 1, Webhooks: []Webhook{hook}})
+	defer first.Close()
 	first.Observe(snap, changes, false)
-	wait(t, func() bool { return down.hits.Load() == 1 })
+	// A request reaching the endpoint does not mean its response has been
+	// processed. Wait for the failed attempt to be persisted before stopping
+	// delivery; closing earlier can cancel it before Tries is incremented.
+	wait(t, func() bool {
+		b, _ := os.ReadFile(path)
+		return strings.Contains(string(b), `"tries":1`)
+	})
 	first.Close()
 	b, e := os.ReadFile(path)
 	if e != nil || !strings.Contains(string(b), "incident.opened") || !strings.Contains(string(b), `"tries":1`) {
