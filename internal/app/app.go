@@ -69,6 +69,7 @@ Deploy
   topo token                        make a random bearer token and its hash
 
 Settings
+  topo monitor                      configure and run persistent display panels
   topo preferences show|set|reset   the TUI's saved startup defaults
   topo version                      print the version
 
@@ -121,6 +122,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.serve(ctx, args[1:])
 	case "worker":
 		return a.worker(ctx, args[1:])
+	case "monitor":
+		return a.monitor(ctx, args[1:])
 	case "preferences":
 		return a.preferences(args[1:])
 	case "login":

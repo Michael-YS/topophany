@@ -79,8 +79,21 @@ func PrivateRead(path string) ([]byte, error) {
 	return ReadBounded(path, 1<<20)
 }
 func AtomicWrite(path string, b []byte, mode os.FileMode) error {
+	return atomicWrite(path, b, mode, true)
+}
+
+// CacheWrite replaces rebuildable data without forcing stable storage. Durable
+// callers must continue to use AtomicWrite.
+func CacheWrite(path string, b []byte, mode os.FileMode) error {
+	return atomicWrite(path, b, mode, false)
+}
+func atomicWrite(path string, b []byte, mode os.FileMode, durable bool) error {
 	dir := filepath.Dir(path)
-	if e := MkdirAll(dir, 0700); e != nil {
+	mkdir := os.MkdirAll
+	if durable {
+		mkdir = MkdirAll
+	}
+	if e := mkdir(dir, 0700); e != nil {
 		return e
 	}
 	if s, e := os.Lstat(path); e == nil && !s.Mode().IsRegular() {
@@ -95,7 +108,7 @@ func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	if e = f.Chmod(mode); e == nil {
 		_, e = f.Write(b)
 	}
-	if e == nil {
+	if e == nil && durable {
 		e = f.Sync()
 	}
 	ce := f.Close()
@@ -108,7 +121,10 @@ func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	if e = replaceFile(tmp, path); e != nil {
 		return e
 	}
-	return SyncDir(dir)
+	if durable {
+		return SyncDir(dir)
+	}
+	return nil
 }
 
 // MkdirAll makes path and the parents it lacks, as os.MkdirAll does, and
