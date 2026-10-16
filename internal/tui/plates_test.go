@@ -150,7 +150,7 @@ func TestGeoPointsHidesPlates(t *testing.T) {
 	m.setTab(tabTopology)
 	m.MapMode = "geo"
 	out := mapText(m, 128)
-	for _, want := range []string{"▎ 成都", "▎ Tokyo", "Points"} {
+	for _, want := range []string{"▎ 成都", "▎ 东京", "Points"} {
 		if !strings.Contains(visible(m), want) && !strings.Contains(out, want) {
 			t.Fatalf("geo map lacks %q before p:\n%s", want, out)
 		}
@@ -163,7 +163,7 @@ func TestGeoPointsHidesPlates(t *testing.T) {
 		t.Fatal("p did not hide the plates")
 	}
 	panel := geoPanel(t, m)
-	for _, gone := range []string{"▎", "成都", "Tokyo", "Windows 台式机", "OpenList 容器"} {
+	for _, gone := range []string{"▎", "成都", "东京", "Windows 台式机", "OpenList 容器"} {
 		if strings.Contains(panel, gone) {
 			t.Fatalf("points view still shows %q:\n%s", gone, panel)
 		}
@@ -210,7 +210,7 @@ func TestGeoPlateListsTheNodesOfItsPlace(t *testing.T) {
 	m.setTab(tabTopology)
 	m.MapMode = "geo"
 	out := mapText(m, 128)
-	for _, want := range []string{"▎ 成都", "▎ ● Windows 台式机", "▎ ● MacBook Pro", "▎ ● 家庭路由器", "▎ Tokyo", "▎ └ ● OpenList 容器"} {
+	for _, want := range []string{"▎ 成都", "▎ ● Windows 台式机", "▎ ● MacBook Pro", "▎ ● 家庭路由器", "▎ 东京", "▎ └ ● OpenList 容器"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("plate lacks %q:\n%s", want, out)
 		}

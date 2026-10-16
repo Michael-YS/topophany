@@ -61,12 +61,12 @@ func cardAt(t *testing.T, l *vLayout, place string) *vCard {
 func TestVirtualMapKeepsTheWorldsOrder(t *testing.T) {
 	m := previewModel(t)
 	l, nodes := virtualLayout(t, m, 127, 42)
-	tokyo, la, ny, fra := cardAt(t, l, "Tokyo"), cardAt(t, l, "Los Angeles"), cardAt(t, l, "New York"), cardAt(t, l, "Frankfurt")
+	tokyo, la, ny, fra := cardAt(t, l, "东京"), cardAt(t, l, "洛杉矶"), cardAt(t, l, "纽约"), cardAt(t, l, "法兰克福")
 	// West to east along the short way round, across the Pacific.
 	if !(tokyo.col < la.col && la.col < ny.col && ny.col < fra.col) {
 		t.Fatal("columns out of order", tokyo.col, la.col, ny.col, fra.col)
 	}
-	if hnl := cardAt(t, l, "Honolulu"); hnl.col > la.col || hnl.y < la.y {
+	if hnl := cardAt(t, l, "檀香山"); hnl.col > la.col || hnl.y < la.y {
 		t.Fatal("Honolulu should be west of or under Los Angeles", hnl.col, hnl.y, la.col, la.y)
 	}
 	// North above south, within a column and across the map.
@@ -211,7 +211,7 @@ func TestVirtualMapIsTheDefaultAndShowsPlacesAndLinks(t *testing.T) {
 		t.Fatal("default map", m.mapMode())
 	}
 	out := mapText(m, 128)
-	for _, s := range []string{"virtual geo", "Tokyo", "Los Angeles", "New York", "Frankfurt", "Honolulu", "成都", "杭州", "34°N 118°W", "Windows 台式机", "MacBook Pro", "家庭路由器", "搬瓦工 洛杉矶", "Oracle 洛杉矶", "Cloudflare", "Vercel"} {
+	for _, s := range []string{"virtual geo", "东京", "洛杉矶", "纽约", "法兰克福", "檀香山", "成都", "杭州", "34°N 118°W", "Windows 台式机", "MacBook Pro", "家庭路由器", "搬瓦工 洛杉矶", "Oracle 洛杉矶", "Cloudflare", "Vercel"} {
 		if !strings.Contains(out, s) {
 			t.Fatalf("map lacks %q:\n%s", s, out)
 		}
