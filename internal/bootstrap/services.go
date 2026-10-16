@@ -29,6 +29,12 @@ func command(o Options) []string {
 func unitQuote(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`, `$`, `$$`).Replace(s) + `"`
 }
+
+// unitPath writes a path for a setting that takes one path, such as
+// WorkingDirectory= or EnvironmentFile=: systemd does not unquote those and
+// refuses the whole unit when the path is quoted. Paths are clean and
+// absolute (cleanTarget), so only specifiers need escaping.
+func unitPath(s string) string { return strings.ReplaceAll(s, "%", "%%") }
 func service(o Options) (name, file string, raw []byte, err error) {
 	args := command(o)
 	switch o.Platform {
@@ -45,7 +51,7 @@ func service(o Options) (name, file string, raw []byte, err error) {
 				capability = "CAP_NET_RAW"
 			}
 		}
-		raw = []byte(fmt.Sprintf("[Unit]\nDescription=Topophany %s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=simple\nUser=%s\nGroup=%s\nWorkingDirectory=%s\nEnvironmentFile=-%s\nExecStart=%s\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nAmbientCapabilities=%s\nCapabilityBoundingSet=%s\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\nReadWritePaths=%s\nTimeoutStopSec=20\n[Install]\nWantedBy=multi-user.target\n", o.Role, o.User, o.User, unitQuote(o.DataDir), unitQuote(targetPath(o.InstallDir, "worker.env")), strings.Join(quoted, " "), capability, capability, unitQuote(o.DataDir)))
+		raw = []byte(fmt.Sprintf("[Unit]\nDescription=Topophany %s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=simple\nUser=%s\nGroup=%s\nWorkingDirectory=%s\nEnvironmentFile=-%s\nExecStart=%s\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nAmbientCapabilities=%s\nCapabilityBoundingSet=%s\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\nReadWritePaths=%s\nTimeoutStopSec=20\n[Install]\nWantedBy=multi-user.target\n", o.Role, o.User, o.User, unitPath(o.DataDir), unitPath(targetPath(o.InstallDir, "worker.env")), strings.Join(quoted, " "), capability, capability, unitQuote(o.DataDir)))
 	case "darwin":
 		name = "com.topophany." + o.Role
 		file = "/Library/LaunchDaemons/" + name + ".plist"

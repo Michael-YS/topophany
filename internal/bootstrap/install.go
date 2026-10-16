@@ -33,7 +33,27 @@ type installation struct {
 	WasEnabled bool        `json:"was_enabled"`
 }
 
+// verified is what a bundle held when it was checked: each payload file's
+// bytes, by name, and the service definition. Installing writes these
+// bytes and never reads the bundle again, so whoever can write to the
+// bundle directory cannot change a file between its check and its copy.
+type verified struct {
+	files   map[string][]byte
+	service []byte
+}
+
 func loadManifest(dir string) (Manifest, error) {
+	m, _, e := loadBundle(dir)
+	return m, e
+}
+
+func loadBundle(dir string) (Manifest, verified, error) {
+	v := verified{files: map[string][]byte{}}
+	m, e := checkBundle(dir, &v)
+	return m, v, e
+}
+
+func checkBundle(dir string, v *verified) (Manifest, error) {
 	var m Manifest
 	b, e := secure.ReadBounded(filepath.Join(dir, "manifest.json"), 1<<20)
 	if e != nil {
@@ -69,6 +89,7 @@ func loadManifest(dir string) (Manifest, error) {
 		if e != nil || secure.Hash(string(b)) != f.SHA256 {
 			return m, errors.New("installation payload checksum mismatch")
 		}
+		v.files[f.Name] = b
 	}
 	required := []string{"ca.pem"}
 	binaryName := "bin/topo"
@@ -93,7 +114,9 @@ func loadManifest(dir string) (Manifest, error) {
 		return m, errors.New("client cannot install a service")
 	}
 	if m.Role != "client" {
-		c, e := config.Load(filepath.Join(dir, "payload/topology.json"))
+		// The topology checked is the one whose checksum matched, not a
+		// second read of the file.
+		c, e := config.Decode(bytes.NewReader(v.files["topology.json"]))
 		if e != nil {
 			return m, e
 		}
@@ -108,19 +131,27 @@ func loadManifest(dir string) (Manifest, error) {
 		if e != nil || !bytes.Equal(raw, expected) {
 			return m, errors.New("service differs from reviewed manifest")
 		}
+		v.service = raw
 	}
 	return m, nil
 }
 
 // Install verifies an immutable bundle, backs up replaced files and restores
 // them if installation/startup fails. Existing collector/outbox data is untouched.
+// checked, when set, is told of a bundle once it has been checked and
+// before anything is installed from it; tests change the bundle there.
+var checked func(dir string)
+
 func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error) {
-	m, e := loadManifest(dir)
+	m, bundle, e := loadBundle(dir)
 	if e != nil {
 		return m, "", e
 	}
 	if dry {
 		return m, "", nil
+	}
+	if checked != nil {
+		checked(dir)
 	}
 	if m.Role != "client" && runtime.GOOS != "windows" && os.Geteuid() != 0 {
 		return m, "", errors.New("service installation requires an administrator; service identity remains unprivileged")
@@ -159,6 +190,17 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 		gid, e = strconv.Atoi(u.Gid)
 		if e != nil {
 			return m, "", e
+		}
+	}
+	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
+		// Root writes nowhere another user could rearrange under it.
+		if e = trustedPath(m.InstallDir, installers(), -1); e != nil {
+			return m, "", e
+		}
+		if m.Role != "client" {
+			if e = trustedPath(m.DataDir, installers(), uid); e != nil {
+				return m, "", e
+			}
 		}
 	}
 	if e = secure.MkdirAll(m.InstallDir, 0755); e != nil {
@@ -234,19 +276,15 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 		return fail(e)
 	}
 	for _, f := range m.Files {
-		b, err := secure.ReadBounded(filepath.Join(dir, filepath.FromSlash(f.Source)), 64<<20)
-		if err != nil {
-			return fail(err)
-		}
 		target := targetPath(m.InstallDir, f.Name)
-		if err = secure.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		if err := secure.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return fail(err)
 		}
-		if err = secure.AtomicWrite(target, b, os.FileMode(f.Mode)); err != nil {
+		if err := secure.AtomicWrite(target, bundle.files[f.Name], os.FileMode(f.Mode)); err != nil {
 			return fail(err)
 		}
 		if f.Private && uid >= 0 {
-			if err = os.Chown(target, uid, gid); err != nil {
+			if err := lchown(target, uid, gid); err != nil {
 				return fail(err)
 			}
 		}
@@ -257,41 +295,40 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 		}
 	}
 	if m.Role != "client" {
-		if info, err := os.Stat(m.DataDir); err == nil && uid >= 0 {
-			owner, _ := fileOwner(info)
-			if owner != uid {
+		// A link in the data directory's place would have root make or
+		// hand over a directory elsewhere.
+		info, err := os.Lstat(m.DataDir)
+		switch {
+		case err == nil && !info.IsDir():
+			return fail(errors.New("data directory is not a directory"))
+		case err == nil && uid >= 0:
+			if owner, _ := fileOwner(info); owner != uid {
 				return fail(errors.New("existing data directory belongs to another service identity"))
 			}
+		case err != nil && !os.IsNotExist(err):
+			return fail(err)
 		}
 		if e = secure.MkdirAll(m.DataDir, 0700); e != nil {
 			return fail(e)
 		}
 		if uid >= 0 {
-			if e = os.Chown(m.DataDir, uid, gid); e != nil {
+			if e = lchown(m.DataDir, uid, gid); e != nil {
 				return fail(e)
 			}
 		}
-		unlock, err := secure.Lock(filepath.Join(m.DataDir, "writer.lock"))
-		if err != nil {
-			return fail(errors.New("data directory already has an active writer"))
-		}
-		if uid >= 0 {
-			if err = os.Chown(filepath.Join(m.DataDir, "writer.lock"), uid, gid); err != nil {
-				unlock()
-				return fail(err)
+		// The service makes its own lock file; here it is only looked at.
+		if busy, err := writerBusy(filepath.Join(m.DataDir, "writer.lock")); err != nil || busy {
+			if err == nil {
+				err = errors.New("data directory already has an active writer")
 			}
-		}
-		unlock()
-		raw, e = secure.ReadBounded(filepath.Join(dir, "service"), 1<<20)
-		if e != nil {
-			return fail(e)
+			return fail(err)
 		}
 		if m.ServiceFile != "" {
-			if e = secure.AtomicWrite(m.ServiceFile, raw, 0644); e != nil {
+			if e = secure.AtomicWrite(m.ServiceFile, bundle.service, 0644); e != nil {
 				return fail(e)
 			}
 		}
-		if e = startService(ctx, m, raw); e != nil {
+		if e = startService(ctx, m, bundle.service); e != nil {
 			return fail(e)
 		}
 		deadline := time.NewTimer(10 * time.Second)
@@ -366,7 +403,7 @@ func rollback(ctx context.Context, dir string, alreadyLocked bool) error {
 			return e
 		}
 		if f.UID >= 0 && runtime.GOOS != "windows" {
-			if e = os.Chown(f.Target, f.UID, f.GID); e != nil {
+			if e = lchown(f.Target, f.UID, f.GID); e != nil {
 				return e
 			}
 		}

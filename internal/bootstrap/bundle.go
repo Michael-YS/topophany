@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Options struct {
@@ -157,6 +158,7 @@ func Generate(dir string, o Options) (Manifest, error) {
 		return m, e
 	}
 	profile := o.Profile
+	var certExpiry time.Time
 	if o.Role == "server" {
 		u, e := url.Parse(o.Server)
 		if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
@@ -175,6 +177,7 @@ func Generate(dir string, o Options) (Manifest, error) {
 		if e != nil {
 			return m, e
 		}
+		certExpiry = expires(cert)
 		for name, b := range map[string][]byte{"ca.pem": ca, "server.pem": cert, "server-key.pem": serverKey} {
 			mode := os.FileMode(0644)
 			if name == "server-key.pem" {
@@ -266,6 +269,11 @@ func Generate(dir string, o Options) (Manifest, error) {
 		return m, e
 	}
 	instructions := fmt.Sprintf("Topophany %s %s bundle (%s)\n\nReview manifest.json, payload/topology.json (when present), and service.\nInstall locally: topo install --bundle %q\nPreview paths: topo install --bundle %q --dry-run\nService installation on Linux/macOS needs an administrator; the service runs unprivileged.\nClient installation does not start a background process.\nThe installer prints a private backup directory; rollback with topo install --rollback DIR.\nWorker endpoint changes require draining/archiving pending outboxes first.\nWindows services are current-user logon tasks.\nKeep authority/ca-key.pem with the administrator; it is never installed.\nKeep enrollment bundles private; each has one observer-scoped worker token.\n", model.Version, o.Role, o.Platform, dir, dir)
+	if !certExpiry.IsZero() {
+		// Nothing renews the collector's certificate: once it lapses, every
+		// worker and viewer refuses the collector.
+		instructions += fmt.Sprintf("The collector's TLS certificate expires on %s. Before then, generate a new server bundle and give every worker and viewer the enrollment and ca.pem from it.\n", certExpiry.UTC().Format("2006-01-02"))
+	}
 	if e = write("README.txt", []byte(instructions), 0600); e != nil {
 		return m, e
 	}

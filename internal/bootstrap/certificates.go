@@ -27,7 +27,7 @@ func certificates(hosts []string) (ca, key, cert, serverKey []byte, err error) {
 		return n
 	}
 	now := time.Now()
-	authority := &x509.Certificate{SerialNumber: serial(), Subject: pkix.Name{CommonName: "Topophany private CA"}, NotBefore: now.Add(-5 * time.Minute), NotAfter: now.AddDate(5, 0, 0), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
+	authority := &x509.Certificate{SerialNumber: serial(), Subject: pkix.Name{CommonName: "Topophany private CA"}, NotBefore: now.Add(-5 * time.Minute), NotAfter: now.AddDate(5, 0, 0), IsCA: true, BasicConstraintsValid: true, MaxPathLen: 0, MaxPathLenZero: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
 	if err != nil {
 		return
 	}
@@ -72,4 +72,18 @@ func certificates(hosts []string) (ca, key, cert, serverKey []byte, err error) {
 	}
 	serverKey = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private})
 	return
+}
+
+// expires is when the first certificate in a PEM stops being valid; zero
+// when there is none to read.
+func expires(certPEM []byte) time.Time {
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return time.Time{}
+	}
+	c, e := x509.ParseCertificate(block.Bytes)
+	if e != nil {
+		return time.Time{}
+	}
+	return c.NotAfter
 }

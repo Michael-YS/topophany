@@ -74,6 +74,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Enter` on the Servers tab opens the server's card rather than the
   evidence panel; a node's evidence panel is still on the Topology tab.
 
+### Fixed
+
+- The systemd units of server and worker bundles quoted `WorkingDirectory=`
+  and `EnvironmentFile=`, which systemd refuses, so installing such a bundle
+  on Linux failed and rolled back. A new test checks the unit with
+  `systemd-analyze verify` where it is installed.
+
+### Security
+
+- `topo install` installs the bytes whose checksums it verified, the service
+  definition and the topology included, rather than reading the bundle a
+  second time, so a bundle changed between the check and the copy cannot
+  install anything unreviewed.
+- Running as root, `topo install` refuses an installation or data directory
+  that someone other than root or the administrator who ran it could
+  rearrange; changes ownership only of the file itself, never through a
+  symbolic link; refuses a data directory replaced by a link; and only looks
+  at the service's writer lock, never creating or changing its owner, so a
+  compromised service account cannot turn the next upgrade into root access.
+- A bundle's private certificate authority can sign no intermediate
+  authority, and the bundle's README says when the collector certificate
+  expires and how to replace it.
+
 ## [0.9.1] - 2026-10-15
 
 ### Fixed
