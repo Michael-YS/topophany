@@ -314,7 +314,16 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 .term-play svg { width: 13px; height: 13px; fill: currentColor; }
 .term-play .i-play, .term.paused .term-play .i-pause { display: none; }
 .term.paused .term-play .i-play { display: block; }
-.term-screen { position: relative; background: var(--ink); aspect-ratio: 140 / 84; }
+.term-screen { position: relative; background: var(--ink); aspect-ratio: 200 / 100; }
+/* The replay is a wide terminal. On a wide screen it, its chapters and its
+   caption reach past the text column, up to 1600px, so its cells stay about
+   the size a terminal draws them. */
+.demo { container-type: inline-size; }
+.demo .term, .demo .chapters, .demo .caption {
+  --bleed: min(1600px, 100cqw - 2 * var(--gutter));
+  width: var(--bleed);
+  margin-inline: calc((100% - var(--bleed)) / 2);
+}
 #term-canvas { width: 100%; height: auto; cursor: default; }
 #term-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 0; }
 .term-loading {
@@ -326,7 +335,8 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 .term.loaded .term-loading { opacity: 0; pointer-events: none; }
 @keyframes spin { to { transform: rotate(1turn); } }
 @media (max-width: 720px) {
-  .term { border-radius: 8px; margin: 0 calc(var(--gutter) * -0.5); }
+  .term { border-radius: 8px; }
+  .demo .term { --bleed: calc(100cqw - var(--gutter)); } /* half into each gutter */
   .term-meta { display: none; }
 }
 

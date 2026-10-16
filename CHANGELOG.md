@@ -114,6 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the scope line says "by application".
 - On a calm Overview the all-clear keeps to a few lines, and the services
   and observers take the room.
+- The homepage's replay and the README's animations and still are recorded
+  at 200×50 rather than 140×42, so the full maps have room for the world
+  and their places' cards; on a wide screen the replay reaches past the
+  text column, up to 1600 pixels. The guide's stills keep 140×42.
 
 ### Fixed
 

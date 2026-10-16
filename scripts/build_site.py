@@ -116,6 +116,16 @@ def data_url(out: Path, name: str) -> str | None:
     return f"/data/{name}?v={digest(path.read_bytes())}" if path.is_file() else None
 
 
+def tour_size(out: Path, code: str) -> dict[str, str]:
+    """The recorded tour's terminal size, "200×50", for the replay's title
+    bar, or nothing while it is not recorded."""
+    path = out / "data" / f"tour.{code}.json"
+    if not path.is_file():
+        return {}
+    cols, rows = json.loads(path.read_text(encoding="utf-8"))["size"]
+    return {"page.tour.size": f"{cols}×{rows}"}
+
+
 def page_values(site: dict, catalogs: dict, code: str, urls: dict[str, str] | None = None,
                 out: Path = OUT) -> dict[str, str]:
     words = catalogs[code]
@@ -150,6 +160,7 @@ def page_values(site: dict, catalogs: dict, code: str, urls: dict[str, str] | No
         "page.locales.html": "\n".join(locales),
         "page.jsonld.html": jsonld(site, catalogs, code),
         **{key: url for key, url in files.items() if url},
+        **tour_size(out, code),
         **vantage(code, words),
     }
 

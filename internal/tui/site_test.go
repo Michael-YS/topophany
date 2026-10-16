@@ -23,7 +23,10 @@ import (
 // Without TOPO_SITE the test only records the tour, so one the preview has
 // outgrown fails before it reaches the homepage.
 
-const tourW, tourH = 140, 42
+// The tour is recorded as a wide terminal: at 200 columns the full maps
+// have room for their places' cards and the world beside them. The
+// README's animations and its still are cut from it at the same size.
+const tourW, tourH = 200, 50
 
 type tourFrame struct {
 	D   int     `json:"d"`   // milliseconds this frame stays on screen

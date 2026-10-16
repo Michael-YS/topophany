@@ -145,6 +145,9 @@ class Player {
     this.root = root;
     this.data = data;
     this.canvas = $('#term-canvas', root);
+    // The box keeps the recording's shape before and after it paints: cells
+    // are twice as tall as wide.
+    this.canvas.parentElement.style.aspectRatio = `${data.size[0]} / ${data.size[1] * 2}`;
     this.screen = new Screen(this.canvas, data.size[0], data.size[1], data.styles);
     this.buttons = $$('#chapters button');
     this.chapters = data.chapters.map((c) => ({ ...c, total: c.frames.reduce((s, f) => s + f.d, 0) }));

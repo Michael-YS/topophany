@@ -65,11 +65,19 @@ func clip(t *testing.T, c docClip, lang string) tour {
 	return out
 }
 
+// The guide's stills sit two to a row, so they keep a terminal's size at
+// which their words still read; the README's are as wide as the tour.
+const guideW, guideH = 140, 42
+
 // shot is the TUI as it shows c in lang: half an hour into the transit
 // outage, four seconds after the last snapshot.
 func shot(t *testing.T, c docShot, lang string) tour {
 	r := newRecorder(t, lang)
 	m := r.m
+	if !c.readme {
+		m.Width, m.Height = guideW, guideH
+		r.out.Size = [2]int{guideW, guideH}
+	}
 	r.sim.SetScenario(slices.Index(r.sim.ScenarioIDs(), "transit-blocked"), m.Now.Add(-30*time.Minute))
 	r.fetch()
 	m.Now = m.Now.Add(4 * time.Second)
