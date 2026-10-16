@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Topophany — 在终端中查看的自托管网络监控</title>
-<meta name="description" content="自托管的网络拓扑与可用性监控，带终端界面。一个 Go 二进制文件，告诉你测了什么、从哪里测、测得有多新。">
+<meta name="description" content="在终端里查看的自托管网络监控：你的机器、路径和服务尽在一张实时地图上，从你真正上网的地方发起检查，每个状态都附有证据。只有一个 Go 二进制文件。">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#0a1016">
 <meta name="color-scheme" content="dark">
@@ -29,11 +29,11 @@
 <meta property="og:image:alt" content="Topophany 字标，旁边是点阵地球，上海、东京、新加坡、孟买和悉尼亮起并由路径相连。">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="Topophany 字标，旁边是点阵地球，上海、东京、新加坡、孟买和悉尼亮起并由路径相连。">
-<link rel="stylesheet" href="/css/site.9967fe96fd8e.css">
+<link rel="stylesheet" href="/css/site.dbf759af6dd5.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.d97bac176b98.js"></script>
 <script type="application/json" id="strings">{"replay":"回放","paused":"已暂停","pause":"暂停回放","play":"播放回放","recording":"Topophany 终端界面的录像：{title}。{text}","missing":"这段录像里没有 {tab}。运行 {cmd} 即可查看。","failed":"无法加载录像","copy":"复制","copied":"已复制","place.shanghai":"上海","place.tokyo":"东京","place.singapore":"新加坡","place.frankfurt":"法兰克福","place.london":"伦敦","place.ashburn":"阿什本","place.los-angeles":"洛杉矶","place.sao-paulo":"圣保罗","place.sydney":"悉尼","place.mumbai":"孟买","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/zh/","inLanguage":"zh-Hans","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"自托管的网络拓扑与可用性监控，带终端界面。一个 Go 二进制文件，告诉你测了什么、从哪里测、测得有多新。","softwareVersion":"0.9.1"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/zh/","inLanguage":"zh-Hans","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"在终端里查看的自托管网络监控：你的机器、路径和服务尽在一张实时地图上，从你真正上网的地方发起检查，每个状态都附有证据。只有一个 Go 二进制文件。","softwareVersion":"0.9.1"}]}</script>
 </head>
 <body>
 <a class="skip" href="#demo">跳到演示</a>
@@ -48,6 +48,7 @@
       <a href="#demo">演示</a>
       <a href="#evidence">证据</a>
       <a href="#architecture">架构</a>
+      <a href="#agent">Agent</a>
       <a href="#install">安装</a>
       <details class="lang">
         <summary aria-label="语言"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#globe"/></svg><span>简体中文</span></summary>
@@ -70,7 +71,7 @@
         <canvas class="wordmark" aria-hidden="true"></canvas>
       </h1>
       <p class="lede">从哪里出发，经由哪条路径，抵达了什么——依据又是什么。</p>
-      <p class="sub">自托管的网络与服务监控，在终端中查看。一个 Go 二进制文件，零依赖；检查没有通过，就不会变绿。</p>
+      <p class="sub">整张网络尽在一屏：哪条路径从哪里走得通，哪些服务有应答，每个状态背后的证据是什么。自托管，一个 Go 二进制文件，在终端里查看。</p>
       <div class="cta">
         <a class="btn btn-primary" href="#install">安装</a>
         <a class="btn" href="https://github.com/WhitenWhiten/topophany">
@@ -141,7 +142,7 @@
   <div class="wrap">
     <div class="head">
       <p class="eyebrow"><span>02</span> 语义</p>
-      <h2>证据，而非颜色</h2>
+      <h2>讲证据，不看颜色</h2>
       <p class="lead">没有通过的检查，就不会变绿。没人监控的服务保持 <em class="unknown">unknown</em>。</p>
     </div>
 
@@ -257,15 +258,15 @@
 
     <div class="grid-3 notes">
       <div>
-        <h3>两个采集器，不演共识的戏</h3>
+        <h3>两个采集器，不搞共识算法那一套</h3>
         <p>worker 同时投递给两者，一方离线时先行缓冲。</p>
       </div>
       <div>
-        <h3>从设计上就是只读的</h3>
+        <h3>生来只读</h3>
         <p>没有远程配置 API，也没有远程 shell。拓扑是你审阅过的本地 JSON。</p>
       </div>
       <div>
-        <h3>有上限，并且明说</h3>
+        <h3>有上限，也会明说</h3>
         <p>配额用满时，探测报错停止，而不是丢弃证据。</p>
       </div>
     </div>
@@ -338,10 +339,35 @@
   </div>
 </section>
 
+<section class="section" id="agent">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>05</span> 交给 Agent</p>
+      <h2>让 Agent 替你画出这张网</h2>
+      <p class="lead">监控最费工夫的一步，是把网络描述清楚，而这恰好是你手边的编程 Agent 擅长的事。它读取机器上现成的信息，写出拓扑，并在任何东西运行之前，先用 <code>topo validate</code> 检查一遍。</p>
+    </div>
+    <div class="grid-2 agent">
+      <article class="panel">
+        <h3 class="panel-title">这样问它</h3>
+        <div class="cmd cmd-multi prompt" data-copy="请把我的网络写成 Topophany 拓扑，保存到 topology.json。格式参考 `topo preview --print-topology` 的输出，以及 github.com/WhitenWhiten/topophany 里的 docs/REFERENCE.md。读取我的 SSH 配置、`tailscale status`，以及你能找到的 Compose 文件和反向代理配置：为每台机器写明所在位置、上面跑的服务、服务所属的应用和监听的地址，再从我要运行 worker 的机器发起检查，并把你了解到的情况写进各台机器的 notes。不要把任何密钥写进文件。反复运行 `topo validate --config topology.json` 直到通过，然后告诉我哪些是查到的、哪些是推测的。"><code>请把我的网络写成 Topophany 拓扑，保存到 topology.json。格式参考 `topo preview --print-topology` 的输出，以及 github.com/WhitenWhiten/topophany 里的 docs/REFERENCE.md。读取我的 SSH 配置、`tailscale status`，以及你能找到的 Compose 文件和反向代理配置：为每台机器写明所在位置、上面跑的服务、服务所属的应用和监听的地址，再从我要运行 worker 的机器发起检查，并把你了解到的情况写进各台机器的 notes。不要把任何密钥写进文件。反复运行 `topo validate --config topology.json` 直到通过，然后告诉我哪些是查到的、哪些是推测的。</code><button class="copy" type="button" aria-label="复制提示词"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        <p>Claude Code、Codex、Gemini CLI、Cursor，或任何能执行命令的 Agent 都行。密钥不会进文件：格式里只写环境变量名和密钥文件的路径，不写内容。</p>
+      </article>
+      <article class="panel">
+        <h3 class="panel-title">写好之后</h3>
+        <ul class="kit kit-agent">
+          <li><b>网络备忘录</b><code>topology.json</code><span>一份审阅过的文件，写清什么跑在哪里、每台机器怎么连上，旁边附着笔记和处置手册。Agent 动手之前先读它；它改了什么，你看 diff 就知道。</span></li>
+          <li><b>随手可查的接口</b><code>topo status · show · history</code><span>一条命令，文字或 JSON，你和 Agent 都能用：现在有没有问题、那台服务器上跑着什么、某项检查昨晚表现如何。</span></li>
+          <li><b>上线之前</b><code>topo preview --config</code><span>预览模式用合成证据画出你自己的网络，在启动任何一个 worker 之前，你和 Agent 都能先过一遍。</span></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>05</span> 安装</p>
+      <p class="eyebrow"><span>06</span> 安装</p>
       <h2>一分钟上手</h2>
       <p class="lead">预编译归档，或者一条 <code>go install</code>。</p>
     </div>
@@ -381,7 +407,7 @@
 
       <ol class="steps">
         <li>
-          <h3>四处看看</h3>
+          <h3>先随便看看</h3>
           <p>内置演示。按 <kbd>x</kbd> 弄坏点什么。</p>
           <div class="cmd" data-copy="topo preview"><span class="cmd-prompt" aria-hidden="true">$</span><code>topo preview</code><button class="copy" type="button" aria-label="复制"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
         </li>

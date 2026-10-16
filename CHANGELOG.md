@@ -69,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   how many need attention, and lists the services by name under their
   application where it has room, those needing attention first. A click
   opens the application, or the service, in the Services tab.
+- The README and the homepage say how to have a coding agent write the
+  topology, with a prompt to start from, and how the topology then serves
+  as the network's memo and `topo status`, `show` and `history` as its
+  quick interface.
 
 ### Changed
 

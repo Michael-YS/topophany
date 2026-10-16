@@ -681,6 +681,11 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 .kit span { grid-column: 1 / -1; color: var(--muted); font-size: 14.5px; line-height: 1.5; }
 .kit-adapters li::before { content: "◇"; color: var(--sky); }
 .kit-adapters b { color: var(--sky); }
+.kit-agent li::before { content: "›"; color: var(--accent); font-weight: 600; }
+.kit-agent b { color: var(--glow); }
+/* The prompt to give an agent, as written, wrapped to the panel. */
+.prompt { font-size: 13px; line-height: 1.7; }
+.prompt code { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
 .kit-edges li::before { content: "●"; color: #fdba74; }
 .kit-edges b { color: #fdba74; }
 .kit-edges code { border-color: rgba(253, 186, 116, .3); color: #fdba74; }

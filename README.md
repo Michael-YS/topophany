@@ -18,22 +18,23 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-**Topophany** is a self-hosted monitor for your network and the services on it, read in a terminal UI. It is one Go binary, `topo`, that you run in three roles: **workers** measure from where they are, **collectors** store the evidence, and the **TUI** shows what is wrong and where.
+**Topophany** puts your network on one screen: your machines and where they are, the paths between them and the services they run. Workers check it from the places you actually connect from (home, the office, a VPS abroad), and the terminal UI shows what is broken, seen from where, and the evidence for it. All of it is one self-hosted Go binary, `topo`.
 
 <p align="center">
-  <img src="docs/assets/outage.en.gif" alt="An outage arriving on the Overview: the scenario picker opens, checks fail sample by sample until five incidents are open and the failing routes turn amber on the map, each problem's route lights up as it is selected, and the evidence for one incident opens; then the Geo Map enters fullscreen, switches between points and cards, and returns to panels" width="100%">
-  <br><sub>Press <code>x</code> in <code>topo preview --lang en</code> and home loses the line to the transit host in Los Angeles. Select a problem and its route lights up; <code>Enter</code> shows the evidence. Then explore the Geo Map: fullscreen (<code>f</code>) and points/cards (<code>p</code>).</sub>
+  <img src="docs/assets/outage.en.gif" alt="An outage arriving on the Overview: the scenario picker opens, checks fail sample by sample until five incidents are open and the failing routes turn amber on the map, each problem's route lights up as it is selected, and the evidence for one incident opens; then the geo map fills the screen, switches between place cards and points, and returns to the panels" width="100%">
+  <br><sub>Press <code>x</code> in <code>topo preview --lang en</code> and home loses the line to the transit host in Los Angeles. Select a problem and its route lights up; <code>Enter</code> shows the evidence. Then the geo map takes the whole screen (<code>f</code>) and trades its place cards for points (<code>p</code>).</sub>
 </p>
 
 ## Why Topophany
 
-- **Evidence, not colors.** Health, evidence source and freshness are separate fields. Nothing turns green without a passing check, an unmonitored service stays `unknown`, and a cached view says so.
-- **Vantage points are explicit.** Each observer measures from where it actually is. A failure seen from home is reported as a failure of that path, not as a server outage.
-- **Readable at a glance.** The Overview answers *is anything wrong, and where?* with a verdict, a map of every place and path, and the short list of what needs attention.
-- **One binary, no dependencies.** No CGO, no database daemon, no Node.js, and zero external Go modules.
+- **Where it breaks, not just that it broke.** Every check runs from a vantage point you name. Down from Seattle but fine from New York is a fault on Seattle's path, and Topophany reports it as one instead of calling the server down.
+- **Evidence, not colors.** Health, where the evidence came from and how fresh it is are separate fields. Nothing turns green without a passing check, a service nobody checks stays `unknown`, and a cached view says it is cached.
+- **A memo of your network.** One reviewed JSON file says what runs where, how each machine is reached and which chain each path takes, with your notes and runbooks beside them. You read it, your agent reads it, and the monitor checks against it.
+- **Made to be looked at.** A braille world map, a schematic map that keeps places in order, a network graph, a card for every server and services folded into the applications they serve, in any terminal, mouse included.
+- **One binary, nothing else.** No CGO, no database daemon, no Node.js, and zero external Go modules.
 
 <p align="center">
-  <img src="docs/assets/overview.en.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, and the list of what needs attention" width="100%">
+  <img src="docs/assets/overview.en.png" alt="The Overview during a simulated outage: the virtual geo map, its places as cards from Tokyo to Frankfurt with the failing route drawn in amber, a status card reading 5 incidents, the list of what needs attention, and the services grouped by application with the proxy chain marked for attention" width="100%">
   <br><sub>The Overview during a simulated outage, from <code>topo preview --lang en --scenario 1</code>.</sub>
 </p>
 
@@ -45,13 +46,13 @@ Install from the [releases page](https://github.com/WhitenWhiten/topophany/relea
 go install github.com/WhitenWhiten/topophany/cmd/topo@latest
 ```
 
-See the whole UI with synthetic evidence, no setup needed. Press `x` to switch failure scenarios. The built-in topology and its scenarios are written in English, Japanese and Chinese and follow your locale; `--lang ja` picks one:
+See the whole UI on synthetic evidence, with nothing to set up, and press `x` to break something. The built-in network and its scenarios are written in English, Japanese and Chinese and follow your locale; `--lang ja` picks one:
 
 ```sh
 topo preview
 ```
 
-Run a real collector on your machine, with a demo topology and fresh credentials:
+Run a real collector on this machine, with a demo topology and fresh credentials:
 
 ```sh
 topo init --dir ./demo
@@ -61,6 +62,17 @@ topo serve --config ./demo/topology.json --auth ./demo/auth.json \
 # in another terminal
 topo --credentials ./demo/credentials.json
 ```
+
+## Let your agent write it
+
+The slow part of any monitor is describing what to monitor, and that is work a coding agent does well. Ask the one you already use (Claude Code, Codex, Gemini CLI, Cursor or any other that can run commands) to read what your machines already say about themselves and write the topology. It checks its own work with `topo validate`, and you look the result over in `topo preview` before anything runs. A prompt to start from:
+
+> Write a Topophany topology of my network to `topology.json`. Learn the format from `topo preview --print-topology` and docs/REFERENCE.md in github.com/WhitenWhiten/topophany. Read my SSH config, `tailscale status`, and the Compose files and reverse-proxy configs you can find. Declare each machine with where it is, the services on it, the applications they belong to and the addresses they answer on, add checks from the machines I will run workers on, and write what you learn about each machine into its notes. Never put a secret in the file. Run `topo validate --config topology.json` until it passes, then tell me what you found and what you guessed.
+
+Once it is written, it keeps working for both of you:
+
+- **A memo of your network.** The file says what runs where and how each machine is reached, with notes and runbooks beside them. Your agent reads it before touching anything, and you review its edits as a diff, like code; `topo edit` changes it in a TUI.
+- **A quick interface.** `topo status`, `topo show` and `topo history` answer in a line, or in JSON with `--json`: is anything wrong, what runs on that server, how a check fared overnight. Before any collector runs, `topo preview --config topology.json show servers` answers from the file alone.
 
 ## How it works
 
@@ -72,9 +84,9 @@ topo --credentials ./demo/credentials.json
   topo worker   (Tokyo server) ─┴─▶  topo serve  (B)  ─┴─▶  topo status   for scripts and agents
 ```
 
-- **Workers** run the checks in a reviewed local topology file and deliver observations to one or two collectors, buffering on disk when the network is down.
+- **Workers** run the checks in a reviewed local topology file and deliver what they observe to one or two collectors, buffering on disk while the network is down.
 - **Collectors** keep an append-only journal (fsync before acknowledging) and work out health, incidents and freshness. They remember each incident from opening to close and how each check fared for months, can post incidents to webhooks (ntfy, Slack, Discord or JSON), and can run checks of their own.
-- **Clients** are read-only. Closing the TUI does not stop monitoring, and nothing in Topophany changes routes, proxies or services.
+- **Clients** only read. Closing the TUI does not stop monitoring, and nothing in Topophany changes routes, proxies or services.
 
 | Command | What it does |
 |---|---|
@@ -91,7 +103,7 @@ Run `topo help` for the full list.
 
 ## Monitor your own network
 
-1. **Describe it.** Write a topology in JSON: nodes, links, endpoints, services, paths, observers and checks. Start from [`examples/homelab.json`](examples/homelab.json), edit it with `topo edit --config topology.json`, and check it with `topo validate`.
+1. **Describe it.** A topology in JSON lists nodes, links, endpoints, services, paths, observers and checks. Have your agent write it as above, or start from [`examples/homelab.json`](examples/homelab.json) and edit it with `topo edit --config topology.json`. Either way, `topo validate` checks it.
 2. **Run a collector** where your devices can reach it, with TLS: `topo serve --config topology.json --auth auth.json --data collector-data --listen 0.0.0.0:7447 --tls-cert server.pem --tls-key server-key.pem`
 3. **Run a worker** on every machine you want to measure from: `topo worker --config topology.json --observer <id> --credentials worker-credentials.json --data worker-data`
 4. **Look at it** from anywhere: `topo login --server https://your-collector:7447 --project <name>`, then just `topo`.
@@ -108,11 +120,11 @@ The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units
 
 ## The terminal UI
 
-Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and network), **Servers**, **Services**, **Paths**, **Checks**, **Incidents**, **Observers** and **About**.
+Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and network), **Servers**, **Services**, **Paths**, **Checks**, **Incidents**, **Observers** and **About**. Services fold into the applications you declare and checks into the services they verify; `b` browses either by application, environment or host.
 
 <p align="center">
-  <img src="docs/assets/views.en.gif" alt="The Overview viewed from the MacBook in Seattle, where the transit path is down, then from the server in New York, where it is fine; then the Topology tab's virtual geo map, geo map with fullscreen and points/cards toggles, and network graph" width="100%">
-  <br><sub>Down from Seattle, fine from New York: each observer reports only what it can see (<code>v</code>). Then the three maps (<code>m</code>): virtual geo, geo and network. The Geo Map expands to fullscreen and back (<code>f</code>), switching between points and cards (<code>p</code>).</sub>
+  <img src="docs/assets/views.en.gif" alt="The Overview viewed from the MacBook in Seattle, where the transit path is down, then from the server in New York, where it is fine; then the Topology tab's virtual geo map, the geo map filling the screen and switching between place cards and points, and the network graph" width="100%">
+  <br><sub>Down from Seattle, fine from New York: each observer reports only what it can see (<code>v</code>). Then the three maps (<code>m</code>): virtual geo, geo and network, the geo map taking the whole screen (<code>f</code>) and trading its place cards for points (<code>p</code>).</sub>
 </p>
 
 | Keys | |
@@ -124,6 +136,7 @@ Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and net
 | `v` | switch the observer you view from |
 | `m` / `z` / `f` / `p` | cycle the map / zoom it / show it alone / geo markers and dashed arcs |
 | `s` | line the server cards up at one size |
+| `b` | browse services and checks by application, environment or host |
 | `q` | quit |
 
 The mouse works too. Colors adapt to truecolor, 256-color and `NO_COLOR` terminals. The [user guide](docs/GUIDE.md) describes every tab and map, and how to read all of it from scripts and agents with `topo status`, `topo show` and `topo history`.

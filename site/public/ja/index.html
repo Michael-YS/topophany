@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Topophany — ターミナルで読むセルフホスト型ネットワーク監視</title>
-<meta name="description" content="ネットワークトポロジーと稼働状況をセルフホストで監視し、ターミナル UI で読む。Go のバイナリ 1 つで、何を、どこから、いつ測ったかを示します。">
+<meta name="description" content="ターミナルで読むセルフホスト型ネットワーク監視。マシン、経路、サービスをひとつの地図に描き、実際につなぐ場所からチェックして、すべての状態に根拠を添えます。Go のバイナリ 1 つ。">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#0a1016">
 <meta name="color-scheme" content="dark">
@@ -29,11 +29,11 @@
 <meta property="og:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
-<link rel="stylesheet" href="/css/site.9967fe96fd8e.css">
+<link rel="stylesheet" href="/css/site.dbf759af6dd5.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.d97bac176b98.js"></script>
 <script type="application/json" id="strings">{"replay":"再生中","paused":"一時停止","pause":"再生を一時停止","play":"再生する","recording":"Topophany ターミナル UI の録画：{title}。{text}","missing":"{tab} はこの録画に含まれていません。{cmd} を実行すると見られます。","failed":"録画を読み込めませんでした","copy":"コピー","copied":"コピーしました","place.shanghai":"上海","place.tokyo":"東京","place.singapore":"シンガポール","place.frankfurt":"フランクフルト","place.london":"ロンドン","place.ashburn":"アッシュバーン","place.los-angeles":"ロサンゼルス","place.sao-paulo":"サンパウロ","place.sydney":"シドニー","place.mumbai":"ムンバイ","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/ja/","inLanguage":"ja","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"ネットワークトポロジーと稼働状況をセルフホストで監視し、ターミナル UI で読む。Go のバイナリ 1 つで、何を、どこから、いつ測ったかを示します。","softwareVersion":"0.9.1"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/ja/","inLanguage":"ja","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"ターミナルで読むセルフホスト型ネットワーク監視。マシン、経路、サービスをひとつの地図に描き、実際につなぐ場所からチェックして、すべての状態に根拠を添えます。Go のバイナリ 1 つ。","softwareVersion":"0.9.1"}]}</script>
 </head>
 <body>
 <a class="skip" href="#demo">デモへスキップ</a>
@@ -48,6 +48,7 @@
       <a href="#demo">デモ</a>
       <a href="#evidence">根拠</a>
       <a href="#architecture">構成</a>
+      <a href="#agent">エージェント</a>
       <a href="#install">インストール</a>
       <details class="lang">
         <summary aria-label="言語"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#globe"/></svg><span>日本語</span></summary>
@@ -70,7 +71,7 @@
         <canvas class="wordmark" aria-hidden="true"></canvas>
       </h1>
       <p class="lede">どこから、どの経路で、何に届いたのか — そして、何を根拠に。</p>
-      <p class="sub">ネットワークとサービスをセルフホストで監視し、ターミナルで読む。Go のバイナリ 1 つで依存なし。チェックが通るまで緑にはなりません。</p>
+      <p class="sub">ネットワーク全体をひとつの画面に。どの経路がどこから通じているか、どのサービスが応答しているか、それぞれの状態の根拠まで。セルフホストで、Go のバイナリ 1 つ、ターミナルで読めます。</p>
       <div class="cta">
         <a class="btn btn-primary" href="#install">インストール</a>
         <a class="btn" href="https://github.com/WhitenWhiten/topophany">
@@ -257,15 +258,15 @@
 
     <div class="grid-3 notes">
       <div>
-        <h3>2 つのコレクター、合意形成の芝居はなし</h3>
+        <h3>2 つのコレクター、合意ごっこはなし</h3>
         <p>ワーカーは両方に送り、片方が落ちている間はバッファします。</p>
       </div>
       <div>
-        <h3>設計からして読み取り専用</h3>
+        <h3>最初から読み取り専用</h3>
         <p>リモートの設定 API もシェルもありません。トポロジーはレビューするローカル JSON です。</p>
       </div>
       <div>
-        <h3>上限があり、それを明言する</h3>
+        <h3>上限はあり、隠さない</h3>
         <p>上限に達すると、根拠を捨てずにエラーで計測を止めます。</p>
       </div>
     </div>
@@ -338,10 +339,35 @@
   </div>
 </section>
 
+<section class="section" id="agent">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>05</span> エージェントと</p>
+      <h2>地図はエージェントに描かせる</h2>
+      <p class="lead">監視でいちばん手間がかかるのはネットワークを書き起こすことで、それは普段使っているコーディングエージェントの得意分野です。マシンが既に持っている情報を読んでトポロジーを書き、何かを動かす前に <code>topo validate</code> で確かめます。</p>
+    </div>
+    <div class="grid-2 agent">
+      <article class="panel">
+        <h3 class="panel-title">頼み方</h3>
+        <div class="cmd cmd-multi prompt" data-copy="私のネットワークを Topophany のトポロジーとして topology.json に書いてください。形式は `topo preview --print-topology` の出力と、github.com/WhitenWhiten/topophany の docs/REFERENCE.md を参考にしてください。SSH の設定、`tailscale status`、見つかる Compose ファイルとリバースプロキシの設定を読み、各マシンについて場所、動いているサービス、サービスが属するアプリケーション、待ち受けているアドレスを宣言し、ワーカーを動かす予定のマシンからのチェックを加え、分かったことはそれぞれのマシンの notes に書いてください。秘密情報はファイルに書かないでください。`topo validate --config topology.json` が通るまで直し、最後に、確かめたことと推測したことを分けて教えてください。"><code>私のネットワークを Topophany のトポロジーとして topology.json に書いてください。形式は `topo preview --print-topology` の出力と、github.com/WhitenWhiten/topophany の docs/REFERENCE.md を参考にしてください。SSH の設定、`tailscale status`、見つかる Compose ファイルとリバースプロキシの設定を読み、各マシンについて場所、動いているサービス、サービスが属するアプリケーション、待ち受けているアドレスを宣言し、ワーカーを動かす予定のマシンからのチェックを加え、分かったことはそれぞれのマシンの notes に書いてください。秘密情報はファイルに書かないでください。`topo validate --config topology.json` が通るまで直し、最後に、確かめたことと推測したことを分けて教えてください。</code><button class="copy" type="button" aria-label="プロンプトをコピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        <p>Claude Code、Codex、Gemini CLI、Cursor など、コマンドを実行できるエージェントなら何でも。秘密情報はファイルに入りません。形式に書くのは環境変数名と鍵ファイルのパスだけで、その中身ではありません。</p>
+      </article>
+      <article class="panel">
+        <h3 class="panel-title">そのあとも</h3>
+        <ul class="kit kit-agent">
+          <li><b>ネットワークのメモとして</b><code>topology.json</code><span>何がどこで動き、各マシンにどう届くのかを、ノートや手順書と一緒にレビュー済みのファイル 1 つに。エージェントは手を動かす前にこれを読み、あなたはその変更を差分で確かめます。</span></li>
+          <li><b>すぐ引ける窓口として</b><code>topo status · show · history</code><span>コマンド 1 つで、文字でも JSON でも、あなたにもエージェントにも答えます。いま何かおかしいか、あのサーバーで何が動いているか、あのチェックが夜のあいだどうだったか。</span></li>
+          <li><b>動かす前に</b><code>topo preview --config</code><span>プレビューなら、合成の根拠で自分のネットワークを描けます。ワーカーを 1 台も動かす前に、エージェントと一緒に見直せます。</span></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>05</span> インストール</p>
+      <p class="eyebrow"><span>06</span> インストール</p>
       <h2>1 分で動く</h2>
       <p class="lead">ビルド済みアーカイブ、または <code>go install</code> ひとつで。</p>
     </div>

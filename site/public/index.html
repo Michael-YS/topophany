@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Topophany — self-hosted network monitoring in the terminal</title>
-<meta name="description" content="Self-hosted network topology and uptime monitoring with a terminal UI. One Go binary shows what was measured, from where, and how recently.">
+<meta name="description" content="Self-hosted network monitoring in the terminal: a live map of your machines, paths and services, checked from the places you connect from, with the evidence behind every state. One Go binary.">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#0a1016">
 <meta name="color-scheme" content="dark">
@@ -29,11 +29,11 @@
 <meta property="og:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
-<link rel="stylesheet" href="/css/site.9967fe96fd8e.css">
+<link rel="stylesheet" href="/css/site.dbf759af6dd5.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.d97bac176b98.js"></script>
 <script type="application/json" id="strings">{"replay":"replay","paused":"paused","pause":"Pause the replay","play":"Play the replay","recording":"Recording of the Topophany terminal UI: {title}. {text}","missing":"{tab} is not in this recording. Run {cmd} to see it.","failed":"the recording could not be loaded","copy":"Copy","copied":"Copied","place.shanghai":"Shanghai","place.tokyo":"Tokyo","place.singapore":"Singapore","place.frankfurt":"Frankfurt","place.london":"London","place.ashburn":"Ashburn","place.los-angeles":"Los Angeles","place.sao-paulo":"São Paulo","place.sydney":"Sydney","place.mumbai":"Mumbai","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/","inLanguage":"en","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Self-hosted network topology and uptime monitoring with a terminal UI. One Go binary shows what was measured, from where, and how recently.","softwareVersion":"0.9.1"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/","inLanguage":"en","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Self-hosted network monitoring in the terminal: a live map of your machines, paths and services, checked from the places you connect from, with the evidence behind every state. One Go binary.","softwareVersion":"0.9.1"}]}</script>
 </head>
 <body>
 <a class="skip" href="#demo">Skip to the demo</a>
@@ -48,6 +48,7 @@
       <a href="#demo">Demo</a>
       <a href="#evidence">Evidence</a>
       <a href="#architecture">Architecture</a>
+      <a href="#agent">Agents</a>
       <a href="#install">Install</a>
       <details class="lang">
         <summary aria-label="Language"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#globe"/></svg><span>English</span></summary>
@@ -70,7 +71,7 @@
         <canvas class="wordmark" aria-hidden="true"></canvas>
       </h1>
       <p class="lede">From where, via which path, reaching&nbsp;what — and on what evidence.</p>
-      <p class="sub">Self-hosted network and service monitoring, read in the terminal. One Go binary, no dependencies, and nothing turns green until a check passes.</p>
+      <p class="sub">Your whole network on one screen: which paths work from which places, which services answer, and the evidence behind every state. Self-hosted, one Go binary, read in the terminal.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#install">Install</a>
         <a class="btn" href="https://github.com/WhitenWhiten/topophany">
@@ -338,10 +339,35 @@
   </div>
 </section>
 
+<section class="section" id="agent">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>05</span> With your agent</p>
+      <h2>Let your agent draw the map</h2>
+      <p class="lead">Describing a network is the slow part of monitoring it, and the coding agent you already use is good at it. It reads what your machines already say about themselves, writes the topology, and checks it with <code>topo validate</code> before anything runs.</p>
+    </div>
+    <div class="grid-2 agent">
+      <article class="panel">
+        <h3 class="panel-title">Ask it</h3>
+        <div class="cmd cmd-multi prompt" data-copy="Write a Topophany topology of my network to topology.json. Learn the format from `topo preview --print-topology` and docs/REFERENCE.md in github.com/WhitenWhiten/topophany. Read my SSH config, `tailscale status`, and the Compose files and reverse-proxy configs you can find. Declare each machine with where it is, the services on it, the applications they belong to and the addresses they answer on, add checks from the machines I will run workers on, and write what you learn about each machine into its notes. Never put a secret in the file. Run `topo validate --config topology.json` until it passes, then tell me what you found and what you guessed."><code>Write a Topophany topology of my network to topology.json. Learn the format from `topo preview --print-topology` and docs/REFERENCE.md in github.com/WhitenWhiten/topophany. Read my SSH config, `tailscale status`, and the Compose files and reverse-proxy configs you can find. Declare each machine with where it is, the services on it, the applications they belong to and the addresses they answer on, add checks from the machines I will run workers on, and write what you learn about each machine into its notes. Never put a secret in the file. Run `topo validate --config topology.json` until it passes, then tell me what you found and what you guessed.</code><button class="copy" type="button" aria-label="Copy the prompt"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        <p>Claude Code, Codex, Gemini CLI, Cursor or any agent that can run commands. Secrets stay out: the format names environment variables and key files, never what is in them.</p>
+      </article>
+      <article class="panel">
+        <h3 class="panel-title">Then keep it</h3>
+        <ul class="kit kit-agent">
+          <li><b>A memo of your network</b><code>topology.json</code><span>One reviewed file says what runs where and how each machine is reached, with notes and runbooks beside them. Your agent reads it before touching anything; you review its edits as a diff.</span></li>
+          <li><b>A quick interface</b><code>topo status · show · history</code><span>Text or JSON in one command, for you or your agent: is anything wrong, what runs on that server, how a check fared overnight.</span></li>
+          <li><b>Before anything runs</b><code>topo preview --config</code><span>Preview draws your own network on synthetic evidence, so the two of you can look it over before a single worker starts.</span></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>05</span> Install</p>
+      <p class="eyebrow"><span>06</span> Install</p>
       <h2>Up in a minute</h2>
       <p class="lead">Prebuilt archives, or one <code>go install</code>.</p>
     </div>

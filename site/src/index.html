@@ -44,6 +44,7 @@
       <a href="#demo">{{nav.demo}}</a>
       <a href="#evidence">{{nav.evidence}}</a>
       <a href="#architecture">{{nav.architecture}}</a>
+      <a href="#agent">{{nav.agent}}</a>
       <a href="#install">{{nav.install}}</a>
       <details class="lang">
         <summary aria-label="{{nav.language}}"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#globe"/></svg><span>{{lang.name}}</span></summary>
@@ -334,10 +335,35 @@
   </div>
 </section>
 
+<section class="section" id="agent">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>05</span> {{agent.eyebrow}}</p>
+      <h2>{{agent.title}}</h2>
+      <p class="lead">{{agent.lead.html}}</p>
+    </div>
+    <div class="grid-2 agent">
+      <article class="panel">
+        <h3 class="panel-title">{{agent.ask}}</h3>
+        <div class="cmd cmd-multi prompt" data-copy="{{agent.prompt}}"><code>{{agent.prompt}}</code><button class="copy" type="button" aria-label="{{agent.copy}}"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+        <p>{{agent.ask-note}}</p>
+      </article>
+      <article class="panel">
+        <h3 class="panel-title">{{agent.keep}}</h3>
+        <ul class="kit kit-agent">
+          <li><b>{{agent.memo}}</b><code>topology.json</code><span>{{agent.memo-text}}</span></li>
+          <li><b>{{agent.quick}}</b><code>topo status · show · history</code><span>{{agent.quick-text}}</span></li>
+          <li><b>{{agent.first}}</b><code>topo preview --config</code><span>{{agent.first-text}}</span></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>05</span> {{install.eyebrow}}</p>
+      <p class="eyebrow"><span>06</span> {{install.eyebrow}}</p>
       <h2>{{install.title}}</h2>
       <p class="lead">{{install.lead.html}}</p>
     </div>
