@@ -90,7 +90,10 @@ func TestReadCommandsShowWhatTheTUIShows(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &status); err != nil {
 				t.Fatalf("%s: %v\n%s", name, err, out)
 			}
-			m := &tui.Model{Snapshot: snap, Now: now, Server: "synthetic", Observer: observer, Width: 211, Height: 43, NoColor: true}
+			// The CLI lists every row; the TUI may fold Services and Checks
+			// into groups by application, which is presentation only.
+			m := &tui.Model{Snapshot: snap, Now: now, Server: "synthetic", Observer: observer, Width: 211, Height: 43, NoColor: true,
+				GroupBy: map[int]string{view.Services: "flat", view.Checks: "flat"}}
 			frame := escapes.ReplaceAllString(strings.Join(m.Render(), "\n"), "")
 			if verdict := status.Verdict.Glyph + " " + status.Verdict.Text; !strings.Contains(frame, verdict) {
 				t.Fatalf("%s: the CLI says %q, the TUI's Overview does not:\n%s", name, verdict, frame)

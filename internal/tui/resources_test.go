@@ -102,7 +102,7 @@ func TestTrendsReadHistoryOnceAndTakeSnapshotSamples(t *testing.T) {
 func TestSamplerReadsHostHistoryAfterTheSelectedCheck(t *testing.T) {
 	m := previewModel(t)
 	m.setTab(tabChecks)
-	selected := m.Rows()[0].ID
+	selected := selectFirstEntry(t, m).ID
 	read := []string{}
 	s := &sampler{read: func(_ context.Context, check string, _ int) ([]model.Observation, error) {
 		read = append(read, check)

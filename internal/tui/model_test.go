@@ -402,6 +402,7 @@ func TestRepaintsArePacedToWhatMoves(t *testing.T) {
 func TestFooterSaysEnterGoesBack(t *testing.T) {
 	m := previewModel(t)
 	m.setTab(tabServices)
+	selectFirstEntry(t, m)
 	footer := func() string { lines := m.Render(); return ansi.ReplaceAllString(lines[len(lines)-1], "") }
 	if f := footer(); !strings.Contains(f, "↵  Details") {
 		t.Fatalf("list footer %q", f)

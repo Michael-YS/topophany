@@ -21,8 +21,7 @@ func TestCheckEvidenceShowsRecentSamples(t *testing.T) {
 		t.Fatal("samples read off the Checks tab")
 	}
 	m.setTab(tabChecks)
-	rows := m.Rows()
-	id := rows[0].ID
+	id := selectFirstEntry(t, m).ID
 	if got := m.wantSamples(false); got != id {
 		t.Fatalf("selected check %s, samples wanted for %q", id, got)
 	}
@@ -54,6 +53,9 @@ func TestCheckEvidenceShowsRecentSamples(t *testing.T) {
 		t.Fatal("a failed read is retried only at a refresh")
 	}
 	m.Key("down")
+	for m.Rows()[m.Selected].Kind == "group" {
+		m.Key("down") // past the next group's header, to its first check
+	}
 	next := m.Rows()[m.Selected].ID
 	if m.wantSamples(false) != next {
 		t.Fatal("moving to another check does not read its samples")

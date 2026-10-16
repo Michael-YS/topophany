@@ -31,6 +31,20 @@ func previewModel(t *testing.T) *Model {
 	return &Model{Snapshot: snap, Now: now, Width: 160, Height: 48, Preview: sim, Server: "synthetic"}
 }
 
+// selectFirstEntry selects the first row of the list that is not a group,
+// as the preview's Services and Checks open grouped, and returns it.
+func selectFirstEntry(t *testing.T, m *Model) Row {
+	t.Helper()
+	for i, r := range m.Rows() {
+		if r.Kind != "group" {
+			m.Selected = i
+			return r
+		}
+	}
+	t.Fatal("the list has only groups")
+	return Row{}
+}
+
 func TestPreviewScenarioMenuDebugAndReadOnly(t *testing.T) {
 	m := previewModel(t)
 	m.setTab(tabTopology)

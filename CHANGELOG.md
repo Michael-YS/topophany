@@ -100,6 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starts with the built-in defaults and says why. `preferences show` still
   reports the error.
 - CLI tables let a column grow to 48 characters before a cell runs on.
+- The built-in preview declares six applications (Main site, Serverless,
+  Proxy chain, Remote access, Personal cloud, Code & backups), so
+  `topo preview` opens Services grouped by application.
 - A group is named by its application alone where no service or check
   names an environment, rather than "Shop / Unspecified" on every group,
   and the scope line says "by application".
