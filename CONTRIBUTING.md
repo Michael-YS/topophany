@@ -19,7 +19,7 @@ roles. Keep the original observation timestamp during replay.
 No third-party runtime dependencies are currently required. A future storage
 or TUI library change must retain the wire contract, migration/recovery tests,
 cross-builds and resource-budget behavior. JSON topology is the sole writable
-configuration authority in version 0.2.
+configuration authority in version 1.0.
 
 The homepage at topophany.com is the static site in `site/public/`, published
 as is by a Cloudflare Worker (`site/wrangler.jsonc`) with no build step, and

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-15
+
 ### Added
 
 - `s` on the Servers tab lines the cards up in a grid at one size, each
@@ -125,6 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Recognize Windows socket errors in collector diagnostics, so connection
+  failures report the same actionable reasons as on Linux and macOS.
 - The systemd units of server and worker bundles quoted `WorkingDirectory=`
   and `EnvironmentFile=`, which systemd refuses, so installing such a bundle
   on Linux failed and rolled back. A new test checks the unit with
@@ -139,6 +143,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Withhold reflections of private HTTP `Host` overrides from observations
+  visible to viewers.
 - `topo install` installs the bytes whose checksums it verified, the service
   definition and the topology included, rather than reading the bundle a
   second time, so a bundle changed between the check and the copy cannot
@@ -955,7 +961,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/WhitenWhiten/topophany/compare/v0.9.1...v1.0.0
 [0.9.1]: https://github.com/WhitenWhiten/topophany/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/WhitenWhiten/topophany/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/WhitenWhiten/topophany/compare/v0.8.1...v0.8.3

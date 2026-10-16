@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-Topophany is pre-1.0. Security fixes are made on the latest minor release line only.
+Security fixes are made on the latest minor release line only.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.8.x   | Yes       |
-| < 0.8   | No        |
+| 1.0.x   | Yes       |
+| < 1.0   | No        |
 
 ## Reporting a Vulnerability
 
