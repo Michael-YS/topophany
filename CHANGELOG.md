@@ -100,6 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starts with the built-in defaults and says why. `preferences show` still
   reports the error.
 - CLI tables let a column grow to 48 characters before a cell runs on.
+- A group is named by its application alone where no service or check
+  names an environment, rather than "Shop / Unspecified" on every group,
+  and the scope line says "by application".
 
 ### Fixed
 
@@ -112,6 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor labels longer than the form's label column ran out of the dialog;
   the Browse menu drew an empty key column; an evidence title too long for
   its panel was cut without an ellipsis.
+- A group of one said "1 members", and a group's evidence ran its checks
+  and shared dependencies into the note under them.
 
 ### Security
 

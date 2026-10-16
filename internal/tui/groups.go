@@ -55,7 +55,14 @@ func (m *Model) businessStatus() string {
 	if env == "-" {
 		env = "Unspecified"
 	}
-	text := app + " / " + env + " · " + m.groupMode()
+	by := m.groupMode()
+	if by != "flat" {
+		by = "by " + by
+	}
+	text := app + " / " + env + " · " + by
+	if m.Environment == "" && !view.DeclaresEnvironments(m.Snapshot.Topology) {
+		text = app + " · " + by // no environment to choose between
+	}
 	if m.ServiceFilter != "" {
 		text += " · " + m.ServiceFilter
 	}
@@ -246,7 +253,7 @@ func (m *Model) dependencyMenu() {
 				}
 				seen[id] = true
 				ids = append(ids, id)
-				labels = append(labels, d.Name+" · "+view.ApplicationName(c, d.Application)+" / "+d.Environment)
+				labels = append(labels, d.Name+" · "+view.ScopeLabel(view.ApplicationName(c, d.Application), d.Environment))
 			}
 		}
 	}

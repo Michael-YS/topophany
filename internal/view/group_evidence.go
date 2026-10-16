@@ -71,7 +71,7 @@ func (v View) groupEvidence(rows []Row) []string {
 			if health == "" || v.Cached {
 				health = "unknown"
 			}
-			deps = append(deps, fmt.Sprintf("Shared dependency: %s (%s) · %s / %s · %s", d.Name, d.ID, ApplicationName(v.Snapshot.Topology, d.Application), d.Environment, health))
+			deps = append(deps, fmt.Sprintf("Shared dependency: %s (%s) · %s · %s", d.Name, d.ID, ScopeLabel(ApplicationName(v.Snapshot.Topology, d.Application), d.Environment), health))
 		}
 	}
 	sort.Strings(deps)

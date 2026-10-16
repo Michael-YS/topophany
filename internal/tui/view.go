@@ -145,7 +145,7 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 			}
 		}
 		if groups > 0 {
-			tag = "· " + itoa(groups) + " groups · " + itoa(members) + " shown"
+			tag = "· " + plural(groups, "group") + " · " + itoa(members) + " shown"
 		}
 	}
 	if m.Search != "" {

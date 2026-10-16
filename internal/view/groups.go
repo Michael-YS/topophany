@@ -17,6 +17,32 @@ type GroupOptions struct {
 	Expanded                                      map[string]bool
 }
 
+// ScopeLabel is an application with its environment, "Shop / production",
+// or the application alone where no environment is given.
+func ScopeLabel(app, env string) string {
+	if env == "" {
+		return app
+	}
+	return app + " / " + env
+}
+
+// DeclaresEnvironments reports whether any service or check names an
+// environment. Where none does, a group is named by its application alone:
+// "Unspecified" on every group would say nothing.
+func DeclaresEnvironments(c model.Config) bool {
+	for _, s := range c.Services {
+		if s.Environment != "" {
+			return true
+		}
+	}
+	for _, x := range c.Checks {
+		if x.Environment != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func ApplicationName(c model.Config, id string) string {
 	if id == "" {
 		return "Ungrouped"
@@ -83,6 +109,7 @@ func (v View) GroupedList(tab int, o GroupOptions) []Row {
 	buckets := map[string]*bucket{}
 	order := []string{}
 	flat := []Row{}
+	envs := DeclaresEnvironments(c)
 	for _, r := range rows {
 		s := EntityScope(c, r.Kind, r.ID)
 		if !scopeMatches(o.Application, s.Application) || !scopeMatches(o.Environment, s.Environment) || o.Service != "" && s.Service != o.Service {
@@ -148,7 +175,11 @@ func (v View) GroupedList(tab int, o GroupOptions) []Row {
 		}
 		id := fmt.Sprintf("%d/%s/%s/%s", tab, o.By, key, s.Environment)
 		if buckets[id] == nil {
-			buckets[id] = &bucket{id: id, title: label + " / " + env}
+			title := label
+			if envs {
+				title = label + " / " + env
+			}
+			buckets[id] = &bucket{id: id, title: title}
 			order = append(order, id)
 		}
 		buckets[id].rows = append(buckets[id].rows, r)
@@ -177,8 +208,10 @@ func (v View) GroupedList(tab int, o GroupOptions) []Row {
 			}
 			details = append(details, r.Title+": "+HealthWord(r.Health))
 		}
-		details = append(v.groupEvidence(b.rows), details...)
-		summary := fmt.Sprintf("%d members · %d attention · %d unknown · %d stale · %d paused", len(b.rows), problems, unknown, stale, paused)
+		if evidence := v.groupEvidence(b.rows); len(evidence) > 0 {
+			details = append(append(evidence, ""), details...)
+		}
+		summary := fmt.Sprintf("%s · %d attention · %d unknown · %d stale · %d paused", Plural(len(b.rows), "member"), problems, unknown, stale, paused)
 		health := "up"
 		if unknown > 0 || stale > 0 || paused > 0 {
 			health = "unknown"
@@ -195,7 +228,7 @@ func (v View) GroupedList(tab int, o GroupOptions) []Row {
 		if expanded {
 			tree = "▼ "
 		}
-		compact := fmt.Sprintf("%d members", len(b.rows))
+		compact := Plural(len(b.rows), "member")
 		if problems > 0 {
 			compact += fmt.Sprintf(" · %d attention", problems)
 		}
