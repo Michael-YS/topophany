@@ -83,6 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   certificate from an authority not trusted here or for another name, an
   http:// collector, a busy or failing collector, or a snapshot that is not
   current. `topo status`, `show` and `history` give the same reasons.
+- `topo` run without saved credentials points to `topo preview`, `topo init`
+  and `topo login` rather than to the file it could not find.
+- `topo help` lists the commands by task, getting started first.
 - Lists leave out a column in which every row says the same word (every
   check `fresh`, every item an `incident`); it comes back as soon as a row
   differs. On terminals 120 columns or wider the list takes a little more
@@ -96,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preferences that cannot be read no longer keep the TUI from opening: it
   starts with the built-in defaults and says why. `preferences show` still
   reports the error.
+- CLI tables let a column grow to 48 characters before a cell runs on.
 
 ### Fixed
 

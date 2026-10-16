@@ -31,7 +31,7 @@ func (t *text) line(parts ...string) {
 func (t *text) kv(key, value string) { t.line(key, ": ", clean(value)) }
 
 // table aligns cells in columns two spaces apart. A column is as wide as
-// its widest cell up to 40; a longer cell runs on rather than being cut,
+// its widest cell up to 48; a longer cell runs on rather than being cut,
 // and the last column is never padded.
 func (t *text) table(cells [][]string) {
 	widths := []int{}
@@ -40,7 +40,7 @@ func (t *text) table(cells [][]string) {
 			if i >= len(widths) {
 				widths = append(widths, 0)
 			}
-			widths[i] = max(widths[i], min(40, view.Width(clean(c))))
+			widths[i] = max(widths[i], min(48, view.Width(clean(c))))
 		}
 	}
 	for _, row := range cells {

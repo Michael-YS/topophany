@@ -35,32 +35,42 @@ func New() *App {
 	return &App{In: os.Stdin, Out: os.Stdout, Err: secure.Terminal(os.Stderr), TerminalIn: os.Stdin, TerminalOut: os.Stdout, Now: time.Now}
 }
 
-const help = `Topophany — network evidence, topology and service monitoring
+const help = `Topophany — where your network stands, seen from where, and on what evidence
 
-Usage:
-  topo                              connect using saved credentials; open TUI
+Get started
+  topo preview                      the whole UI on synthetic evidence; x switches scenarios
+  topo init --dir DIR               a local demo: a topology, credentials and a collector to run
+  topo login                        save and verify a connection to a collector
+  topo                              open the TUI on the saved connection
+
+Read what the TUI shows
+  topo status                       the Overview as text; its exit status says it too
+  topo show TAB [ID]                a tab, or the evidence behind one entry in it
+  topo history CHECK                a check's recent samples
+  topo history CHECK --step 1h      how a check fared, hour by hour, from its rollups
+  topo --json                       one authenticated snapshot as JSON
   topo --credential TOKEN           override the saved bearer token for this run
-  topo --json                       print one authenticated remote snapshot
-  topo status                       print the Overview: verdict, counts, what needs attention
-  topo show TAB [ID]                print a tab, or the evidence behind one entry in it
-  topo history CHECK                print a check's recent samples
-  topo history CHECK --step 1h      print how a check fared, hour by hour, from its rollups
-  topo preferences show/set/reset   inspect, save or reset local startup defaults
-  topo login                        save a verified remote connection
-  topo serve                        run a collector (optional local checks)
-  topo worker                       execute a reviewed topology from this location
-  topo init                         create a safe local demo with fresh credentials
-  topo init --role ROLE              generate a private server/worker/client installation bundle
-  topo install                      install a reviewed bundle; supports dry-run and rollback
-  topo edit                         add/edit/delete topology entities in a local TUI
-  topo preview                      open the TUI on synthetic evidence (built-in or --config)
-  topo address                      inspect/edit local address definitions; report changed checks
-  topo capacity                     preflight storage allocation and migration
-  topo validate                     validate a topology; print its revision
+
+Run
+  topo serve                        run a collector, optionally with checks of its own
+  topo worker                       run a reviewed topology's checks from this machine
   topo once                         run local checks once; write observations as JSON
+
+Describe your network
+  topo edit                         add, edit and delete topology entities in a TUI
+  topo validate                     check a topology; print its revision
+  topo address                      inspect or edit address definitions; report changed checks
   topo export                       export a redacted topology
-  topo token                        generate a random bearer token and its hash
-  topo version                      show version
+
+Deploy
+  topo init --role ROLE             make a private server, worker or client bundle
+  topo install                      install a reviewed bundle (--dry-run, --rollback DIR)
+  topo capacity                     preflight collector storage before a migration
+  topo token                        make a random bearer token and its hash
+
+Settings
+  topo preferences show|set|reset   the TUI's saved startup defaults
+  topo version                      print the version
 
 status, show and history print what the TUI shows, as text or with --json;
 TAB is overview, topology, servers, services, paths, checks, incidents,
@@ -71,22 +81,23 @@ synthetic evidence instead; 'topo preview scenarios' lists the scenarios.
 'topo preview --lang LANG' writes the built-in topology and the scenarios in
 another language; by default they follow LC_ALL, LC_MESSAGES or LANG.
 
-Use 'topo COMMAND --help' for command options. TUI: 1–9 tabs (9/? About),
-v observer, ↑↓/jk navigation, Enter details, / filter, r refresh, m map
-(virtual geo/geo/network), z zoom, mouse clicks and wheel, q quit. In 'topo edit': a add, e edit,
-d delete, u undo, Ctrl-S save. In 'topo preview': x scenario, D debug overlay;
-evidence is synthetic and the topology is read-only.
-Startup display flags (also on preview/edit):
-  --page overview|topology|servers|services|paths|checks|incidents|observers|about
-  --groups-collapsed=false --uniform-cards=false --full-map=false
-  --map-mode auto|virtual|geo|network --nerd-font-icons=false --preferences PATH
-Explicit flags override saved startup defaults for this launch only. Boolean
-flags accept =false to override a saved true. In the TUI, comma (,) opens Settings;
-Apply changes this session, Save changes future launches, Restore edits the form.
-Example: topo preferences set --page servers --uniform-cards=true
-Preferences default to the OS user config directory / topophany / preferences.json.
-Credentials default to the OS user config directory / topophany / credentials.json.
-No routes, proxy policies, TUN settings or services are changed by monitoring.
+In the TUI: 1–9 or Tab switch tabs, ↑↓ or jk move, Enter shows the evidence,
+/ filters, v switches the observer you view from, m z f p change the map,
+r refreshes, comma opens Settings, ? About, q quits; the mouse works too.
+In 'topo edit': a add, e edit, d delete, u undo, Ctrl-S save. In 'topo
+preview': x scenario, D debug overlay; evidence is synthetic and the
+topology is read-only.
+
+Startup display flags (topo, preview and edit) override the saved defaults
+for one launch: --page PAGE, --map-mode auto|virtual|geo|network,
+--groups-collapsed, --uniform-cards, --full-map and --nerd-font-icons (each
+also takes =false), and --preferences PATH. In the TUI, Settings applies a
+change to this session or saves it for future launches; or, for example:
+  topo preferences set --page servers --uniform-cards=true
+
+Credentials and preferences live in the OS user config directory, under
+topophany/. 'topo COMMAND --help' lists a command's options. Monitoring
+never changes routes, proxy policies, TUN settings or services.
 `
 
 func (a *App) flags(name string) *flag.FlagSet {

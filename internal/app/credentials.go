@@ -43,6 +43,13 @@ func (a *App) connection(f *flag.FlagSet) func() (*client.Client, error) {
 				return nil, errors.New("credential profile not found")
 			}
 		} else if *server == "" || *project == "" || *token == "" {
+			if errors.Is(e, os.ErrNotExist) {
+				// The first run: say where to go from here.
+				return nil, fmt.Errorf("no saved connection to a collector yet (%s)\n\n"+
+					"  topo preview                            see the whole UI on synthetic evidence\n"+
+					"  topo init --dir ./demo                  make a local demo with a collector to run\n"+
+					"  topo login --server URL --project NAME  save a connection to your collector", *path)
+			}
 			return nil, fmt.Errorf("credentials unavailable; run topo login first (%w)", e)
 		}
 		if *project != "" {
