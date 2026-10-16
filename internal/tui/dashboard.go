@@ -483,27 +483,40 @@ func (m *Model) observersCard(cv *Canvas, x, y, w, h int) {
 // overview lays the dashboard out for the space it has: a map beside a
 // sidebar when wide, the map over the cards when medium, cards alone when
 // small.
+// attentionCard lists what needs attention in the panel's inner rectangle
+// with list, or says why nothing does: all clear, cached, a draft, or no
+// evidence yet.
+func (m *Model) attentionCard(cv *Canvas, x, y, w, h int, rows []Row, list func(cv *Canvas, x, y, w, h int, rows []Row)) {
+	if len(rows) > 0 || m.Search != "" {
+		list(cv, x, y, w, h, rows)
+		return
+	}
+	state, msg, sub := m.view().Calm()
+	c := map[string]Color{"draft": cEdit, "cached": cWarn, "no-checks": cUnknown, "clear": cUp}[state]
+	if m.Edit == nil && m.Loading != "" {
+		msg, sub, c = m.spinner()+" Waiting for evidence", "Nothing current is known yet; this fills in as soon as a snapshot arrives.", cAccent2
+	}
+	cv.Text(x, y, msg, fg(c).bold(), w)
+	for i, l := range wrap(sub, w) {
+		if 1+i < h {
+			cv.Text(x, y+1+i, l, fg(cMuted), w)
+		}
+	}
+}
+
+// mapTag is the network map panel's tag: what the topology declares.
+func (m *Model) mapTag() string {
+	t := m.Snapshot.Topology
+	return "· " + plural(len(t.Nodes), "node") + " · " + plural(len(t.Links), "link")
+}
+
 func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag string) {
 	t := m.Snapshot.Topology
 	mapTitle := "NETWORK"
-	mapTag := "· " + plural(len(t.Nodes), "node") + " · " + plural(len(t.Links), "link") + " · m z"
+	mapTag := m.mapTag() + " · m z"
 	attention := func(x, y, w, h int, active bool) {
 		ix, iy, iw, ih := m.panel(cv, x, y, w, h, "NEEDS ATTENTION", tag, active)
-		if len(rows) > 0 || m.Search != "" {
-			m.drawList(cv, ix, iy, iw, ih, rows)
-			return
-		}
-		state, msg, sub := m.view().Calm()
-		c := map[string]Color{"draft": cEdit, "cached": cWarn, "no-checks": cUnknown, "clear": cUp}[state]
-		if m.Edit == nil && m.Loading != "" {
-			msg, sub, c = m.spinner()+" Waiting for evidence", "Nothing current is known yet; this fills in as soon as a snapshot arrives.", cAccent2
-		}
-		cv.Text(ix, iy, msg, fg(c).bold(), iw)
-		for i, l := range wrap(sub, iw) {
-			if 1+i < ih {
-				cv.Text(ix, iy+1+i, l, fg(cMuted), iw)
-			}
-		}
+		m.attentionCard(cv, ix, iy, iw, ih, rows, m.drawList)
 	}
 	nObservers := len(m.Snapshot.Observers)
 	switch {
@@ -517,7 +530,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 			mh = need + 2
 		}
 		ix, iy, iw, ih := m.panel(cv, x, y, mw, mh, mapTitle, mapTag, false)
-		m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+		m.mapIn(cv, ix-1, iy, iw+2, ih, sel)
 		sh := 11
 		if h < 34 {
 			sh = 6
@@ -569,7 +582,7 @@ func (m *Model) overview(cv *Canvas, x, y, w, h int, rows []Row, sel Row, tag st
 			mh = min(mh, rows+2)
 		}
 		ix, iy, iw, ih := m.panel(cv, x, y, w, mh, mapTitle, mapTag, false)
-		m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+		m.mapIn(cv, ix-1, iy, iw+2, ih, sel)
 		// Under the map: the status card, with services or observers
 		// beneath it when there is room, beside what needs attention.
 		sw := min(max(w*42/100, 44), 64)

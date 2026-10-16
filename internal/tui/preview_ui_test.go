@@ -191,11 +191,11 @@ func TestSerializedStylesMatchTheCanvas(t *testing.T) {
 		m.hits = m.hits[:0]
 		cv := NewCanvas(m.Width, m.Height)
 		cv.Base = cInk
-		m.header(cv)
-		m.tabBar(cv, 1)
-		m.statusBar(cv, 2)
+		m.header(cv, 0, 0, m.Width)
+		m.tabBar(cv, 0, 1, m.Width)
+		m.statusBar(cv, 0, 2, m.Width)
 		m.body(cv, 0, 3, m.Width, m.Height-4)
-		m.footer(cv, m.Height-1)
+		m.footer(cv, 0, m.Height-1, m.Width)
 		for y, line := range cv.Lines(colorTrue) {
 			got := replay(t, line)
 			for x := 0; x < cv.W; x++ {

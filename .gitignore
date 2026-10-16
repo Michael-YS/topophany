@@ -2,6 +2,7 @@
 /bin/
 /dist/
 /.verify-build/
+/.device-shots/
 /topo
 /topo.exe
 *.exe

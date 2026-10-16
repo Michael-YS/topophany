@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--device` on `topo` and `topo preview` lays the TUI out for the screen
+  of a 6.5-inch iPhone, of iPhone Duo shut, open, part folded like a
+  book, upright and part folded like a laptop, or of a 13-inch iPad, and
+  simulates that screen in the middle of the terminal. A phone gets one
+  column with the tabs in a sidebar rail and rows a finger tall; iPhone
+  Duo opened puts what is looked at and what is touched on either side of
+  the crease, the map above the hinge and the events below it when
+  upright, with the tabs in the system's column or along the foot; an
+  iPad keeps the terminal's layouts with tabs and a toolbar for fingers.
+  A pinch magnifies the map and a drag moves around it, and `⋯` offers
+  every action the footer would. `[` and `]` fold through the poses, `\`
+  picks the next device, and the mouse stands in for a finger. See
+  docs/DEVICES.md. Built with `-tags nodevice` (`make build TAGS=nodevice`),
+  `topo` leaves all of it out and has no `--device`.
+- `scripts/device_shots.py` pictures each device's screen in its frame,
+  iPhone Duo's part-folded poses rendered in 3D with the iPhone Duo
+  simulator kit.
+
+### Changed
+
+- The header, the tab strip, the status line and the key bar draw into the
+  span they are given rather than the whole terminal, the key bar's
+  actions come from one list a touch screen shares, and a click target can
+  be taller than a row. The terminal draws exactly as before.
+
 ## [1.0.0] - 2026-10-15
 
 ### Added

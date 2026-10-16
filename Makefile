@@ -1,7 +1,7 @@
-.PHONY: build test race vet fmt fmt-check lint cover verify banner site captures icon clean
+.PHONY: build test race vet fmt fmt-check lint cover verify banner site captures device-shots icon clean
 build:
 	mkdir -p bin
-	go build -trimpath -o bin/topo ./cmd/topo
+	go build -trimpath $(if $(TAGS),-tags $(TAGS)) -o bin/topo ./cmd/topo
 test:
 	go test -count=1 ./...
 race:
@@ -26,7 +26,9 @@ site:
 	python3 scripts/build_site.py
 captures:
 	python3 scripts/capture.py $(if $(FONTS),--fonts $(FONTS))
+device-shots:
+	python3 scripts/device_shots.py $(if $(DUO_KIT),--duo-kit $(DUO_KIT))
 icon:
 	python3 scripts/icon.py
 clean:
-	rm -rf bin dist .verify-build coverage.out
+	rm -rf bin dist .verify-build .device-shots coverage.out

@@ -434,10 +434,15 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 		{},
 		link("homepage", homepage),
 		link("source", repo),
-		{parts: []span{sp(", ", fg(cAccent).bold()), sp(fit("settings", 10), latin), sp("display & startup preferences", fg(cAccent2))}, action: "key:,"},
+	}
+	if m.Device == nil {
+		// A touch screen has its settings in the sidebar and under ⋯.
+		lines = append(lines, aboutLine{parts: []span{sp(", ", fg(cAccent).bold()), sp(fit("settings", 10), latin), sp("display & startup preferences", fg(cAccent2))}, action: "key:,"})
+	}
+	lines = append(lines, []aboutLine{
 		{},
 		{parts: []span{sp("Topophany "+model.Version, fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("MIT", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("self-hosted", fg(cMuted)), sp("  ·  ", fg(cFaint)), sp("topo", fg(cText).bold())}},
-	}
+	}...)
 	if c.Project != "" {
 		lines = append(lines, aboutLine{parts: []span{sp(c.Project, fg(cText)), sp("  ·  "+plural(len(c.Nodes), "node")+"  ·  "+plural(len(c.Links), "link")+"  ·  "+plural(len(c.Checks), "check"), fg(cMuted))}})
 	}
@@ -451,6 +456,9 @@ func (m *Model) aboutText(globe bool) []aboutLine {
 // aboutKeys is a reference to the keys of the mode the UI is in, as
 // keycaps three to a row.
 func (m *Model) aboutKeys() []aboutLine {
+	if m.Device != nil {
+		return nil // a touch screen says how it is used beside About (drawAboutKeys)
+	}
 	keys := [][2]string{{"1–9", "tabs"}, {"↑↓", "move"}, {"↵", "evidence"}, {"/", "filter"}, {"v", "vantage"}, {"m", "map"}, {"z", "zoom"}, {"f", "full map"}, {"p", "points"}, {"s", "uniform"}}
 	switch {
 	case m.Edit != nil:

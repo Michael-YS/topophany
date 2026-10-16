@@ -211,62 +211,72 @@ func (m *Model) drawMap(cv *Canvas, x, y, w, h int, sel Row) {
 	if legend {
 		mh--
 	}
+	m.drawMapBody(cv, x, y, w, mh, nodes, edges, groups, f)
+	if legend {
+		m.mapLegend(cv, x, y+h-1, w, nodes, edges, groups)
+	}
+}
+
+// drawMapBody draws the map the mode shows, without its legend.
+func (m *Model) drawMapBody(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []mapEdge, groups map[string]Color, f mapFocus) {
 	switch m.mapMode() {
 	case "geo":
-		m.drawGeo(cv, x, y, w, mh, nodes, edges, f)
+		m.drawGeo(cv, x, y, w, h, nodes, edges, f)
 	case "virtual":
-		m.drawVirtual(cv, x, y, w, mh, nodes, edges, groups, f)
+		m.drawVirtual(cv, x, y, w, h, nodes, edges, groups, f)
 	default:
-		m.drawNetwork(cv, x, y, w, mh, nodes, edges, groups, f)
+		m.drawNetwork(cv, x, y, w, h, nodes, edges, groups, f)
 	}
-	if legend {
-		ly := y + h - 1
-		cx := x + 1
-		item := func(r rune, c Color, label string) {
-			if cx+3+width(label) >= x+w {
-				return
-			}
-			cv.Set(cx, ly, r, fg(c))
-			cx += 2 + cv.Text(cx+2, ly, label, fg(cMuted), -1) + 2
+}
+
+// mapLegend says along row ly what the map's marks and lines mean, as
+// much as fits in w.
+func (m *Model) mapLegend(cv *Canvas, x, ly, w int, nodes []mapNode, edges []mapEdge, groups map[string]Color) {
+	cx := x + 1
+	item := func(r rune, c Color, label string) {
+		if cx+3+width(label) >= x+w {
+			return
 		}
-		if m.mapMode() == "virtual" && m.vcache.dropped > 0 {
-			// Links the virtual map found no room for are said, not hidden.
-			item('⋯', cWarn, plural(m.vcache.dropped, "link")+" not drawn · m")
-			cx += 2
-		}
-		item('●', cUp, "up")
-		item('▲', cWarn, "warn")
-		item('✖', cDown, "down")
-		item('○', cUnknown, "unknown")
+		cv.Set(cx, ly, r, fg(c))
+		cx += 2 + cv.Text(cx+2, ly, label, fg(cMuted), -1) + 2
+	}
+	if m.mapMode() == "virtual" && m.vcache.dropped > 0 {
+		// Links the virtual map found no room for are said, not hidden.
+		item('⋯', cWarn, plural(m.vcache.dropped, "link")+" not drawn · m")
 		cx += 2
-		line := '━'
-		if m.mapMode() == "geo" && m.Points {
-			line = '┄'
+	}
+	item('●', cUp, "up")
+	item('▲', cWarn, "warn")
+	item('✖', cDown, "down")
+	item('○', cUnknown, "unknown")
+	cx += 2
+	line := '━'
+	if m.mapMode() == "geo" && m.Points {
+		line = '┄'
+	}
+	item(line, Mix(cUp, cInk, .45), "path ok")
+	item(line, cWarn, "affected")
+	item(line, cDown, "failed")
+	item('┄', Mix(cUnknown, cInk, .35), "no evidence")
+	for _, e := range edges {
+		if e.Kind == edgeVia {
+			item('┈', Mix(cUp, cInk, .45), "via edge")
+			break
 		}
-		item(line, Mix(cUp, cInk, .45), "path ok")
-		item(line, cWarn, "affected")
-		item(line, cDown, "failed")
-		item('┄', Mix(cUnknown, cInk, .35), "no evidence")
-		for _, e := range edges {
-			if e.Kind == edgeVia {
-				item('┈', Mix(cUp, cInk, .45), "via edge")
-				break
+	}
+	if m.mapMode() == "network" {
+		item('┊', cFaint, "hosted in")
+	}
+	if m.mapMode() != "geo" {
+		cx += 2
+		names := []string{}
+		for _, n := range nodes {
+			if n.Group != "" && !contains(names, n.Group) {
+				names = append(names, n.Group)
 			}
 		}
-		if m.mapMode() == "network" {
-			item('┊', cFaint, "hosted in")
-		}
-		if m.mapMode() != "geo" {
-			cx += 2
-			names := []string{}
-			for _, n := range nodes {
-				if n.Group != "" && !contains(names, n.Group) {
-					names = append(names, n.Group)
-				}
-			}
-			for _, g := range names {
-				item('■', groups[g], g)
-			}
+		for _, g := range names {
+			item('■', groups[g], g)
 		}
 	}
 }

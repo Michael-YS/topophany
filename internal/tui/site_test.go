@@ -99,7 +99,6 @@ func (r *recorder) shoot(d time.Duration) {
 	if cv == nil {
 		r.t.Fatal("tour frame too small")
 	}
-	ch := &r.out.Chapters[len(r.out.Chapters)-1]
 	if r.out.Tabs == nil {
 		for _, h := range r.m.hits {
 			if h.y == 1 && strings.HasPrefix(h.key, "tab:") {
@@ -107,6 +106,13 @@ func (r *recorder) shoot(d time.Duration) {
 			}
 		}
 	}
+	r.frame(cv, d)
+}
+
+// frame records the cells of cv that changed since the last frame, held
+// for d.
+func (r *recorder) frame(cv *Canvas, d time.Duration) {
+	ch := &r.out.Chapters[len(r.out.Chapters)-1]
 	f := r.encoder.encode(cv)
 	r.out.Styles = append(r.out.Styles, f.Styles...)
 	ch.Frames = append(ch.Frames, tourFrame{D: int(d / time.Millisecond), Ops: f.Ops})

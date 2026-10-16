@@ -14,12 +14,16 @@ type Startup struct {
 	Path      string
 	Overrides []string
 	Notice    string
+	Device    string // a device to lay the TUI out for and simulate (Devices), "" for none
 }
 
 func (m *Model) initializeStartup(options []Startup) {
 	s := Startup{Settings: preferences.Defaults()}
 	if len(options) > 0 {
 		s = options[0]
+	}
+	if d, e := DeviceByID(s.Device); s.Device != "" && e == nil {
+		m.Device = d
 	}
 	m.PreferencesPath = s.Path
 	m.PreferenceOverrides = s.Overrides

@@ -24,8 +24,12 @@ func (a *App) view(ctx context.Context, args []string) error {
 	observer := f.String("observer", "", "observer view (default all)")
 	jsonOut := f.Bool("json", false, "print one snapshot without terminal control")
 	startupFlags := addPreferenceFlags(f)
+	device := deviceFlag(f)
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
 	if e := parsed(f, args); e != nil {
+		return e
+	}
+	if _, e := withDevice(tui.Startup{}, *device); e != nil {
 		return e
 	}
 	c, e := connect()
@@ -48,6 +52,9 @@ func (a *App) view(ctx context.Context, args []string) error {
 	}
 	startup, err := startupFlags.startup()
 	if err != nil {
+		return err
+	}
+	if startup, err = withDevice(startup, *device); err != nil {
 		return err
 	}
 	panel, path, e := panelFlags.load("client", c.Project(), *observer)
@@ -119,9 +126,13 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	printTopo := f.Bool("print-topology", false, "write the built-in topology JSON to stdout and exit")
 	dump := f.Bool("json", false, "print one synthetic snapshot and exit")
 	startupFlags := addPreferenceFlags(f)
+	device := deviceFlag(f)
 	noColor := f.Bool("no-color", os.Getenv("NO_COLOR") != "", "disable ANSI colors")
 	lang := f.String("lang", localeLanguage(), "language of the built-in topology and the scenarios: "+strings.Join(preview.Languages(), ", "))
 	if e := f.Parse(args); e != nil {
+		return e
+	}
+	if _, e := withDevice(tui.Startup{}, *device); e != nil {
 		return e
 	}
 	if preview.Language(*lang) != *lang {
@@ -179,6 +190,9 @@ func (a *App) preview(ctx context.Context, args []string) error {
 	}
 	startup, err := startupFlags.startup()
 	if err != nil {
+		return err
+	}
+	if startup, err = withDevice(startup, *device); err != nil {
 		return err
 	}
 	return tui.RunPreview(ctx, sim, func(_ context.Context, view string) (model.Snapshot, string, error) {

@@ -64,18 +64,22 @@ func (m *Model) draw() *Canvas {
 		return nil
 	}
 	m.absorb()
+	if m.Device != nil {
+		return m.simulate()
+	}
 	cv := NewCanvas(w, h)
 	cv.Hyperlinks = m.Hyperlinks
 	if !m.Transparent {
 		cv.Base = cInk
 	}
-	m.header(cv)
-	m.tabBar(cv, 1)
+	m.stage = nil
+	m.header(cv, 0, 0, w)
+	m.tabBar(cv, 0, 1, w)
 	top := 3
 	if m.waiting() {
 		// Nothing to lay out yet: the splash says what is happening.
 		m.splash(cv, 0, 2, w, h-3)
-		m.footer(cv, h-1)
+		m.footer(cv, 0, h-1, w)
 		if m.modal != nil {
 			m.drawModalOver(cv)
 		}
@@ -88,10 +92,10 @@ func (m *Model) draw() *Canvas {
 		// map alone has the card's place.
 		top = 2
 	} else {
-		m.statusBar(cv, 2)
+		m.statusBar(cv, 0, 2, w)
 	}
 	m.body(cv, 0, top, w, h-1-top)
-	m.footer(cv, h-1)
+	m.footer(cv, 0, h-1, w)
 	if m.Debug {
 		m.drawDebug(cv)
 	}
@@ -185,7 +189,7 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 				mh = rows + 2
 			}
 			ix, iy, iw, ih := m.panel(cv, x, y, mw, mh, title+" · "+mode, "m switch · z zoom", false)
-			m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+			m.mapIn(cv, ix-1, iy, iw+2, ih, sel)
 			if mh < h {
 				ix, iy, iw, ih = m.panel(cv, x, y+mh, mw, h-mh, "EVIDENCE", "Enter expand", false)
 				m.drawDetail(cv, ix, iy, iw, ih, sel, false)
@@ -208,7 +212,7 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		if h >= 16 {
 			mh := h * 55 / 100
 			ix, iy, iw, ih := m.panel(cv, x, y, w, mh, title+" · "+mode, "m · z", false)
-			m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+			m.mapIn(cv, ix-1, iy, iw+2, ih, sel)
 			ix, iy, iw, ih = m.panel(cv, x, y+mh, w, h-mh, "NODES · LINKS", tag, true)
 			m.drawList(cv, ix, iy, iw, ih, rows)
 			return
@@ -258,7 +262,7 @@ var mapNames = map[string]string{"virtual": "virtual geo", "geo": "geo map", "ne
 func (m *Model) fullMap(cv *Canvas, x, y, w, h int, rows []Row, sel Row) {
 	title := strings.ToUpper(tabs[m.Tab]) + " · " + mapNames[m.mapMode()]
 	ix, iy, iw, ih := m.panel(cv, x, y, w, h, title, "m switch · z zoom · f panels", false)
-	m.drawMap(cv, ix-1, iy, iw+2, ih, sel)
+	m.mapIn(cv, ix-1, iy, iw+2, ih, sel)
 	if sel.Kind == "" || w < 30 {
 		return
 	}

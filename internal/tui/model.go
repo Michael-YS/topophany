@@ -85,15 +85,27 @@ type Model struct {
 	absorbed                                time.Time         // when the snapshot last taken into trends was generated
 	hits                                    []hit
 	drawingModal                            bool
+	Device                                  *Device // non-nil when the TUI is laid out for a device's screen, simulated in the terminal (device.go)
+	stage                                   *rect   // where the TUI draws on the canvas, modals centred on it; nil for all of it
+	touch                                   touch   // gestures in flight and what the touch layouts keep between frames (touch.go)
 }
+
+// A hit is where a click or a tap does something: w cells from x on h rows
+// from y. A row of a terminal list is one row tall; a touch target is as
+// tall as a finger needs.
 type hit struct {
-	x, y, w int
-	key     string
-	modal   bool
+	x, y, w, h int
+	key        string
+	modal      bool
 }
 
 func (m *Model) hit(x, y, w int, key string) {
-	m.hits = append(m.hits, hit{x, y, w, key, m.drawingModal})
+	m.hitArea(x, y, w, 1, key)
+}
+
+// hitArea makes h rows from y a target, w cells from x.
+func (m *Model) hitArea(x, y, w, h int, key string) {
+	m.hits = append(m.hits, hit{x, y, w, h, key, m.drawingModal})
 }
 func (m *Model) st(s Style) Style { return s }
 
@@ -173,6 +185,9 @@ func (m *Model) Animating() time.Duration {
 // Overview when it has the room or the map fills the body.
 func (m *Model) mapShown() bool {
 	switch {
+	case m.Device != nil:
+		// A device's layout decides; the last frame says what it did.
+		return !m.touch.mapRect.empty()
 	case m.Detail:
 		return false
 	case m.Tab == tabTopology:
@@ -220,10 +235,25 @@ func (m *Model) Key(k string) string {
 		return ""
 	}
 	if strings.HasPrefix(k, "mouse:") {
-		k = m.mouse(k)
+		if m.Device != nil {
+			k = m.deviceMouse(k)
+		} else {
+			k = m.mouse(k)
+		}
 		if k == "" {
 			return ""
 		}
+	}
+	if m.Device != nil && !m.Searching {
+		if r, ok := m.simKey(k); ok {
+			return r
+		}
+	}
+	if t, ok := strings.CutPrefix(k, "touch:"); ok {
+		if m.modal != nil {
+			return ""
+		}
+		return m.touchKey(t)
 	}
 	if m.modal != nil {
 		return m.modalKey(k)
@@ -492,14 +522,21 @@ func (m *Model) mouse(k string) string {
 	case 65:
 		return "wheel-down"
 	case 0:
-		for i := len(m.hits) - 1; i >= 0; i-- {
-			h := m.hits[i]
-			if m.modal != nil && !h.modal {
-				continue
-			}
-			if y == h.y && x >= h.x && x < h.x+h.w {
-				return h.key
-			}
+		return m.hitAt(x, y)
+	}
+	return ""
+}
+
+// hitAt is what the last frame does at cell (x, y): the target drawn last
+// there, only a modal's while one is open; "" for nothing.
+func (m *Model) hitAt(x, y int) string {
+	for i := len(m.hits) - 1; i >= 0; i-- {
+		h := m.hits[i]
+		if m.modal != nil && !h.modal {
+			continue
+		}
+		if y >= h.y && y < h.y+h.h && x >= h.x && x < h.x+h.w {
+			return h.key
 		}
 	}
 	return ""

@@ -255,6 +255,32 @@ func (c *Canvas) Tint(x, y, w, h int, f func(Style) Style) {
 	}
 }
 
+// Blit copies the w×h cells of src from (sx, sy) to (dx, dy), links and
+// all. A wide rune is copied only with both its halves; one cut by the
+// window's edge leaves a space in its place.
+func (c *Canvas) Blit(src *Canvas, sx, sy, dx, dy, w, h int) {
+	for j := 0; j < h; j++ {
+		for i := 0; i < w; i++ {
+			x, y := dx+i, dy+j
+			if !src.in(sx+i, sy+j) || !c.in(x, y) {
+				continue
+			}
+			p := *src.at(sx+i, sy+j)
+			head := sx+i+1 < src.W && src.at(sx+i+1, sy+j).cont
+			if p.cont && i == 0 || head && (i == w-1 || x+1 >= c.W) {
+				p = cell{ch: " ", st: p.st}
+			}
+			url := src.url(&p)
+			c.detach(x, y)
+			p.link = 0
+			*c.at(x, y) = p
+			if url != "" {
+				c.Link(x, y, 1, url)
+			}
+		}
+	}
+}
+
 // Each applies f to the style of every cell, e.g. to dim a modal background.
 func (c *Canvas) Each(f func(Style) Style) {
 	for i := range c.cells {

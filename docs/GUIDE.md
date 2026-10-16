@@ -167,6 +167,8 @@ The full `topo preview --lang zh` topology includes independent CPU, memory, dis
 
 ![Servers cards with local CPU, memory, disk and process summaries in the full preview topology](assets/servers.en.png)
 
+`--device` lays the TUI out for the screen of an iPhone, an iPhone Duo or an iPad, and simulates that screen in the middle of the terminal: `topo preview --device duo-upright` puts the map above iPhone Duo's hinge and the events below it. `[` and `]` fold and unfold through the device's poses and `\` picks the next device; a click is a tap, a drag a swipe and the wheel over the map a pinch. [Device layouts](DEVICES.md) describes each device's layout and the touch design, and how `scripts/device_shots.py` pictures them.
+
 When collectors are unreachable, cached data is retained but items transition to `unknown` and are marked CACHED; `topo status`, which keeps no cache, exits 4 instead. Switching to a backup collector never silently changes the observer vantage point. The TUI queries the HTTP API every 3 seconds (preview mode regenerates synthetic snapshots every second); SSE and browser-based frontends are not implemented.
 
 ## Reading from Scripts and Agents

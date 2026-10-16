@@ -8,12 +8,20 @@ import (
 )
 
 // The frame around every view: a header bar, the tab strip, a one-line health
-// summary, and the key bar at the bottom.
+// summary, and the key bar at the bottom. Each draws into the row it is
+// given, w cells from x0, so a terminal spreads them across its width and
+// a device's screen (device.go) fits them into the room its layout leaves.
 
-func (m *Model) header(cv *Canvas) {
-	w := cv.W
+// header is the bar naming the project, the view and how live it is.
+func (m *Model) header(cv *Canvas, x0, y, w int) {
+	m.headerBar(cv, x0, y, w, false)
+}
+
+// headerBar draws the header; on a touch screen (touch) the view, the
+// scenario and the collector are left to chips of their own (viewChips).
+func (m *Model) headerBar(cv *Canvas, x0, y, w int, touch bool) {
 	on := func(c Color) Style { return fg(c).Bg(cInkHi) }
-	cv.Fill(0, 0, w, 1, Style{BG: cInkHi})
+	cv.Fill(x0, y, w, 1, Style{BG: cInkHi})
 	type part struct {
 		s  string
 		st Style
@@ -33,7 +41,9 @@ func (m *Model) header(cv *Canvas) {
 	if m.Snapshot.Project != "" {
 		left = append(left, part{"  ╱  ", on(cFaint)}, part{m.Snapshot.Project, on(cText).bold()})
 	}
-	left = append(left, part{"   view: ", on(cMuted)}, part{view, on(cAccent2)})
+	if !touch {
+		left = append(left, part{"   view: ", on(cMuted)}, part{view, on(cAccent2)})
+	}
 	var right []part
 	add := func(s string, c Color) { right = append(right, part{s, on(c)}) }
 	if m.Edit != nil {
@@ -47,8 +57,10 @@ func (m *Model) header(cv *Canvas) {
 	} else {
 		if m.Preview != nil {
 			add("◆ PREVIEW ", cEdit)
-			add(m.scenario(), cText)
-		} else {
+			if !touch {
+				add(m.scenario(), cText)
+			}
+		} else if !touch {
 			if m.Snapshot.Instance != "" {
 				add(m.Snapshot.Instance, cText)
 				add(" @ ", cFaint)
@@ -77,12 +89,12 @@ func (m *Model) header(cv *Canvas) {
 	if 1+brand+measure(left)+2+measure(right) > w-1 {
 		right = right[len(right)-1:]
 	}
-	rx := w - 1 - measure(right)
-	x := 1
-	cv.Set(x, 0, '◉', on(cAccent).bold())
+	rx := x0 + w - 1 - measure(right)
+	x := x0 + 1
+	cv.Set(x, y, '◉', on(cAccent).bold())
 	x += 2
 	for i, r := range "TOPOPHANY" {
-		cv.Set(x+i, 0, r, on(Mix(cAccent, cAccent2, float64(i)/8)).bold())
+		cv.Set(x+i, y, r, on(Mix(cAccent, cAccent2, float64(i)/8)).bold())
 	}
 	x += 9
 	for _, p := range left {
@@ -90,10 +102,10 @@ func (m *Model) header(cv *Canvas) {
 		if room <= 0 {
 			break
 		}
-		x += cv.Text(x, 0, ellipsis(p.s, room), p.st, room)
+		x += cv.Text(x, y, ellipsis(p.s, room), p.st, room)
 	}
 	for _, p := range right {
-		rx += cv.Text(rx, 0, p.s, p.st, -1)
+		rx += cv.Text(rx, y, p.s, p.st, -1)
 	}
 }
 
@@ -123,7 +135,7 @@ func (m *Model) spinner() string {
 // look. When they do not fit, the gaps close, then a badge only tints its
 // tab's number, then inactive tabs collapse to their number. Under NO_COLOR
 // the active tab is bracketed.
-func (m *Model) tabBar(cv *Canvas, y int) {
+func (m *Model) tabBar(cv *Canvas, x0, y, w int) {
 	type tab struct {
 		name  string
 		count int
@@ -150,7 +162,7 @@ func (m *Model) tabBar(cv *Canvas, y int) {
 		return total
 	}
 	gap, counts, short := 1, true, false
-	switch room := cv.W - 1; {
+	switch room := w - 1; {
 	case need(true, false) <= room:
 	case need(true, false)-len(tabs) <= room:
 		gap = 0
@@ -161,7 +173,7 @@ func (m *Model) tabBar(cv *Canvas, y int) {
 	default:
 		counts, short = false, true
 	}
-	x := 1
+	x := x0 + 1
 	for i, t := range ts {
 		num, name := itoa(i+1), t.name
 		if short && i != m.Tab {
@@ -203,7 +215,7 @@ func (m *Model) tabBar(cv *Canvas, y int) {
 		}
 		m.hit(start, y, x-start, "tab:"+itoa(i))
 		x += gap
-		if x >= cv.W {
+		if x >= x0+w {
 			break
 		}
 	}
@@ -272,8 +284,10 @@ func (m *Model) hasNews() bool {
 	return m.notice != "" && m.Now.Sub(m.noticeAt) < noticeFor || m.Error != "" || m.Loading != ""
 }
 
-func (m *Model) statusBar(cv *Canvas, y int) {
-	x := 1
+// statusBar is the one-line health summary under the tabs, or the notice,
+// error or request in flight that has the line instead.
+func (m *Model) statusBar(cv *Canvas, x0, y, w int) {
+	x, end := x0+1, x0+w
 	if m.notice != "" && m.Now.Sub(m.noticeAt) < noticeFor {
 		c, g := cUp, "✓ "
 		if m.noticeErr {
@@ -282,15 +296,15 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 		if left := noticeFor - m.Now.Sub(m.noticeAt); left < noticeFade {
 			c = Mix(cInk, c, float64(left)/float64(noticeFade))
 		}
-		cv.Text(x, y, g+m.notice, fg(c), cv.W-2)
+		cv.Text(x, y, g+m.notice, fg(c), w-2)
 		return
 	}
 	if m.Error != "" {
-		cv.Text(x, y, "⚠ OFFLINE / CACHED: "+m.Error, fg(cWarn).bold(), cv.W-2)
+		cv.Text(x, y, "⚠ OFFLINE / CACHED: "+m.Error, fg(cWarn).bold(), w-2)
 		return
 	}
 	if m.Loading != "" {
-		cv.Text(x, y, m.spinner()+" "+m.Loading+"…", fg(cAccent2), cv.W-2)
+		cv.Text(x, y, m.spinner()+" "+m.Loading+"…", fg(cAccent2), w-2)
 		return
 	}
 	if m.Edit != nil {
@@ -301,7 +315,7 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 			plural(len(c.Nodes), "node"), plural(len(c.Links), "link"), plural(len(c.Endpoints), "endpoint"),
 			plural(len(c.Services), "service"), plural(len(c.Observers), "observer"), plural(len(c.Paths), "path"), plural(len(c.Checks), "check"),
 		} {
-			if x+5+width(part) > cv.W-1 {
+			if x+5+width(part) > end-1 {
 				break
 			}
 			if i > 0 {
@@ -309,19 +323,19 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 			}
 			n, word, _ := strings.Cut(part, " ")
 			x += cv.Text(x, y, n, fg(cText).bold(), -1)
-			x += cv.Text(x, y, " "+word, fg(cMuted), max(0, cv.W-1-x))
+			x += cv.Text(x, y, " "+word, fg(cMuted), max(0, end-1-x))
 		}
 		return
 	}
 	up, down, warn, unk := m.counts()
 	x += cv.Text(x, y, "CHECKS", fg(cFaint).bold(), -1) + 2
-	if bw := min(24, cv.W/9); bw >= 6 && !m.NoColor {
+	if bw := min(24, w/9); bw >= 6 && !m.NoColor {
 		m.healthBar(cv, x, y, bw, up, warn, down, unk, '━')
 		x += bw + 3
 	}
 	// Zero counts recede; anything that needs attention is lit and bold.
 	count := func(g rune, c Color, n int, word string) {
-		if x >= cv.W-6 {
+		if x >= end-6 {
 			return
 		}
 		gs, ns := fg(cFaint), fg(cFaint)
@@ -340,11 +354,11 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 	count('▲', cWarn, warn, "warning")
 	count('✖', cDown, down, "down")
 	count('○', cUnknown, unk, "unknown")
-	if x < cv.W-16 {
+	if x < end-16 {
 		x += cv.Text(x, y, "│   ", fg(cLine), -1)
 		count('⚑', cDown, len(m.Snapshot.Incidents), map[bool]string{true: "incident", false: "incidents"}[len(m.Snapshot.Incidents) == 1])
 	}
-	if x < cv.W-20 {
+	if x < end-20 {
 		x += cv.Text(x, y, "│   ", fg(cLine), -1)
 		live, all := m.liveObservers(), len(m.Snapshot.Observers)
 		c := cAccent2
@@ -355,10 +369,10 @@ func (m *Model) statusBar(cv *Canvas, y int) {
 		x += 2
 		x += cv.Text(x, y, itoa(live)+"/"+itoa(all), fg(cText).bold(), -1)
 		label := " observers live"
-		if x+width(label) > cv.W-1 {
+		if x+width(label) > end-1 {
 			label = " live" // a word, not most of two
 		}
-		cv.Text(x, y, label, fg(cMuted), cv.W-x-1)
+		cv.Text(x, y, label, fg(cMuted), end-x-1)
 	}
 }
 
@@ -380,146 +394,147 @@ func (m *Model) panel(cv *Canvas, x, y, w, h int, title, tag string, active bool
 
 type keycap struct{ key, label, action string }
 
-func (m *Model) footer(cv *Canvas, y int) {
+// An action is something the viewer can do from where it stands: a key on
+// the footer, a control on a touch screen. When there is no room for all
+// of them the highest rank gives way first, a whole rank at a time.
+type action struct {
+	keycap
+	rank int
+}
+
+// actions are what the viewer can do from the current tab and selection,
+// in reading order, when neither a modal nor the filter has the keys; the
+// footer shows them as keycaps and a touch screen as controls, so every
+// screen offers the same ones. Details, Filter and Quit rank first, and
+// the editor hints of a read-only client give way together.
+func (m *Model) actions() []action {
+	var opts []action
+	add := func(rank int, key, label, act string) {
+		opts = append(opts, action{keycap{key, label, act}, rank})
+	}
+	if m.Edit != nil {
+		add(0, "a", "Add", "a")
+		add(0, "e", "Edit", "e")
+		add(0, "d", "Delete", "d")
+		add(0, "^S", "Save", "ctrl-s")
+		add(0, "u", "Undo", "u")
+	}
+	if m.Detail && m.Tab != tabAbout {
+		add(1, "↵", "Back", "enter")
+		add(1, "↑↓", "Scroll", "")
+	} else {
+		if r, ok := m.selectedRow(); ok && r.Kind == "group" {
+			add(1, "↵", "Fold", "enter")
+		} else {
+			add(1, "↵", "Details", "enter")
+		}
+	}
+	if m.Tab == tabServers && !m.Detail {
+		if m.Uniform {
+			add(2, "s", "Full cards", "s")
+		} else {
+			add(2, "s", "Uniform", "s")
+		}
+	}
+	if m.businessTab() && !m.Detail && len(m.Snapshot.Topology.Applications) > 0 {
+		add(1, "b", "Browse", "b")
+		if r, ok := m.selectedRow(); ok && r.Kind == "group" {
+			add(1, "Space", "Fold", " ")
+			add(2, "i", "Evidence", "i")
+		}
+		if m.Tab == tabServices {
+			add(2, "c", "Checks", "c")
+		}
+	}
+	add(1, "/", "Filter", "/")
+	add(2, "v", "View", "v")
+	if m.Edit == nil {
+		add(3, "r", "Refresh", "r")
+	}
+	if m.Preview != nil {
+		add(2, "x", "Scenario", "x")
+	}
+	if m.mapShown() {
+		add(3, "m", "Map", "m")
+		add(4, "z", "Zoom", "z")
+		if m.mapMode() == "geo" {
+			if m.Points {
+				add(2, "p", "Cards", "p")
+			} else {
+				add(2, "p", "Points", "p")
+			}
+		}
+		if m.FullMap {
+			add(1, "f", "Panels", "f")
+		} else {
+			add(3, "f", "Full map", "f")
+		}
+	}
+	if m.Edit == nil {
+		add(5, "a", "Add", "a")
+		add(5, "e", "Edit", "e")
+		add(5, "d", "Delete", "d")
+	}
+	if m.Preview != nil {
+		add(6, "D", "Debug", "D")
+	}
+	add(4, ",", "Settings", ",")
+	add(3, "?", "About", "?")
+	add(0, "q", "Quit", "q")
+	return opts
+}
+
+// fitActions drops the highest rank, a whole rank at a time, until what
+// is left measures no more than room with need; rank 0 always stays.
+func fitActions(opts []action, room int, need func(action) int) []action {
+	for {
+		total, worst := 0, 0
+		for _, o := range opts {
+			total += need(o)
+			worst = max(worst, o.rank)
+		}
+		if total <= room || worst == 0 {
+			return opts
+		}
+		kept := opts[:0:0]
+		for _, o := range opts {
+			if o.rank != worst {
+				kept = append(kept, o)
+			}
+		}
+		opts = kept
+	}
+}
+
+// footer is the key bar: the keys that mean something where the viewer
+// stands, as many as fit.
+func (m *Model) footer(cv *Canvas, x0, y, w int) {
 	bar := Style{BG: cInkHi}
-	cv.Fill(0, y, cv.W, 1, bar)
-	x := 1
+	cv.Fill(x0, y, w, 1, bar)
+	x, end := x0+1, x0+w
 	if m.Searching {
 		x += cv.Text(x, y, "Filter ", bar.Fg(cAccent).bold(), -1)
-		x += cv.Text(x, y, m.Search, bar.Fg(cGlow), cv.W-x-20)
+		x += cv.Text(x, y, m.Search, bar.Fg(cGlow), end-x-20)
 		cv.Text(x, y, "▏  Enter/Esc finish", bar.Fg(cMuted), -1)
 		return
 	}
 	var keys []keycap
 	if m.waiting() && m.modal == nil {
-		// Before any evidence only these mean anything.
-		if m.Error != "" {
-			keys = append(keys, keycap{"r", "Retry now", "r"})
-		}
-		if m.Preview != nil {
-			keys = append(keys, keycap{"x", "Scenario", "x"})
-		}
-		keys = append(keys, keycap{",", "Settings", ","}, keycap{"?", "About", "?"}, keycap{"q", "Quit", "q"})
+		keys = m.waitingKeys()
 	} else if m.modal != nil {
-		switch m.modal.kind {
-		case "preferences":
-			keys = []keycap{{"Tab/↑↓", "move", ""}, {"←→", "change", ""}, {"Enter", "select", "enter"}, {"Esc", "cancel", "esc"}}
-		case "form":
-			keys = []keycap{{"Tab/↓", "next", ""}, {"↑", "prev", ""}, {"←→", "choose", ""}, {"Space", "toggle", ""}, {"^S", "apply", "btn:save"}, {"Esc", "cancel", "btn:cancel"}}
-		case "menu":
-			keys = []keycap{{"↑↓", "select", ""}, {"Enter", "choose", ""}, {"Esc", "close", "esc"}}
-		default:
-			keys = []keycap{{"Enter", "ok", "enter"}, {"Esc", "close", "esc"}}
-		}
+		keys = m.modalKeys()
 	} else {
 		if m.Search != "" {
 			x += cv.Text(x, y, "Filter “"+m.Search+"”  Esc clear   ", bar.Fg(cAccent), -1)
 		}
-		// Keys in reading order, each with a rank: when the bar is too
-		// narrow the highest rank goes first, a whole rank at a time, so
-		// Details, Filter and Quit stay while the editor hints of a
-		// read-only client give way together.
-		type ranked struct {
-			k    keycap
-			rank int
-		}
-		var opts []ranked
-		add := func(rank int, key, label, action string) {
-			opts = append(opts, ranked{keycap{key, label, action}, rank})
-		}
-		if m.Edit != nil {
-			add(0, "a", "Add", "a")
-			add(0, "e", "Edit", "e")
-			add(0, "d", "Delete", "d")
-			add(0, "^S", "Save", "ctrl-s")
-			add(0, "u", "Undo", "u")
-		}
-		if m.Detail && m.Tab != tabAbout {
-			add(1, "↵", "Back", "enter")
-			add(1, "↑↓", "Scroll", "")
-		} else {
-			if r, ok := m.selectedRow(); ok && r.Kind == "group" {
-				add(1, "↵", "Fold", "enter")
-			} else {
-				add(1, "↵", "Details", "enter")
-			}
-		}
-		if m.Tab == tabServers && !m.Detail {
-			if m.Uniform {
-				add(2, "s", "Full cards", "s")
-			} else {
-				add(2, "s", "Uniform", "s")
-			}
-		}
-		if m.businessTab() && !m.Detail && len(m.Snapshot.Topology.Applications) > 0 {
-			add(1, "b", "Browse", "b")
-			if r, ok := m.selectedRow(); ok && r.Kind == "group" {
-				add(1, "Space", "Fold", " ")
-				add(2, "i", "Evidence", "i")
-			}
-			if m.Tab == tabServices {
-				add(2, "c", "Checks", "c")
-			}
-		}
-		add(1, "/", "Filter", "/")
-		add(2, "v", "View", "v")
-		if m.Edit == nil {
-			add(3, "r", "Refresh", "r")
-		}
-		if m.Preview != nil {
-			add(2, "x", "Scenario", "x")
-		}
-		if m.mapShown() {
-			add(3, "m", "Map", "m")
-			add(4, "z", "Zoom", "z")
-			if m.mapMode() == "geo" {
-				if m.Points {
-					add(2, "p", "Cards", "p")
-				} else {
-					add(2, "p", "Points", "p")
-				}
-			}
-			if m.FullMap {
-				add(1, "f", "Panels", "f")
-			} else {
-				add(3, "f", "Full map", "f")
-			}
-		}
-		if m.Edit == nil {
-			add(5, "a", "Add", "a")
-			add(5, "e", "Edit", "e")
-			add(5, "d", "Delete", "d")
-		}
-		if m.Preview != nil {
-			add(6, "D", "Debug", "D")
-		}
-		add(4, ",", "Settings", ",")
-		add(3, "?", "About", "?")
-		add(0, "q", "Quit", "q")
-		for {
-			total, worst := 0, 0
-			for _, o := range opts {
-				total += width(o.k.key) + width(o.k.label) + 5
-				worst = max(worst, o.rank)
-			}
-			if total-1 <= cv.W-x || worst == 0 {
-				break
-			}
-			kept := opts[:0]
-			for _, o := range opts {
-				if o.rank != worst {
-					kept = append(kept, o)
-				}
-			}
-			opts = kept
-		}
+		opts := fitActions(m.actions(), end-x+1, func(o action) int { return width(o.key) + width(o.label) + 5 })
 		for _, o := range opts {
-			keys = append(keys, o.k)
+			keys = append(keys, o.keycap)
 		}
 	}
 	for _, k := range keys {
 		need := width(k.key) + width(k.label) + 4
-		if x+need > cv.W {
+		if x+need > end {
 			break
 		}
 		start := x
@@ -535,13 +550,41 @@ func (m *Model) footer(cv *Canvas, y int) {
 	}
 }
 
+// waitingKeys are the only keys that mean anything before any evidence.
+func (m *Model) waitingKeys() []keycap {
+	var keys []keycap
+	if m.Error != "" {
+		keys = append(keys, keycap{"r", "Retry now", "r"})
+	}
+	if m.Preview != nil {
+		keys = append(keys, keycap{"x", "Scenario", "x"})
+	}
+	return append(keys, keycap{",", "Settings", ","}, keycap{"?", "About", "?"}, keycap{"q", "Quit", "q"})
+}
+
+// modalKeys are the keys of the open modal.
+func (m *Model) modalKeys() []keycap {
+	switch m.modal.kind {
+	case "preferences":
+		return []keycap{{"Tab/↑↓", "move", ""}, {"←→", "change", ""}, {"Enter", "select", "enter"}, {"Esc", "cancel", "esc"}}
+	case "form":
+		return []keycap{{"Tab/↓", "next", ""}, {"↑", "prev", ""}, {"←→", "choose", ""}, {"Space", "toggle", ""}, {"^S", "apply", "btn:save"}, {"Esc", "cancel", "btn:cancel"}}
+	case "menu":
+		return []keycap{{"↑↓", "select", ""}, {"Enter", "choose", ""}, {"Esc", "close", "esc"}}
+	}
+	return []keycap{{"Enter", "ok", "enter"}, {"Esc", "close", "esc"}}
+}
+
 // --- modals ------------------------------------------------------------------
 
+// modalBox draws a modal's box, centred on the stage, and returns its
+// inner rectangle.
 func (m *Model) modalBox(cv *Canvas, w, h int, title string) (int, int, int, int) {
-	w = min(w, cv.W-2)
-	h = min(h, cv.H-2)
-	x := (cv.W - w) / 2
-	y := max(1, (cv.H-h)/2)
+	s := m.stageOn(cv)
+	w = min(w, s.w-2)
+	h = min(h, s.h-2)
+	x := s.x + (s.w-w)/2
+	y := max(s.y+1, s.y+(s.h-h)/2)
 	if !m.Transparent && !m.NoColor {
 		// A shadow, two columns to the right and one row below, lifts
 		// the panel off the dimmed view.

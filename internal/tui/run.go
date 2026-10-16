@@ -303,14 +303,18 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 			ks := decoder.Feed(b, now)
 			for _, k := range ks {
 				m.Now = now
-				switch m.Key(k) {
+				switch cmd := m.Key(k); cmd {
 				case "quit":
 					return nil
 				case "refresh":
 					request()
 					samples.request(ctx, m, true)
-				case "view":
-					m.NextObserver()
+				case "view", "observe":
+					// v steps to the next observer; a touch screen's menu
+					// has already picked one.
+					if cmd == "view" {
+						m.NextObserver()
+					}
 					topology := m.Snapshot.Topology
 					m.Snapshot = model.Snapshot{Topology: topology}
 					m.Error = ""
