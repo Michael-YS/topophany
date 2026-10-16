@@ -6,9 +6,19 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
+)
+
+// Winsock reports socket failures with WSA error codes. On Windows, Go's
+// syscall.E* values are separate, invented values rather than those codes.
+const (
+	wsaNetUnreachable  syscall.Errno = 10051
+	wsaConnReset       syscall.Errno = 10054
+	wsaConnRefused     syscall.Errno = 10061
+	wsaHostUnreachable syscall.Errno = 10065
 )
 
 // misses gathers why each collector a read passed over gave no answer, so
@@ -56,16 +66,21 @@ func unreachable(e error) string {
 		return "not answering in TLS — is it an http:// collector?"
 	case errors.As(e, &dns):
 		return "host name not found"
-	case errors.Is(e, syscall.ECONNREFUSED):
+	case errors.Is(e, syscall.ECONNREFUSED), windowsSocketError(e, wsaConnRefused):
 		return "connection refused — is the collector running?"
-	case errors.Is(e, syscall.EHOSTUNREACH), errors.Is(e, syscall.ENETUNREACH):
+	case errors.Is(e, syscall.EHOSTUNREACH), errors.Is(e, syscall.ENETUNREACH),
+		windowsSocketError(e, wsaHostUnreachable), windowsSocketError(e, wsaNetUnreachable):
 		return "network unreachable"
-	case errors.Is(e, syscall.ECONNRESET):
+	case errors.Is(e, syscall.ECONNRESET), windowsSocketError(e, wsaConnReset):
 		return "connection reset"
 	case errors.As(e, &ne) && ne.Timeout():
 		return "timed out"
 	}
 	return "unreachable"
+}
+
+func windowsSocketError(e error, code syscall.Errno) bool {
+	return runtime.GOOS == "windows" && errors.Is(e, code)
 }
 
 // unavailable says why a collector that responded is passed over.
