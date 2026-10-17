@@ -103,12 +103,14 @@ func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.T
 		s.Reason = "executor clock is ahead; sample not treated as current"
 		s.Failures = 0
 		s.Successes = 0
+		s.PolicyConfirmed = false
 	} else if now.Sub(s.Last.SampledAt) > time.Duration(x.StaleSeconds)*time.Second {
 		s.Health = "unknown"
 		s.Freshness = "stale"
 		s.Reason = "measurement expired; last outcome is historical, not current"
 		s.Failures = 0
 		s.Successes = 0
+		s.PolicyConfirmed = false
 	}
 	return s
 }

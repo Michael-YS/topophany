@@ -102,6 +102,15 @@ func TestPolicyViolationNeedsTheFailureThreshold(t *testing.T) {
 	if len(s.Incidents) != 1 || !strings.HasSuffix(s.Incidents[0].Scope, "/policy") || !slices.Contains(s.Incidents[0].Checks, x.ID) {
 		t.Fatalf("no policy incident after the threshold: %+v", s.Incidents)
 	}
+
+	// A stale measurement is history, not a current confirmation. The
+	// public field must not claim a policy is confirmed while the same
+	// state says its evidence expired.
+	s = Build(c, "a", "", samples("policy", "policy", "policy"), nil, now.Add(10*time.Minute))
+	st = state(s)
+	if st.Freshness != "stale" || st.PolicyConfirmed {
+		t.Fatalf("stale policy sample kept its confirmation: %+v", st)
+	}
 }
 
 func TestProviderSettleExtendsPolicyConfirmation(t *testing.T) {
