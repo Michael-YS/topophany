@@ -27,7 +27,11 @@ func Mix(a, b Color, t float64) Color {
 	t = clamp(t, 0, 1)
 	ar, ag, ab := a.rgb()
 	br, bg, bb := b.rgb()
-	l := func(x, y int) uint32 { return uint32(float64(x) + (float64(y)-float64(x))*t + .5) }
+	// The conversion rounds the product before the sum. Without it, Go may
+	// fuse the two into one multiply-add, as it does on arm64 and not on
+	// amd64, and a channel then differs by one: the recorded tours would
+	// depend on the machine that recorded them.
+	l := func(x, y int) uint32 { return uint32(float64(x) + float64((float64(y)-float64(x))*t) + .5) }
 	return Hex(l(ar, br)<<16 | l(ag, bg)<<8 | l(ab, bb))
 }
 

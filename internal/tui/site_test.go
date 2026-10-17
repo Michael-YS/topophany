@@ -316,6 +316,24 @@ func TestTourIsReproducible(t *testing.T) {
 	}
 }
 
+// A tour recorded on one architecture has to match a rebuild on another.
+// Each case lands within an ulp of a channel's rounding boundary, where a
+// fused multiply-add (arm64 fuses one, amd64 does not) rounds the other way.
+func TestMixRoundsTheSameOnEveryArchitecture(t *testing.T) {
+	for _, tc := range []struct {
+		a, b Color
+		t    float64
+		want Color
+	}{
+		{Hex(0x050505), Hex(0x000000), .9, Hex(0x010101)},
+		{Hex(0x0f1011), Hex(0x000102), .9, Hex(0x020304)},
+	} {
+		if got := Mix(tc.a, tc.b, tc.t); got != tc.want {
+			t.Errorf("Mix(%06x, %06x, %v) = %06x, want %06x", uint32(tc.a)&0xFFFFFF, uint32(tc.b)&0xFFFFFF, tc.t, uint32(got)&0xFFFFFF, uint32(tc.want)&0xFFFFFF)
+		}
+	}
+}
+
 func TestSite(t *testing.T) {
 	dir := os.Getenv("TOPO_SITE")
 	for _, lang := range preview.Languages() {
