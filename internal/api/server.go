@@ -149,6 +149,8 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 	}
 	server := &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
 	if _, e := rand.Read(server.ingressSalt[:]); e != nil {
+		// Fail closed: without a key, viewer snapshots must not fall back to
+		// reversible hashes of source addresses.
 		panic("api: no entropy for ingress pseudonyms: " + e.Error())
 	}
 	return server
