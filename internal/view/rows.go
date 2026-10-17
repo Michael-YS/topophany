@@ -338,6 +338,7 @@ func (v View) Rows(tab int) []Row {
 			meta := d.Observer + " · " + d.Kind + " · " + e.Freshness
 			took := ""
 			details := []string{"Check: " + e.ID, "Source: " + e.Observer, "Health: " + e.Health, "Freshness: " + e.Freshness, "Evidence: " + e.Evidence, "Contract: " + e.Contract[:min(12, len(e.Contract))], "", e.Reason, ""}
+			details = append(details, adapterDetails(d, e)...)
 			if fared := AvailabilityDetails(e.Availability); fared != nil {
 				details = append(append(details, fared...), "")
 			}

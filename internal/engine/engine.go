@@ -258,7 +258,7 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 			return s
 		}
 		path := pathDefs[id]
-		s := Aggregate(id, pathEvidenceStates(group(p.pathChecks[id])), "no endpoint-to-endpoint check; segment health unknown")
+		s := aggregatePath(id, group(p.pathChecks[id]), "no endpoint-to-endpoint check; segment health unknown")
 		if len(path.Candidates) > 0 {
 			up, down, unknown := 0, 0, 0
 			for _, q := range path.Candidates {
@@ -305,7 +305,7 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 		}
 	}
 	for _, l := range c.Links {
-		s := Aggregate(l.ID, pathEvidenceStates(group(p.linkChecks[l.ID])), "segment not independently measured")
+		s := aggregatePath(l.ID, group(p.linkChecks[l.ID]), "segment not independently measured")
 		for _, id := range p.linkPaths[l.ID] {
 			if relevant(model.Check{Observer: p.paths[id].Observer}) && evalPath(id).Health == "down" {
 				s.Affected = true
@@ -523,6 +523,24 @@ func Aggregate(id string, states []model.CheckState, empty string) model.EntityS
 
 // Runtime selection/handshake metadata and a TUN-visible TCP accept are not
 // enough to mark an end-to-end access path healthy.
+func aggregatePath(id string, states []model.CheckState, empty string) model.EntityState {
+	s := Aggregate(id, pathEvidenceStates(states), empty)
+	active, reported := 0, 0
+	for _, check := range states {
+		if check.Freshness == "paused" || check.Freshness == "maintenance" {
+			continue
+		}
+		active++
+		if check.Freshness == "fresh" && check.Last != nil && check.Last.Evidence == "reported" {
+			reported++
+		}
+	}
+	if active > 0 && active == reported && s.Health == "unknown" {
+		s.Reason = "runtime reports only; inspect software policy checks; end-to-end reachability is unmeasured"
+	}
+	return s
+}
+
 func pathEvidenceStates(states []model.CheckState) []model.CheckState {
 	out := make([]model.CheckState, len(states))
 	copy(out, states)
