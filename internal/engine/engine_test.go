@@ -123,14 +123,14 @@ func TestProviderSettleExtendsPolicyConfirmation(t *testing.T) {
 	x := c.Checks[0]
 	x.IntervalSeconds = 60
 	x.FailureThreshold = 3
-	settle := 600 // ten samples at the check's interval
+	settle := 600 // ten intervals at the check's 60-second interval
 	x.Adapter.ProviderReference = &model.MihomoProviderReference{URL: "https://publisher.invalid/members.json", Providers: []string{"edge-local"}, MaxAgeSeconds: 3600, SettleSeconds: &settle}
 	c.Checks[0] = x
 	now := time.Now().UTC()
 	samples := func(n int, settling bool) []model.Observation {
 		rows := make([]model.Observation, 0, n)
 		for i := 0; i < n; i++ {
-			row := testkit.Observation(c, x.ID, uint64(i+1), now.Add(time.Duration(i-n)*time.Second), "policy")
+			row := testkit.Observation(c, x.ID, uint64(i+1), now.Add(time.Duration(i-n)*60*time.Second), "policy")
 			if settling {
 				row.Facts["provider_reference_settling"] = "true"
 			}
@@ -149,13 +149,14 @@ func TestProviderSettleExtendsPolicyConfirmation(t *testing.T) {
 		return model.CheckState{}
 	}
 
-	// The settle window is expressed as samples, so a publisher that keeps
-	// republishing cannot postpone confirmation past this point.
-	s := Build(c, "a", "", samples(9, true), nil, now)
+	// The settle window is measured in elapsed time and samples, so a
+	// publisher that keeps republishing cannot postpone confirmation past
+	// this point. Ten 60-second samples span only 540 seconds.
+	s := Build(c, "a", "", samples(10, true), nil, now)
 	if st := state(s); st.PolicyConfirmed || len(s.Incidents) != 0 {
 		t.Fatalf("confirmed before the settle window: %+v %+v", st, s.Incidents)
 	}
-	s = Build(c, "a", "", samples(10, true), nil, now)
+	s = Build(c, "a", "", samples(11, true), nil, now)
 	st := state(s)
 	if !st.PolicyConfirmed || len(s.Incidents) != 1 {
 		t.Fatalf("not confirmed after the settle window: %+v %+v", st, s.Incidents)
@@ -167,6 +168,43 @@ func TestProviderSettleExtendsPolicyConfirmation(t *testing.T) {
 	s = Build(c, "a", "", samples(3, false), nil, now)
 	if st = state(s); !st.PolicyConfirmed || len(s.Incidents) != 1 {
 		t.Fatalf("settle delayed a known drift: %+v %+v", st, s.Incidents)
+	}
+}
+
+func TestProviderSettleNeedsTheElapsedWindow(t *testing.T) {
+	c := testkit.Config()
+	x := c.Checks[0]
+	x.IntervalSeconds = 60
+	x.FailureThreshold = 1
+	settle := 120
+	x.Adapter.ProviderReference = &model.MihomoProviderReference{URL: "https://publisher.invalid/members.json", Providers: []string{"edge-local"}, MaxAgeSeconds: 3600, SettleSeconds: &settle}
+	c.Checks[0] = x
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	rows := func(n int) []model.Observation {
+		out := make([]model.Observation, 0, n)
+		for i := 0; i < n; i++ {
+			v := testkit.Observation(c, x.ID, uint64(i+1), now.Add(time.Duration(i-n+1)*60*time.Second), "policy")
+			v.Facts["provider_reference_settling"] = "true"
+			out = append(out, v)
+		}
+		return out
+	}
+	state := func(s model.Snapshot) model.CheckState {
+		for _, st := range s.Checks {
+			if st.ID == x.ID {
+				return st
+			}
+		}
+		t.Fatal("missing state", x.ID)
+		return model.CheckState{}
+	}
+	// Two samples span 60 seconds; failure_threshold is 1, but the 120-second
+	// settle window has not elapsed.
+	if st := state(Build(c, "a", "", rows(2), nil, now)); st.PolicyConfirmed {
+		t.Fatalf("settle confirmed after 60s: %+v", st)
+	}
+	if st := state(Build(c, "a", "", rows(3), nil, now)); !st.PolicyConfirmed {
+		t.Fatalf("settle did not confirm after 120s: %+v", st)
 	}
 }
 

@@ -86,10 +86,23 @@ func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.T
 		// consecutive samples as a failure would before it opens an
 		// incident: a publication the runtime has not loaded yet produces
 		// one or two violating samples and then passes.
-		run, threshold := k.PolicyRun, policyThreshold(x, last.Facts["provider_reference_settling"] == "true")
+		settling := last.Facts["provider_reference_settling"] == "true"
+		run, threshold := k.PolicyRun, policyThreshold(x, settling)
 		s.PolicyConfirmed = run >= threshold
+		if s.PolicyConfirmed && settling {
+			if ref := x.Adapter.ProviderReference; ref != nil {
+				settle := time.Duration(ref.SettleSecondsOrDefault()) * time.Second
+				if settle > 0 && !s.Since.IsZero() && last.SampledAt.Sub(s.Since) < settle {
+					s.PolicyConfirmed = false
+				}
+			}
+		}
 		if !s.PolicyConfirmed {
-			s.Reason = fmt.Sprintf("%s; confirmation threshold not reached (%d/%d)", s.Reason, run, threshold)
+			if run < threshold {
+				s.Reason = fmt.Sprintf("%s; confirmation threshold not reached (%d/%d)", s.Reason, run, threshold)
+			} else {
+				s.Reason = fmt.Sprintf("%s; settle window not reached", s.Reason)
+			}
 		}
 	default:
 		if last.Outcome == "error" {
