@@ -45,7 +45,16 @@ func Contract(c model.Config, x model.Check) string {
 }
 
 func measurement(project string, x model.Check, target string, proxies []model.Proxy) string {
-	b, _ := json.Marshal(contract{Schema: 2, Project: project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: target, Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: x.HTTP, DNS: x.DNS, Adapter: x.Adapter, Host: x.Host, Proxies: proxies})
+	// Settle is a confirmation threshold, not a measurement: it says when a
+	// difference may be treated as confirmed, like failure_threshold, and
+	// must not reset the history it only delays.
+	adapter := x.Adapter
+	if ref := adapter.ProviderReference; ref != nil {
+		settled := *ref
+		settled.SettleSeconds = nil
+		adapter.ProviderReference = &settled
+	}
+	b, _ := json.Marshal(contract{Schema: 2, Project: project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: target, Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: x.HTTP, DNS: x.DNS, Adapter: adapter, Host: x.Host, Proxies: proxies})
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }

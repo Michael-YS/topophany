@@ -88,7 +88,10 @@ the publisher, `provider.<name>.updated_at` from the controller's own
 `sampled_at`. A difference that outlives the window is the drift this check
 exists to find; one that does not is the publication loading. A provider whose
 controller reports an `updatedAt` after the publication is not still loading
-it, so its difference is not marked settling.
+it, so its difference is not marked settling. The field is absent from the
+measurement contract, so changing it does not discard history. It is still a
+topology field: upgrade every collector and worker before adding it, because
+older binaries reject unknown fields.
 
 The adapter reads the publication immediately before and after the runtime
 provider read. A stable, fresh publication with different loaded members/order

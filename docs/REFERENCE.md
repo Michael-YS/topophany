@@ -122,8 +122,11 @@ after the window's equivalent consecutive policy samples (and at least
 Matching membership is never deferred. Facts record
 `provider_reference_published_at` (publisher), `provider.<name>.updated_at`
 (the controller's own load time for that provider) and the sample's own time.
-See the [Mihomo adapter guide](../internal/adapters/mihomo/README.md) for the
-document format, transport and freshness limits.
+An explicit `settle_seconds` is a new topology field: upgrade every collector
+and worker before adding it, because older binaries reject unknown topology
+fields. Omitting it uses the default and needs no topology change. See the
+[Mihomo adapter guide](../internal/adapters/mihomo/README.md) for the document
+format, transport and freshness limits.
 
 A single check supports up to 16 static and dynamic providers combined, with provider names capped at 119 bytes without control characters to respect API record budgets. Long strings are truncated at UTF-8 byte boundaries; DNS response evidence exceeding 2,048 bytes returns an explicit check error.
 
@@ -222,7 +225,7 @@ heartbeat's collector-owned `ReceivedAt` sets the interval; sender timestamps,
 boots and topology revisions cannot reset it. Observation quotas still reserve
 one liveness slot per observer.
 
-Batches are schema 2 (`"schema": 2`). The batch's `revision` is the SHA-256 of the sender's normalized topology and only describes the sender; the acknowledgement echoes it. Each observation carries the `contract` of its check, which must equal the collector's contract for that check, or the batch is refused with `409 contract_mismatch`. A check's contract is the SHA-256 of what it measures: project, check ID, observer, kind, target (the endpoint's address when `target` is empty), timeout, `bind_ip`, `resolve_ip`, `server_name`, `ca_file`, the `http`, `dns` and `adapter` options, and the proxies of its path in wire order. Nothing else enters it: names, notes, locations, intervals, staleness and confirmation thresholds, `disabled` and `maintenance`, what the check is attributed to (endpoint, service, path, link) and every other check can change without disturbing its samples, its history or the ID of an incident it is part of. `topo validate` prints every contract. Viewers see public contracts, computed over the redacted topology like the public revision, so they permit no guess at hidden fields.
+Batches are schema 2 (`"schema": 2`). The batch's `revision` is the SHA-256 of the sender's normalized topology and only describes the sender; the acknowledgement echoes it. Each observation carries the `contract` of its check, which must equal the collector's contract for that check, or the batch is refused with `409 contract_mismatch`. A check's contract is the SHA-256 of what it measures: project, check ID, observer, kind, target (the endpoint's address when `target` is empty), timeout, `bind_ip`, `resolve_ip`, `server_name`, `ca_file`, the `http`, `dns` and `adapter` options (except `provider_reference.settle_seconds`, which only defers confirmation), and the proxies of its path in wire order. Nothing else enters it: names, notes, locations, intervals, staleness and confirmation thresholds, `disabled` and `maintenance`, what the check is attributed to (endpoint, service, path, link) and every other check can change without disturbing its samples, its history or the ID of an incident it is part of. `topo validate` prints every contract. Viewers see public contracts, computed over the redacted topology like the public revision, so they permit no guess at hidden fields.
 
 A snapshot from a collector that saw TLS handshake failures also carries
 `ingress`: `window_seconds`, `failures`, `source_count`, `last`, and up to

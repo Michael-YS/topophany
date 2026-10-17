@@ -19,6 +19,16 @@ func TestMihomoReferenceContractCloneAndRedaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := config.Contract(c, *x)
+	settle := 120
+	x.Adapter.ProviderReference.SettleSeconds = &settle
+	if got := config.Contract(c, *x); got != before {
+		t.Fatal("settle_seconds changed the measurement contract")
+	}
+	settle = 600
+	if got := config.Contract(c, *x); got != before {
+		t.Fatal("a different settle_seconds changed the measurement contract")
+	}
+	x.Adapter.ProviderReference.SettleSeconds = nil
 	public := config.PublicRevision(c)
 	copy := config.Clone(c)
 	copy.Checks[0].Adapter.ProviderReference.Providers[0] = "changed"
