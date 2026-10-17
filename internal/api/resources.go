@@ -44,7 +44,7 @@ func (s *Server) release(scope, role string) {
 func (s *Server) writeSnapshot(w http.ResponseWriter, g *generation, view, principal string) {
 	raw, status, code := s.cachedSnapshot(g, view, principal)
 	if status != http.StatusOK {
-		if status == 429 {
+		if status == 429 || code == "topology_reloaded" {
 			w.Header().Set("Retry-After", "1")
 		}
 		writeError(w, status, code)
@@ -59,11 +59,19 @@ func (s *Server) writeSnapshot(w http.ResponseWriter, g *generation, view, princ
 // cachedSnapshot is the snapshot of view under g, the generation its
 // request was admitted under.
 func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, int, string) {
+	// Reload takes this lock before changing any snapshot dependency. Refuse
+	// an old authority before reading storage or ledger metadata, even on a
+	// cache hit, and keep the generation stable until capture is complete.
+	s.reloadMu.RLock()
+	defer s.reloadMu.RUnlock()
+	if g != s.generation() {
+		return nil, http.StatusServiceUnavailable, "topology_reloaded"
+	}
 	// Capture bounded store tails once per second. Cache at most eight observer
 	// projections (32 MiB total) so switching views cannot amplify store reads.
 	// Waiting readers never queue expensive work, and writes use a separate mutex.
 	// What is cached was built under one generation and is served under no
-	// other, even to a request admitted before a reload and answered after.
+	// other.
 	if !s.snapshotMu.TryLock() {
 		return nil, 429, "snapshot_busy"
 	}

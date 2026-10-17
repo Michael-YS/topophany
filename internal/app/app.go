@@ -49,7 +49,8 @@ Read what the TUI shows
   topo history CHECK                a check's recent samples
   topo history CHECK --step 1h      how a check fared, hour by hour, from its rollups
   topo --json                       one authenticated snapshot as JSON
-  topo --credential TOKEN           override the saved bearer token for this run
+  topo --token-stdin                read a temporary bearer token from stdin
+  topo --credential-file FILE       read a temporary token from a private file
 
 Run
   topo serve                        run a collector, optionally with checks of its own

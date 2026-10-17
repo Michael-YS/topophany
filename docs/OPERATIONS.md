@@ -118,6 +118,9 @@ monitor output and lock are local-machine artifacts, not network-share storage.
 `serve` and `worker` accept `--log-file PATH.log`, `--log-max-bytes BYTES` (default
 5 MiB, 64 KiB–1 GiB) and `--log-backups N` (default 3, 1–10). The process owns
 rotation and reopens the active log, preserving bounded numbered backups.
+On POSIX, existing active logs and managed backups must have mode `0600` or
+stricter; otherwise startup refuses them before writing. Correct their modes
+with `chmod 600` before restarting. New logs and rotated backups remain private.
 There is one lock-protected writer per managed log. Without `--log-file`, logs
 continue to stderr. New macOS deployment bundles pass a managed
 `DATA_DIR/topophany.log` and direct launchd's raw stdout/stderr to `/dev/null`;

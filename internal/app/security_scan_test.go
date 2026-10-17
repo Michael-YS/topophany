@@ -22,11 +22,11 @@ func TestCredentialOverrideCannotReachFailoverDestination(t *testing.T) {
 	if err := client.Save(path, c); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := invoke("", "--credentials", path, "--credential", strings.Repeat("c", 64), "--json")
+	_, _, err := invoke("", "--credentials", path, "--credential-file", credentialFile(t, strings.Repeat("c", 64)), "--json")
 	if err == nil || !strings.Contains(err.Error(), "--server") || hits.Load() != 0 {
 		t.Fatal("unbound override made a request", err, hits.Load())
 	}
-	_, _, err = invoke("", "--credentials", path, "--server", primary.URL, "--credential", strings.Repeat("c", 64), "--json")
+	_, _, err = invoke("", "--credentials", path, "--server", primary.URL, "--credential-file", credentialFile(t, strings.Repeat("c", 64)), "--json")
 	if err == nil || hits.Load() != 1 {
 		t.Fatal("explicit endpoint did not isolate failover", err, hits.Load())
 	}

@@ -366,8 +366,8 @@ func TestReloadSwapsTopologyAndTokens(t *testing.T) {
 // loaded with them. A worker whose token a reload revokes while it sends
 // its batch cannot store a sample of the topology loaded after: the batch
 // is refused for the worker to send again, and the revoked token is then
-// refused. A viewer admitted before a reload reads the old topology, and
-// what it reads is never served to one admitted after.
+// refused. A viewer admitted before a reload reads the old immutable
+// topology, but must retry snapshots that depend on mutable state.
 func TestARequestIsServedUnderTheTokensThatAdmittedIt(t *testing.T) {
 	srv, h, _ := fixture(t)
 	old := srv.Config
@@ -413,7 +413,8 @@ func TestARequestIsServedUnderTheTokensThatAdmittedIt(t *testing.T) {
 	}
 
 	// Viewers: one admitted before the reload, one after, and the first
-	// again, in either order, each read their own topology.
+	// again, in either order: immutable topology remains readable under the
+	// old authority, while mutable snapshots require a current authority.
 	before := httptest.NewRequest("GET", "/v1/config", nil)
 	before.Header.Set("Authorization", "Bearer "+viewerToken)
 	srv.Reload(old, Auth{Schema: 1, Tokens: []Principal{{secure.Hash(viewerToken), "viewer", ""}, {secure.Hash(workerToken), "worker", "home"}}})
@@ -432,15 +433,22 @@ func TestARequestIsServedUnderTheTokensThatAdmittedIt(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	if strings.Contains(read(srv.topology, admitted), "Renamed") || strings.Contains(read(srv.snapshot, admitted), "Renamed") {
+	if strings.Contains(read(srv.topology, admitted), "Renamed") {
 		t.Fatal("a viewer admitted before the reload read the topology loaded after it")
 	}
+	refused := func() {
+		t.Helper()
+		w := httptest.NewRecorder()
+		srv.authorize("viewer", srv.snapshot)(w, admitted)
+		if w.Code != 503 || !strings.Contains(w.Body.String(), "topology_reloaded") || w.Header().Get("Retry-After") != "1" {
+			t.Fatal("old authority read mutable snapshot state", w.Code, w.Body.String())
+		}
+	}
+	refused()
 	if w := request(h, "GET", "/v1/snapshot", newViewer, "", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "Renamed") {
 		t.Fatal("a snapshot built for a viewer admitted before the reload was served after it", w.Code)
 	}
-	if strings.Contains(read(srv.snapshot, admitted), "Renamed") {
-		t.Fatal("a snapshot built after the reload was served to a viewer admitted before it")
-	}
+	refused()
 }
 
 // A collector keeps its ledger from the evidence of all observers, and a

@@ -188,10 +188,10 @@ func (s *Server) generation() *generation {
 }
 
 // Reload makes c and a the collector's topology and tokens, as on SIGHUP.
-// Requests already past authorization read under the old ones; a batch
-// admitted under them is refused for its worker to send again, unless it
-// was stored before the reload. The store counts samples under c from now
-// on, and no snapshot built before is served again.
+// Requests already past authorization retain the old topology. A snapshot
+// or batch admitted under it is refused for the caller to send again, unless
+// its state capture or storage completed before the reload. The store counts
+// samples under c from now on, and no snapshot built before is served again.
 func (s *Server) Reload(c model.Config, a Auth) {
 	g := newGeneration(c, a)
 	s.reloadMu.Lock()

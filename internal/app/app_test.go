@@ -37,6 +37,15 @@ func invoke(input string, args ...string) (string, string, error) {
 	e := a.Run(context.Background(), args)
 	return out.String(), stderr.String(), e
 }
+
+func credentialFile(t *testing.T, token string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "token")
+	if e := os.WriteFile(path, []byte(token), 0600); e != nil {
+		t.Fatal(e)
+	}
+	return path
+}
 func initialized(t *testing.T) (string, model.Config, api.Auth, client.Credentials) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "demo")
@@ -69,7 +78,7 @@ func saveConfig(t *testing.T, path string, c model.Config) {
 }
 func TestCLIDispatchAndHelp(t *testing.T) {
 	out, _, e := invoke("", "--help")
-	if e != nil || !strings.Contains(out, "topo --credential TOKEN") {
+	if e != nil || !strings.Contains(out, "topo --token-stdin") {
 		t.Fatal(e, out)
 	}
 	out, _, e = invoke("", "version")
@@ -162,13 +171,13 @@ func TestLoginRemoteJSONAndSavedDefault(t *testing.T) {
 	if json.Unmarshal([]byte(out), &snap) != nil || snap.Instance != "remote" {
 		t.Fatal(out)
 	}
-	if _, _, e = invoke("", "--credentials", credpath, "--json", "--credential", strings.Repeat("e", 64)); e == nil {
+	if _, _, e = invoke("", "--credentials", credpath, "--json", "--credential-file", credentialFile(t, strings.Repeat("e", 64))); e == nil {
 		t.Fatal("bad override not checked")
 	}
 	if _, _, e = invoke("", "--credentials", credpath, "--profile", "missing", "--json"); e == nil {
 		t.Fatal("unknown profile")
 	}
-	out, _, e = invoke("", "--credentials", filepath.Join(dir, "missing"), "--server", srv.URL, "--project", c.Project, "--credential", token, "--json")
+	out, _, e = invoke("", "--credentials", filepath.Join(dir, "missing"), "--server", srv.URL, "--project", c.Project, "--credential-file", credentialFile(t, token), "--json")
 	if e != nil || !strings.Contains(out, "remote") {
 		t.Fatal(e)
 	}

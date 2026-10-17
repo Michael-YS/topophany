@@ -38,6 +38,7 @@ jobs:
       - name: Build release archives from a fresh immutable checkout
         env:
           VERSION: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
           CGO_ENABLED: '0'
         run: |
           set -euo pipefail
@@ -50,7 +51,7 @@ jobs:
             mkdir -p "$stage"
             bin=topo; [ "$os" = windows ] && bin=topo.exe
             GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags='-s -w' -o "$stage/$bin" ./cmd/topo
-            cp LICENSE README*.md CHANGELOG.md "$stage/"
+            python3 scripts/release_metadata.py --revision "$SOURCE_SHA" --destination "$stage"
             if [ "$os" = windows ]; then
               (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/dist/$name.zip" "$name")
             else

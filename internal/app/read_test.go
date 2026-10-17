@@ -265,7 +265,7 @@ func TestReadCommandsAgainstACollector(t *testing.T) {
 	backend.Now = func() time.Time { return time.Unix(0, clock.Load()) }
 	srv := httptest.NewServer(backend.Handler())
 	defer srv.Close()
-	conn := []string{"--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", srv.URL, "--project", c.Project, "--credential", viewer}
+	conn := []string{"--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", srv.URL, "--project", c.Project, "--credential-file", credentialFile(t, viewer)}
 	read := func(args ...string) (string, error) { return at(time.Now(), append(args, conn...)...) }
 
 	out, e := read("status")
@@ -331,7 +331,7 @@ func TestReadCommandsAgainstACollector(t *testing.T) {
 	dead := httptest.NewServer(http.NotFoundHandler())
 	dead.Close()
 	for _, args := range [][]string{{"status"}, {"show", "checks"}, {"history", "home-http"}, {"history", "home-http", "--step", "1d"}} {
-		_, e = at(time.Now(), append(args, "--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", dead.URL, "--project", c.Project, "--credential", viewer)...)
+		_, e = at(time.Now(), append(args, "--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", dead.URL, "--project", c.Project, "--credential-file", credentialFile(t, viewer))...)
 		if exitCode(e) != ExitUnreachable {
 			t.Fatal("no collector answered", args, ":", e)
 		}
@@ -438,7 +438,7 @@ func TestStatusAllClearExitsZero(t *testing.T) {
 	viewer := strings.Repeat("v", 64)
 	srv := httptest.NewServer(api.New(c, "remote", st, api.Auth{Schema: 1, Tokens: []api.Principal{{TokenSHA256: secure.Hash(viewer), Role: "viewer"}}}).Handler())
 	defer srv.Close()
-	out, e := at(time.Now(), "status", "--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", srv.URL, "--project", c.Project, "--credential", viewer)
+	out, e := at(time.Now(), "status", "--credentials", filepath.Join(t.TempDir(), "none.json"), "--server", srv.URL, "--project", c.Project, "--credential-file", credentialFile(t, viewer))
 	if e != nil || !strings.Contains(out, "● ALL CLEAR") || !strings.Contains(out, "✓ Nothing needs attention") || !strings.Contains(out, "Needs a look: nothing") {
 		t.Fatalf("exit %d, %v\n%s", exitCode(e), e, out)
 	}

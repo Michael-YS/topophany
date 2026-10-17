@@ -75,7 +75,7 @@ func TestRemoteJSONEscapesControls(t *testing.T) {
 		json.NewEncoder(w).Encode(snapshot)
 	}))
 	defer server.Close()
-	out, _, err := invoke("", "--credentials", filepath.Join(t.TempDir(), "missing"), "--server", server.URL, "--project", c.Project, "--credential", token, "--json")
+	out, _, err := invoke("", "--credentials", filepath.Join(t.TempDir(), "missing"), "--server", server.URL, "--project", c.Project, "--credential-file", credentialFile(t, token), "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestImpossibleDurationsAreRefusedNotDrawn(t *testing.T) {
 		json.NewEncoder(w).Encode(snapshot)
 	}))
 	defer server.Close()
-	out, _, err := invoke("", "show", "checks", "home-http", "--credentials", filepath.Join(t.TempDir(), "missing"), "--server", server.URL, "--project", c.Project, "--credential", token)
+	out, _, err := invoke("", "show", "checks", "home-http", "--credentials", filepath.Join(t.TempDir(), "missing"), "--server", server.URL, "--project", c.Project, "--credential-file", credentialFile(t, token))
 	if err != nil || !strings.Contains(out, "unavailable: invalid collector history") {
 		t.Fatalf("%v\n%s", err, out)
 	}

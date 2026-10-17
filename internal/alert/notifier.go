@@ -414,14 +414,15 @@ func (n *Notifier) post(ctx context.Context, w Webhook, e Event) (int, string) {
 var defaultClient = &http.Client{
 	Timeout: 10 * time.Second,
 	Transport: &http.Transport{
-		Proxy:                 nil,
-		DisableCompression:    true, // what is read of an answer is what it sent
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-		MaxIdleConns:          4,
-		IdleConnTimeout:       30 * time.Second,
-		ForceAttemptHTTP2:     true,
+		Proxy:                  nil,
+		DisableCompression:     true, // what is read of an answer is what it sent
+		DialContext:            (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+		TLSHandshakeTimeout:    10 * time.Second,
+		ResponseHeaderTimeout:  10 * time.Second,
+		MaxResponseHeaderBytes: 32768,
+		MaxIdleConns:           4,
+		IdleConnTimeout:        30 * time.Second,
+		ForceAttemptHTTP2:      true,
 	},
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }

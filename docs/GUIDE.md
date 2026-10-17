@@ -35,8 +35,14 @@ topo --json                     # Emits a structured snapshot from the API witho
 topo status                     # The Overview as text: verdict, counts, what needs attention; the exit status says it too
 topo show checks                # Any tab as a table; topo show checks ID gives the evidence behind one entry
 topo history home-http          # A check's recent samples, newest first
-topo --credential TOKEN         # Single-server profiles only; use --server with failover profiles. Explicit, transient credential override (visible in local process table)
+topo --json --token-stdin < token.txt # Temporary override; token.txt must be private
+topo --credential-file token.txt # Same override from a private file
 ```
+
+Temporary overrides require `--server` for a multi-server profile and never
+forward the override to an implicit failover destination. `--token-stdin` and
+`--credential-file` are mutually exclusive; the former `--credential TOKEN`
+option is no longer accepted, to keep tokens out of process arguments.
 
 Credentials are saved by default to the operating system user configuration path under `topophany/credentials.json` (`$XDG_CONFIG_HOME` or `~/.config` on Linux; `~/Library/Application Support` on macOS; `%APPDATA%` on Windows). The `--credentials` flag overrides the file path, and `--profile` switches between saved project profiles. On Windows, files inherit ACLs from the user profile directory; **the application does not treat POSIX 0600 as a substitute for Windows ACLs** (verify per [SECURITY.md](SECURITY.md)).
 

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -71,8 +72,15 @@ func regular(path string) error {
 	if e != nil {
 		return e
 	}
+	return privateLog(st)
+}
+
+func privateLog(st os.FileInfo) error {
 	if !st.Mode().IsRegular() {
 		return errors.New("log must be a regular non-symlink file")
+	}
+	if runtime.GOOS != "windows" && st.Mode().Perm()&0077 != 0 {
+		return errors.New("log permissions must be 0600 or stricter")
 	}
 	return nil
 }
@@ -85,6 +93,9 @@ func (r *Rotating) open() error {
 		return e
 	}
 	st, e := f.Stat()
+	if e == nil {
+		e = privateLog(st)
+	}
 	if e != nil {
 		f.Close()
 		return e

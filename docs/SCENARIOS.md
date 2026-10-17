@@ -87,6 +87,11 @@ This document lists the finite, verifiable scenario contracts for version 1.0.0,
 
 | Finding | Regression tests |
 |---|---|
+| Existing managed logs and backups must be private before writing; rotation preserves private permissions | `TestManagedLogsRejectPermissiveFiles` |
+| Client token overrides use bounded stdin or private files, reject raw token arguments without echoing them, and remain bound to an explicit failover destination | `TestTemporaryCredentialsNeverRequireSecretArguments`, `TestTemporaryCredentialInputsFailBeforeDial`, `TestCredentialOverrideCannotReachFailoverDestination` |
+| Webhook responses obey the 32 KiB header ceiling over HTTP/1 and HTTP/2 | `TestWebhookResponseHeaderBudget` |
+| Release metadata comes from the built commit's allowlisted regular Git blobs; symlinks, unexpected names and missing inputs fail before staging | `ReleaseMetadataTests` in `scripts/test_release_metadata.py` |
+| A viewer admitted before reload receives neither the new storage allocation nor new incident metadata after revocation | `TestReloadCannotExposeNewMetadataToOldViewer`, `TestARequestIsServedUnderTheTokensThatAdmittedIt` |
 | Exit-IP structural JSON budgets | `TestExitJSONComplexity` |
 | Mihomo proxy/provider/history/member budgets | `TestMihomoResponseBudgets` |
 | Non-acknowledging collector isolation | `TestUnacknowledgedDestinationCannotStopHealthyDelivery`, `TestInvalidACKCollectorIsolationEndToEnd` |

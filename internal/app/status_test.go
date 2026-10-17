@@ -52,7 +52,7 @@ func TestStatusNeverClearsAnInconclusiveActiveCheck(t *testing.T) {
 			token := strings.Repeat("v", 64)
 			srv := httptest.NewServer(api.New(c, "remote", st, api.Auth{Schema: 1, Tokens: []api.Principal{{TokenSHA256: secure.Hash(token), Role: "viewer"}}}).Handler())
 			defer srv.Close()
-			out, e := at(now, "status", "--json", "--credentials", filepath.Join(t.TempDir(), "missing.json"), "--server", srv.URL, "--project", c.Project, "--credential", token)
+			out, e := at(now, "status", "--json", "--credentials", filepath.Join(t.TempDir(), "missing.json"), "--server", srv.URL, "--project", c.Project, "--credential-file", credentialFile(t, token))
 			var got statusJSON
 			if err := json.Unmarshal([]byte(out), &got); err != nil {
 				t.Fatal(err, out)

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Managed logs reject existing POSIX log files and backups with group or
+  other permissions before writing; newly created and rotated logs stay private.
+- Temporary client tokens use `--token-stdin` or `--credential-file` instead
+  of the removed `--credential TOKEN` argument. Multi-server overrides still
+  require an explicit server.
+- Alert webhooks limit response headers to 32 KiB, including HTTP/2 responses.
+- Release documentation is staged from an explicit list of regular Git blobs
+  at the built commit, without following checkout symlinks into the runner.
+- Snapshots admitted before a configuration reload return a retryable 503
+  if capture has not completed, keeping storage and incident metadata within
+  the request's authorization generation.
+
 ### Added
 
 - `--device` on `topo` and `topo preview` lays the TUI out for the screen

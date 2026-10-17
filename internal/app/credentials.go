@@ -21,12 +21,35 @@ func (a *App) connection(f *flag.FlagSet) func() (*client.Client, error) {
 	defaultPath, pathErr := client.DefaultPath()
 	path := f.String("credentials", defaultPath, "saved client credentials")
 	profile := f.String("profile", "", "saved profile (default active)")
-	token := f.String("credential", "", "explicit temporary bearer-token override (prefer saved credentials)")
+	tokenFile := f.String("credential-file", "", "private file containing a temporary bearer token")
+	tokenStdin := f.Bool("token-stdin", false, "read a temporary bearer token from stdin")
 	server := f.String("server", "", "temporary collector URL override")
 	project := f.String("project", "", "expected project ID; required without saved credentials")
 	insecure := f.Bool("allow-insecure", false, "explicit consent for plaintext non-loopback URL")
 	ca := f.String("ca-file", "", "custom trusted CA for an explicit server override")
 	return func() (*client.Client, error) {
+		if *tokenFile != "" && *tokenStdin {
+			return nil, errors.New("--credential-file and --token-stdin are mutually exclusive")
+		}
+		var token string
+		if *tokenFile != "" {
+			b, e := secure.PrivateRead(*tokenFile)
+			if e != nil {
+				return nil, fmt.Errorf("temporary credential file unavailable: %w", e)
+			}
+			token = strings.TrimSpace(string(b))
+		} else if *tokenStdin {
+			var e error
+			token, e = readToken(a.In)
+			if e != nil {
+				return nil, e
+			}
+		}
+		if *tokenFile != "" || *tokenStdin {
+			if e := secure.CheckToken(token); e != nil {
+				return nil, e
+			}
+		}
 		if *path == "" && pathErr != nil {
 			return nil, pathErr
 		}
@@ -42,7 +65,7 @@ func (a *App) connection(f *flag.FlagSet) func() (*client.Client, error) {
 			if !ok {
 				return nil, errors.New("credential profile not found")
 			}
-		} else if *server == "" || *project == "" || *token == "" {
+		} else if *server == "" || *project == "" || token == "" {
 			if errors.Is(e, os.ErrNotExist) {
 				// The first run: say where to go from here.
 				return nil, fmt.Errorf("no saved connection to a collector yet (%s)\n\n"+
@@ -56,19 +79,30 @@ func (a *App) connection(f *flag.FlagSet) func() (*client.Client, error) {
 			p.Project = *project
 		}
 		if *server != "" {
-			p.Servers = []client.Endpoint{{URL: *server, Token: *token, CAFile: *ca, AllowInsecure: *insecure}}
+			p.Servers = []client.Endpoint{{URL: *server, Token: token, CAFile: *ca, AllowInsecure: *insecure}}
 		}
-		if *token != "" {
+		if token != "" {
 			if len(p.Servers) != 1 {
-				return nil, errors.New("--credential requires --server for a multi-server profile")
+				return nil, errors.New("temporary credentials require --server for a multi-server profile")
 			}
 			for i := range p.Servers {
-				p.Servers[i].Token = *token
+				p.Servers[i].Token = token
 				p.Servers[i].TokenEnv = ""
 			}
 		}
 		return client.New(p)
 	}
+}
+
+func readToken(in io.Reader) (string, error) {
+	b, e := io.ReadAll(io.LimitReader(in, 1025))
+	if e != nil {
+		return "", e
+	}
+	if len(b) > 1024 {
+		return "", errors.New("token input too long")
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 func (a *App) login(ctx context.Context, args []string) error {
@@ -95,14 +129,10 @@ func (a *App) login(ctx context.Context, args []string) error {
 	}
 	var token string
 	if *tokenStdin {
-		b, e := io.ReadAll(io.LimitReader(a.In, 1025))
+		token, e = readToken(a.In)
 		if e != nil {
 			return e
 		}
-		if len(b) > 1024 {
-			return errors.New("token input too long")
-		}
-		token = strings.TrimSpace(string(b))
 	} else {
 		if a.TerminalIn == nil || a.TerminalOut == nil {
 			return errors.New("use --token-stdin outside a terminal")
