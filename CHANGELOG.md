@@ -26,9 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A peer whose control-plane response carries no `LastSeen` reports
   `last_seen: not reported` instead of a fabricated `0001-01-01T00:00:00Z`.
 - A policy violation now needs `failure_threshold` consecutive violating
-  samples before it opens an incident; the first one is a warning. Policy never
-  reads as down, and a passing sample breaks the run, so a provider publication
-  the controller has not loaded yet no longer pages for a minute.
+  samples before it opens an incident; the first one is a warning. This applies
+  to every policy outcome, including host resources, WireGuard and expected
+  egress, so an incident can open up to that many sample intervals later.
+  Policy never reads as down, and a passing sample breaks the run.
 - A failed request whose response came back through an edge no longer says the
   fault lies behind it. The hypothesis says the request did not satisfy its
   assertions and the failing layer is not located, naming a candidate only
