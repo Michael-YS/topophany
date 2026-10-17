@@ -102,6 +102,11 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 		usage.Observers = slices.DeleteFunc(usage.Observers, func(o model.StorageObserverUsage) bool { return o.Observer != view })
 	}
 	snap.Storage = &usage
+	if s.Ingress != nil {
+		// The cached path is what clients read; Observe and MonitorSnapshot
+		// are separate readers of the same collector.
+		snap.Ingress = s.Ingress.Summary(s.snapshotAt)
+	}
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
 	}

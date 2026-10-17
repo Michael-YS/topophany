@@ -1,8 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
@@ -85,4 +88,31 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b[i:])
+}
+
+func TestSnapshotCarriesIngressHandshakeFailures(t *testing.T) {
+	srv, h, b := fixture(t)
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatalf("ingest: %d %s", w.Code, w.Body.String())
+	}
+	ing := NewIngressCounter(time.Minute)
+	ing.now = srv.Now
+	ing.observe("http: TLS handshake error from 100.74.137.62:44484: i/o timeout")
+	ing.observe("http: TLS handshake error from 100.74.137.62:44485: EOF")
+	srv.Ingress = ing
+
+	w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil)
+	if w.Code != 200 {
+		t.Fatalf("snapshot: %d %s", w.Code, w.Body.String())
+	}
+	var snap model.Snapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Ingress == nil || snap.Ingress.Failures != 2 || len(snap.Ingress.Sources) != 1 {
+		t.Fatalf("snapshot did not carry ingress: %+v", snap.Ingress)
+	}
+	if snap.Ingress.Sources[0].Address != "100.74.137.62" || snap.Ingress.Sources[0].Count != 2 {
+		t.Fatalf("source summary: %+v", snap.Ingress.Sources)
+	}
 }
