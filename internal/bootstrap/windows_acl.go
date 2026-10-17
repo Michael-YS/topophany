@@ -11,6 +11,8 @@ import (
 // Replace the entire DACL, including explicit entries on existing children.
 // Paths are literal arguments, never interpolated into PowerShell source.
 // Verification also checks ownership: an unrelated owner can rewrite a DACL.
+// Use .NET ACL APIs so an inherited PowerShell 7 module path cannot make
+// Windows PowerShell load an incompatible Microsoft.PowerShell.Security module.
 const windowsACLScript = `param($Directory,$Operation)
 $ErrorActionPreference='Stop'
 $current=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -18,7 +20,7 @@ $sids=@($current,'S-1-5-18','S-1-5-32-544') | Select-Object -Unique
 function Protect($path,$root){
  $item=Get-Item -LiteralPath $path -Force
  if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Reparse points are not installation paths'}
- $acl=Get-Acl -LiteralPath $path
+ $acl=$item.GetAccessControl([Security.AccessControl.AccessControlSections]'Access,Owner')
  if($sids -notcontains $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value){throw 'Installation path belongs to another user'}
  if($Operation -eq 'restrict'){
   $flags=if($item.PSIsContainer){'OICI'}else{''}
@@ -29,7 +31,7 @@ function Protect($path,$root){
   $restricted=if($item.PSIsContainer){[Security.AccessControl.DirectorySecurity]::new()}else{[Security.AccessControl.FileSecurity]::new()}
   $restricted.SetSecurityDescriptorSddlForm($sddl,[Security.AccessControl.AccessControlSections]::Access)
   $item.SetAccessControl($restricted)
-  $acl=Get-Acl -LiteralPath $path
+  $acl=$item.GetAccessControl([Security.AccessControl.AccessControlSections]'Access,Owner')
  }
  if($root -and -not $acl.AreAccessRulesProtected){throw 'Installation DACL inherits unrelated access'}
  $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))

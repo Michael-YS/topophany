@@ -65,3 +65,29 @@ func TestWindowsACLVerificationRejectsExplicitGrant(t *testing.T) {
 		t.Fatal("unrelated explicit read access accepted")
 	}
 }
+
+func TestWindowsACLDoesNotRequireSecurityModule(t *testing.T) {
+	// A Windows PowerShell subprocess can inherit an incompatible security
+	// module from a PowerShell 7 parent, as it does on GitHub's Windows runner.
+	modules := t.TempDir()
+	module := filepath.Join(modules, "Microsoft.PowerShell.Security")
+	if err := os.Mkdir(module, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range map[string]string{
+		"Microsoft.PowerShell.Security.psd1": "@{ RootModule='Microsoft.PowerShell.Security.psm1'; ModuleVersion='99.0'; FunctionsToExport=@('Get-Acl','Set-Acl') }",
+		"Microsoft.PowerShell.Security.psm1": "function Get-Acl { throw 'Incompatible security module' }; function Set-Acl { throw 'Incompatible security module' }",
+	} {
+		if err := os.WriteFile(filepath.Join(module, name), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PSModulePath", modules+string(os.PathListSeparator)+os.Getenv("PSModulePath"))
+	ctx, dir := context.Background(), t.TempDir()
+	if err := restrictWindowsDirectory(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := windowsDirectoryACL(ctx, dir, "verify"); err != nil {
+		t.Fatal(err)
+	}
+}
