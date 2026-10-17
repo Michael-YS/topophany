@@ -32,7 +32,7 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 			return d.DialContext(ctx, n, pinned(a, x.ResolveIP))
 		}}
 		return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
-	}, ProxyCredentials: proxyCredentials(d.Proxies)}, x, target, o)
+	}, Proxied: len(d.Proxies) > 0, ProxyCredentials: proxyCredentials(d.Proxies)}, x, target, o)
 }
 func (r Runner) tailscale(ctx context.Context, x model.Check, o *model.Observation) error {
 	return tailscale.Collect(ctx, r.command, x.Adapter.Tailscale(), o)

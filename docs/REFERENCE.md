@@ -105,7 +105,14 @@ Three-hop sequence: `Local Observer -> CONNECT Ingress -> SOCKS5 Transit -> CONN
 
 `mihomo` adapter supports `token_env`, `root_proxy`, `expected_mode`, and `expected_providers` (mapping provider names to ordered node name arrays). Mismatched runtime members or ordering emit `policy` outcomes; identical names with differing internal parameters cannot be distinguished. Unresolved routing groups, load-balancing groups without single selections, and dependency loops report unknown status. TUN status and modes reflect controller reports rather than kernel routing table inspections.
 
-A single check supports up to 16 `expected_providers`, with provider names capped at 119 bytes without control characters to respect API record budgets. Long strings are truncated at UTF-8 byte boundaries; DNS response evidence exceeding 2,048 bytes returns an explicit check error.
+For rotating providers, `adapter.provider_reference` can select fresh ordered
+member lists from an independent HTTPS JSON publisher. Keep fixed groups in
+`expected_providers`; unavailable or stale reference data is a monitor error,
+and a publication changing during sampling is unknown. See the
+[Mihomo adapter guide](../internal/adapters/mihomo/README.md) for the document
+format, transport and freshness limits.
+
+A single check supports up to 16 static and dynamic providers combined, with provider names capped at 119 bytes without control characters to respect API record budgets. Long strings are truncated at UTF-8 byte boundaries; DNS response evidence exceeding 2,048 bytes returns an explicit check error.
 
 ## Collector Authentication
 

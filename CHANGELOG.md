@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Mihomo checks can compare rotating provider membership against a fresh,
+  independent names-only JSON publication. Fixed expectations remain strict;
+  unavailable references are monitor errors and publications changing during
+  sampling are unknown. Publisher credentials and TLS settings are separate.
+
+### Changed
+
+- Mihomo, Tailscale and WireGuard implementations, validators and tests now live
+  in separate adapter packages, preserving existing configuration contracts and
+  observation behavior. Each package includes contribution and evidence notes.
+
 ## [1.1.1] - 2026-10-16
 
 ### Fixed

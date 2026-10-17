@@ -393,6 +393,11 @@ func validateResolved(c model.Config) error {
 				if err := mihomo.Validate(x.Adapter.Mihomo()); err != nil {
 					return err
 				}
+				if ref := x.Adapter.ProviderReference; ref != nil {
+					if err := mihomo.ValidateReferenceTransport(ref, len(Path(c, x.Path).Proxies) > 0); err != nil {
+						return err
+					}
+				}
 			}
 		case "tcp", "tls", "ssh-banner", "dns", "udp-echo":
 			if e := HostPort(t); e != nil {
@@ -561,6 +566,9 @@ func Public(c model.Config) model.Config {
 		x.Target = PublicURL(x.Target)
 		x.HTTP.BearerEnv = ""
 		x.Adapter.TokenEnv = ""
+		if ref := x.Adapter.ProviderReference; ref != nil {
+			ref.URL, ref.TokenEnv, ref.CAFile = PublicURL(ref.URL), "", ""
+		}
 		x.HTTP.RequestHeaders = nil
 		x.CAFile = ""
 	}

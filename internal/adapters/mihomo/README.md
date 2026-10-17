@@ -21,3 +21,71 @@ when supporting another response shape. Never commit full proxy configurations,
 tokens or real subscriber credentials.
 
 Run `go test ./internal/adapters/mihomo ./internal/probe`.
+
+
+Dynamic providers can opt into `adapter.provider_reference`, an independent
+names-only publication. Keep fixed groups in `expected_providers` and list only
+the rotating provider in the reference's `providers` array:
+
+```json
+{
+  "token_env": "MIHOMO_TOKEN",
+  "root_proxy": "daily",
+  "expected_mode": "rule",
+  "expected_providers": {"daily": ["dmit", "azure", "CDN"]},
+  "provider_reference": {
+    "url": "https://publisher.example/mihomo-members.json",
+    "providers": ["edge-local"],
+    "max_age_seconds": 10800,
+    "token_env": "PUBLISHER_TOKEN"
+  }
+}
+```
+
+`token_env` and `ca_file` inside the reference are optional and independent of
+the controller's credential and CA. The publisher must serve this JSON shape:
+
+```json
+{
+  "schema": 1,
+  "published_at": "2026-10-17T07:15:00Z",
+  "providers": {"edge-local": ["edge-a", "edge-b", "edge-c"]}
+}
+```
+
+Generate that document from the publisher's authoritative provider artifact,
+not from the controller being checked. Publish it atomically alongside each
+successful provider publication, preserving node order and updating the UTC
+publication timestamp. It contains no proxy passwords or connection parameters.
+The timestamp above is illustrative and must be replaced by the actual
+publication time. Existing YAML provider files are not parsed as reference JSON;
+the publisher needs to expose this names-only companion document.
+
+References require HTTPS or direct literal loopback HTTP without proxy hops.
+The check's explicit proxy path and bind address still apply; its controller
+`resolve_ip` and `server_name` overrides do not apply to the publisher. Redirects
+are refused, and controller credentials are never forwarded to the publisher.
+`max_age_seconds` is required (1..604800). Documents are limited to 64 KiB,
+16 providers, 256 members per provider and bounded JSON complexity. Names must
+be nonempty, unique, free of control characters and at most 2048 bytes. Static
+and dynamic providers must be distinct, with at most 16 combined per check.
+
+The adapter reads the publication immediately before and after the runtime
+provider read. A stable, fresh publication with different loaded members/order
+still produces `policy / provider_membership_mismatch`. A publication that
+changes during sampling produces `unknown / provider_reference_changed`, unless
+an independent fixed policy violation is already known. Unavailable, malformed
+or stale publications produce monitor errors, with no fallback to an old list
+or to the controller's own membership. Publication timestamps more than 30
+seconds in the future are rejected. These reads are still not an atomic
+cross-system snapshot; freshness is bounded by the configured publication age.
+
+Observations include `provider_reference_published_at` and the closed-word
+`provider_reference_consistency` (`stable` or `changed`). A content fingerprint
+is used only internally: an authenticated publisher could reflect its credential
+in returned names, so no digest of its arbitrary text is exported to viewers.
+Dynamic contents do not change the configured measurement contract, but changing
+the source or freshness policy does. Dynamic names do not expand the controller
+response's display allowlist. Names still cannot verify proxy parameters or an
+end-to-end route. This option requires workers that support `provider_reference`;
+existing checks without it keep their previous behavior.

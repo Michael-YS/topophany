@@ -5,7 +5,6 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +17,7 @@ import (
 // Dependencies are supplied by the probe, preserving its explicit route and TLS policy.
 type Dependencies struct {
 	Client           func(model.Check, string) (*http.Client, func(), error)
+	Proxied          bool
 	ProxyCredentials bool
 }
 
@@ -114,55 +114,5 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 			}
 		}
 	}
-	if len(options.ExpectedProviders) > 0 {
-		// Reserve room for all fixed observation fields and bound map keys to
-		// the collector contract before reading/retaining provider telemetry.
-		if len(options.ExpectedProviders) > 16 {
-			return adapters.Local("setup", "provider_evidence_budget_exceeded")
-		}
-		for k := range options.ExpectedProviders {
-			if len(k) > 119 || secure.Text(k) != k {
-				return adapters.Local("setup", "invalid_provider_name")
-			}
-		}
-		var out struct {
-			Providers map[string]struct {
-				Proxies   []coreProxy `json:"proxies"`
-				UpdatedAt time.Time   `json:"updatedAt"`
-			} `json:"providers"`
-		}
-		if e = readCore(ctx, client, target, "/providers/proxies", token, &out); e != nil {
-			return e
-		}
-		keys := make([]string, 0, len(options.ExpectedProviders))
-		for k := range options.ExpectedProviders {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			p, ok := out.Providers[k]
-			actual, shown := []string{}, []string{}
-			for _, v := range p.Proxies {
-				actual = append(actual, v.Name)
-				shown = append(shown, name(v.Name))
-			}
-			want := options.ExpectedProviders[k]
-			same := ok && len(actual) == len(want)
-			if same {
-				for i := range want {
-					if actual[i] != want[i] {
-						same = false
-						break
-					}
-				}
-			}
-			o.Facts["provider."+adapters.SafeFact(k)] = adapters.SafeFact(strings.Join(shown, ","))
-			if !same {
-				o.Outcome = "policy"
-				o.Code = "provider_membership_mismatch"
-				o.Detail = "desired provider membership/order differs from the loaded runtime"
-			}
-		}
-	}
-	return nil
+	return collectProviders(ctx, deps, client, x, target, token, name, o)
 }

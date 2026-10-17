@@ -47,6 +47,11 @@ func Clone(c model.Config) model.Config {
 		x.HTTP.ExpectedExit = slices.Clone(x.HTTP.ExpectedExit)
 		x.HTTP.Headers, x.HTTP.RequestHeaders = maps.Clone(x.HTTP.Headers), maps.Clone(x.HTTP.RequestHeaders)
 		x.DNS.ExpectedIPs = slices.Clone(x.DNS.ExpectedIPs)
+		if ref := x.Adapter.ProviderReference; ref != nil {
+			v := *ref
+			v.Providers = slices.Clone(ref.Providers)
+			x.Adapter.ProviderReference = &v
+		}
 		x.Adapter.ExpectedProviders = maps.Clone(x.Adapter.ExpectedProviders)
 		for k, names := range x.Adapter.ExpectedProviders {
 			x.Adapter.ExpectedProviders[k] = slices.Clone(names)
