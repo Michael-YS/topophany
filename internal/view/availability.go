@@ -125,8 +125,11 @@ func Up24h(list []model.Availability) string {
 // held says how much of a window was measured, in the two units a table
 // cell can carry.
 func held(d time.Duration) string {
+	if d < time.Minute {
+		return "<1m"
+	}
 	if d < time.Hour {
-		return strconv.Itoa(max(0, int(d.Minutes()))) + "m"
+		return strconv.Itoa(int(d.Minutes())) + "m"
 	}
 	return strconv.Itoa(int(d.Hours())) + "h"
 }

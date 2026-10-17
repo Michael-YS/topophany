@@ -32,6 +32,10 @@ func TestUp24hSaysWhenTheDayIsNotWhole(t *testing.T) {
 	if got := Up24h(part); got != "100% · 47m" {
 		t.Fatalf("minutes: %q", got)
 	}
+	part[0].Rollup = model.Rollup{Seconds: 86400, Up: 30, Samples: 1}
+	if got := Up24h(part); got != "100% · <1m" {
+		t.Fatalf("sub-minute coverage: %q", got)
+	}
 	// The first sample can be old while most of the window is a gap. The
 	// note has to follow measured time, not the series start.
 	gapped := []model.Availability{{Window: "24h", Rollup: model.Rollup{Seconds: 86400, Up: 3600, Unknown: 82800}, Since: now.Add(-23 * time.Hour)}}
@@ -44,5 +48,10 @@ func TestUp24hSaysWhenTheDayIsNotWhole(t *testing.T) {
 	}
 	if got := Up24h(nil); got != "" {
 		t.Fatal(got)
+	}
+	// A 7d entry before the 24h one must not hide the day.
+	multi := []model.Availability{{Window: "7d", Rollup: model.Rollup{Seconds: 604800, Up: 604800}}, {Window: "24h", Rollup: model.Rollup{Seconds: 86400, Up: 86400}}}
+	if got := Up24h(multi); got != "100%" {
+		t.Fatalf("picked the wrong window: %q", got)
 	}
 }
