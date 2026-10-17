@@ -111,6 +111,11 @@ func TestPolicyViolationNeedsTheFailureThreshold(t *testing.T) {
 	if st.Freshness != "stale" || st.PolicyConfirmed {
 		t.Fatalf("stale policy sample kept its confirmation: %+v", st)
 	}
+	s = Build(c, "a", "", samples("policy", "policy", "policy"), nil, now.Add(-10*time.Minute))
+	st = state(s)
+	if st.Freshness != "stale" || st.PolicyConfirmed {
+		t.Fatalf("clock-ahead policy sample kept its confirmation: %+v", st)
+	}
 }
 
 func TestProviderSettleExtendsPolicyConfirmation(t *testing.T) {
