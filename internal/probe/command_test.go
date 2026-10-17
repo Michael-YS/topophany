@@ -32,3 +32,24 @@ func TestAdapterExecutableAndOutputBudget(t *testing.T) {
 		t.Fatal(o)
 	}
 }
+
+func TestSoftwareCommandsAreReadOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"wg", []string{"set", "wg0", "private-key", "/tmp/key"}},
+		{"wg", []string{"show", "wg0", "dump"}},
+		{"wg", []string{"show", "wg0", "private-key"}},
+		{"wg", []string{"show", "all", "transfer"}},
+		{"tailscale", []string{"up"}},
+		{"tailscale", []string{"set", "--exit-node=example"}},
+	} {
+		if allowedCommand(tc.name, tc.args) {
+			t.Fatal(tc)
+		}
+	}
+	if !allowedCommand("wg", []string{"show", "wg0", "transfer"}) || !allowedCommand("tailscale", []string{"status", "--json"}) {
+		t.Fatal("valid read refused")
+	}
+}

@@ -3,7 +3,6 @@ package wireguard_test
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -13,15 +12,23 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
-func TestWireGuardOldHandshakeIsNotFailureAndKeysAreDiscarded(t *testing.T) {
+func TestWireGuardOldHandshakeIsNotFailureAndKeysAreNotRead(t *testing.T) {
 	x := httpCheck("")
 	x.Kind = "wireguard"
 	x.Adapter = model.AdapterOptions{Interface: "wg0", Peer: "PUBLIC-PEER"}
 	r := probe.Runner{Command: func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name != "wg" || !reflect.DeepEqual(args, []string{"show", "wg0", "dump"}) {
-			t.Fatal("unexpected command", name, args)
+		if name != "wg" || len(args) != 3 || args[0] != "show" || args[1] != "wg0" {
+			t.Fatal(name, args)
 		}
-		return []byte("INTERFACE-PRIVATE-KEY interface-public 51820 off\nPUBLIC-PEER PRESHARED-SECRET 192.0.2.1:51820 10.0.0.0/24 100 123 456 0\n"), nil
+		switch args[2] {
+		case "latest-handshakes":
+			return []byte("PUBLIC-PEER\t100\n"), nil
+		case "transfer":
+			return []byte("PUBLIC-PEER\t123\t456\n"), nil
+		default:
+			t.Fatal("sensitive or unexpected query", args)
+			return nil, nil
+		}
 	}}
 	o := r.Run(context.Background(), testkit.Config(), x)
 	if o.Outcome != "ok" || o.Connectivity || o.Evidence != "reported" || o.Facts["rx_bytes"] != "123" {

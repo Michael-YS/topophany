@@ -77,9 +77,20 @@ func TestAdapterCompatibility(t *testing.T) {
 		x := httpCheck(s.URL)
 		x.Kind = tc.kind
 		x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_COMPAT_TOKEN", RootProxy: "root", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"pool": {"node"}}, Peer: "peer", Interface: "wg0"}
-		r := Runner{Command: func(context.Context, string, ...string) ([]byte, error) {
+		r := Runner{Command: func(_ context.Context, _ string, args ...string) ([]byte, error) {
 			if tc.commandError {
 				return nil, errors.New("private diagnostic")
+			}
+			if tc.kind == "wireguard" {
+				if tc.name == "wireguard-ok" {
+					if len(args) == 3 && args[2] == "latest-handshakes" {
+						return []byte("peer\t100\n"), nil
+					}
+					return []byte("peer\t123\t456\n"), nil
+				}
+				if tc.name == "wireguard-missing" {
+					return nil, nil
+				}
 			}
 			return []byte(tc.command), nil
 		}}

@@ -321,7 +321,8 @@
       "connectivity": false,
       "path_evidence": "requested_not_route_verified",
       "facts": {
-        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "sampling_atomicity": "separate_command_reads_not_atomic"
       }
     }
   },
@@ -347,7 +348,8 @@
         "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
         "last_handshake": "1970-01-01T00:01:40Z",
         "rx_bytes": "123",
-        "tx_bytes": "456"
+        "tx_bytes": "456",
+        "sampling_atomicity": "separate_command_reads_not_atomic"
       }
     }
   },
