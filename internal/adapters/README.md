@@ -1,7 +1,9 @@
-# Software adapters
+# Software and platform adapters
 
 Each supported software integration owns a directory here, including its
 configuration validation, runtime parsing, tests and compatibility notes.
+Edge response-header interpreters also own one directory per platform, with
+their own parsing, tests and contribution notes.
 Adapters depend on `model`, `secure` and the small shared contract in this
 package. They must not import `probe`, `config`, the collector or the UI.
 
@@ -9,6 +11,19 @@ package. They must not import `probe`, `config`, the collector or the UI.
 owns scheduling, cancellation, elapsed time, the observation envelope and
 error classification. Adapters fill software-specific facts and policy
 outcomes. Keep runtime reports distinct from measured application responses.
+
+Cloudflare, Vercel, CloudFront, Fastly and Netlify currently interpret headers
+from existing HTTP checks. Their `HeaderFacts` functions make no network calls
+and do not need separate check kinds or configuration validators. Shared
+reported-label bounds live in `edgeheaders`; `probe.EdgeFacts` retains the
+explicit first-match order: Cloudflare, Vercel, CloudFront, Fastly, Netlify.
+The HTTP probe still owns secret-response filtering. Provider branding remains
+in `view`, and generic `via` evidence attribution remains in `engine`.
+
+Supabase currently uses the shared topology model and ordinary HTTP checks.
+Add its adapter directory when introducing actual platform-specific behavior.
+Future cloud API or local connector collection belongs in the relevant platform
+directory with explicit typed configuration and separate evidence boundaries.
 
 To add an adapter:
 
@@ -29,6 +44,11 @@ HTTP GET is not sufficient proof that an API endpoint has no side effects.
 `probe.TestAdapterCompatibility` compares serialized observations and measurement
 contracts against fixtures captured before the package split. It ignores only
 the ephemeral listener address, sampling timestamp and elapsed time.
+`probe.TestEdgeFactsCompatibilityBeforePackageSplit` and
+`probe.FuzzEdgeFactsCompatibility` compare header facts with an independent,
+frozen copy of `599c890:internal/probe/edge.go` in `edge_legacy_test.go`.
+Its original source hash is recorded there. Keep that oracle independent of
+shared production helpers; do not regenerate it to make a refactor pass.
 
 Run `go test ./internal/adapters/... ./internal/probe ./internal/config` for
 focused checks. Follow `CONTRIBUTING.md` for the full verification requirements.

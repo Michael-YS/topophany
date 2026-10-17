@@ -8,6 +8,9 @@ Software integrations live in separate packages under
 [`internal/adapters`](internal/adapters/README.md). Keep each integration's
 parsing, policy, validation and tests in its own directory; the probe supplies
 transport and execution capabilities. See that guide before adding an adapter.
+Cloud platform header parsing follows the same ownership rule. Preserve
+cross-provider recognition order, private-response filtering and the distinction
+between reported edge labels and measured responses when changing a platform.
 
 Run `go fmt ./...`, `go vet ./...`, `go test -race ./...` and the complete
 `scripts/verify.py` suite before publishing a release. Add a named regression

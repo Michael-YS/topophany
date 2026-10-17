@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Cloudflare, Vercel, CloudFront, Fastly and Netlify response-header parsing now
+  lives in separate platform adapter packages. Existing HTTP configuration,
+  first-match precedence, fact values, secret filtering and evidence attribution
+  remain unchanged and are checked against a frozen pre-split parser.
 - Mihomo, Tailscale and WireGuard implementations, validators and tests now live
   in separate adapter packages, preserving existing configuration contracts and
   observation behavior. Each package includes contribution and evidence notes.
