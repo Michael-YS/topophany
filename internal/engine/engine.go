@@ -86,7 +86,7 @@ func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.T
 		// consecutive samples as a failure would before it opens an
 		// incident: a publication the runtime has not loaded yet produces
 		// one or two violating samples and then passes.
-		run, threshold := k.PolicyRun, max(x.FailureThreshold, 1)
+		run, threshold := k.PolicyRun, policyThreshold(x, last.Facts["provider_reference_settling"] == "true")
 		s.PolicyConfirmed = run >= threshold
 		if !s.PolicyConfirmed {
 			s.Reason = fmt.Sprintf("%s; confirmation threshold not reached (%d/%d)", s.Reason, run, threshold)
@@ -111,6 +111,26 @@ func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.T
 		s.Successes = 0
 	}
 	return s
+}
+
+// policyThreshold is how many consecutive policy samples a check needs
+// before it opens an incident. A provider reference also has to outlive the
+// settle window after a publication; expressing that window as samples keeps
+// the count on the carry across restarts and publications. A publisher that
+// keeps republishing can delay the moment a sample says it is settling, but
+// not the confirmation itself.
+func policyThreshold(x model.Check, settling bool) int {
+	threshold := max(x.FailureThreshold, 1)
+	ref := x.Adapter.ProviderReference
+	if ref == nil || !settling {
+		return threshold
+	}
+	settle := ref.SettleSecondsOrDefault()
+	if settle <= 0 || x.IntervalSeconds <= 0 {
+		return threshold
+	}
+	samples := (settle + x.IntervalSeconds - 1) / x.IntervalSeconds
+	return max(threshold, samples)
 }
 
 // Build derives the snapshot of c at now from stored observations and

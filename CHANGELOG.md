@@ -62,11 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional Mihomo TUN expectations and ordered/set provider comparisons, with
   bounded counts explaining missing, extra and reordered members.
 - Mihomo `provider_reference.settle_seconds` (0..3600, default 120, 0
-  disables) defers a membership difference for the window after a publication:
-  a controller loads a new provider over a minute or two, so the difference is
-  `unknown / provider_reference_settling` rather than a violation until then.
-  Facts record the controller's own `provider_updated_at` beside the
-  publisher's time and the sample's time.
+  disables) marks a membership difference inside the window after a
+  publication as not yet confirmed, because the controller may still be
+  loading it. The sample stays `policy / provider_membership_mismatch` with
+  `provider_reference_settling: true`; the incident opens only after the
+  window's equivalent consecutive policy samples, so repeated publications
+  cannot defer it forever. Facts record the controller's own
+  `provider.<name>.updated_at` beside the publisher's time and the sample's
+  time.
 - Optional WireGuard AllowedIPs and keepalive expectations, collected through
   public-field commands without reading private or preshared keys.
 - Opt-in bounded Tailscale DISCO/TSMP diagnostics. Replies retain reported

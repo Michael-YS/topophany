@@ -111,15 +111,19 @@ For rotating providers, `adapter.provider_reference` can select fresh ordered
 member lists from an independent HTTPS JSON publisher. Keep fixed groups in
 `expected_providers`; unavailable or stale reference data is a monitor error,
 and a publication changing during sampling is unknown. `settle_seconds`
-(0..3600, default 120, 0 disables) is how long after `published_at` a
-difference is deferred: the controller loads a new provider over a minute or
-two, so a mismatch inside that window is `unknown` with code
-`provider_reference_settling` instead of a policy violation. Matching
-membership is never deferred, and a mismatch after the window is a violation
-as before. Facts record `provider_reference_published_at` (publisher),
-`provider_updated_at` (the controller's own last load) and the sample's own
-time. See the [Mihomo adapter guide](../internal/adapters/mihomo/README.md)
-for the document format, transport and freshness limits.
+(0..3600, default 120, 0 disables, and shorter than `max_age_seconds` when
+set) is how long after `published_at` a difference is treated as not yet
+confirmed: the controller loads a new provider over a minute or two. A
+difference inside that window remains a policy sample, with
+`provider_reference_settling: true`, code `provider_membership_mismatch`, and
+`provider_comparison` saying `=settling(`; the engine opens the incident only
+after the window's equivalent consecutive policy samples (and at least
+`failure_threshold`), so repeated publications cannot defer it forever.
+Matching membership is never deferred. Facts record
+`provider_reference_published_at` (publisher), `provider.<name>.updated_at`
+(the controller's own load time for that provider) and the sample's own time.
+See the [Mihomo adapter guide](../internal/adapters/mihomo/README.md) for the
+document format, transport and freshness limits.
 
 A single check supports up to 16 static and dynamic providers combined, with provider names capped at 119 bytes without control characters to respect API record budgets. Long strings are truncated at UTF-8 byte boundaries; DNS response evidence exceeding 2,048 bytes returns an explicit check error.
 

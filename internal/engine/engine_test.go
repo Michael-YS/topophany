@@ -104,6 +104,58 @@ func TestPolicyViolationNeedsTheFailureThreshold(t *testing.T) {
 	}
 }
 
+func TestProviderSettleExtendsPolicyConfirmation(t *testing.T) {
+	c := testkit.Config()
+	x := c.Checks[0]
+	x.IntervalSeconds = 60
+	x.FailureThreshold = 3
+	settle := 600 // ten samples at the check's interval
+	x.Adapter.ProviderReference = &model.MihomoProviderReference{URL: "https://publisher.invalid/members.json", Providers: []string{"edge-local"}, MaxAgeSeconds: 3600, SettleSeconds: &settle}
+	c.Checks[0] = x
+	now := time.Now().UTC()
+	samples := func(n int, settling bool) []model.Observation {
+		rows := make([]model.Observation, 0, n)
+		for i := 0; i < n; i++ {
+			row := testkit.Observation(c, x.ID, uint64(i+1), now.Add(time.Duration(i-n)*time.Second), "policy")
+			if settling {
+				row.Facts["provider_reference_settling"] = "true"
+			}
+			rows = append(rows, row)
+		}
+		return rows
+	}
+	state := func(s model.Snapshot) model.CheckState {
+		t.Helper()
+		for _, st := range s.Checks {
+			if st.ID == x.ID {
+				return st
+			}
+		}
+		t.Fatalf("check %s missing from snapshot", x.ID)
+		return model.CheckState{}
+	}
+
+	// The settle window is expressed as samples, so a publisher that keeps
+	// republishing cannot postpone confirmation past this point.
+	s := Build(c, "a", "", samples(9, true), nil, now)
+	if st := state(s); st.PolicyConfirmed || len(s.Incidents) != 0 {
+		t.Fatalf("confirmed before the settle window: %+v %+v", st, s.Incidents)
+	}
+	s = Build(c, "a", "", samples(10, true), nil, now)
+	st := state(s)
+	if !st.PolicyConfirmed || len(s.Incidents) != 1 {
+		t.Fatalf("not confirmed after the settle window: %+v %+v", st, s.Incidents)
+	}
+
+	// Once the controller is no longer loading the publication, the ordinary
+	// failure threshold applies again; the settle samples do not delay a
+	// known drift.
+	s = Build(c, "a", "", samples(3, false), nil, now)
+	if st = state(s); !st.PolicyConfirmed || len(s.Incidents) != 1 {
+		t.Fatalf("settle delayed a known drift: %+v %+v", st, s.Incidents)
+	}
+}
+
 func TestOutOfOrderAndGapDoNotFabricateConfirmation(t *testing.T) {
 	c := testkit.Config()
 	x := c.Checks[0]

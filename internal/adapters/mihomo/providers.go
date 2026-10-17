@@ -59,7 +59,7 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		return err
 	}
 	stable := true
-	settling := false
+	settlingWindow := false
 	if options.ProviderReference != nil {
 		after, err := readReference(ctx, deps, x)
 		if err != nil {
@@ -72,10 +72,17 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 			o.Facts["provider_reference_consistency"] = "changed"
 		}
 		// A controller loads a new provider over a minute or two. Inside
-		// that window a difference is not yet a violation: it is what every
-		// publication looks like before the runtime catches up.
-		if wait := settle(options.ProviderReference); wait > 0 && !before.PublishedAt.IsZero() && time.Since(before.PublishedAt) < wait {
-			settling = true
+		// that window a difference is not yet confirmed; the sample still
+		// says policy, and the engine needs consecutive policy samples
+		// (including this window) before it opens an incident. The window
+		// is measured from the sample's own time, not the wall clock at
+		// comparison time, so a replay keeps its original decision.
+		at := o.SampledAt
+		if at.IsZero() {
+			at = time.Now()
+		}
+		if wait := settle(options.ProviderReference); wait > 0 && !before.PublishedAt.IsZero() && at.Sub(before.PublishedAt) < wait {
+			settlingWindow = true
 		}
 	}
 	keys := make([]string, 0, len(expected))
@@ -84,11 +91,13 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 	}
 	sort.Strings(keys)
 	summaries := []string{}
-	newest := time.Time{}
+	mismatched, unconfirmed := 0, 0
 	for _, k := range keys {
 		p, ok := out.Providers[k]
-		if p.UpdatedAt.After(newest) {
-			newest = p.UpdatedAt
+		if !p.UpdatedAt.IsZero() {
+			// The controller's own account of when it last loaded this
+			// provider, beside the publisher's time and the sample's time.
+			o.Facts["provider."+adapters.SafeFact(k)+".updated_at"] = p.UpdatedAt.UTC().Format(time.RFC3339Nano)
 		}
 		actual, shown := []string{}, []string{}
 		for _, v := range p.Proxies {
@@ -107,27 +116,30 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		if dynamic && !stable {
 			status = "unverified"
 		}
-		if dynamic && stable && settling && !same {
+		// The controller may still be loading a fresh publication. If it
+		// says it loaded this provider after that publication, it is not
+		// still loading: the difference is real.
+		providerSettling := dynamic && stable && settlingWindow && !same &&
+			(p.UpdatedAt.IsZero() || !p.UpdatedAt.After(before.PublishedAt))
+		if providerSettling {
 			status = "settling"
 		}
 		summaries = append(summaries, fmt.Sprintf("%s=%s(expected:%d loaded:%d missing:%d extra:%d order_changed:%t present:%t)", k, status, len(expected[k]), len(actual), comparison.missing, comparison.extra, comparison.orderChanged, ok))
 		if !same && (!dynamic || stable) {
-			if dynamic && settling {
-				if o.Outcome != "policy" {
-					o.Outcome, o.Code = "unknown", "provider_reference_settling"
-					o.Detail = "provider membership differs while the controller may still be loading the publication; not yet a violation"
-					o.Facts["provider_reference_settling"] = "true"
-				}
-				continue
+			mismatched++
+			if providerSettling {
+				unconfirmed++
 			}
 			o.Outcome, o.Code = "policy", "provider_membership_mismatch"
 			o.Detail = "desired provider membership/order differs from the loaded runtime"
 		}
 	}
-	if !newest.IsZero() {
-		// The controller's own account of when it last loaded a provider,
-		// beside the publisher's time and this sample's time.
-		o.Facts["provider_updated_at"] = newest.UTC().Format(time.RFC3339Nano)
+	if mismatched > 0 && unconfirmed == mismatched {
+		// Every difference is inside a window the controller may still be
+		// loading. It is a policy sample for confirmation purposes, not an
+		// unknown: a publisher that keeps republishing cannot reset it.
+		o.Facts["provider_reference_settling"] = "true"
+		o.Detail = "provider membership differs while the controller may still be loading the publication; not yet confirmed"
 	}
 	o.Facts["provider_comparison"] = adapters.SafeFact(strings.Join(summaries, "; "))
 	if !stable && o.Outcome != "policy" {

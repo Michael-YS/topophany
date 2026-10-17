@@ -70,20 +70,25 @@ are refused, and controller credentials are never forwarded to the publisher.
 be nonempty, unique, free of control characters and at most 2048 bytes. Static
 and dynamic providers must be distinct, with at most 16 combined per check.
 
-`provider_reference.settle_seconds` (0..3600, default 120) is the window after
-`published_at` in which a difference is not yet a violation: a controller loads
-a new provider over a minute or two, and every publication would otherwise
-report `policy / provider_membership_mismatch` while it catches up. Inside the
-window a difference is `unknown / provider_reference_settling`, with
+`provider_reference.settle_seconds` (0..3600, default 120, and shorter than
+`max_age_seconds` when set) is the window after `published_at` in which a
+difference is not yet confirmed: a controller loads a new provider over a
+minute or two, and every publication would otherwise report a violation while
+it catches up. A difference inside the window is still a policy sample, but
 `provider_reference_settling: true` and `provider_comparison` saying
-`=settling(`. Matching membership is never deferred; `0` disables the wait and
-restores immediate comparison.
+`=settling(` mark it as not yet confirmed. The engine opens the incident only
+after as many consecutive policy samples as the window represents at the
+check's interval (and at least `failure_threshold`), so a publisher that keeps
+republishing cannot defer it forever. Matching membership is never deferred;
+`0` disables the extra wait.
 
-Facts put three times side by side: `provider_reference_published_at` from the
-publisher, `provider_updated_at` from the controller's own `updatedAt` when it
-reports one, and the sample's own time. A difference that outlives the window
-is the drift this check exists to find; one that does not is the publication
-loading.
+Facts put the three times side by side: `provider_reference_published_at` from
+the publisher, `provider.<name>.updated_at` from the controller's own
+`updatedAt` for each provider that reports one, and the sample's own
+`sampled_at`. A difference that outlives the window is the drift this check
+exists to find; one that does not is the publication loading. A provider whose
+controller reports an `updatedAt` after the publication is not still loading
+it, so its difference is not marked settling.
 
 The adapter reads the publication immediately before and after the runtime
 provider read. A stable, fresh publication with different loaded members/order

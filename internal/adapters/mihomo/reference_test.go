@@ -92,7 +92,7 @@ func TestMihomoDynamicProviderRotation(t *testing.T) {
 	if config.Contract(testkit.Config(), x) != contract {
 		t.Fatal("dynamic contents changed the configured contract")
 	}
-	if got := second.Facts["provider_updated_at"]; got != testControllerUpdated.Format(time.RFC3339Nano) {
+	if got := second.Facts["provider.edge-local.updated_at"]; got != testControllerUpdated.Format(time.RFC3339Nano) {
 		t.Fatalf("controller report time not recorded beside the publisher time: %q", got)
 	}
 }
@@ -104,19 +104,22 @@ func TestMihomoReferenceSettlesAfterPublication(t *testing.T) {
 	// Unset uses the default wait: a publication 30s old may still be loading.
 	drifted.Adapter.ProviderReference.SettleSeconds = nil
 	o := runReference(drifted)
-	if o.Outcome != "unknown" || o.Code != "provider_reference_settling" || o.Facts["provider_reference_settling"] != "true" {
+	if o.Outcome != "policy" || o.Code != "provider_membership_mismatch" || o.Facts["provider_reference_settling"] != "true" {
 		t.Fatal(o)
 	}
 	if !strings.Contains(o.Facts["provider_comparison"], "=settling(") {
-		t.Fatalf("comparison does not say why it is deferred: %q", o.Facts["provider_comparison"])
+		t.Fatalf("comparison does not say why it is unknown yet: %q", o.Facts["provider_comparison"])
+	}
+	if !strings.Contains(o.Detail, "not yet confirmed") {
+		t.Fatalf("settling sample is not marked unconfirmed: %q", o.Detail)
 	}
 	one, zero := 1, 0
 	drifted.Adapter.ProviderReference.SettleSeconds = &one
-	if o = runReference(drifted); o.Outcome != "policy" || o.Code != "provider_membership_mismatch" {
+	if o = runReference(drifted); o.Outcome != "policy" || o.Code != "provider_membership_mismatch" || o.Facts["provider_reference_settling"] != "" {
 		t.Fatal("a window shorter than the publication age hid a violation", o)
 	}
 	drifted.Adapter.ProviderReference.SettleSeconds = &zero
-	if o = runReference(drifted); o.Outcome != "policy" {
+	if o = runReference(drifted); o.Outcome != "policy" || o.Facts["provider_reference_settling"] != "" {
 		t.Fatal("zero did not disable the wait", o)
 	}
 

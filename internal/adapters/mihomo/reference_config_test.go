@@ -31,6 +31,15 @@ func TestMihomoProviderReferenceValidation(t *testing.T) {
 			tooLong := 3601
 			o.ProviderReference.SettleSeconds = &tooLong
 		},
+		func(o *model.MihomoOptions) {
+			asOldAsThePublication := 3600
+			o.ProviderReference.SettleSeconds = &asOldAsThePublication
+		},
+		func(o *model.MihomoOptions) {
+			o.ProviderReference.MaxAgeSeconds = 60
+			olderThanThePublication := 120
+			o.ProviderReference.SettleSeconds = &olderThanThePublication
+		},
 		func(o *model.MihomoOptions) { o.ProviderReference.MaxAgeSeconds = 0 },
 		func(o *model.MihomoOptions) { o.ProviderReference.MaxAgeSeconds = 604801 },
 		func(o *model.MihomoOptions) { o.ProviderReference.Providers = nil },
@@ -50,7 +59,7 @@ func TestMihomoProviderReferenceValidation(t *testing.T) {
 			t.Fatal("invalid reference accepted", o)
 		}
 	}
-	for _, settle := range []int{0, 1, 120, 3600} {
+	for _, settle := range []int{0, 1, 120, 3599} {
 		o := good()
 		o.ProviderReference.SettleSeconds = &settle
 		if err := Validate(o); err != nil {

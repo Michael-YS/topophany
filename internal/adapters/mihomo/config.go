@@ -14,15 +14,15 @@ import (
 // confirmed after a publication. A controller loads a new provider over a
 // minute or two, and comparing inside that window would report a violation
 // for every publication.
-const DefaultSettle = 120 * time.Second
+const DefaultSettle = time.Duration(model.DefaultProviderSettleSeconds) * time.Second
 
 // settle is the wait after a publication before a membership difference
 // counts as a violation: the default when unset, none when zero.
 func settle(ref *model.MihomoProviderReference) time.Duration {
-	if ref == nil || ref.SettleSeconds == nil {
+	if ref == nil {
 		return DefaultSettle
 	}
-	return time.Duration(*ref.SettleSeconds) * time.Second
+	return time.Duration(ref.SettleSecondsOrDefault()) * time.Second
 }
 
 func Validate(options model.MihomoOptions) error {
@@ -43,6 +43,12 @@ func Validate(options model.MihomoOptions) error {
 		}
 		if ref.SettleSeconds != nil && (*ref.SettleSeconds < 0 || *ref.SettleSeconds > 3600) {
 			return errors.New("provider reference settle_seconds must be 0..3600")
+		}
+		// A publication cannot be older than max_age_seconds. Waiting at
+		// least that long after every fresh publication would defer every
+		// difference forever; reject the combination explicitly.
+		if ref.SettleSeconds != nil && *ref.SettleSeconds > 0 && *ref.SettleSeconds >= ref.MaxAgeSeconds {
+			return errors.New("provider reference settle_seconds must be shorter than max_age_seconds")
 		}
 		seen := map[string]bool{}
 		for _, name := range ref.Providers {
