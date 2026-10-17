@@ -53,6 +53,7 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 		"http: TLS handshake error from 100.74.137.62:44485: read tcp 100.111.75.1:7447->100.74.137.62:44485: i/o timeout",
 		"http: TLS handshake error from [2605:52c0::1]:443: remote error: tls: bad certificate",
 		"2026/10/17 06:39:20 http: TLS handshake error from 100.75.127.43:1: i/o timeout",
+		"prefix http: TLS handshake error from 198.51.100.9:443: quoted",
 		"http: TLS handshake error from 100.75.127.43:1",
 		"http: TLS handshake error from 10.0.0.1:not-a-port: EOF",
 		"incident opened: s2-local/path/s2-collector",
@@ -62,7 +63,7 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(logged) != 8 || logged[0] != "http: TLS handshake error from 100.74.137.62:44484: EOF" {
+	if len(logged) != 9 || logged[0] != "http: TLS handshake error from 100.74.137.62:44484: EOF" {
 		t.Fatalf("writer did not pass every line through: %q", logged)
 	}
 	got := c.Summary(now)
@@ -77,6 +78,32 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 	}
 	if !got.Last.Equal(now) {
 		t.Fatalf("last failure %v", got.Last)
+	}
+}
+
+func TestIngressZeroValueIsSafe(t *testing.T) {
+	var c IngressCounter
+	if _, err := c.Writer(nil).Write([]byte("http: TLS handshake error from 192.0.2.1:443: EOF\n")); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Summary(time.Now()); got != nil {
+		t.Fatalf("zero counter counted: %+v", got)
+	}
+}
+
+func TestIngressShowsTheBusiestAndCountsEverySource(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	c := NewIngressCounter(time.Minute)
+	c.now = func() time.Time { return now }
+	for i := 0; i < 12; i++ {
+		c.observe("http: TLS handshake error from 192.0.2." + itoa(i) + ":1: EOF")
+	}
+	got := c.Summary(now)
+	if got == nil || got.Failures != 12 || got.SourceCount != 12 || got.Truncated {
+		t.Fatalf("source count: %+v", got)
+	}
+	if len(got.Sources) != shownIngressSources {
+		t.Fatalf("source list not bounded: %+v", got.Sources)
 	}
 }
 

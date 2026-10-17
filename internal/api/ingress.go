@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net"
 	"slices"
 	"strconv"
@@ -78,7 +79,7 @@ func NewIngressCounter(window time.Duration) *IngressCounter {
 // Writer passes every byte to next and counts the handshake failures among
 // them. Give it to the HTTP server's ErrorLog: log.Logger writes one message
 // per call, so a message is one line.
-func (c *IngressCounter) Writer(next func(string)) *ingressWriter {
+func (c *IngressCounter) Writer(next func(string)) io.Writer {
 	return &ingressWriter{counter: c, next: next}
 }
 
@@ -100,7 +101,10 @@ func (w *ingressWriter) Write(p []byte) (int, error) {
 // handshake, and ignores every other line. The line arrives as log.Logger
 // formatted it, so a timestamp can come first.
 func (c *IngressCounter) observe(line string) {
-	at := strings.Index(line, tlsHandshakePrefix)
+	if c == nil || c.width <= 0 {
+		return
+	}
+	at := handshakeOffset(line)
 	if at < 0 {
 		return
 	}
@@ -118,10 +122,17 @@ func (c *IngressCounter) observe(line string) {
 	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
 		return
 	}
-	now := c.now()
+	now := time.Now()
+	if c.now != nil {
+		now = c.now()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.prune(now)
+	// Pruning is O(sources); do it only when the map is full, so a normal
+	// line costs one bucket update. Summary prunes unconditionally.
+	if len(c.sources) >= maxIngressSources {
+		c.prune(now)
+	}
 	c.add(&c.total, now)
 	c.last = now
 	if s := c.sources[host]; s != nil {
@@ -141,6 +152,22 @@ func (c *IngressCounter) observe(line string) {
 	c.add(&s.buckets, now)
 	s.last = now
 	c.sources[host] = s
+}
+
+// handshakeOffset returns where net/http's handshake message starts: at the
+// beginning, or after the one standard log timestamp the collector adds.
+// A message that merely quotes the prefix later is not a handshake report.
+func handshakeOffset(line string) int {
+	if strings.HasPrefix(line, tlsHandshakePrefix) {
+		return 0
+	}
+	const stamp = "2006/01/02 15:04:05 "
+	if len(line) > len(stamp) {
+		if _, err := time.Parse("2006/01/02 15:04:05", line[:len(stamp)-1]); err == nil {
+			return len(stamp)
+		}
+	}
+	return -1
 }
 
 // add records one failure at t in a bucket. Callers hold c.mu.
@@ -207,6 +234,9 @@ func pseudonymousIngress(in *model.Ingress) *model.Ingress {
 // inside it. Sources are the busiest first; SourceCount counts every source
 // the counter could track, and Truncated says some were not tracked.
 func (c *IngressCounter) Summary(now time.Time) *model.Ingress {
+	if c == nil || c.width <= 0 {
+		return nil
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.prune(now)
