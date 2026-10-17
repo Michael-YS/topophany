@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows bundle and installation directories replace and verify their entire
+  DACL, including existing children, before writing sensitive payloads. Unrelated
+  explicit grants, untrusted owners and reparse points are refused or removed.
+
 ### Added
 
 - Mihomo checks can compare rotating provider membership against a fresh,

@@ -1,0 +1,64 @@
+package bootstrap
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+
+	"github.com/WhitenWhiten/topophany/internal/secure"
+)
+
+// Replace the entire DACL, including explicit entries on existing children.
+// Paths are literal arguments, never interpolated into PowerShell source.
+// Verification also checks ownership: an unrelated owner can rewrite a DACL.
+const windowsACLScript = `param($Directory,$Operation)
+$ErrorActionPreference='Stop'
+$current=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$sids=@($current,'S-1-5-18','S-1-5-32-544') | Select-Object -Unique
+function Protect($path,$root){
+ $item=Get-Item -LiteralPath $path -Force
+ if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Reparse points are not installation paths'}
+ $acl=Get-Acl -LiteralPath $path
+ if($sids -notcontains $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value){throw 'Installation path belongs to another user'}
+ if($Operation -eq 'restrict'){
+  $flags=if($item.PSIsContainer){'OICI'}else{''}
+  $sddl='D:P'
+  foreach($sid in $sids){$sddl+="(A;$flags;FA;;;$sid)"}
+  $acl.SetSecurityDescriptorSddlForm($sddl,[Security.AccessControl.AccessControlSections]::Access)
+  Set-Acl -LiteralPath $path -AclObject $acl
+  $acl=Get-Acl -LiteralPath $path
+ }
+ if($root -and -not $acl.AreAccessRulesProtected){throw 'Installation DACL inherits unrelated access'}
+ $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+ if($rules.Count -ne $sids.Count){throw 'Unexpected installation access rules'}
+ foreach($sid in $sids){
+  $matches=@($rules | Where-Object {$_.IdentityReference.Value -eq $sid})
+  if($matches.Count -ne 1){throw 'Missing installation principal'}
+  $rule=$matches[0]
+  if($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $rule.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl -or $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None){throw 'Unexpected installation access'}
+  $expected=if($item.PSIsContainer){[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'}else{[Security.AccessControl.InheritanceFlags]::None}
+  if($rule.InheritanceFlags -ne $expected){throw 'Unexpected installation inheritance'}
+ }
+ if($item.PSIsContainer){
+  foreach($child in (Get-ChildItem -LiteralPath $path -Force)){Protect $child.FullName $false}
+ }
+}
+Protect $Directory $true
+`
+
+func windowsDirectoryACL(ctx context.Context, dir, operation string) error {
+	tmp, err := os.MkdirTemp("", "topophany-acl-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	script := filepath.Join(tmp, "acl.ps1")
+	if err = secure.AtomicWrite(script, []byte(windowsACLScript), 0600); err != nil {
+		return err
+	}
+	return run(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, dir, operation)
+}
+
+func restrictWindowsDirectory(ctx context.Context, dir string) error {
+	return windowsDirectoryACL(ctx, dir, "restrict")
+}

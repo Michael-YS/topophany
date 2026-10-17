@@ -6,7 +6,6 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -147,13 +146,6 @@ func windowsTask(ctx context.Context, m Manifest, op string, raw []byte) error {
 	return run(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(dir, "task.ps1"), filepath.Join(dir, "manifest.json"), op)
 }
 
-func restrictWindowsDirectory(ctx context.Context, dir string) error {
-	u, e := user.Current()
-	if e != nil {
-		return e
-	}
-	return run(ctx, "icacls.exe", dir, "/inheritance:r", "/grant:r", "*"+u.Uid+":(OI)(CI)F", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F")
-}
 func exportWindowsTask(ctx context.Context, m Manifest) (string, error) {
 	dir, e := os.MkdirTemp("", "topophany-task-backup-")
 	if e != nil {

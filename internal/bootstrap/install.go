@@ -206,16 +206,16 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 	if e = secure.MkdirAll(m.InstallDir, 0755); e != nil {
 		return m, "", e
 	}
-	unlockInstall, err := secure.Lock(filepath.Join(m.InstallDir, "install.lock"))
-	if err != nil {
-		return m, "", err
-	}
-	defer unlockInstall()
 	if runtime.GOOS == "windows" {
 		if e = restrictWindowsDirectory(ctx, m.InstallDir); e != nil {
 			return m, "", e
 		}
 	}
+	unlockInstall, err := secure.Lock(filepath.Join(m.InstallDir, "install.lock"))
+	if err != nil {
+		return m, "", err
+	}
+	defer unlockInstall()
 	backups := filepath.Join(m.InstallDir, ".backups")
 	if e = secure.MkdirAll(backups, 0700); e != nil {
 		return m, "", e

@@ -142,6 +142,7 @@ Interoperability across live OpenSSH, Tailscale, and WireGuard tunnels and nativ
 
 | Scenario and invariant | Automated evidence |
 |---|---|
+| Windows fresh and upgrade installs replace unrelated explicit ACLs on the root and existing children before writing credentials, TLS keys, topology or executables; verification rejects extra grants | `TestWindowsInstallationReplacesExplicitACLs`, `TestWindowsACLVerificationRejectsExplicitGrant` (Windows execution required) |
 | An active unknown, stale or monitor-error check cannot produce ALL CLEAR or exit 0; paused and maintenance checks do not create false warnings | `TestUnknownActiveChecksPreventAllClear`, `TestStatusNeverClearsAnInconclusiveActiveCheck`, `TestPausedChecksDoNotDegradeActiveServiceEvidence` |
 | Custom request headers require protected transport; invalid header names and values are rejected before dial and never reported as target failures | `TestPrivateHeadersRequireProtectedTransport`, `TestHeaderWireSyntax`, `TestInvalidAndInsecureHeadersNeverDial`, `TestProtectedPrivateHeadersStillWork` |
 | Snapshots contain every check and entity in their observer view, including all observer states | `TestSnapshotRequiresEveryStateInItsView` |
