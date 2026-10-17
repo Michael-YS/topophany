@@ -75,8 +75,11 @@ func diagnose(ctx context.Context, command adapters.Command, options model.Tails
 // peer", a stopped daemon and permission errors also exit non-zero, and they
 // are monitor-side failures, not a peer that did not answer.
 func pingTimedOut(raw []byte, target netip.Addr) bool {
+	if len(raw) == 0 || len(raw) > 256 {
+		return false
+	}
 	text := strings.TrimSpace(string(raw))
-	return len(raw) <= 256 && !strings.ContainsAny(text, "\r\n\x00") && text == "ping \""+target.String()+"\" timed out"
+	return !strings.ContainsAny(text, "\r\n\x00") && text == "ping \""+target.String()+"\" timed out"
 }
 
 func parsePing(raw []byte, target netip.Addr, protocol string) (pingResult, error) {

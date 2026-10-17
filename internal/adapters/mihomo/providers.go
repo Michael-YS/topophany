@@ -2,6 +2,7 @@ package mihomo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -51,8 +52,8 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 	}
 	var out struct {
 		Providers map[string]struct {
-			Proxies   []coreProxy `json:"proxies"`
-			UpdatedAt time.Time   `json:"updatedAt"`
+			Proxies   []coreProxy     `json:"proxies"`
+			UpdatedAt json.RawMessage `json:"updatedAt"`
 		} `json:"providers"`
 	}
 	if err := readCore(ctx, client, target, "/providers/proxies", token, &out); err != nil {
@@ -94,10 +95,11 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 	mismatched, unconfirmed := 0, 0
 	for _, k := range keys {
 		p, ok := out.Providers[k]
-		if !p.UpdatedAt.IsZero() {
+		updatedAt := providerUpdatedAt(p.UpdatedAt)
+		if !updatedAt.IsZero() {
 			// The controller's own account of when it last loaded this
 			// provider, beside the publisher's time and the sample's time.
-			o.Facts["provider."+adapters.SafeFact(k)+".updated_at"] = p.UpdatedAt.UTC().Format(time.RFC3339Nano)
+			o.Facts["provider."+adapters.SafeFact(k)+".updated_at"] = updatedAt.UTC().Format(time.RFC3339Nano)
 		}
 		actual, shown := []string{}, []string{}
 		for _, v := range p.Proxies {
@@ -120,7 +122,7 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		// says it loaded this provider after that publication, it is not
 		// still loading: the difference is real.
 		providerSettling := dynamic && stable && settlingWindow && !same &&
-			(p.UpdatedAt.IsZero() || !p.UpdatedAt.After(before.PublishedAt))
+			(updatedAt.IsZero() || !updatedAt.After(before.PublishedAt))
 		if providerSettling {
 			status = "settling"
 		}
@@ -147,4 +149,23 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		o.Detail = "provider publication changed during sampling; loaded membership cannot be compared consistently"
 	}
 	return nil
+}
+
+// providerUpdatedAt parses the controller's optional loaded-at metadata.
+// It is display and settlement evidence, not a measurement: a controller
+// that sends an empty, numeric or malformed value must not fail every
+// Mihomo check just because this field was added.
+func providerUpdatedAt(raw json.RawMessage) time.Time {
+	if len(raw) == 0 {
+		return time.Time{}
+	}
+	var text string
+	if json.Unmarshal(raw, &text) != nil {
+		return time.Time{}
+	}
+	at, err := time.Parse(time.RFC3339Nano, text)
+	if err != nil {
+		return time.Time{}
+	}
+	return at
 }

@@ -32,16 +32,19 @@ func defaultCommand(ctx context.Context, name string, args ...string) ([]byte, e
 	}
 	cmd := exec.CommandContext(ctx, p, args...)
 	cmd.WaitDelay = time.Second
+	return runCaptured(cmd)
+}
+
+// runCaptured runs cmd with a bounded stdout and returns what it wrote even
+// when it exits non-zero. A command can say something and still fail:
+// tailscale ping reports an internal timeout on stdout and exits 1. The
+// adapter decides whether that output is a failure or an answer.
+func runCaptured(cmd *exec.Cmd) ([]byte, error) {
 	w := &cappedOutput{limit: 2 << 20}
 	cmd.Stdout = w
 	cmd.Stderr = io.Discard
-	// A command can say something and still exit non-zero: tailscale ping
-	// reports an internal timeout on stdout and exits 1. Return what it
-	// said; the adapter decides whether that is a failure or an answer.
-	if e = cmd.Run(); e != nil {
-		return w.b.Bytes(), e
-	}
-	return w.b.Bytes(), nil
+	e := cmd.Run()
+	return w.b.Bytes(), e
 }
 
 func allowedCommand(name string, args []string) bool {

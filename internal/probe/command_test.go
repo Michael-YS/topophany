@@ -3,6 +3,9 @@ package probe
 import (
 	"context"
 	"errors"
+	"os/exec"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -30,6 +33,20 @@ func TestAdapterExecutableAndOutputBudget(t *testing.T) {
 	r.Command = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("no permission") }
 	if o := r.Run(context.Background(), testkit.Config(), x); o.Outcome != "error" {
 		t.Fatal(o)
+	}
+}
+
+func TestCommandCapturesOutputWhenItFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	want := `ping "192.0.2.1" timed out`
+	out, err := runCaptured(exec.Command("sh", "-c", "printf '%s\n' 'ping \"192.0.2.1\" timed out'; exit 1"))
+	if err == nil {
+		t.Fatal("a failing command reported success")
+	}
+	if strings.TrimSpace(string(out)) != want {
+		t.Fatalf("failed command output was lost: %q", out)
 	}
 }
 
