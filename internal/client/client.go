@@ -254,12 +254,19 @@ type History struct {
 // Snapshot does: past unreachable or failing collectors, never past a
 // rejection.
 func (c *Client) History(ctx context.Context, check string, limit int) (History, string, error) {
+	return c.history(ctx, check, limit, nil)
+}
+
+func (c *Client) history(ctx context.Context, check string, limit int, snapshot *HistoryView) (History, string, error) {
 	var empty History
 	if !config.ID(check) || limit < 1 || limit > 500 {
 		return empty, "", errors.New("history needs a check ID and a limit of 1..500")
 	}
 	var missed misses
 	for i, ep := range c.profile.Servers {
+		if snapshot != nil && ep.URL != snapshot.Server {
+			continue
+		}
 		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/history", url.Values{"check": {check}, "limit": {fmt.Sprint(limit)}}), nil)
 		if e != nil {
 			return empty, "", errors.New("invalid request")
@@ -310,6 +317,11 @@ func (c *Client) History(ctx context.Context, check string, limit int) (History,
 		for _, v := range h.Entries {
 			if v.Check != check || v.Project != h.Project || v.Contract != h.Contract || v.Revision != "" || !validEvidence(v) {
 				return empty, "", errors.New("invalid collector history")
+			}
+		}
+		if snapshot != nil {
+			if e = snapshot.Match(h, ep.URL); e != nil {
+				return empty, "", e
 			}
 		}
 		return h, ep.URL, nil

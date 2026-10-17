@@ -49,10 +49,7 @@ func NewRemote(profile client.Profile, reconnectHint string) (*Remote, error) {
 	m.ReconnectHint = secure.Text(reconnectHint[:min(len(reconnectHint), 1024)])
 	m.NerdFont = true
 	r := &Remote{m: m, client: c, ctx: ctx, cancel: cancel, results: make(chan remoteSnapshot, 1)}
-	r.samples = sampler{results: make(chan fetchedSamples, 1), read: func(ctx context.Context, check string, limit int) ([]model.Observation, error) {
-		h, _, err := c.History(ctx, check, limit)
-		return h.Entries, err
-	}}
+	r.samples = sampler{results: make(chan fetchedSamples, 1), readAt: collectorHistory(c)}
 	return r, nil
 }
 
@@ -123,12 +120,8 @@ func (r *Remote) receive() bool {
 	}
 	select {
 	case got := <-r.samples.results:
-		r.samples.busy, changed = false, true
-		if got.trend {
-			r.m.KeepTrend(got.check, got.entries, got.err)
-		} else {
-			r.m.KeepSamples(got.check, got.entries, got.err)
-		}
+		changed = true
+		r.samples.keep(r.m, got)
 	default:
 	}
 	return changed

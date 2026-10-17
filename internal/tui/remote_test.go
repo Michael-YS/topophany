@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,31 @@ import (
 )
 
 const remoteViewerToken = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+func TestRemoteHistoryStaysWithSnapshotCollector(t *testing.T) {
+	backup, p := remoteFixture(t)
+	var wrongHistory atomic.Int32
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/v1/history" {
+			wrongHistory.Add(1)
+		}
+		w.WriteHeader(503)
+	}))
+	defer primary.Close()
+	p.Servers = append([]client.Endpoint{{URL: primary.URL, Token: remoteViewerToken}}, p.Servers...)
+	r, err := NewRemote(p, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	waitRemote(t, r, func() bool { return !r.m.Snapshot.GeneratedAt.IsZero() })
+	r.Key("6", time.Now())
+	selectFirstEntry(t, r.m)
+	waitRemote(t, r, func() bool { return len(r.m.samples.entries) > 0 })
+	if r.m.Server != backup.URL || wrongHistory.Load() != 0 {
+		t.Fatal("remote history restarted collector failover")
+	}
+}
 
 func remoteFixture(t *testing.T) (*httptest.Server, client.Profile) {
 	t.Helper()

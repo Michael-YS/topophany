@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Snapshot-backed CLI and terminal/browser views pin history to the snapshot's
+  collector, public revision and check contract. Source/revision switches clear
+  cached charts and superseded background history is discarded.
 - Manual rollback requires an installer-created private backup under the same
   installation, with trusted ownership and authenticated metadata and payload
   hashes. Unsigned legacy backups are refused before service or file changes.

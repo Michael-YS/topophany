@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -217,7 +218,11 @@ func (a *App) showEntry(ctx context.Context, r reader, v view.View, h header, ta
 			continue
 		}
 		x, _ := config.Check(v.Snapshot.Topology, e.ID)
-		samples, _, err := r.history(ctx, e.ID, view.StripSamples)
+		binding := client.SnapshotHistory(v.Snapshot, h.Server, e.ID)
+		samples, server, err := r.snapshotHistory(ctx, binding, view.StripSamples)
+		if err == nil {
+			err = binding.Match(samples, server)
+		}
 		if err != nil {
 			e.SamplesError = err.Error()
 			continue
@@ -242,6 +247,13 @@ func (a *App) showEntry(ctx context.Context, r reader, v view.View, h header, ta
 		}
 	}
 	return t.err
+}
+
+func (r reader) snapshotHistory(ctx context.Context, v client.HistoryView, limit int) (client.History, string, error) {
+	if r.historyAt != nil {
+		return r.historyAt(ctx, v, limit)
+	}
+	return r.history(ctx, v.Check, limit)
 }
 
 func (a *App) showMap(v view.View, h header, asJSON bool) error {

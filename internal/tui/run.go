@@ -23,7 +23,7 @@ func RunPreview(parent context.Context, p Preview, fetch Fetch, history History,
 	m := &Model{Observer: observer, NoColor: noColor, Preview: p}
 	m.initializeStartup(options)
 	m.say("Preview: synthetic evidence only · x switch scenario · D debug overlay", false)
-	return loop(parent, m, fetch, history, in, out)
+	return loop(parent, m, fetch, history, nil, in, out)
 }
 
 type fetched struct {
@@ -39,12 +39,8 @@ func Run(ctx context.Context, c *client.Client, observer string, noColor bool, i
 }
 
 // RunObserved gives an optional display consumer the same fetch result as the
-// TUI, including errors and user-selected observer changes. History is unchanged.
+// TUI, including errors and user-selected observer changes.
 func RunObserved(ctx context.Context, c *client.Client, observer string, noColor bool, in, out *os.File, observed func(model.Snapshot, error), options ...Startup) error {
-	history := func(ctx context.Context, check string, limit int) ([]model.Observation, error) {
-		h, _, e := c.History(ctx, check, limit)
-		return h.Entries, e
-	}
 	m := &Model{Observer: observer, NoColor: noColor, Collectors: c.URLs(), Project: c.Project()}
 	m.initializeStartup(options)
 	fetch := c.Snapshot
@@ -55,14 +51,14 @@ func RunObserved(ctx context.Context, c *client.Client, observer string, noColor
 			return snap, server, err
 		}
 	}
-	return loop(ctx, m, fetch, history, in, out)
+	return loop(ctx, m, fetch, nil, collectorHistory(c), in, out)
 }
 
 // RunWithFetch runs the viewer on fetch alone, without reading history.
 func RunWithFetch(parent context.Context, fetch Fetch, observer string, noColor bool, in, out *os.File, options ...Startup) error {
 	m := &Model{Observer: observer, NoColor: noColor}
 	m.initializeStartup(options)
-	return loop(parent, m, fetch, nil, in, out)
+	return loop(parent, m, fetch, nil, nil, in, out)
 }
 
 // RunEditor opens the editor on a local topology. It never contacts a
@@ -77,7 +73,7 @@ func RunEditor(parent context.Context, path string, c model.Config, noColor bool
 		}
 		m.say("New topology — press a to add your first node", false)
 	}
-	return loop(parent, m, nil, nil, in, out)
+	return loop(parent, m, nil, nil, nil, in, out)
 }
 
 // ColorProfile picks truecolor where the terminal advertises it, otherwise
@@ -172,7 +168,7 @@ func (s *screen) paint(out *os.File, m *Model) (int, error) {
 	return fmt.Fprint(out, f)
 }
 
-func loop(parent context.Context, m *Model, fetch Fetch, history History, in, out *os.File) error {
+func loop(parent context.Context, m *Model, fetch Fetch, history History, bound snapshotHistory, in, out *os.File) error {
 	term, e := openTerminal(in, out)
 	if e != nil {
 		return e
@@ -228,7 +224,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 			}
 		}()
 	}
-	samples := &sampler{read: history, results: make(chan fetchedSamples, 1)}
+	samples := &sampler{read: history, readAt: bound, results: make(chan fetchedSamples, 1)}
 	m.Loading = "connecting to the collector"
 	request()
 	keys := time.NewTicker(30 * time.Millisecond)
@@ -283,12 +279,7 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, in, ou
 				return e
 			}
 		case got := <-samples.results:
-			samples.busy = false
-			if got.trend {
-				m.KeepTrend(got.check, got.entries, got.err)
-			} else {
-				m.KeepSamples(got.check, got.entries, got.err)
-			}
+			samples.keep(m, got)
 			samples.request(ctx, m, false)
 			if e = draw(); e != nil {
 				return e

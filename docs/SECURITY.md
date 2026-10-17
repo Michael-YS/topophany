@@ -59,4 +59,11 @@ Log checksums detect accidental corruption; they are not keyed cryptographic sig
 
 Do not share database or log directories across NFS or SMB network filesystems. The system does not implement automated multi-master cluster management. Stale results, clock skew, and missing sources must be preserved as-is rather than having timestamps rewritten to make dashboards look clean. Log files, quarantine stores, and history buffers may contain internal addresses and service names, and must be protected with the same care as topology files.
 
+History drawn under a snapshot uses that snapshot's collector, public revision
+and check contract. A collector changing configuration between these reads
+produces unavailable history until the view refreshes. Switching snapshot
+collectors clears cached samples and charts; it does not merge independently
+retained histories. Standalone `topo history` retains ordered read failover and
+reports the source of its own response.
+
 When reporting security issues, provide only sanitized reproduction configurations and observation logs. Do not paste production tokens or sensitive infrastructure details into public issues. Use private vulnerability reporting channels on the hosted repository.

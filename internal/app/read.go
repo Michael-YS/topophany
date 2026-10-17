@@ -41,9 +41,10 @@ func (e *ExitError) Unwrap() error { return e.Err }
 
 // reader is where the read commands get evidence.
 type reader struct {
-	snapshot func(ctx context.Context, observer string) (model.Snapshot, string, error)
-	history  func(ctx context.Context, check string, limit int) (client.History, string, error)
-	rollups  func(ctx context.Context, check, step, span string) (client.Rollups, string, error)
+	snapshot  func(ctx context.Context, observer string) (model.Snapshot, string, error)
+	history   func(ctx context.Context, check string, limit int) (client.History, string, error)
+	historyAt func(context.Context, client.HistoryView, int) (client.History, string, error)
+	rollups   func(ctx context.Context, check, step, span string) (client.Rollups, string, error)
 }
 
 // unreachable gives a read that no collector answered its exit status.
@@ -56,6 +57,7 @@ func unreachable(e error) error {
 
 func remote(c *client.Client) reader {
 	return reader{
+		historyAt: c.HistoryAt,
 		snapshot: func(ctx context.Context, observer string) (model.Snapshot, string, error) {
 			s, server, e := c.Snapshot(ctx, observer)
 			return s, server, unreachable(e)

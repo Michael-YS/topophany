@@ -2,13 +2,24 @@ package tui
 
 import (
 	"context"
+	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 // History reads up to limit of a check's recent samples, newest first.
 type History func(ctx context.Context, check string, limit int) ([]model.Observation, error)
+
+type snapshotHistory func(context.Context, client.HistoryView, int) ([]model.Observation, error)
+
+func collectorHistory(c *client.Client) snapshotHistory {
+	return func(ctx context.Context, v client.HistoryView, limit int) ([]model.Observation, error) {
+		h, _, err := c.HistoryAt(ctx, v, limit)
+		return h.Entries, err
+	}
+}
 
 // samples are a check's recent samples as last read for its evidence.
 type samples struct {
@@ -132,18 +143,28 @@ type fetchedSamples struct {
 	entries []model.Observation
 	err     error
 	trend   bool // read for a host check's charts, not the selected check's evidence
+	view    client.HistoryView
 }
 
 // sampler reads the samples the evidence needs, one read at a time, and
 // then the history of each host check its charts have not read.
 type sampler struct {
-	read    History
-	busy    bool
-	results chan fetchedSamples
+	read     History
+	readAt   snapshotHistory
+	busy     bool
+	results  chan fetchedSamples
+	server   string
+	revision string
 }
 
 func (s *sampler) request(ctx context.Context, m *Model, refresh bool) {
-	if s.read == nil || s.busy {
+	if s.readAt != nil && (s.server != m.Server || s.revision != m.Snapshot.Revision) {
+		// Cached history has the same attribution boundary as in-flight reads.
+		m.samples, m.trends = samples{}, nil
+		m.absorbed = time.Time{}
+		s.server, s.revision = m.Server, m.Snapshot.Revision
+	}
+	if s.read == nil && s.readAt == nil || s.busy || s.readAt != nil && m.Snapshot.GeneratedAt.IsZero() {
 		return
 	}
 	id, trend := m.wantSamples(refresh), false
@@ -154,11 +175,30 @@ func (s *sampler) request(ctx context.Context, m *Model, refresh bool) {
 		return
 	}
 	s.busy = true
+	v := client.SnapshotHistory(m.Snapshot, m.Server, id)
 	go func() {
-		entries, e := s.read(ctx, id, view.StripSamples)
+		var entries []model.Observation
+		var e error
+		if s.readAt != nil {
+			entries, e = s.readAt(ctx, v, view.StripSamples)
+		} else {
+			entries, e = s.read(ctx, id, view.StripSamples)
+		}
 		select {
-		case s.results <- fetchedSamples{id, entries, e, trend}:
+		case s.results <- fetchedSamples{id, entries, e, trend, v}:
 		case <-ctx.Done():
 		}
 	}()
+}
+
+func (s *sampler) keep(m *Model, got fetchedSamples) {
+	s.busy = false
+	if s.readAt != nil && got.view != client.SnapshotHistory(m.Snapshot, m.Server, got.check) {
+		return
+	}
+	if got.trend {
+		m.KeepTrend(got.check, got.entries, got.err)
+	} else {
+		m.KeepSamples(got.check, got.entries, got.err)
+	}
 }
