@@ -622,8 +622,9 @@ func Aggregate(id string, states []model.CheckState, empty string) model.EntityS
 	return s
 }
 
-// Runtime selection/handshake metadata and a TUN-visible TCP accept are not
-// enough to mark an end-to-end access path healthy.
+// aggregatePath is the state of a path or link from its checks. When every
+// active check is a fresh runtime report, the path is unknown for a reason
+// worth saying: the software answered, and nothing measured the path itself.
 func aggregatePath(id string, states []model.CheckState, empty string) model.EntityState {
 	s := Aggregate(id, pathEvidenceStates(states), empty)
 	active, reported := 0, 0
@@ -642,6 +643,8 @@ func aggregatePath(id string, states []model.CheckState, empty string) model.Ent
 	return s
 }
 
+// Runtime selection/handshake metadata and a TUN-visible TCP accept are not
+// enough to mark an end-to-end access path healthy.
 func pathEvidenceStates(states []model.CheckState) []model.CheckState {
 	out := make([]model.CheckState, len(states))
 	copy(out, states)

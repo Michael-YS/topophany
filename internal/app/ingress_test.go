@@ -16,7 +16,7 @@ import (
 
 // A real failed TLS handshake has to travel from net/http's error log
 // through the collector's counter into the snapshot viewers read. The
-// inger test in internal/api can only attach the counter by hand.
+// ingress test in internal/api can only attach the counter by hand.
 func TestCollectorCountsTLSHandshakeFailures(t *testing.T) {
 	dir, _, _, cr := initialized(t)
 	cert, key, ca := testkit.Certificate(t, "localhost")

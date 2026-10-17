@@ -123,10 +123,7 @@ func (c *IngressCounter) observe(line string) {
 	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
 		return
 	}
-	now := time.Now()
-	if c.now != nil {
-		now = c.now()
-	}
+	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// Pruning is O(sources); do it only when the map is full, so a normal

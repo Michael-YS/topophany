@@ -412,7 +412,7 @@ func validateResolved(c model.Config) error {
 			}
 		case "tailscale":
 			if x.Adapter.TailscaleDiagnostic != "" && x.TimeoutSeconds < 4 {
-				return errors.New("Tailscale diagnostics need at least 4 timeout_seconds")
+				return errors.New("tailscale_diagnostic needs timeout_seconds of at least 4")
 			}
 			if err := tailscale.Validate(x.Adapter.Tailscale()); err != nil {
 				return err
@@ -548,10 +548,7 @@ func Revision(c model.Config) string {
 	return hex.EncodeToString(h[:])
 }
 
-// PublicURL is s as viewers may see it: without user information or a
-// fragment, and with any query replaced by "redacted". An address that is
-// not a URL, such as host:port, loses the same parts: what precedes an @,
-// what follows a ? and what follows a #.
+// PublicURL is s as viewers may see it; see secure.PublicURL.
 func PublicURL(s string) string { return secure.PublicURL(s) }
 
 // Public returns a deep copy; redaction never modifies executor configuration.
