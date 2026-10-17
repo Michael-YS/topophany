@@ -11,6 +11,37 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
+func TestViewerIngressSourcesArePseudonymousByDefault(t *testing.T) {
+	srv, h, b := fixture(t)
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatalf("ingest: %d %s", w.Code, w.Body.String())
+	}
+	ing := NewIngressCounter(time.Minute)
+	ing.now = srv.Now
+	ing.observe("http: TLS handshake error from 100.74.137.62:44484: i/o timeout")
+	ing.observe("http: TLS handshake error from 100.74.137.62:44485: EOF")
+	srv.Ingress = ing
+
+	w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil)
+	if w.Code != 200 {
+		t.Fatalf("snapshot: %d %s", w.Code, w.Body.String())
+	}
+	var snap model.Snapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Ingress == nil || snap.Ingress.Failures != 2 || snap.Ingress.SourceCount != 1 || len(snap.Ingress.Sources) != 1 {
+		t.Fatalf("snapshot did not carry ingress: %+v", snap.Ingress)
+	}
+	got := snap.Ingress.Sources[0]
+	if got.Address == "100.74.137.62" || !strings.HasPrefix(got.Address, "source-") {
+		t.Fatalf("viewer learned the raw source address: %+v", got)
+	}
+	if got.Count != 2 {
+		t.Fatalf("pseudonym lost the count: %+v", got)
+	}
+}
+
 func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	c := NewIngressCounter(time.Minute)
@@ -146,6 +177,7 @@ func TestSnapshotCarriesIngressHandshakeFailures(t *testing.T) {
 	ing.observe("http: TLS handshake error from 100.74.137.62:44484: i/o timeout")
 	ing.observe("http: TLS handshake error from 100.74.137.62:44485: EOF")
 	srv.Ingress = ing
+	srv.ExposeIngressSources = true
 
 	w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil)
 	if w.Code != 200 {

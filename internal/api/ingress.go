@@ -2,6 +2,8 @@ package api
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
 	"slices"
 	"strconv"
@@ -181,6 +183,24 @@ func (c *IngressCounter) prune(now time.Time) {
 			delete(c.sources, host)
 		}
 	}
+}
+
+// pseudonymousIngress replaces each source address with a stable short
+// digest. Viewer snapshots use it unless the collector explicitly exposes
+// addresses: a viewer token is read-only, not a licence to learn every
+// observer's or scanner's address. The counts and last-seen times stay
+// usable, and the same address keeps the same digest across snapshots.
+func pseudonymousIngress(in *model.Ingress) *model.Ingress {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.Sources = slices.Clone(in.Sources)
+	for i := range out.Sources {
+		sum := sha256.Sum256([]byte(out.Sources[i].Address))
+		out.Sources[i].Address = "source-" + hex.EncodeToString(sum[:6])
+	}
+	return &out
 }
 
 // Summary is the window as a snapshot shows it, or nil when nothing failed

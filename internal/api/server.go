@@ -81,16 +81,20 @@ func ValidateAuth(a Auth, c model.Config) error {
 // Server is a collector's API. Config and Auth may be set before it serves;
 // afterwards only Reload changes them.
 type Server struct {
-	Config       model.Config
-	Instance     string
-	Store        *store.Store
-	Ledger       *ledger.Ledger // what snapshots carry of past incidents; nil for none
-	Auth         Auth
-	WebOrigin    string // explicit CORS origin, fixed before serving; empty disables browser access
-	configMu     sync.RWMutex
-	gen          *generation  // what Config and Auth give every request; nil until first asked
-	reloadMu     sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
-	MaxSampleAge time.Duration
+	Config    model.Config
+	Instance  string
+	Store     *store.Store
+	Ledger    *ledger.Ledger // what snapshots carry of past incidents; nil for none
+	Auth      Auth
+	WebOrigin string // explicit CORS origin, fixed before serving; empty disables browser access
+	// ExposeIngressSources puts raw TLS handshake source addresses in viewer
+	// snapshots. Off by default: a viewer token is read-only, not a licence
+	// to learn every observer's or scanner's address.
+	ExposeIngressSources bool
+	configMu             sync.RWMutex
+	gen                  *generation  // what Config and Auth give every request; nil until first asked
+	reloadMu             sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
+	MaxSampleAge         time.Duration
 	// Ingress counts TLS handshake failures the HTTP server's error log
 	// reported; nil when the collector did not wire it.
 	Ingress            *IngressCounter

@@ -106,6 +106,9 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 		// The cached path is what clients read; Observe and MonitorSnapshot
 		// are separate readers of the same collector.
 		snap.Ingress = s.Ingress.Summary(s.snapshotAt)
+		if !s.ExposeIngressSources {
+			snap.Ingress = pseudonymousIngress(snap.Ingress)
+		}
 	}
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)

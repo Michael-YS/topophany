@@ -37,6 +37,7 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	dir := f.String("data", "./collector-data", "exclusive local journal directory")
 	listen := f.String("listen", "127.0.0.1:7447", "collector listen address")
 	webOrigin := f.String("web-origin", "", "exact origin allowed to read viewer APIs in a browser (disabled by default)")
+	exposeIngress := f.Bool("expose-ingress-sources", false, "include raw TLS handshake source addresses in viewer snapshots (privacy-sensitive)")
 	instance := f.String("instance", "collector", "visible collector instance ID")
 	observer := f.String("observer", "", "optional local observer ID; otherwise collect only")
 	workers := f.Int("concurrency", 4, "bounded local probe concurrency (1..32)")
@@ -114,6 +115,7 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	failures := make(chan error, 2)
 	backend := api.New(c, *instance, st, auth)
 	backend.WebOrigin = *webOrigin
+	backend.ExposeIngressSources = *exposeIngress
 	backend.MaxSampleAge = *retention
 	backend.Ledger = book
 	// A failed handshake is where an observer's evidence stops arriving, and

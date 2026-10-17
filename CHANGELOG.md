@@ -57,7 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `failures` is the window total, `source_count` counts the distinct
   addresses the counter tracked, and `truncated` marks the ones it could not.
   The failures say delivery into the collector failed, so the affected checks
-  read stale rather than failed; `topo status` prints the summary.
+  read stale rather than failed; `topo status` prints the summary. Viewer
+  snapshots identify sources by a stable short digest; `--expose-ingress-sources`
+  opts into raw addresses.
 - Mihomo checks can compare rotating provider membership against a fresh,
   independent names-only JSON publication. Fixed expectations remain strict;
   unavailable references are monitor errors and publications changing during

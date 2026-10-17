@@ -240,8 +240,11 @@ log, before any request carried an observer identity. Read it as evidence
 about delivery into the collector, not about a target: a failed handshake
 means that observer's evidence did not arrive, so the checks behind it read
 stale rather than failed, and a source stays an address because an observer
-names itself only after the handshake succeeds. `topo status` prints the same
-summary as `Collector ingress` when the window holds any failure.
+names itself only after the handshake succeeds. Viewer snapshots replace each
+source address with a stable short digest by default; start the collector with
+`--expose-ingress-sources` to include the raw addresses, an explicitly
+privacy-sensitive choice. `topo status` prints the same summary as
+`Collector ingress` when the window holds any failure.
 
 A collector also accepts a schema 1 batch (no `schema`, observations with `revision` and no `contract`) from a worker not yet upgraded, as long as its `revision` is the collector's own; such samples count until the topology changes in any way. Upgrade collectors before workers: a 0.3 collector refuses schema 2 batches, and the worker quarantines them. Snapshots are schema 2 as well. Besides the contracts, a schema 2 snapshot carries `endpoints`, the state of each endpoint from the checks that target it, and for each observer `contracts`: `current` when its executor last reported measuring what the collector counts, `outdated` when it measures an older topology (its samples of changed checks are refused until it reloads), or absent when it has not said. Workers report this in their heartbeats as a digest of their observer's contracts. A snapshot also carries `ledger`, what the collector's incident ledger remembers of the incidents in its view: the records open (`state` `open` or `recovering`), then at most 50 closed in the last day (`state` `closed`, with `closed` and `ended`: `recovered`, `unconfirmed`, `paused` or `changed`), newest first. Each record has the incident's `id`, `scope`, `summary` and failed `checks`, `since` (the earliest failure the ledger saw), `opened` (when the collector first counted it) and `previous`, the earlier records of the same incident it holds. Clients read a record as what the collector concluded, not as evidence. A schema 2 client ignores fields it does not know, so later releases can add some without breaking it; it passes over a collector serving another schema, and says so if no collector serves its own. 0.8 clients therefore read only 0.8 collectors.
 
