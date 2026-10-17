@@ -116,6 +116,13 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	backend.WebOrigin = *webOrigin
 	backend.MaxSampleAge = *retention
 	backend.Ledger = book
+	// A failed handshake is where an observer's evidence stops arriving, and
+	// net/http reports it only to the error log. Count it there so a snapshot
+	// can say delivery is failing instead of leaving checks merely stale.
+	// Attach the counter before any goroutine can read a snapshot: the monitor
+	// fetches one as soon as attachMonitor starts it.
+	ingress := api.NewIngressCounter(api.DefaultIngressWindow)
+	backend.Ingress = ingress
 	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(context.Context) (monitor.Input, error) {
 		return monitor.Input{IO: ioaccount.Read(), Snapshot: backend.MonitorSnapshot(time.Now())}, nil
 	}, *dir, *path, *authPath, *alertsPath, *cert, *key)
@@ -139,11 +146,6 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 		a.watch(ctx, backend, ledger.Settle(c), notifier)
 	}()
 	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
-	// A failed handshake is where an observer's evidence stops arriving, and
-	// net/http reports it only to the error log. Count it there so a snapshot
-	// can say delivery is failing instead of leaving checks merely stale.
-	ingress := api.NewIngressCounter(api.DefaultIngressWindow)
-	backend.Ingress = ingress
 	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ConnContext: api.ConnectionContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384,
 		ErrorLog: log.New(ingress.Writer(func(line string) { fmt.Fprintln(a.Err, line) }), "", log.LstdFlags)}
 	// Local checks, if any, under a topology; reloads replace them.
