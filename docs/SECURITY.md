@@ -42,6 +42,19 @@ All network responses, API requests, historical records, terminal inputs, and ou
 
 ## Storage and Failures
 
+Installer rollback accepts only `.backups/install-*` directories inside the
+original installation. A private per-installation key authenticates the record,
+its exact backup path, service state and saved-file digests. All saved bytes are
+verified before stopping a service or changing targets. POSIX backup directories
+and files must belong to the invoking installer; privileged installation and
+rollback require root-controlled directory chains, including the installation
+directory. A sudo caller's ownership alone is insufficient. Windows verifies
+the installation's restricted ACLs and ownership before reading a backup.
+Keep `.backups/rollback.key` private and retain it with its installation; copied,
+moved, modified and unsigned legacy backups are refused. For legacy recovery,
+review and generate an installation bundle rather than importing a rollback
+record as a privileged service definition.
+
 Log checksums detect accidental corruption; they are not keyed cryptographic signatures and do not prevent a local attacker from recalculating checksums. Power-loss guarantees for fsync and atomic renames depend on the operating system and the underlying local filesystem; single-process crash recovery tests do not equate to power-loss simulations across all disks, RAID controllers, or virtualization platforms. Directory fsync and ACL semantics on Windows differ from POSIX platforms, and identical Linux power-loss guarantees are not claimed on Windows.
 
 Do not share database or log directories across NFS or SMB network filesystems. The system does not implement automated multi-master cluster management. Stale results, clock skew, and missing sources must be preserved as-is rather than having timestamps rewritten to make dashboards look clean. Log files, quarantine stores, and history buffers may contain internal addresses and service names, and must be protected with the same care as topology files.

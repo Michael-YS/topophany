@@ -43,7 +43,7 @@ func validateRollback(r installation) error {
 		return errors.New("incomplete rollback record")
 	}
 	for i, f := range r.Files {
-		if !targets[f.Target] || f.Saved != "" && f.Saved != strconv.Itoa(i) || f.Mode > 0777 {
+		if !targets[f.Target] || f.Saved != "" && (f.Saved != strconv.Itoa(i) || len(f.SHA256) != 64) || f.Saved == "" && f.SHA256 != "" || f.Mode > 0777 {
 			return errors.New("invalid rollback file")
 		}
 		delete(targets, f.Target)

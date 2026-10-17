@@ -23,6 +23,7 @@ type savedFile struct {
 	Mode   uint32 `json:"mode,omitempty"`
 	UID    int    `json:"uid"`
 	GID    int    `json:"gid"`
+	SHA256 string `json:"sha256,omitempty"`
 }
 type installation struct {
 	TaskXML string `json:"task_xml,omitempty"`
@@ -31,6 +32,7 @@ type installation struct {
 	Files      []savedFile `json:"files"`
 	WasActive  bool        `json:"was_active"`
 	WasEnabled bool        `json:"was_enabled"`
+	Signature  string      `json:"signature,omitempty"`
 }
 
 // verified is what a bundle held when it was checked: each payload file's
@@ -211,6 +213,9 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 			return m, "", e
 		}
 	}
+	if e = trustedRollbackPath(ctx, m.InstallDir, false); e != nil {
+		return m, "", e
+	}
 	unlockInstall, err := secure.Lock(filepath.Join(m.InstallDir, "install.lock"))
 	if err != nil {
 		return m, "", err
@@ -218,6 +223,10 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 	defer unlockInstall()
 	backups := filepath.Join(m.InstallDir, ".backups")
 	if e = secure.MkdirAll(backups, 0700); e != nil {
+		return m, "", e
+	}
+	key, e := rollbackKey(ctx, m.InstallDir, true)
+	if e != nil {
 		return m, "", e
 	}
 	backup, e := os.MkdirTemp(backups, "install-")
@@ -252,6 +261,7 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 			old.Saved = strconv.Itoa(i)
 			old.Mode = uint32(info.Mode().Perm())
 			old.UID, old.GID = fileOwner(info)
+			old.SHA256 = secure.Hash(string(b))
 			if err = secure.AtomicWrite(filepath.Join(backup, old.Saved), b, 0600); err != nil {
 				return m, backup, err
 			}
@@ -259,6 +269,10 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 			return m, backup, err
 		}
 		record.Files = append(record.Files, old)
+	}
+	record.Signature, e = signRollback(record, backup, key)
+	if e != nil {
+		return m, backup, e
 	}
 	raw, _ := json.Marshal(record)
 	if e = secure.AtomicWrite(filepath.Join(backup, "rollback.json"), raw, 0600); e != nil {
@@ -349,15 +363,8 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 }
 func Rollback(ctx context.Context, dir string) error { return rollback(ctx, dir, false) }
 func rollback(ctx context.Context, dir string, alreadyLocked bool) error {
-	var r installation
-	b, e := secure.PrivateRead(filepath.Join(dir, "rollback.json"))
+	r, payloads, e := loadRollback(ctx, dir)
 	if e != nil {
-		return e
-	}
-	if e = secure.Decode(bytes.NewReader(b), &r, 1<<20); e != nil {
-		return e
-	}
-	if e = validateRollback(r); e != nil {
 		return e
 	}
 	if !alreadyLocked {
@@ -376,18 +383,6 @@ func rollback(ctx context.Context, dir string, alreadyLocked bool) error {
 	if e = stopService(ctx, r.Manifest); e != nil {
 		return e
 	}
-	allowed := map[string]bool{}
-	for _, file := range r.Manifest.Files {
-		allowed[targetPath(r.Manifest.InstallDir, file.Name)] = true
-	}
-	if r.Manifest.ServiceFile != "" {
-		allowed[r.Manifest.ServiceFile] = true
-	}
-	for i, f := range r.Files {
-		if !allowed[f.Target] || f.Saved != "" && f.Saved != strconv.Itoa(i) || f.Mode > 0777 {
-			return errors.New("invalid rollback file record")
-		}
-	}
 	for _, f := range r.Files {
 		if f.Saved == "" {
 			if e = os.Remove(f.Target); e != nil && !os.IsNotExist(e) {
@@ -395,11 +390,7 @@ func rollback(ctx context.Context, dir string, alreadyLocked bool) error {
 			}
 			continue
 		}
-		b, e = secure.PrivateRead(filepath.Join(dir, f.Saved))
-		if e != nil {
-			return e
-		}
-		if e = secure.AtomicWrite(f.Target, b, os.FileMode(f.Mode)); e != nil {
+		if e = secure.AtomicWrite(f.Target, payloads[f.Saved], os.FileMode(f.Mode)); e != nil {
 			return e
 		}
 		if f.UID >= 0 && runtime.GOOS != "windows" {

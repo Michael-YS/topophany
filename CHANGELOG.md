@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Manual rollback requires an installer-created private backup under the same
+  installation, with trusted ownership and authenticated metadata and payload
+  hashes. Unsigned legacy backups are refused before service or file changes.
+- Rollback restores authenticated executable backups larger than 1 MiB within
+  the installer's existing 64 MiB per-file limit.
 - Windows bundle and installation directories replace and verify their entire
   DACL, including existing children, before writing sensitive payloads. Unrelated
   explicit grants, untrusted owners and reparse points are refused or removed.

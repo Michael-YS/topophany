@@ -96,6 +96,14 @@ Use `--platform`, `--binary`, `--install-dir`, `--data-dir` and `--user` to gene
 
 Installations save replaced files privately under `INSTALL_DIR/.backups`, restore them when installation/startup fails, and print the backup path. `topo install --rollback BACKUP` restores files and the prior service state, including a prior current-user interactive Windows task. It never copies or rewrites collector journals. Workers with pending outbox files are refused until their queue is drained or archived. Existing installations from another project and data directories with an active writer are refused. A fresh bundle alone does not migrate history: follow the stopped-writer backup procedure above. Review and retain signing material, backups and enrollment directories privately.
 
+Use the original printed `.backups/install-*` path and keep the private
+`.backups/rollback.key` with its installation. Rollback verifies the record and
+all saved-file hashes before stopping a service. Moved, modified and unsigned
+legacy backups are refused; recover legacy installations through a reviewed new
+bundle. On POSIX, use root-owned installation and parent directories for
+privileged installs and rollback; a directory owned by the sudo caller is not a
+trusted root backup location.
+
 ## Monitor panels and managed logs
 
 See [persistent monitor panels](REFERENCE.md#persistent-monitor-panels) for the
