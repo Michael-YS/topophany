@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The TUI and the browser viewer built from it count collector ingress failures
+  in the status row, and the Overview keeps that row while delivery is failing,
+  beside the CLI's `Collector ingress` line.
 - A collector snapshot now carries `ingress`: TLS handshake failures by source
   over a rolling 30-minute window, counted from the HTTP server's own error
   log. They say delivery into the collector failed, so the affected checks read

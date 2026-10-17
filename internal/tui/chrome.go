@@ -354,6 +354,19 @@ func (m *Model) statusBar(cv *Canvas, x0, y, w int) {
 	count('▲', cWarn, warn, "warning")
 	count('✖', cDown, down, "down")
 	count('○', cUnknown, unk, "unknown")
+	// Handshake failures are about delivery into the collector, not about any
+	// target, so they sit beside the counts rather than among them.
+	if x < end-24 && m.Snapshot.Ingress != nil && m.Snapshot.Ingress.Failures > 0 {
+		x += cv.Text(x, y, "│   ", fg(cLine), -1)
+		cv.Set(x, y, '⚠', fg(cWarn))
+		x += 2
+		x += cv.Text(x, y, itoa(m.Snapshot.Ingress.Failures), fg(cWarn).bold(), -1)
+		label := " ingress"
+		if x+width(label) > end-1 {
+			label = ""
+		}
+		x += cv.Text(x, y, label, fg(cMuted), end-x-1)
+	}
 	if x < end-16 {
 		x += cv.Text(x, y, "│   ", fg(cLine), -1)
 		count('⚑', cDown, len(m.Snapshot.Incidents), map[bool]string{true: "incident", false: "incidents"}[len(m.Snapshot.Incidents) == 1])

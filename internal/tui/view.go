@@ -86,10 +86,11 @@ func (m *Model) draw() *Canvas {
 		return cv
 	}
 	m.splashAt = time.Time{}
-	if m.Tab == tabOverview && !m.hasNews() && !m.FullMap {
+	if m.Tab == tabOverview && !m.hasNews() && !m.FullMap && m.Snapshot.Ingress == nil {
 		// The Overview's status card says everything the status row would;
 		// there the row is kept only for notices and errors, and while the
-		// map alone has the card's place.
+		// map alone has the card's place. The card has no room to say that
+		// evidence is not arriving either, so the row returns for that.
 		top = 2
 	} else {
 		m.statusBar(cv, 0, 2, w)
