@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -138,7 +139,13 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 		a.watch(ctx, backend, ledger.Settle(c), notifier)
 	}()
 	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
-	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ConnContext: api.ConnectionContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	// A failed handshake is where an observer's evidence stops arriving, and
+	// net/http reports it only to the error log. Count it there so a snapshot
+	// can say delivery is failing instead of leaving checks merely stale.
+	ingress := api.NewIngressCounter(api.DefaultIngressWindow)
+	backend.Ingress = ingress
+	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ConnContext: api.ConnectionContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384,
+		ErrorLog: log.New(ingress.Writer(func(line string) { fmt.Fprintln(a.Err, line) }), "", log.LstdFlags)}
 	// Local checks, if any, under a topology; reloads replace them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
 		if *observer == "" {

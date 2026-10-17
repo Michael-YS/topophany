@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A collector snapshot now carries `ingress`: TLS handshake failures by source
+  over a rolling 30-minute window, counted from the HTTP server's own error
+  log. They say delivery into the collector failed, so the affected checks read
+  stale rather than failed; `topo status` prints the summary.
 - Mihomo checks can compare rotating provider membership against a fresh,
   independent names-only JSON publication. Fixed expectations remain strict;
   unavailable references are monitor errors and publications changing during

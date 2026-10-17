@@ -80,10 +80,11 @@ type statusJSON struct {
 		Total int        `json:"total"`
 		Rows  []view.Row `json:"rows"`
 	} `json:"observers"`
-	Tabs      []tabBadge `json:"tabs"`
-	Attention []view.Row `json:"attention"`
-	Quiet     *quietJSON `json:"quiet,omitempty"`
-	Services  []view.Row `json:"services"`
+	Ingress   *model.Ingress `json:"ingress,omitempty"`
+	Tabs      []tabBadge     `json:"tabs"`
+	Attention []view.Row     `json:"attention"`
+	Quiet     *quietJSON     `json:"quiet,omitempty"`
+	Services  []view.Row     `json:"services"`
 }
 
 type quietJSON struct {
@@ -97,7 +98,7 @@ func (a *App) status(v view.View, h header, asJSON bool) error {
 	services := v.List(view.Services, "")
 	sort.SliceStable(services, func(i, j int) bool { return view.ServiceRank(services[i]) < view.ServiceRank(services[j]) })
 	word, code := standing(v, attention)
-	s := statusJSON{header: h, Verdict: v.Verdict(), Status: word, Checks: v.Counts(), Incidents: len(v.Snapshot.Incidents), Attention: attention, Services: services}
+	s := statusJSON{header: h, Verdict: v.Verdict(), Status: word, Checks: v.Counts(), Incidents: len(v.Snapshot.Incidents), Attention: attention, Services: services, Ingress: v.Snapshot.Ingress}
 	s.Observers.Live, s.Observers.Total = v.Live()
 	s.Observers.Rows = v.List(view.Observers, "")
 	for i := range view.Tabs {
@@ -123,6 +124,9 @@ func (a *App) status(v view.View, h header, asJSON bool) error {
 	t.kv("Checks", fmt.Sprintf("%d up, %d warning, %d down, %d unknown", s.Checks.Up, s.Checks.Warn, s.Checks.Down, s.Checks.Unknown))
 	t.kv("Incidents", strconv.Itoa(s.Incidents))
 	t.kv("Observers", fmt.Sprintf("%d/%d live", s.Observers.Live, s.Observers.Total))
+	if in := s.Ingress; in != nil {
+		t.kv("Collector ingress", fmt.Sprintf("%d TLS handshake failures in %s from %d sources, last %s", in.Failures, view.Duration(time.Duration(in.WindowSeconds)*time.Second), len(in.Sources), view.Age(v.Now, in.Last)))
+	}
 	look := []string{}
 	for i, b := range s.Tabs {
 		if b.Count > 0 {

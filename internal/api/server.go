@@ -81,16 +81,19 @@ func ValidateAuth(a Auth, c model.Config) error {
 // Server is a collector's API. Config and Auth may be set before it serves;
 // afterwards only Reload changes them.
 type Server struct {
-	Config             model.Config
-	Instance           string
-	Store              *store.Store
-	Ledger             *ledger.Ledger // what snapshots carry of past incidents; nil for none
-	Auth               Auth
-	WebOrigin          string // explicit CORS origin, fixed before serving; empty disables browser access
-	configMu           sync.RWMutex
-	gen                *generation  // what Config and Auth give every request; nil until first asked
-	reloadMu           sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
-	MaxSampleAge       time.Duration
+	Config       model.Config
+	Instance     string
+	Store        *store.Store
+	Ledger       *ledger.Ledger // what snapshots carry of past incidents; nil for none
+	Auth         Auth
+	WebOrigin    string // explicit CORS origin, fixed before serving; empty disables browser access
+	configMu     sync.RWMutex
+	gen          *generation  // what Config and Auth give every request; nil until first asked
+	reloadMu     sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
+	MaxSampleAge time.Duration
+	// Ingress counts TLS handshake failures the HTTP server's error log
+	// reported; nil when the collector did not wire it.
+	Ingress            *IngressCounter
 	Now                func() time.Time
 	mu                 sync.Mutex
 	limits             map[string]limit
@@ -219,6 +222,9 @@ func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.
 	g := s.generation()
 	rows, carries, beats := s.Store.StateView()
 	snap := g.engine.Build(s.Instance, "", rows, carries, beats, now)
+	if s.Ingress != nil {
+		snap.Ingress = s.Ingress.Summary(now)
+	}
 	if s.Ledger == nil {
 		return snap, nil, nil
 	}
@@ -233,7 +239,11 @@ func (s *Server) MonitorSnapshot(now time.Time) model.Snapshot {
 	defer s.reloadMu.RUnlock()
 	g := s.generation()
 	rows, carries, beats := s.Store.StateView()
-	return g.engine.Build(s.Instance, "", rows, carries, beats, now)
+	snap := g.engine.Build(s.Instance, "", rows, carries, beats, now)
+	if s.Ingress != nil {
+		snap.Ingress = s.Ingress.Summary(now)
+	}
+	return snap
 }
 
 func (s *Server) Handler() http.Handler {

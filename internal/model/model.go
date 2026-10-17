@@ -349,6 +349,7 @@ type ObserverState struct {
 }
 type Snapshot struct {
 	Storage *StorageUsage `json:"storage,omitempty"`
+	Ingress *Ingress      `json:"ingress,omitempty"`
 
 	DetailsOmitted bool            `json:"details_omitted,omitempty"`
 	Schema         int             `json:"schema"`
