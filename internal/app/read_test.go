@@ -448,6 +448,27 @@ func TestStatusAllClearExitsZero(t *testing.T) {
 // from its rollups: an outage of half an hour adds half an hour down to
 // the last day, and a worker gone quiet leaves its checks unmeasured
 // rather than up.
+func TestStatusPrintsCollectorIngress(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	var out bytes.Buffer
+	a := &App{Out: &out, Err: &bytes.Buffer{}, Now: func() time.Time { return now }}
+	v := view.View{Snapshot: model.Snapshot{GeneratedAt: now, Ingress: &model.Ingress{
+		WindowSeconds: 1800,
+		Failures:      1,
+		SourceCount:   1,
+		Last:          now,
+		Sources:       []model.IngressSource{{Address: "source-abc", Count: 1, Last: now}},
+	}}, Now: now}
+	var exit *ExitError
+	if err := a.status(v, header{Project: "lab", Instance: "collector", Server: "test"}, false); err != nil && !errors.As(err, &exit) {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "Collector ingress: 1 TLS handshake failure in 30m from 1 source") {
+		t.Fatalf("status did not print the ingress summary: %q", text)
+	}
+}
+
 func TestHowChecksFaredFromRollups(t *testing.T) {
 	c, e := preview.Preset(preview.DefaultLanguage)
 	if e != nil {

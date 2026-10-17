@@ -65,7 +65,9 @@ Wrangler custom builds. Local Wrangler runs the same build from its configuratio
 The build image's Go toolchain follows the version in the repository's `go.mod`
 through Go's automatic toolchain selection. After Go source or toolchain changes, run
 `make site`; `python3 scripts/build_demo.py --check` checks that
-the generated runtime and binary match their inputs. The demo has no terminal
+the generated runtime and binary match their inputs, and `make site-check`
+rebuilds the pages and tours and refuses a stale tree. CI runs it in the
+acceptance job. The demo has no terminal
 server or real probes; hidden tabs pause its simulated clock. Its CSP permits
 WebAssembly compilation with `wasm-unsafe-eval`, without permitting JS eval.
 The demo page contains only the interactive terminal and a link home. Above

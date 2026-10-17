@@ -277,6 +277,29 @@ func recordTourOnce(t *testing.T, lang string) tour {
 	return r.out
 }
 
+// The tours are generated from the TUI and committed. Rebuilding one has to
+// match the committed bytes, or the site says something the code no longer
+// draws; site-check also guards the pages and wasm names for a full build.
+func TestCommittedToursAreCurrent(t *testing.T) {
+	dir := filepath.Join("..", "..", "site", "public", "data")
+	if _, e := os.Stat(dir); e != nil {
+		t.Skip("the site is not part of this checkout")
+	}
+	for _, lang := range preview.Languages() {
+		want, e := os.ReadFile(filepath.Join(dir, "tour."+lang+".json"))
+		if e != nil {
+			t.Fatalf("read %s tour: %v; run make site", lang, e)
+		}
+		got, e := json.Marshal(recordTour(t, lang))
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("%s tour is stale; run make site", lang)
+		}
+	}
+}
+
 func TestTourIsReproducible(t *testing.T) {
 	lang := preview.DefaultLanguage
 	first, second := recordTourOnce(t, lang), recordTourOnce(t, lang)

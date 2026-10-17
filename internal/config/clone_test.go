@@ -23,7 +23,8 @@ func TestConfigCloneDetachesEveryMutableField(t *testing.T) {
 	x.HTTP.RequestHeaders = map[string]string{"X-Key": "private"}
 	x.HTTP.ExpectedExit = []string{"192.0.2.1"}
 	x.DNS.ExpectedIPs = []string{"192.0.2.2"}
-	x.Adapter.ProviderReference = &model.MihomoProviderReference{URL: "https://publisher.invalid/members.json", Providers: []string{"dynamic"}, MaxAgeSeconds: 3600}
+	settle := 120
+	x.Adapter.ProviderReference = &model.MihomoProviderReference{URL: "https://publisher.invalid/members.json", Providers: []string{"dynamic"}, MaxAgeSeconds: 3600, SettleSeconds: &settle}
 	tun := true
 	x.Adapter.ExpectedTUN = &tun
 	x.Adapter.ProviderMatchModes = map[string]string{"provider": "ordered"}

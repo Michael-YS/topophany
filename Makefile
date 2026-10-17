@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt fmt-check lint cover verify banner site captures device-shots icon clean
+.PHONY: build test race vet fmt fmt-check lint cover verify banner site site-check captures device-shots icon clean
 build:
 	mkdir -p bin
 	go build -trimpath $(if $(TAGS),-tags $(TAGS)) -o bin/topo ./cmd/topo

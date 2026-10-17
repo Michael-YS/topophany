@@ -99,6 +99,65 @@ func TestConfirmedFailureOutlivesTheSamplesThatConfirmedIt(t *testing.T) {
 	}
 }
 
+// A policy violation that has stood for the threshold stays confirmed when
+// the samples that confirmed it are trimmed, through a restart, and then
+// closes when a passing sample arrives.
+func TestPolicyConfirmationOutlivesTrimAndCloses(t *testing.T) {
+	c := testkit.Config()
+	x := c.Checks[0]
+	x.FailureThreshold = 3
+	c.Checks[0] = x
+	dir := t.TempDir()
+	s := openTest(t, dir, Options{MaxHistory: 10})
+	now := time.Now().UTC()
+	var at time.Time
+	for i := 0; i < 50; i++ {
+		at = now.Add(time.Duration(i) * 10 * time.Second)
+		v := testkit.Observation(c, x.ID, uint64(i+1), at, "policy")
+		if e := s.Put(batch(c, v)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	at = at.Add(time.Second)
+	snapshot := func(now time.Time) model.Snapshot {
+		rows, carries, beats := s.StateView()
+		return engine.BuildCarried(c, "a", "", rows, carries, beats, now)
+	}
+	state := func(snap model.Snapshot) model.CheckState {
+		for _, st := range snap.Checks {
+			if st.ID == x.ID {
+				return st
+			}
+		}
+		t.Fatal("missing state", x.ID)
+		return model.CheckState{}
+	}
+	snap := snapshot(at)
+	if st := state(snap); !st.PolicyConfirmed || st.Freshness != "fresh" {
+		t.Fatalf("trimming the samples lost policy confirmation: %+v", st)
+	}
+	if len(snap.Incidents) != 1 || snap.Incidents[0].Scope != "home/path/direct/policy" {
+		t.Fatalf("trimmed policy history opened no incident: %+v", snap.Incidents)
+	}
+	s.Close()
+	s = openTest(t, dir, Options{MaxHistory: 10})
+	defer s.Close()
+	if st := state(snapshot(at)); !st.PolicyConfirmed {
+		t.Fatalf("a restart lost policy confirmation: %+v", st)
+	}
+	ok := testkit.Observation(c, x.ID, 51, at.Add(10*time.Second), "ok")
+	if e := s.Put(batch(c, ok)); e != nil {
+		t.Fatal(e)
+	}
+	snap = snapshot(at.Add(11 * time.Second))
+	if st := state(snap); st.PolicyConfirmed {
+		t.Fatalf("a passing sample kept the policy confirmed: %+v", st)
+	}
+	if len(snap.Incidents) != 0 {
+		t.Fatalf("the policy incident did not close: %+v", snap.Incidents)
+	}
+}
+
 // What samples left behind belongs to their check under one contract: a
 // check that now measures something else starts afresh.
 func TestCarriesFollowTheContract(t *testing.T) {
