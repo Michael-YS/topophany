@@ -33,6 +33,15 @@ class ReleaseBoundaryTests(unittest.TestCase):
         for forbidden in ("actions/checkout", "go test", "go build", "scripts/", "tar -", "unzip"):
             self.assertNotIn(forbidden, publish)
 
+    def test_release_binaries_carry_the_tag_version(self):
+        # The build checks out one commit without tags, where the toolchain
+        # can stamp only a pseudo-version; the binary must say the release.
+        build = (ROOT / ".github/workflows/release.yml").read_text().split("\n  publish:\n")[0]
+        builds = [line for line in build.splitlines() if "go build" in line]
+        self.assertEqual(len(builds), 1)
+        self.assertIn("-X github.com/WhitenWhiten/topophany/internal/model.Version=${VERSION#v}", builds[0])
+        self.assertIn('[ "$("$stage/$bin" version)" = "Topophany ${VERSION#v}" ]', build)
+
 class ReleaseTagBindingTests(unittest.TestCase):
     def test_publish_resolves_lightweight_and_nested_annotated_tags(self):
         import os

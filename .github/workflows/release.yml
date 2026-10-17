@@ -50,7 +50,12 @@ jobs:
             stage="$RUNNER_TEMP/$name"
             mkdir -p "$stage"
             bin=topo; [ "$os" = windows ] && bin=topo.exe
-            GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags='-s -w' -o "$stage/$bin" ./cmd/topo
+            # The checkout is one commit without tags, so the toolchain can
+            # stamp only a pseudo-version; the tag names the release.
+            GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags="-s -w -X github.com/WhitenWhiten/topophany/internal/model.Version=${VERSION#v}" -o "$stage/$bin" ./cmd/topo
+            if [ "$os/$arch" = linux/amd64 ]; then
+              [ "$("$stage/$bin" version)" = "Topophany ${VERSION#v}" ]
+            fi
             python3 scripts/release_metadata.py --revision "$SOURCE_SHA" --destination "$stage"
             if [ "$os" = windows ]; then
               (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/dist/$name.zip" "$name")

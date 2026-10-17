@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `-ldflags -X`, the module version the Go toolchain stamped for a tagged
   build, `dev-<short revision>[-dirty]` for a checkout or a pseudo-version, or
   `devel` when there is no version information at all. It no longer claims to
-  be the last release, and `-X` is no longer silently overwritten.
+  be the last release, and `-X` is no longer silently overwritten. Release
+  archives inject their tag, and the release build refuses a binary that
+  reports anything else: its checkout has no tags, so the toolchain alone
+  would stamp `0.0.0-<time>-<revision>`, which now also reads as
+  `dev-<short revision>`.
 - A Tailscale diagnostic that times out inside the CLI now reports `unknown`
   with `diagnostic_response: timed_out` instead of a monitor-side error. Only
   the CLI's exact `ping "<ip>" timed out` text for the fixed target counts;

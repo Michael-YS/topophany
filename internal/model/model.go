@@ -35,9 +35,11 @@ const (
 var Version string
 
 // pseudoVersion is what the toolchain stamps for a build that is not at a
-// tag; it is truthful but too long for a banner, so its revision says it
-// better.
-var pseudoVersion = regexp.MustCompile(`^\d+\.\d+\.\d+-0\.\d{14}-([0-9a-f]{12})$`)
+// tag, in each of its three forms: after a release (1.2.4-0.<time>-<rev>),
+// after a pre-release (1.2.4-rc.1.0.<time>-<rev>) and with no tag in reach,
+// as in a shallow checkout (0.0.0-<time>-<rev>). It is truthful but too long
+// for a banner, so its revision says it better.
+var pseudoVersion = regexp.MustCompile(`^\d+\.(?:0\.0-|\d+\.\d+-(?:[^+]*\.)?0\.)\d{14}-([0-9a-f]{12})$`)
 
 func init() {
 	// -X sets the initial string before init runs. Only compute a version
