@@ -88,6 +88,43 @@ func TestHeartbeatDurabilityBudgetSurvivesRestart(t *testing.T) {
 	}
 }
 
+// The cadence is measured on the collector's wall clock. When that clock
+// steps back, the observer has not sped up: refusing its heartbeats until
+// the clock caught up would read as the observer falling silent for as long
+// as the step.
+func TestHeartbeatCadenceSurvivesCollectorClockStepBack(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	s := openTest(t, t.TempDir(), Options{Observers: []string{"home"}, Now: func() time.Time { return now }})
+	// The worker's own clock keeps going; only the collector's steps.
+	sent := now
+	beat := func() error {
+		sent = sent.Add(2 * time.Second)
+		b := batch(c)
+		b.Heartbeat = &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: sent}
+		return s.Put(b)
+	}
+	if err := beat(); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(-time.Hour)
+	if err := beat(); err != nil {
+		t.Fatal("a collector clock stepped back refused the observer's heartbeat", err)
+	}
+	if _, beats := s.View(); !beats["home"].ReceivedAt.Equal(now) {
+		t.Fatal("the admitted heartbeat did not take the collector's new time", beats["home"])
+	}
+	// The cadence restarts from the new time.
+	now = now.Add(heartbeatWriteInterval / 2)
+	if err := beat(); !errors.Is(err, ErrHeartbeatRate) {
+		t.Fatal("heartbeat admitted inside the restarted cadence", err)
+	}
+	now = now.Add(heartbeatWriteInterval)
+	if err := beat(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestObserverQuotasSurviveRestartAndReserveHeartbeats(t *testing.T) {
 	for _, quota := range []string{"receipts", "bytes"} {
 		t.Run(quota, func(t *testing.T) {

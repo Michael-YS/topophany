@@ -224,7 +224,9 @@ inside that interval receives `429 observer_heartbeat_rate` with
 remain idempotent. Heartbeats attached to new observations share their durable
 write; duplicate observations do not bypass the heartbeat limit. The latest
 heartbeat's collector-owned `ReceivedAt` sets the interval; sender timestamps,
-boots and topology revisions cannot reset it. Observation quotas still reserve
+boots and topology revisions cannot reset it. A collector clock stepped back
+restarts the interval at the new time instead of refusing heartbeats until the
+clock catches up. Observation quotas still reserve
 one liveness slot per observer.
 
 Batches are schema 2 (`"schema": 2`). The batch's `revision` is the SHA-256 of the sender's normalized topology and only describes the sender; the acknowledgement echoes it. Each observation carries the `contract` of its check, which must equal the collector's contract for that check, or the batch is refused with `409 contract_mismatch`. A check's contract is the SHA-256 of what it measures: project, check ID, observer, kind, target (the endpoint's address when `target` is empty), timeout, `bind_ip`, `resolve_ip`, `server_name`, `ca_file`, the `http`, `dns` and `adapter` options (except `provider_reference.settle_seconds`, which only defers confirmation), and the proxies of its path in wire order. Nothing else enters it: names, notes, locations, intervals, staleness and confirmation thresholds, `disabled` and `maintenance`, what the check is attributed to (endpoint, service, path, link) and every other check can change without disturbing its samples, its history or the ID of an incident it is part of. `topo validate` prints every contract. Viewers see public contracts, computed over the redacted topology like the public revision, so they permit no guess at hidden fields.

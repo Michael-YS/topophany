@@ -597,7 +597,10 @@ func (s *Store) Put(b model.Batch) error {
 		return nil
 	}
 	if len(kept) == 0 && b.Heartbeat != nil {
-		if old, ok := s.beats[b.Heartbeat.Observer]; ok && now.Sub(old.ReceivedAt) < heartbeatWriteInterval {
+		// A collector clock stepped back is not a heartbeat arriving early:
+		// refusing until it caught up would read as the observer falling
+		// silent. The admitted heartbeat restarts the cadence at the new time.
+		if old, ok := s.beats[b.Heartbeat.Observer]; ok && !now.Before(old.ReceivedAt) && now.Sub(old.ReceivedAt) < heartbeatWriteInterval {
 			return ErrHeartbeatRate
 		}
 	}
