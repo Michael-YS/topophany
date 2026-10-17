@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-16
+
 ### Security
 
 - Managed logs reject existing POSIX log files and backups with group or
@@ -23,6 +25,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Persistent monitor panels through `topo monitor`: typed metric catalogs,
+  imported templates, transactional configuration, previews and exports,
+  authenticated client panels, and panels attached to collectors or workers.
+  Panels publish bounded JSON snapshots under an exclusive writer lock,
+  expire stale evidence and expose lifecycle state after shutdown or a crash.
+  Includes desktop, worker and compact RunCat example templates.
+- Managed service logs with bounded rotation and retention, repeated-error
+  summaries and recovery messages. Delivery failures retain actionable
+  contract-mismatch diagnostics without logging arbitrary upstream text.
+- Process-local I/O counters for journal, checkpoint, queue and sync work,
+  available to monitor panels without changing durable-write guarantees.
+- A browser WebAssembly preview at `/demo/` and an authenticated collector
+  viewer at `/app/`, in English, Chinese and Japanese. The collector's
+  `--web-origin` enables an exact-origin, read-only CORS policy; viewer
+  credentials stay in the tab's worker session. Requests and input queues
+  have deadlines and budgets, and quitting cancels pending reads.
 - `--device` on `topo` and `topo preview` lays the TUI out for the screen
   of a 6.5-inch iPhone, of iPhone Duo shut, open, part folded like a
   book, upright and part folded like a laptop, or of a 13-inch iPad, and
@@ -1014,7 +1032,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/WhitenWhiten/topophany/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/WhitenWhiten/topophany/compare/v0.9.1...v1.0.0
 [0.9.1]: https://github.com/WhitenWhiten/topophany/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/WhitenWhiten/topophany/compare/v0.8.3...v0.9.0

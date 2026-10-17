@@ -58,6 +58,9 @@ jobs:
               tar -C "$RUNNER_TEMP" -czf "dist/$name.tar.gz" "$name"
             fi
           done
+          git show "$SOURCE_SHA:CHANGELOG.md" > dist/CHANGELOG.md
+          git show "$SOURCE_SHA:docs/releases/$VERSION.md" > dist/RELEASE_NOTES.md
+          printf '\nSource commit: %s\n' "$SOURCE_SHA" >> dist/RELEASE_NOTES.md
           (cd dist && sha256sum * > SHA256SUMS.txt)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: artifact
@@ -98,4 +101,4 @@ jobs:
           done
           read -r kind sha <<< "$object"
           [[ "$kind" == commit && "$sha" == "$SOURCE_SHA" ]] || { echo 'Release tag differs from built source' >&2; exit 1; }
-          gh release create "$VERSION" ./*.tar.gz ./*.zip ./SHA256SUMS.txt --title "$VERSION" --generate-notes --verify-tag --target "$SOURCE_SHA" --notes "Source commit: $SOURCE_SHA"
+          gh release create "$VERSION" ./*.tar.gz ./*.zip ./SHA256SUMS.txt ./CHANGELOG.md ./RELEASE_NOTES.md --title "Topophany $VERSION" --verify-tag --target "$SOURCE_SHA" --notes-file ./RELEASE_NOTES.md

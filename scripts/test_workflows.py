@@ -26,6 +26,10 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertIn("contents: write", publish)
         self.assertIn("artifact-ids: ${{ needs.build.outputs.artifact-id }}", publish)
         self.assertIn("sha256sum --check --strict", publish)
+        self.assertIn('git show "$SOURCE_SHA:CHANGELOG.md" > dist/CHANGELOG.md', build)
+        self.assertIn('git show "$SOURCE_SHA:docs/releases/$VERSION.md" > dist/RELEASE_NOTES.md', build)
+        self.assertIn("--notes-file ./RELEASE_NOTES.md", publish)
+        self.assertIn("./CHANGELOG.md ./RELEASE_NOTES.md", publish)
         for forbidden in ("actions/checkout", "go test", "go build", "scripts/", "tar -", "unzip"):
             self.assertNotIn(forbidden, publish)
 
@@ -44,13 +48,16 @@ class ReleaseTagBindingTests(unittest.TestCase):
                 (root / "dist").mkdir()
                 for name in ("fixture.tar.gz", "fixture.zip"):
                     (root / "dist" / name).write_bytes(b"inert archive")
-                checksums = subprocess.check_output(["sha256sum", "fixture.tar.gz", "fixture.zip"], cwd=root / "dist")
+                (root / "dist/CHANGELOG.md").write_text("fixture changelog\n")
+                (root / "dist/RELEASE_NOTES.md").write_text("fixture notes\n\nSource commit: expected\n")
+                checksums = subprocess.check_output(["sha256sum", "fixture.tar.gz", "fixture.zip", "CHANGELOG.md", "RELEASE_NOTES.md"], cwd=root / "dist")
                 (root / "dist/SHA256SUMS.txt").write_bytes(checksums)
                 gh = root / "gh"
                 gh.write_text('''#!/bin/bash
 set -eu
 if [ "$1" = release ]; then
   printf '%s\\n' "$@" > "$PUBLISHED"
+  cat RELEASE_NOTES.md > "$PUBLISHED_NOTES"
   exit 0
 fi
 case "$MODE:$2" in
@@ -65,13 +72,14 @@ esac
                 gh.chmod(0o755)
                 env = dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"], MODE=mode,
                            SOURCE_SHA="expected", VERSION="v1.2.3", GH_REPO="test/repo",
-                           PUBLISHED=str(root / "published"))
+                           PUBLISHED=str(root / "published"), PUBLISHED_NOTES=str(root / "published-notes"))
                 result = subprocess.run(["bash", "-c", script], cwd=root, env=env, capture_output=True)
                 success = mode in {"matching", "annotated", "nested"}
                 self.assertEqual(result.returncode == 0, success, result.stderr.decode())
                 self.assertEqual((root / "published").exists(), success)
                 if success:
-                    self.assertIn("Source commit: expected", (root / "published").read_text())
+                    self.assertIn("--notes-file", (root / "published").read_text())
+                    self.assertIn("Source commit: expected", (root / "published-notes").read_text())
 
 
 if __name__ == "__main__":
