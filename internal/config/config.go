@@ -19,6 +19,9 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/WhitenWhiten/topophany/internal/adapters/mihomo"
+	"github.com/WhitenWhiten/topophany/internal/adapters/tailscale"
+	"github.com/WhitenWhiten/topophany/internal/adapters/wireguard"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -387,13 +390,8 @@ func validateResolved(c model.Config) error {
 				return errors.New("invalid exit_format")
 			}
 			if x.Kind == "mihomo" {
-				if len(x.Adapter.ExpectedProviders) > 16 {
-					return errors.New("maximum 16 expected providers per check")
-				}
-				for k := range x.Adapter.ExpectedProviders {
-					if len(k) > 119 || secure.Text(k) != k {
-						return errors.New("provider name exceeds evidence budget or contains control characters")
-					}
+				if err := mihomo.Validate(x.Adapter.Mihomo()); err != nil {
+					return err
 				}
 			}
 		case "tcp", "tls", "ssh-banner", "dns", "udp-echo":
@@ -408,12 +406,12 @@ func validateResolved(c model.Config) error {
 				return fmt.Errorf("check %s: ICMP binds only an IPv4 address", x.ID)
 			}
 		case "tailscale":
-			if x.Adapter.Peer == "" {
-				return errors.New("tailscale check needs adapter.peer")
+			if err := tailscale.Validate(x.Adapter.Tailscale()); err != nil {
+				return err
 			}
 		case "wireguard":
-			if x.Adapter.Peer == "" || !regexp.MustCompile(`^[A-Za-z0-9_.-]{1,32}$`).MatchString(x.Adapter.Interface) {
-				return errors.New("wireguard needs interface and peer public key")
+			if err := wireguard.Validate(x.Adapter.WireGuard()); err != nil {
+				return err
 			}
 		case "host":
 			// Validated above; this check reads only the observer's host.
@@ -546,23 +544,7 @@ func Revision(c model.Config) string {
 // fragment, and with any query replaced by "redacted". An address that is
 // not a URL, such as host:port, loses the same parts: what precedes an @,
 // what follows a ? and what follows a #.
-func PublicURL(s string) string {
-	s, _, _ = strings.Cut(s, "#")
-	if u, e := url.Parse(s); e == nil && u.Scheme != "" && u.Opaque == "" {
-		u.User = nil
-		if u.RawQuery != "" {
-			u.RawQuery = "redacted"
-		}
-		return u.String()
-	}
-	if i := strings.LastIndexByte(s, '@'); i >= 0 {
-		s = s[i+1:]
-	}
-	if before, _, ok := strings.Cut(s, "?"); ok {
-		s = before + "?redacted"
-	}
-	return s
-}
+func PublicURL(s string) string { return secure.PublicURL(s) }
 
 // Public returns a deep copy; redaction never modifies executor configuration.
 func Public(c model.Config) model.Config {

@@ -20,12 +20,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/adapters"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
-type Command func(context.Context, string, ...string) ([]byte, error)
+type Command = adapters.Command
 type Runner struct {
 	Command      Command
 	ListenPacket func(string, string) (net.PacketConn, error)
@@ -173,7 +174,7 @@ func stream(ctx context.Context, d Dialer, x model.Check, target string, o *mode
 				return fail("ssh_banner", e)
 			}
 			if len(line) > 255 {
-				return &failure{stage: "ssh_banner", code: "line_too_long"}
+				return &failure{Stage: "ssh_banner", Code: "line_too_long"}
 			}
 			if strings.HasPrefix(line, "SSH-2.0-") || strings.HasPrefix(line, "SSH-1.99-") {
 				found = true
@@ -181,7 +182,7 @@ func stream(ctx context.Context, d Dialer, x model.Check, target string, o *mode
 			}
 		}
 		if !found {
-			return &failure{stage: "ssh_banner", code: "invalid_banner"}
+			return &failure{Stage: "ssh_banner", Code: "invalid_banner"}
 		}
 		o.Detail = "SSH protocol banner received; host key and authentication not verified"
 		o.Facts["response_proof"] = "ssh_banner"
@@ -286,7 +287,7 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		if st == "connect" {
 			st = p
 		}
-		return &failure{stage: st, code: code, local: out == "error"}
+		return &failure{Stage: st, Code: code, Local: out == "error"}
 	}
 	defer resp.Body.Close()
 	o.Connectivity = true
@@ -325,10 +326,10 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		}
 	}
 	if !accepted {
-		return &failure{stage: "http_assert", code: "unexpected_status"}
+		return &failure{Stage: "http_assert", Code: "unexpected_status"}
 	}
 	if x.HTTP.Contains != "" && !strings.Contains(string(body), x.HTTP.Contains) {
-		return &failure{stage: "http_assert", code: "body_mismatch"}
+		return &failure{Stage: "http_assert", Code: "body_mismatch"}
 	}
 	if x.HTTP.BodyRegex != "" {
 		re, e := regexp.Compile(x.HTTP.BodyRegex)
@@ -336,18 +337,18 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 			return local("setup", "invalid_regex")
 		}
 		if !re.Match(body) {
-			return &failure{stage: "http_assert", code: "regex_mismatch"}
+			return &failure{Stage: "http_assert", Code: "regex_mismatch"}
 		}
 	}
 	for k, v := range x.HTTP.Headers {
 		if resp.Header.Get(k) != v {
-			return &failure{stage: "http_assert", code: "header_mismatch"}
+			return &failure{Stage: "http_assert", Code: "header_mismatch"}
 		}
 	}
 	if len(x.HTTP.ExpectedExit) > 0 {
 		ip, e := exitIP(body, x.HTTP)
 		if e != nil {
-			return &failure{stage: "exit_assert", code: "exit_not_observed"}
+			return &failure{Stage: "exit_assert", Code: "exit_not_observed"}
 		}
 		if !secret {
 			o.Facts["exit_ip"] = ip.String()
@@ -379,7 +380,7 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 // secret. A peer sent a secret could otherwise hand it back, in a header
 // or a name, for its observation to carry to every viewer of the
 // collector, though viewers are never given the secret itself.
-const withheld = "withheld_secret_request"
+const withheld = adapters.Withheld
 
 // proxyCredentials reports whether any hop receives a private login or secret.
 // Such a hop can rewrite downstream plain HTTP responses to reflect those values.

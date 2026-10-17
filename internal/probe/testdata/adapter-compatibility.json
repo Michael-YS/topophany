@@ -1,0 +1,406 @@
+{
+  "mihomo-auth": {
+    "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "error",
+      "evidence": "reported",
+      "stage": "adapter_api",
+      "code": "authentication_failed",
+      "detail": "adapter_api: authentication_failed",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  },
+  "mihomo-chain": {
+    "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "unknown",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "runtime_chain_unresolved",
+      "detail": "runtime chain unresolved (missing selection, unsupported shape or cycle)",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "runtime_reported_not_request_verified",
+      "facts": {
+        "chain_resolution": "unresolved",
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "mode": "rule",
+        "peer_text": "withheld_secret_request",
+        "provider.pool": "node",
+        "provider_parameters": "not_verifiable_by_names_alone",
+        "reported_selection": "undeclared",
+        "sampling_atomicity": "separate_API_reads_not_atomic",
+        "tun_enabled": "true"
+      }
+    }
+  },
+  "mihomo-http": {
+    "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "fail",
+      "evidence": "reported",
+      "stage": "adapter_api",
+      "code": "http_503",
+      "detail": "adapter_api: http_503",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  },
+  "mihomo-mode": {
+    "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "policy",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "mode_mismatch",
+      "detail": "runtime mode differs from declared policy",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "runtime_reported_not_request_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "mode": "global",
+        "peer_text": "withheld_secret_request",
+        "provider.pool": "node",
+        "provider_parameters": "not_verifiable_by_names_alone",
+        "reported_chain": "node",
+        "reported_selection": "node",
+        "sampling_atomicity": "separate_API_reads_not_atomic",
+        "tun_enabled": "true"
+      }
+    }
+  },
+  "mihomo-ok": {
+    "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "ok",
+      "evidence": "reported",
+      "stage": "adapter",
+      "detail": "read-only runtime telemetry collected; not an end-to-end service check",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "runtime_reported_not_request_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "mode": "rule",
+        "peer_text": "withheld_secret_request",
+        "provider.pool": "node",
+        "provider_parameters": "not_verifiable_by_names_alone",
+        "reported_chain": "node",
+        "reported_selection": "node",
+        "sampling_atomicity": "separate_API_reads_not_atomic",
+        "tun_enabled": "true"
+      }
+    }
+  },
+  "mihomo-provider": {
+    "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "policy",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "provider_membership_mismatch",
+      "detail": "desired provider membership/order differs from the loaded runtime",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "runtime_reported_not_request_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "mode": "rule",
+        "peer_text": "withheld_secret_request",
+        "provider.pool": "undeclared",
+        "provider_parameters": "not_verifiable_by_names_alone",
+        "reported_chain": "node",
+        "reported_selection": "node",
+        "sampling_atomicity": "separate_API_reads_not_atomic",
+        "tun_enabled": "true"
+      }
+    }
+  },
+  "mihomo-shape": {
+    "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "error",
+      "evidence": "reported",
+      "stage": "adapter_api",
+      "code": "missing_mode",
+      "detail": "adapter_api: missing_mode",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  },
+  "tailscale-idle": {
+    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "ok",
+      "evidence": "reported",
+      "stage": "adapter",
+      "detail": "peer telemetry collected; idle is not offline; probe tailnet service separately",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "peer_local_runtime_reported",
+      "facts": {
+        "active_reported": "false",
+        "backend_state": "Running",
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "last_seen": "0001-01-01T00:00:00Z",
+        "online_reported": "true",
+        "relay": "hkg",
+        "transport_hint": "relay_preference_reported"
+      }
+    }
+  },
+  "tailscale-missing": {
+    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "unknown",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "peer_not_found",
+      "detail": "peer absent from this observer's status",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "backend_state": "Running",
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  },
+  "tailscale-offline": {
+    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "unknown",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "peer_or_backend_not_online",
+      "detail": "peer/backend not reported online; host power state and service reachability unknown",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "peer_local_runtime_reported",
+      "facts": {
+        "active_reported": "false",
+        "backend_state": "Stopped",
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "last_seen": "0001-01-01T00:00:00Z",
+        "online_reported": "false",
+        "transport_hint": "unknown"
+      }
+    }
+  },
+  "tailscale-permission": {
+    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "error",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "tailscale_unavailable_or_permission_denied",
+      "detail": "adapter: tailscale_unavailable_or_permission_denied",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  },
+  "wireguard-missing": {
+    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "unknown",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "peer_not_found",
+      "detail": "peer not present on the configured local interface",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  },
+  "wireguard-ok": {
+    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "ok",
+      "evidence": "reported",
+      "stage": "adapter",
+      "detail": "peer counters collected; an old handshake alone is not a tunnel failure; probe an inner endpoint",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "interface_local_runtime_reported",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
+        "last_handshake": "1970-01-01T00:01:40Z",
+        "rx_bytes": "123",
+        "tx_bytes": "456"
+      }
+    }
+  },
+  "wireguard-permission": {
+    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "error",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "wireguard_unavailable_or_permission_denied",
+      "detail": "adapter: wireguard_unavailable_or_permission_denied",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  },
+  "wireguard-shape": {
+    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "error",
+      "evidence": "reported",
+      "stage": "adapter",
+      "code": "unsupported_wireguard_response",
+      "detail": "adapter: unsupported_wireguard_response",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "requested_not_route_verified",
+      "facts": {
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
+      }
+    }
+  }
+}

@@ -173,14 +173,6 @@ type DNSOptions struct {
 	Type        string   `json:"type,omitempty"`
 	ExpectedIPs []string `json:"expected_ips,omitempty"`
 }
-type AdapterOptions struct {
-	TokenEnv          string              `json:"token_env,omitempty"`
-	RootProxy         string              `json:"root_proxy,omitempty"`
-	ExpectedMode      string              `json:"expected_mode,omitempty"`
-	ExpectedProviders map[string][]string `json:"expected_providers,omitempty"`
-	Peer              string              `json:"peer,omitempty"`
-	Interface         string              `json:"interface,omitempty"`
-}
 
 // Observation is a single bounded measurement. ReceivedAt is assigned by the
 // collector; SampledAt must not be replaced when replaying an outbox.

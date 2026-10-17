@@ -22,28 +22,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/adapters"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
-type failure struct {
-	stage, code string
-	local       bool
-}
+type failure = adapters.Failure
 
-func (e *failure) Error() string { return e.stage + ": " + e.code }
-func fail(stage string, e error) error {
-	var se *os.SyscallError
-	if errors.As(e, &se) && (se.Syscall == "bind" || se.Syscall == "socket" || se.Syscall == "setsockopt") {
-		return &failure{stage: "setup", code: "local_" + se.Syscall + "_failed", local: true}
-	}
-	if errors.Is(e, os.ErrPermission) {
-		return &failure{stage: "setup", code: "local_permission_denied", local: true}
-	}
-	return &failure{stage: stage, code: secure.ErrorCode(e)}
-}
-func local(stage, code string) error { return &failure{stage: stage, code: code, local: true} }
+func fail(stage string, err error) error { return adapters.Fail(stage, err) }
+func local(stage, code string) error     { return adapters.Local(stage, code) }
 
 // bindAddr is the local address bind_ip names, zone and all. A zone must
 // name an interface this host has: the kernel would bind without one it
@@ -239,14 +227,14 @@ func connect(conn net.Conn, address, user, pass string) (net.Conn, error) {
 		}
 	}
 	if !bytes.HasSuffix(header, []byte("\r\n\r\n")) {
-		return conn, &failure{stage: "proxy_connect", code: "header_too_large"}
+		return conn, &failure{Stage: "proxy_connect", Code: "header_too_large"}
 	}
 	resp, e := http.ReadResponse(bufio.NewReader(bytes.NewReader(header)), &http.Request{Method: "CONNECT"})
 	if e != nil {
-		return conn, &failure{stage: "proxy_connect", code: "invalid_response"}
+		return conn, &failure{Stage: "proxy_connect", Code: "invalid_response"}
 	}
 	if resp.StatusCode != 200 {
-		return conn, &failure{stage: "proxy_connect", code: fmt.Sprintf("http_%d", resp.StatusCode)}
+		return conn, &failure{Stage: "proxy_connect", Code: fmt.Sprintf("http_%d", resp.StatusCode)}
 	}
 	return &bufferedConn{Conn: conn, r: r}, nil
 }
@@ -263,7 +251,7 @@ func socks(conn net.Conn, address, user, pass string) error {
 		return fail("proxy_socks", e)
 	}
 	if b[0] != 5 || b[1] != method {
-		return &failure{stage: "proxy_socks", code: "authentication_method_rejected"}
+		return &failure{Stage: "proxy_socks", Code: "authentication_method_rejected"}
 	}
 	if method == 2 {
 		if len(user) > 255 || len(pass) > 255 {
@@ -280,7 +268,7 @@ func socks(conn net.Conn, address, user, pass string) error {
 			return fail("proxy_socks", e)
 		}
 		if b[0] != 1 || b[1] != 0 {
-			return &failure{stage: "proxy_socks", code: "authentication_rejected"}
+			return &failure{Stage: "proxy_socks", Code: "authentication_rejected"}
 		}
 	}
 	payload, e := socksAddress(address)
@@ -296,7 +284,7 @@ func socks(conn net.Conn, address, user, pass string) error {
 		return fail("proxy_socks", e)
 	}
 	if h[0] != 5 || h[2] != 0 || h[1] != 0 {
-		return &failure{stage: "proxy_socks", code: fmt.Sprintf("reply_%d", h[1])}
+		return &failure{Stage: "proxy_socks", Code: fmt.Sprintf("reply_%d", h[1])}
 	}
 	n := 0
 	switch h[3] {
@@ -311,7 +299,7 @@ func socks(conn net.Conn, address, user, pass string) error {
 		}
 		n = int(l[0])
 	default:
-		return &failure{stage: "proxy_socks", code: "invalid_address_type"}
+		return &failure{Stage: "proxy_socks", Code: "invalid_address_type"}
 	}
 	_, e = io.ReadFull(conn, make([]byte, n+2))
 	if e != nil {
@@ -436,10 +424,10 @@ func classify(err error) (outcome, stage, code string) {
 	var f *failure
 	if errors.As(err, &f) {
 		o := "fail"
-		if f.local {
+		if f.Local {
 			o = "error"
 		}
-		return o, f.stage, f.code
+		return o, f.Stage, f.Code
 	}
 	return "fail", "connect", secure.ErrorCode(err)
 }

@@ -92,10 +92,10 @@ func dns(ctx context.Context, x model.Check, target string, o *model.Observation
 	}
 	ips, e := parseDNS(b, id, x.DNS.Name, qt)
 	if e != nil {
-		return &failure{stage: "dns_answer", code: "invalid_or_negative_answer"}
+		return &failure{Stage: "dns_answer", Code: "invalid_or_negative_answer"}
 	}
 	if len(ips) == 0 {
-		return &failure{stage: "dns_answer", code: "no_address_answer"}
+		return &failure{Stage: "dns_answer", Code: "no_address_answer"}
 	}
 	if len(x.DNS.ExpectedIPs) > 0 {
 		allow := map[netip.Addr]bool{}
@@ -105,7 +105,7 @@ func dns(ctx context.Context, x model.Check, target string, o *model.Observation
 		}
 		for _, ip := range ips {
 			if !allow[ip.Unmap()] {
-				return &failure{stage: "dns_answer", code: "address_outside_allowlist"}
+				return &failure{Stage: "dns_answer", Code: "address_outside_allowlist"}
 			}
 		}
 	}
@@ -299,7 +299,7 @@ func udpEcho(ctx context.Context, x model.Check, target string, o *model.Observa
 		return fail("udp", e)
 	}
 	if !bytes.Equal(buf[:n], payload) {
-		return &failure{stage: "udp_echo", code: "payload_mismatch"}
+		return &failure{Stage: "udp_echo", Code: "payload_mismatch"}
 	}
 	o.Outcome = "ok"
 	o.Connectivity = true
@@ -382,5 +382,5 @@ func icmp(ctx context.Context, x model.Check, target string, o *model.Observatio
 		o.Detail = "IPv4 ICMP echo reply; TCP, UDP and services not inferred"
 		return nil
 	}
-	return &failure{stage: "icmp", code: "reply_budget_exceeded"}
+	return &failure{Stage: "icmp", Code: "reply_budget_exceeded"}
 }

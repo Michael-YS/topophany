@@ -4,6 +4,11 @@ Keep one binary and one versioned model. Preserve the separation between source,
 requested route, runtime-reported choice and actual response evidence. Never
 turn a monitor-side permission/API error into a target outage.
 
+Software integrations live in separate packages under
+[`internal/adapters`](internal/adapters/README.md). Keep each integration's
+parsing, policy, validation and tests in its own directory; the probe supplies
+transport and execution capabilities. See that guide before adding an adapter.
+
 Run `go fmt ./...`, `go vet ./...`, `go test -race ./...` and the complete
 `scripts/verify.py` suite before publishing a release. Add a named regression
 case to [SCENARIOS.md](docs/SCENARIOS.md) for every semantic bug. Tests must use temporary

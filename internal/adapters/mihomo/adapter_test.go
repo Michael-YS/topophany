@@ -1,9 +1,8 @@
-package probe
+package mihomo_test
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +10,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/adapters"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
@@ -46,7 +46,7 @@ func TestMihomoReadsOnlySafeEndpointsAndExpandsDialerProxy(t *testing.T) {
 	x := httpCheck(s.URL)
 	x.Kind = "mihomo"
 	x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_CORE_TOKEN", RootProxy: "residential", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"airport": {"node-a", "node-b"}}}
-	o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+	o := (probe.Runner{}).Run(context.Background(), testkit.Config(), x)
 	// Sent a token, the controller names only what the topology declares.
 	if o.Outcome != "ok" || o.Evidence != "reported" || o.Connectivity || o.Facts["reported_chain"] != "undeclared -> undeclared" || o.Facts["provider.airport"] != "node-a,node-b" {
 		t.Fatal("runtime report promoted to measured path, or undeclared names kept", o)
@@ -77,7 +77,7 @@ func TestMihomoReadsOnlySafeEndpointsAndExpandsDialerProxy(t *testing.T) {
 	auth = ""
 	mu.Unlock()
 	x.Adapter.TokenEnv = ""
-	o = (Runner{}).Run(context.Background(), testkit.Config(), x)
+	o = (probe.Runner{}).Run(context.Background(), testkit.Config(), x)
 	if o.Outcome != "ok" || o.Facts["reported_chain"] != "s2 -> aaitr" || o.Facts["reported_selection"] != "aaitr" || o.Facts["test_url"] != "https://example.invalid/204?redacted" {
 		t.Fatal("reverse chain", o)
 	}
@@ -104,14 +104,14 @@ func TestMihomoSentATokenCannotEchoIt(t *testing.T) {
 	x := httpCheck(s.URL)
 	x.Kind = "mihomo"
 	x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_CORE_TOKEN", RootProxy: "root", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"airport": {"node-a", "node-b"}}}
-	o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+	o := (probe.Runner{}).Run(context.Background(), testkit.Config(), x)
 	b, _ := json.Marshal(o)
 	for _, part := range []string{token[:12], token[12:], "9f8e7d"} {
 		if strings.Contains(string(b), part) {
 			t.Fatalf("observation carries %q: %s", part, b)
 		}
 	}
-	if o.Outcome != "policy" || o.Facts["mode"] != "other" || o.Facts["reported_chain"] != "undeclared" || o.Facts["reported_selection"] != "undeclared" || o.Facts["provider.airport"] != "node-a,undeclared" || o.Facts["test_url"] != "" || o.Facts["peer_text"] != withheld {
+	if o.Outcome != "policy" || o.Facts["mode"] != "other" || o.Facts["reported_chain"] != "undeclared" || o.Facts["reported_selection"] != "undeclared" || o.Facts["provider.airport"] != "node-a,undeclared" || o.Facts["test_url"] != "" || o.Facts["peer_text"] != adapters.Withheld {
 		t.Fatal(o)
 	}
 }
@@ -142,7 +142,7 @@ func TestMihomoModeProviderDriftAndAPIAuth(t *testing.T) {
 			x := httpCheck(s.URL)
 			x.Kind = "mihomo"
 			x.Adapter = model.AdapterOptions{RootProxy: "leaf", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"p": {"new"}}}
-			o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+			o := (probe.Runner{}).Run(context.Background(), testkit.Config(), x)
 			if o.Outcome != tt.want || o.Code != tt.code {
 				t.Fatal(o)
 			}
@@ -150,121 +150,18 @@ func TestMihomoModeProviderDriftAndAPIAuth(t *testing.T) {
 	}
 }
 func TestMihomoForbiddenReadAndUnknownSchema(t *testing.T) {
-	if e := readCore(context.Background(), http.DefaultClient, "http://127.0.0.1:1", "/group/auto/delay", "", &map[string]any{}); e == nil {
-		t.Fatal("side-effecting GET allowed")
-	}
+
 	for _, body := range []string{`not-json`, `{"tun":{}}`, strings.Repeat("x", (2<<20)+1)} {
 		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, body) }))
 		x := httpCheck(s.URL)
 		x.Kind = "mihomo"
-		o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+		o := (probe.Runner{}).Run(context.Background(), testkit.Config(), x)
 		s.Close()
 		if o.Outcome != "error" {
 			t.Fatal("unknown API shape invented success", o)
 		}
 	}
 }
-func TestProxyGraphCyclesUnknownGroupsAndOpaqueProvider(t *testing.T) {
-	all := map[string]coreProxy{"a": {Type: "VLESS", DialerProxy: "b"}, "b": {Type: "VLESS", DialerProxy: "a"}}
-	if _, e := expandProxy(all, "a"); e == nil {
-		t.Fatal("dialer cycle accepted")
-	}
-	all = map[string]coreProxy{"a": {Type: "Selector", Now: "missing"}}
-	if _, e := expandProxy(all, "a"); e == nil {
-		t.Fatal("missing provider invented")
-	}
-	all = map[string]coreProxy{"a": {Type: "UnsupportedGroup", All: []string{"b"}}}
-	if _, e := expandProxy(all, "a"); e == nil {
-		t.Fatal("unknown group guessed")
-	}
-	all = map[string]coreProxy{"owned-exit": {Type: "VLESS", DialerProxy: "airport-choice"}, "airport-choice": {Type: "Selector", Now: "airport-node"}, "airport-node": {Type: "Shadowsocks"}}
-	chain, e := expandProxy(all, "owned-exit")
-	if e != nil || !reflect.DeepEqual(chain, []string{"airport-node", "owned-exit"}) {
-		t.Fatal("external provider chain reversed", chain, e)
-	}
-	if chain, e = expandProxy(all, "DIRECT"); e != nil || len(chain) != 1 {
-		t.Fatal(e)
-	}
-}
-func TestTailscaleIdleOfflineAndScope(t *testing.T) {
-	for _, tt := range []struct{ name, online, active, cur, relay, want, hint string }{{"idle is not offline", "true", "false", "127.0.0.1:41641", "", "ok", "direct_endpoint_reported"}, {"DERP preference is not request proof", "true", "true", "", "hkg", "ok", "relay_preference_reported"}, {"offline report not power state", "false", "false", "", "", "unknown", "unknown"}} {
-		t.Run(tt.name, func(t *testing.T) {
-			r := Runner{Command: func(ctx context.Context, name string, args ...string) ([]byte, error) {
-				if name != "tailscale" || !reflect.DeepEqual(args, []string{"status", "--json"}) {
-					t.Fatal("unexpected command", name, args)
-				}
-				return []byte(`{"BackendState":"Running","Peer":{"key":{"ID":"peer-1","HostName":"dmit","TailscaleIPs":["100.64.0.1"],"Online":` + tt.online + `,"Active":` + tt.active + `,"CurAddr":"` + tt.cur + `","Relay":"` + tt.relay + `"}}}`), nil
-			}}
-			x := httpCheck("")
-			x.Kind = "tailscale"
-			x.Adapter.Peer = "100.64.0.1"
-			o := r.Run(context.Background(), testkit.Config(), x)
-			if o.Outcome != tt.want || o.Evidence != "reported" || o.Facts["transport_hint"] != tt.hint || o.Connectivity {
-				t.Fatal(o)
-			}
-		})
-	}
-	x := httpCheck("")
-	x.Kind = "tailscale"
-	x.Adapter.Peer = "missing"
-	r := Runner{Command: func(context.Context, string, ...string) ([]byte, error) {
-		return []byte(`{"BackendState":"Running","Peer":{}}`), nil
-	}}
-	if o := r.Run(context.Background(), testkit.Config(), x); o.Outcome != "unknown" || o.Code != "peer_not_found" {
-		t.Fatal(o)
-	}
-	r.Command = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("secret raw stderr") }
-	o := r.Run(context.Background(), testkit.Config(), x)
-	if o.Outcome != "error" || strings.Contains(o.Detail, "secret") {
-		t.Fatal(o)
-	}
-}
-func TestWireGuardOldHandshakeIsNotFailureAndKeysAreDiscarded(t *testing.T) {
-	x := httpCheck("")
-	x.Kind = "wireguard"
-	x.Adapter = model.AdapterOptions{Interface: "wg0", Peer: "PUBLIC-PEER"}
-	r := Runner{Command: func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		if name != "wg" || !reflect.DeepEqual(args, []string{"show", "wg0", "dump"}) {
-			t.Fatal("unexpected command", name, args)
-		}
-		return []byte("INTERFACE-PRIVATE-KEY interface-public 51820 off\nPUBLIC-PEER PRESHARED-SECRET 192.0.2.1:51820 10.0.0.0/24 100 123 456 0\n"), nil
-	}}
-	o := r.Run(context.Background(), testkit.Config(), x)
-	if o.Outcome != "ok" || o.Connectivity || o.Evidence != "reported" || o.Facts["rx_bytes"] != "123" {
-		t.Fatal(o)
-	}
-	if o.Facts["last_handshake"] != time.Unix(100, 0).UTC().Format(time.RFC3339) {
-		t.Fatal("old handshake replaced with fresh timestamp")
-	}
-	b, _ := json.Marshal(o)
-	if strings.Contains(string(b), "PRIVATE-KEY") || strings.Contains(string(b), "PRESHARED-SECRET") {
-		t.Fatal("WireGuard private key leaked")
-	}
-	x.Adapter.Peer = "missing"
-	if o = r.Run(context.Background(), testkit.Config(), x); o.Outcome != "unknown" {
-		t.Fatal(o)
-	}
-}
-func TestAdapterExecutableAndOutputBudget(t *testing.T) {
-	if _, e := defaultCommand(context.Background(), "sh", "-c", "anything"); e == nil {
-		t.Fatal("arbitrary command accepted")
-	}
-	w := &cappedOutput{limit: 3}
-	if _, e := w.Write([]byte("abc")); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := w.Write([]byte("x")); e == nil {
-		t.Fatal("command output unbounded")
-	}
-	x := httpCheck("")
-	x.Kind = "wireguard"
-	x.Adapter = model.AdapterOptions{Interface: "wg0", Peer: "peer"}
-	r := Runner{Command: func(context.Context, string, ...string) ([]byte, error) { return []byte("bad"), nil }}
-	if o := r.Run(context.Background(), testkit.Config(), x); o.Outcome != "error" {
-		t.Fatal(o)
-	}
-	r.Command = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("no permission") }
-	if o := r.Run(context.Background(), testkit.Config(), x); o.Outcome != "error" {
-		t.Fatal(o)
-	}
+func httpCheck(url string) model.Check {
+	return model.Check{ID: "check", Observer: "home", Kind: "http", Target: url, TimeoutSeconds: 1, HTTP: model.HTTPOptions{Method: "GET", MaxBodyBytes: 65536}}
 }
