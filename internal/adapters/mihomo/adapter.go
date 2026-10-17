@@ -53,7 +53,7 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 	var cfg struct {
 		Mode string `json:"mode"`
 		TUN  struct {
-			Enable bool `json:"enable"`
+			Enable *bool `json:"enable"`
 		} `json:"tun"`
 	}
 	if e = readCore(ctx, client, target, "/configs", token, &cfg); e != nil {
@@ -77,7 +77,10 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 	if secret {
 		o.Facts["peer_text"] = adapters.Withheld
 	}
-	o.Facts["tun_enabled"] = strconv.FormatBool(cfg.TUN.Enable)
+	o.Facts["tun_enabled"] = "unknown"
+	if cfg.TUN.Enable != nil {
+		o.Facts["tun_enabled"] = strconv.FormatBool(*cfg.TUN.Enable)
+	}
 	o.Facts["provider_parameters"] = "not_verifiable_by_names_alone"
 	o.Outcome = "ok"
 	o.Stage = "adapter"
@@ -87,6 +90,17 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 		o.Code = "mode_mismatch"
 		o.Detail = "runtime mode differs from declared policy"
 	}
+	if options.ExpectedTUN != nil {
+		if cfg.TUN.Enable == nil && o.Outcome != "policy" {
+			o.Outcome, o.Code = "unknown", "tun_state_unavailable"
+			o.Detail = "controller does not report TUN state"
+		}
+		if cfg.TUN.Enable != nil && *cfg.TUN.Enable != *options.ExpectedTUN {
+			o.Outcome, o.Code = "policy", "tun_mismatch"
+			o.Detail = "runtime TUN state differs from declared policy"
+		}
+	}
+
 	if options.RootProxy != "" {
 		chain, e := expandProxy(proxies.Proxies, options.RootProxy)
 		if e != nil {

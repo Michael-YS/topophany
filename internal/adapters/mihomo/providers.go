@@ -2,6 +2,7 @@ package mihomo
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -14,6 +15,9 @@ import (
 
 func collectProviders(ctx context.Context, deps Dependencies, client *http.Client, x model.Check, target, token string, name func(string) string, o *model.Observation) error {
 	options := x.Adapter.Mihomo()
+	if len(options.ProviderMatchModes) > 0 && Validate(options) != nil {
+		return adapters.Local("setup", "invalid_provider_options")
+	}
 	if len(options.ExpectedProviders) == 0 && options.ProviderReference == nil {
 		return nil
 	}
@@ -72,6 +76,7 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	summaries := []string{}
 	for _, k := range keys {
 		p, ok := out.Providers[k]
 		actual, shown := []string{}, []string{}
@@ -79,23 +84,25 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 			actual = append(actual, v.Name)
 			shown = append(shown, name(v.Name))
 		}
-		want := expected[k]
-		same := ok && len(actual) == len(want)
-		if same {
-			for i := range want {
-				if actual[i] != want[i] {
-					same = false
-					break
-				}
-			}
-		}
+		comparison := compareMembers(actual, expected[k], options.ProviderMatchModes[k])
+		same := ok && comparison.matches
+
 		o.Facts["provider."+adapters.SafeFact(k)] = adapters.SafeFact(strings.Join(shown, ","))
 		_, dynamic := before.Providers[k]
+		status := "match"
+		if !same {
+			status = "mismatch"
+		}
+		if dynamic && !stable {
+			status = "unverified"
+		}
+		summaries = append(summaries, fmt.Sprintf("%s=%s(expected:%d loaded:%d missing:%d extra:%d order_changed:%t present:%t)", k, status, len(expected[k]), len(actual), comparison.missing, comparison.extra, comparison.orderChanged, ok))
 		if !same && (!dynamic || stable) {
 			o.Outcome, o.Code = "policy", "provider_membership_mismatch"
 			o.Detail = "desired provider membership/order differs from the loaded runtime"
 		}
 	}
+	o.Facts["provider_comparison"] = adapters.SafeFact(strings.Join(summaries, "; "))
 	if !stable && o.Outcome != "policy" {
 		o.Outcome, o.Code = "unknown", "provider_reference_changed"
 		o.Detail = "provider publication changed during sampling; loaded membership cannot be compared consistently"

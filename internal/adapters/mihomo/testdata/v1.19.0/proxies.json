@@ -1,0 +1,1 @@
+{"proxies":{"daily":{"name":"daily","type":"Fallback","now":"node-a","all":["node-a","node-b"]},"node-a":{"name":"node-a","type":"VLESS"},"node-b":{"name":"node-b","type":"VLESS"}}}

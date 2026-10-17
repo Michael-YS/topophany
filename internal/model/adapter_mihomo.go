@@ -2,15 +2,17 @@ package model
 
 // MihomoOptions is the software-specific view of the legacy flat adapter configuration.
 type MihomoOptions struct {
-	TokenEnv          string
-	RootProxy         string
-	ExpectedMode      string
-	ProviderReference *MihomoProviderReference
-	ExpectedProviders map[string][]string
+	TokenEnv           string
+	RootProxy          string
+	ExpectedTUN        *bool
+	ProviderMatchModes map[string]string
+	ExpectedMode       string
+	ProviderReference  *MihomoProviderReference
+	ExpectedProviders  map[string][]string
 }
 
 func (a AdapterOptions) Mihomo() MihomoOptions {
-	return MihomoOptions{ProviderReference: a.ProviderReference, TokenEnv: a.TokenEnv, RootProxy: a.RootProxy, ExpectedMode: a.ExpectedMode, ExpectedProviders: a.ExpectedProviders}
+	return MihomoOptions{ExpectedTUN: a.ExpectedTUN, ProviderMatchModes: a.ProviderMatchModes, ProviderReference: a.ProviderReference, TokenEnv: a.TokenEnv, RootProxy: a.RootProxy, ExpectedMode: a.ExpectedMode, ExpectedProviders: a.ExpectedProviders}
 }
 
 // MihomoProviderReference selects dynamic membership from an independent,

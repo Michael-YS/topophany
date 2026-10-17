@@ -10,4 +10,6 @@ type AdapterOptions struct {
 	ProviderReference        *MihomoProviderReference `json:"provider_reference,omitempty"`
 	ExpectedAllowedIPs       []string                 `json:"expected_allowed_ips,omitempty"`
 	ExpectedKeepaliveSeconds *int                     `json:"expected_keepalive_seconds,omitempty"`
+	ExpectedTUN              *bool                    `json:"expected_tun,omitempty"`
+	ProviderMatchModes       map[string]string        `json:"provider_match_modes,omitempty"`
 }

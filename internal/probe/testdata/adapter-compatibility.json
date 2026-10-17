@@ -51,7 +51,8 @@
         "provider_parameters": "not_verifiable_by_names_alone",
         "reported_selection": "undeclared",
         "sampling_atomicity": "separate_API_reads_not_atomic",
-        "tun_enabled": "true"
+        "tun_enabled": "true",
+        "provider_comparison": "pool=match(expected:1 loaded:1 missing:0 extra:0 order_changed:false present:true)"
       }
     }
   },
@@ -107,7 +108,8 @@
         "reported_chain": "node",
         "reported_selection": "node",
         "sampling_atomicity": "separate_API_reads_not_atomic",
-        "tun_enabled": "true"
+        "tun_enabled": "true",
+        "provider_comparison": "pool=match(expected:1 loaded:1 missing:0 extra:0 order_changed:false present:true)"
       }
     }
   },
@@ -138,7 +140,8 @@
         "reported_chain": "node",
         "reported_selection": "node",
         "sampling_atomicity": "separate_API_reads_not_atomic",
-        "tun_enabled": "true"
+        "tun_enabled": "true",
+        "provider_comparison": "pool=match(expected:1 loaded:1 missing:0 extra:0 order_changed:false present:true)"
       }
     }
   },
@@ -170,7 +173,8 @@
         "reported_chain": "node",
         "reported_selection": "node",
         "sampling_atomicity": "separate_API_reads_not_atomic",
-        "tun_enabled": "true"
+        "tun_enabled": "true",
+        "provider_comparison": "pool=mismatch(expected:1 loaded:1 missing:1 extra:1 order_changed:false present:true)"
       }
     }
   },

@@ -52,6 +52,11 @@ func Clone(c model.Config) model.Config {
 			v.Providers = slices.Clone(ref.Providers)
 			x.Adapter.ProviderReference = &v
 		}
+		x.Adapter.ProviderMatchModes = maps.Clone(x.Adapter.ProviderMatchModes)
+		if value := x.Adapter.ExpectedTUN; value != nil {
+			copy := *value
+			x.Adapter.ExpectedTUN = &copy
+		}
 		x.Adapter.ExpectedAllowedIPs = slices.Clone(x.Adapter.ExpectedAllowedIPs)
 		if value := x.Adapter.ExpectedKeepaliveSeconds; value != nil {
 			copy := *value

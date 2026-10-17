@@ -9,20 +9,38 @@ func adapterDetails(check model.Check, state model.CheckState) []string {
 		return nil
 	}
 	runtime, policy := "unverified", "not configured"
-	configured := check.Kind == "mihomo" && (check.Adapter.ExpectedMode != "" || len(check.Adapter.ExpectedProviders) > 0 || check.Adapter.ProviderReference != nil)
+	configured := check.Kind == "mihomo" && (check.Adapter.ExpectedTUN != nil || check.Adapter.ExpectedMode != "" || len(check.Adapter.ExpectedProviders) > 0 || check.Adapter.ProviderReference != nil)
 	configured = configured || check.Kind == "wireguard" && (len(check.Adapter.ExpectedAllowedIPs) > 0 || check.Adapter.ExpectedKeepaliveSeconds != nil)
 	if configured {
 		policy = "unverified"
 	}
 	if last := state.Last; last != nil && state.Freshness == "fresh" {
-		if last.Evidence == "reported" && (last.Stage == "adapter" || last.Facts["mode"] != "" || last.Facts["backend_state"] != "" || last.Facts["rx_bytes"] != "") {
+		if last.Evidence == "reported" && (last.Stage == "adapter" && last.Outcome != "error" || last.Facts["mode"] != "" || last.Facts["backend_state"] != "" || last.Facts["rx_bytes"] != "") {
 			runtime = "available"
 		}
-		if last.Outcome == "policy" {
+		if policyViolation(check, last) {
 			policy = "violated"
 		} else if configured && last.Outcome == "ok" {
 			policy = "matched"
 		}
 	}
 	return []string{"Runtime read: " + runtime, "Policy check: " + policy, "Business reachability: unmeasured; use a separate application probe"}
+}
+
+func policyViolation(check model.Check, last *model.Observation) bool {
+	if last.Outcome == "policy" || last.Facts["allowed_ips_match"] == "false" || last.Facts["keepalive_match"] == "false" {
+		return true
+	}
+	if check.Kind != "mihomo" {
+		return false
+	}
+	mode := last.Facts["mode"]
+	if check.Adapter.ExpectedMode != "" && mode != "" && mode != "other" && mode != check.Adapter.ExpectedMode {
+		return true
+	}
+	if want := check.Adapter.ExpectedTUN; want != nil {
+		actual := last.Facts["tun_enabled"]
+		return actual == "true" && !*want || actual == "false" && *want
+	}
+	return false
 }

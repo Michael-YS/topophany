@@ -421,3 +421,16 @@ frames. `monitor.Hub` exposes latest-snapshot retrieval and bounded subscription
 with the current frame included atomically; slow consumers skip intermediate
 frames. The core can run with no file sink. Native menu-bar/tray UI, IPC, charts,
 expression evaluation and history buffers remain future work.
+
+### Additional software adapter policies
+
+Mihomo `adapter.expected_tun` accepts an explicit boolean; missing controller
+state stays unknown. `provider_match_modes` maps expected provider names to
+`ordered` (the default) or `set`. Set mode ignores ordering, while duplicate,
+missing and extra members still violate policy. Bounded `provider_comparison`
+counts explain mismatches without exposing undeclared names.
+
+WireGuard `adapter.expected_allowed_ips` optionally asserts a nonempty set of
+1..128 CIDRs. `expected_keepalive_seconds` asserts 0..65535 seconds (0 is off).
+These inspect public runtime fields, not OS route correctness or business
+reachability. Use an application check inside the tunnel for that evidence.

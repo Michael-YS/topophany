@@ -27,3 +27,16 @@ func TestAdapterStatusFacetsPreserveEvidenceLimits(t *testing.T) {
 		t.Fatal("application probes relabeled as software telemetry")
 	}
 }
+
+func TestAdapterReadFailureAndKnownPolicyViolationStayDistinct(t *testing.T) {
+	check := model.Check{Kind: "mihomo", Adapter: model.AdapterOptions{ExpectedMode: "rule"}}
+	state := model.CheckState{Freshness: "fresh", Last: &model.Observation{Evidence: "reported", Stage: "adapter", Outcome: "error"}}
+	if text := strings.Join(adapterDetails(check, state), "\n"); strings.Contains(text, "Runtime read: available") {
+		t.Fatal(text)
+	}
+	state.Last.Stage = "provider_reference"
+	state.Last.Facts = map[string]string{"mode": "global"}
+	if text := strings.Join(adapterDetails(check, state), "\n"); !strings.Contains(text, "Policy check: violated") || !strings.Contains(text, "Runtime read: available") {
+		t.Fatal(text)
+	}
+}

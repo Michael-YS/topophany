@@ -34,6 +34,29 @@ func Validate(options model.MihomoOptions) error {
 			seen[name] = true
 		}
 	}
+	for name, mode := range options.ProviderMatchModes {
+		_, known := options.ExpectedProviders[name]
+		if ref := options.ProviderReference; ref != nil {
+			for _, provider := range ref.Providers {
+				if provider == name {
+					known = true
+				}
+			}
+		}
+		if !known || (mode != "ordered" && mode != "set") {
+			return errors.New("provider_match_modes must name an expected provider with ordered or set comparison")
+		}
+		if mode == "set" {
+			seen := map[string]bool{}
+			for _, member := range options.ExpectedProviders[name] {
+				if seen[member] {
+					return errors.New("set provider expectations must not contain duplicate members")
+				}
+				seen[member] = true
+			}
+		}
+	}
+
 	return nil
 }
 

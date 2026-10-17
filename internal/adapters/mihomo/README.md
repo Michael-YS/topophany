@@ -89,3 +89,15 @@ the source or freshness policy does. Dynamic names do not expand the controller
 response's display allowlist. Names still cannot verify proxy parameters or an
 end-to-end route. This option requires workers that support `provider_reference`;
 existing checks without it keep their previous behavior.
+
+`adapter.expected_tun` optionally asserts the reported TUN boolean. Missing
+TUN state stays unknown, including when false was expected. It does not prove
+that OS routes or application traffic use TUN.
+
+`adapter.provider_match_modes` maps expected provider names to `ordered`
+(default) or `set`. Use ordered mode for priority-sensitive fallback groups.
+Set mode tolerates reordering but rejects duplicate members and still detects
+missing/extra names. It applies to static or reference-backed expectations.
+`provider_comparison` reports bounded counts and order changes without exporting
+undeclared names. A publication changing during sampling is labeled unverified.
+The summary is truncated at the usual fact budget for very large provider names.
