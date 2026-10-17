@@ -73,12 +73,14 @@ func (w *ingressWriter) Write(p []byte) (int, error) {
 }
 
 // observe counts line when it is the HTTP server reporting a failed TLS
-// handshake, and ignores every other line.
+// handshake, and ignores every other line. The line arrives as log.Logger
+// formatted it, so a timestamp can come first.
 func (c *IngressCounter) observe(line string) {
-	rest, ok := strings.CutPrefix(line, tlsHandshakePrefix)
-	if !ok {
+	at := strings.Index(line, tlsHandshakePrefix)
+	if at < 0 {
 		return
 	}
+	rest := line[at+len(tlsHandshakePrefix):]
 	// "<host>:<port>: <error>"; the address is everything before the first
 	// ": " after the port, and IPv6 addresses keep their brackets.
 	cut := strings.Index(rest, ": ")

@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +21,7 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 		"http: TLS handshake error from 100.74.137.62:44484: EOF",
 		"http: TLS handshake error from 100.74.137.62:44485: read tcp 100.111.75.1:7447->100.74.137.62:44485: i/o timeout",
 		"http: TLS handshake error from [2605:52c0::1]:443: remote error: tls: bad certificate",
+		"2026/10/17 06:39:20 http: TLS handshake error from 100.75.127.43:1: i/o timeout",
 		"http: TLS handshake error from 100.75.127.43:1",
 		"http: TLS handshake error from 10.0.0.1:not-a-port: EOF",
 		"incident opened: s2-local/path/s2-collector",
@@ -27,14 +31,14 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(logged) != 7 || logged[0] != "http: TLS handshake error from 100.74.137.62:44484: EOF" {
+	if len(logged) != 8 || logged[0] != "http: TLS handshake error from 100.74.137.62:44484: EOF" {
 		t.Fatalf("writer did not pass every line through: %q", logged)
 	}
 	got := c.Summary(now)
-	if got == nil || got.Failures != 3 || got.WindowSeconds != 60 {
+	if got == nil || got.Failures != 4 || got.WindowSeconds != 60 {
 		t.Fatalf("counted %+v", got)
 	}
-	if len(got.Sources) != 2 {
+	if len(got.Sources) != 3 {
 		t.Fatalf("sources %+v", got.Sources)
 	}
 	if got.Sources[0].Address != "100.74.137.62" || got.Sources[0].Count != 2 {
@@ -42,6 +46,22 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 	}
 	if !got.Last.Equal(now) {
 		t.Fatalf("last failure %v", got.Last)
+	}
+}
+
+func TestIngressReadsTheServersFormattedLog(t *testing.T) {
+	c := NewIngressCounter(time.Minute)
+	var kept bytes.Buffer
+	// The collector gives this writer to log.Logger with LstdFlags, so the
+	// line arrives with a timestamp in front of net/http's message.
+	logger := log.New(c.Writer(func(line string) { kept.WriteString(line + "\n") }), "", log.LstdFlags)
+	logger.Print("http: TLS handshake error from 100.74.137.62:44484: i/o timeout")
+	summary := c.Summary(time.Now())
+	if summary == nil || summary.Failures != 1 || summary.Sources[0].Address != "100.74.137.62" {
+		t.Fatalf("formatted log line was not read: %+v", summary)
+	}
+	if !strings.Contains(kept.String(), "http: TLS handshake error from 100.74.137.62") {
+		t.Fatalf("line was not passed through: %q", kept.String())
 	}
 }
 
