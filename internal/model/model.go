@@ -22,20 +22,25 @@ const (
 	SnapshotSchema = 2
 )
 
-// release is the last released version. A build that carries its own
-// version reports that instead; see Version.
-const release = "1.1.1"
-
-// Version is what this binary reports: the module version the Go toolchain
-// stamped, the VCS revision of a local build, or the last release when the
-// build carries neither. A constant here went stale the moment a commit
-// landed, so `topo version` could not say what was running.
-var Version = buildVersion(debug.ReadBuildInfo())
+// Version is what this binary reports: a version injected with -ldflags -X,
+// the module version the Go toolchain stamped for a tagged build, a short
+// VCS revision for a checkout, or "devel" when the build carries no version
+// at all. Never guess the last release: a source archive or a test binary
+// would then claim to be a release it is not.
+var Version string
 
 // pseudoVersion is what the toolchain stamps for a build that is not at a
-// tag; it is truthful but too long for a banner, so the revision says it
+// tag; it is truthful but too long for a banner, so its revision says it
 // better.
-var pseudoVersion = regexp.MustCompile(`^\d+\.\d+\.\d+-0\.\d{14}-[0-9a-f]{12}$`)
+var pseudoVersion = regexp.MustCompile(`^\d+\.\d+\.\d+-0\.\d{14}-([0-9a-f]{12})$`)
+
+func init() {
+	// -X sets the initial string before init runs. Only compute a version
+	// when the build did not inject one.
+	if Version == "" {
+		Version = buildVersion(debug.ReadBuildInfo())
+	}
+}
 
 func buildVersion(info *debug.BuildInfo, ok bool) string {
 	revision, modified := "", false
@@ -48,24 +53,39 @@ func buildVersion(info *debug.BuildInfo, ok bool) string {
 				modified = setting.Value == "true"
 			}
 		}
-		// A tagged module install carries a clean version; a checkout does
-		// not, and its pseudo-version or +dirty suffix is better said by
-		// the revision that follows.
 		version := strings.TrimPrefix(info.Main.Version, "v")
-		if version != "" && version != "(devel)" && !strings.Contains(version, "+dirty") && !pseudoVersion.MatchString(version) {
-			return version
+		dirty := strings.HasSuffix(version, "+dirty")
+		version = strings.TrimSuffix(version, "+dirty")
+		if version != "" && version != "(devel)" {
+			if match := pseudoVersion.FindStringSubmatch(version); match != nil {
+				short := match[1][:7]
+				if modified || dirty {
+					short += "-dirty"
+				}
+				return "dev-" + short
+			}
+			if !dirty {
+				if modified {
+					version += "-dirty"
+				}
+				return version
+			}
 		}
 	}
 	if revision != "" {
-		if len(revision) > 7 {
-			revision = revision[:7]
-		}
-		if modified {
-			revision += "-dirty"
-		}
-		return "dev-" + revision
+		return "dev-" + shortRevision(revision, modified)
 	}
-	return release
+	return "devel"
+}
+
+func shortRevision(revision string, modified bool) string {
+	if len(revision) > 7 {
+		revision = revision[:7]
+	}
+	if modified {
+		revision += "-dirty"
+	}
+	return revision
 }
 
 type Config struct {

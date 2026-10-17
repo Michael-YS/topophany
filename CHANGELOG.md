@@ -13,9 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measured when less than all of it (`98.9% · 3h`), instead of showing a
   partial window as if it were a full day. Gaps stay gaps; a whole day is
   unchanged.
-- `topo version` reports what the binary carries: the module version the Go
-  toolchain stamped, or `dev-<short revision>[-dirty]` for a local build. The
-  constant said 1.1.1 on builds that already contained unreleased changes.
+- `topo version` reports what the binary carries: a version injected with
+  `-ldflags -X`, the module version the Go toolchain stamped for a tagged
+  build, `dev-<short revision>[-dirty]` for a checkout or a pseudo-version, or
+  `devel` when there is no version information at all. It no longer claims to
+  be the last release, and `-X` is no longer silently overwritten.
 - A Tailscale diagnostic that times out inside the CLI now reports `unknown`
   with `diagnostic_response: timed_out` instead of a monitor-side error. Only
   the CLI's exact `ping "<ip>" timed out` text for the fixed target counts;
