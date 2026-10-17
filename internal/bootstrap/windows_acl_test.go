@@ -13,7 +13,7 @@ func TestWindowsInstallationReplacesExplicitACLs(t *testing.T) {
 	ctx := context.Background()
 	for _, existing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "fresh", true: "upgrade"}[existing], func(t *testing.T) {
-			dir := filepath.Join(t.TempDir(), "installation with ' quotes")
+			dir := filepath.Join(t.TempDir(), "installation [private] with ' quotes")
 			bin := filepath.Join(dir, "bin")
 			if err := os.MkdirAll(bin, 0700); err != nil {
 				t.Fatal(err)
@@ -29,6 +29,10 @@ func TestWindowsInstallationReplacesExplicitACLs(t *testing.T) {
 					}
 				}
 			}
+			if err := restrictWindowsDirectory(ctx, dir); err != nil {
+				t.Fatal(err)
+			}
+			// Reapplying the DACL must also work without audit privileges.
 			if err := restrictWindowsDirectory(ctx, dir); err != nil {
 				t.Fatal(err)
 			}

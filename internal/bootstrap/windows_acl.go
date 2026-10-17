@@ -24,8 +24,11 @@ function Protect($path,$root){
   $flags=if($item.PSIsContainer){'OICI'}else{''}
   $sddl='D:P'
   foreach($sid in $sids){$sddl+="(A;$flags;FA;;;$sid)"}
-  $acl.SetSecurityDescriptorSddlForm($sddl,[Security.AccessControl.AccessControlSections]::Access)
-  Set-Acl -LiteralPath $path -AclObject $acl
+  # Persist only the DACL. Set-Acl can also try to write audit information,
+  # which requires SeSecurityPrivilege even for the installation's owner.
+  $restricted=if($item.PSIsContainer){[Security.AccessControl.DirectorySecurity]::new()}else{[Security.AccessControl.FileSecurity]::new()}
+  $restricted.SetSecurityDescriptorSddlForm($sddl,[Security.AccessControl.AccessControlSections]::Access)
+  $item.SetAccessControl($restricted)
   $acl=Get-Acl -LiteralPath $path
  }
  if($root -and -not $acl.AreAccessRulesProtected){throw 'Installation DACL inherits unrelated access'}
