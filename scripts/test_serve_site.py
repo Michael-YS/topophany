@@ -1,5 +1,6 @@
 """The local browser bridge keeps saved viewer secrets behind verified TLS."""
 import http.client
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
@@ -76,10 +77,10 @@ class LocalViewerTests(unittest.TestCase):
             thread.join()
             server.server_close()
 
-    def request(self, path, method="GET", headers=None):
+    def request(self, path, method="GET", headers=None, body=None):
         connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
         try:
-            connection.request(method, path, headers=headers or {})
+            connection.request(method, path, headers=headers or {}, body=body)
             response = connection.getresponse()
             return response.status, dict(response.headers), response.read()
         finally:
@@ -89,6 +90,11 @@ class LocalViewerTests(unittest.TestCase):
         return self.request(site.PREFIX + "/collector" + path,
                             headers={"Authorization": "Bearer " + self.collector.session})
 
+    def exchange(self, secret):
+        return self.request(site.PREFIX + "/exchange", "POST", headers={
+            "Origin": self.origin, "Sec-Fetch-Site": "same-origin",
+            "Content-Type": "text/plain"}, body=secret)
+
     def test_browser_session_never_receives_saved_viewer_token(self):
         script = site.PREFIX + "/connect.js"
         self.assertEqual(self.request(script)[0], 403)
@@ -96,15 +102,54 @@ class LocalViewerTests(unittest.TestCase):
             "Sec-Fetch-Site": "same-origin", "Referer": self.origin + "/zh/app/"})
         self.assertEqual(status, 200)
         self.assertNotIn(self.saved_token.encode(), body)
-        self.assertIn(self.collector.session.encode(), body)
+        self.assertNotIn(self.collector.session.encode(), body)
+        self.assertNotIn(self.collector.launch.encode(), body)
         self.assertEqual(headers["Cache-Control"], "no-store")
         self.assertEqual(headers["Cross-Origin-Resource-Policy"], "same-origin")
+        status, _, body = self.exchange(self.collector.launch)
+        self.assertEqual(status, 200)
+        self.assertNotIn(self.saved_token.encode(), body)
+        self.assertEqual(json.loads(body)["token"], self.collector.session)
         self.assertEqual(self.authorized("/v1/history?check=local&limit=10")[0], 200)
         path, sent = self.upstream.requests[-1]
         self.assertEqual(path, "/v1/history?check=local&limit=10")
         self.assertEqual(sent["Authorization"], "Bearer " + self.saved_token)
         self.assertNotIn("Cookie", sent)
         self.assertNotIn("Origin", sent)
+
+    def test_forged_browser_headers_cannot_acquire_a_capability(self):
+        forged = {"Host": self.origin.removeprefix("http://"), "Origin": self.origin,
+                  "Sec-Fetch-Site": "same-origin", "Referer": self.origin + "/zh/app/"}
+        for path in (site.PREFIX + "/connect.js", "/zh/app/", "/app/"):
+            for method in ("GET", "HEAD"):
+                status, _, body = self.request(path, method, headers=forged)
+                self.assertEqual(status, 200)
+                self.assertNotIn(self.collector.session.encode(), body)
+                self.assertNotIn(self.collector.launch.encode(), body)
+                self.assertNotIn(self.saved_token.encode(), body)
+        self.assertEqual(self.exchange("0" * 64)[0], 401)
+        self.assertEqual(self.request(site.PREFIX + "/exchange", headers=forged)[0], 404)
+        self.assertEqual(self.request(site.PREFIX + "/collector/v1/config", headers=forged)[0], 401)
+        self.assertEqual(self.upstream.requests, [])
+
+    def test_launch_exchange_expires_and_is_atomic_one_time(self):
+        secret = self.collector.launch
+        with ThreadPoolExecutor(max_workers=2) as clients:
+            statuses = list(clients.map(lambda _: self.exchange(secret)[0], range(2)))
+        self.assertEqual(sorted(statuses), [200, 401])
+        self.assertEqual(self.exchange(secret)[0], 401)
+        self.assertEqual(self.authorized()[0], 200)
+
+    def test_expired_launch_and_invalid_exchanges_fail_closed(self):
+        secret = self.collector.launch
+        path = site.PREFIX + "/exchange"
+        self.assertEqual(self.request(path, "POST", body=secret)[0], 403)
+        self.assertEqual(self.request(path, "PUT", body=secret)[0], 405)
+        self.assertEqual(self.exchange("x" * 64)[0], 400)
+        self.assertEqual(self.exchange("f" * 257)[0], 400)
+        with patch.object(site.time, "monotonic", return_value=self.collector.launch_expires):
+            self.assertEqual(self.exchange(secret)[0], 401)
+        self.assertEqual(self.upstream.requests, [])
 
     def test_bridge_rejects_unauthenticated_reads_writes_and_other_origins(self):
         path = site.PREFIX + "/collector/v1/snapshot"

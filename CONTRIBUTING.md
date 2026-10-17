@@ -109,10 +109,14 @@ exact-origin, read-only CORS wrapper inside existing admission budgets.
 
 To test `/app/` with an existing private-CA collector without changing its
 service or browser trust, run `python3 scripts/serve_site.py --profile NAME`
-and open `http://127.0.0.1:8001/zh/app/`. This development server binds only
+and open the one-time launch link printed in the terminal within five minutes.
+Its fragment carries a random exchange secret, is removed from browser history
+before exchange, and is never sent in an HTTP URL or referrer. Reloading needs
+a new launch link (restart the development server). This development server binds only
 to loopback, uses the saved viewer profile and CA, and automatically connects
-through a fixed read-only bridge. The browser receives a temporary local
-token, never the saved collector token. It applies the site's CSP headers,
+through a fixed read-only bridge. A successful one-time exchange gives the
+browser a temporary local token, never the saved collector token. Public pages
+and scripts contain neither capability. It applies the site's CSP headers,
 refuses other origins, redirects and worker routes, and verifies project
 identity. Nothing is injected into the published static files. Do not expose
 this credentialed development server through a tunnel or reverse proxy.

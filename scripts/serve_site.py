@@ -20,12 +20,15 @@ import secrets
 import ssl
 import stat
 import sys
+import threading
+import time
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = "/__topophany_local__"
 READS = {"/v1/config", "/v1/snapshot", "/v1/history", "/v1/rollups"}
 MAX_BODY = 4 << 20
+LAUNCH_TTL = 300
 
 
 class Collector:
@@ -47,6 +50,19 @@ class Collector:
             raise ValueError("the profile needs an explicit viewer token")
         self.tls = ssl.create_default_context(cafile=endpoint.get("ca_file") or None)
         self.session = secrets.token_hex(32)
+        # Loopback and browser headers do not authenticate an OS user. Only
+        # the terminal launch link conveys this one-time capability.
+        self.launch = secrets.token_hex(32)
+        self.launch_expires = time.monotonic() + LAUNCH_TTL
+        self.launch_lock = threading.Lock()
+
+    def exchange(self, launch: str) -> bool:
+        with self.launch_lock:
+            if (not self.launch or time.monotonic() >= self.launch_expires
+                    or not secrets.compare_digest(launch, self.launch)):
+                return False
+            self.launch = ""
+            return True
 
     def read(self, path: str) -> tuple[int, bytes]:
         connection = http.client.HTTPSConnection(
@@ -182,15 +198,51 @@ class SiteHandler(SimpleHTTPRequestHandler):
         return None
 
     def do_POST(self):
+        if not self.guard():
+            return
+        if self.path != PREFIX + "/exchange":
+            self.reply(405, b'{"error":"read_only"}')
+            return
+        if (self.headers.get("Origin") != self.origin
+                or self.headers.get("Sec-Fetch-Site") != "same-origin"):
+            self.reply(403, b'{"error":"same_origin_required"}')
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 1 <= length <= 256 or self.headers.get("Transfer-Encoding"):
+                raise ValueError("invalid launch length")
+            self.connection.settimeout(3)
+            launch = self.rfile.read(length).decode("ascii")
+            if not re.fullmatch(r"[0-9a-f]{64}", launch):
+                raise ValueError("invalid launch secret")
+        except (ValueError, OSError):
+            self.reply(400, b'{"error":"invalid_launch"}')
+            return
+        if not self.server.collector.exchange(launch):
+            self.reply(401, b'{"error":"launch_expired_or_used"}')
+            return
+        self.reply(200, json.dumps({"server": self.origin + PREFIX + "/collector",
+                                    "project": self.server.collector.project,
+                                    "token": self.server.collector.session}).encode())
+
+    def do_reject(self):
         self.reply(405, b'{"error":"read_only"}')
 
-    do_PUT = do_PATCH = do_DELETE = do_OPTIONS = do_POST
+    do_PUT = do_PATCH = do_DELETE = do_OPTIONS = do_reject
 
     def connection_script(self) -> bytes:
-        profile = json.dumps({"server": self.origin + PREFIX + "/collector",
-                              "project": self.server.collector.project,
-                              "token": self.server.collector.session})
-        return ("const profile = " + profile + ";\n" + """
+        # Public script: neither saved credentials nor either capability is
+        # embedded here. Fragments are never sent in HTTP requests/referrers.
+        return ("""
+const launch = new URLSearchParams(location.hash.slice(1)).get('launch');
+history.replaceState(null, '', location.pathname + location.search);
+if (!/^[0-9a-f]{64}$/.test(launch || '')) throw new Error('Open the terminal launch link.');
+const response = await fetch('""" + PREFIX + """/exchange', {
+  method: 'POST', headers: {'Content-Type': 'text/plain'}, body: launch,
+  credentials: 'omit', cache: 'no-store', redirect: 'error'
+});
+if (!response.ok) throw new Error('Restart the local viewer for a new launch link.');
+const profile = await response.json();
 const form = document.querySelector('#collector-connect');
 function fill() {
   for (const [key, value] of Object.entries(profile)) {
@@ -226,7 +278,7 @@ def main() -> int:
         if status != 200:
             raise ValueError(f"collector rejected the viewer profile (HTTP {status})")
         with serve(args.directory, collector, args.port) as server:
-            print(f"Viewer: http://127.0.0.1:{server.server_port}/zh/app/", flush=True)
+            print(f"Viewer (one use, expires in 5 minutes): http://127.0.0.1:{server.server_port}/zh/app/#launch={collector.launch}", flush=True)
             print(f"Collector: {collector.url} · project {collector.project}", flush=True)
             server.serve_forever()
     except KeyboardInterrupt:

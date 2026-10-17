@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,79 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
+
+func TestHeartbeatDurabilityBudgetSurvivesRestart(t *testing.T) {
+	for _, checkpoint := range []bool{false, true} {
+		t.Run(fmt.Sprint("checkpoint=", checkpoint), func(t *testing.T) {
+			c := testkit.Config()
+			now := time.Now().UTC()
+			dir := t.TempDir()
+			opts := Options{Observers: []string{"home", "cloud"}, Now: func() time.Time { return now }}
+			s := openTest(t, dir, opts)
+			b := batch(c, testkit.Observation(c, "home-http", 1, now, "ok"))
+			b.Heartbeat = &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: now}
+			if err := s.Put(b); err != nil {
+				t.Fatal(err)
+			}
+			if checkpoint {
+				if err := s.Checkpoint(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s.Close()
+			s = openTest(t, dir, opts)
+			journal := func() int64 {
+				st, err := os.Stat(filepath.Join(dir, "journal.jsonl"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return st.Size()
+			}
+			size := journal()
+			for i := 1; i <= 100; i++ {
+				// An observation already acknowledged is not new durable work.
+				// Vary all sender-owned heartbeat fields, including receipt time
+				// for direct store callers, without advancing the collector clock.
+				b.Revision = fmt.Sprintf("%064x", i)
+				b.Heartbeat = &model.Heartbeat{Observer: "home", Boot: fmt.Sprint("boot", i), SampledAt: now.Add(time.Duration(i) * time.Millisecond), ReceivedAt: now.Add(-time.Hour)}
+				if err := s.Put(b); !errors.Is(err, ErrHeartbeatRate) {
+					t.Fatal("sender bypassed heartbeat budget", i, err)
+				}
+				if journal() != size {
+					t.Fatal("rate limited heartbeat wrote journal")
+				}
+			}
+			// Another observer can still write a heartbeat and observations.
+			other := batch(c, testkit.Observation(c, "cloud-http", 1, now, "ok"))
+			other.Heartbeat = &model.Heartbeat{Observer: "cloud", Boot: "boot", SampledAt: now}
+			if err := s.Put(other); err != nil {
+				t.Fatal("heartbeat flood blocked another observer", err)
+			}
+			// A new observation can carry a heartbeat without extra fsyncs.
+			b.Observations = []model.Observation{testkit.Observation(c, "home-http", 2, now, "ok")}
+			if err := s.Put(b); err != nil {
+				t.Fatal("heartbeat budget blocked new observations", err)
+			}
+			b.Observations = nil
+			now = now.Add(heartbeatWriteInterval - time.Nanosecond)
+			b.Heartbeat.SampledAt = now
+			if err := s.Put(b); !errors.Is(err, ErrHeartbeatRate) {
+				t.Fatal("heartbeat admitted before cadence elapsed", err)
+			}
+			now = now.Add(time.Nanosecond)
+			b.Heartbeat.SampledAt = now
+			if err := s.Put(b); err != nil {
+				t.Fatal("heartbeat not admitted at cadence boundary", err)
+			}
+			s.Close()
+			s = openTest(t, dir, opts)
+			_, beats := s.View()
+			if h := beats["home"]; !h.SampledAt.Equal(now) || !h.ReceivedAt.Equal(now) || h.Revision != b.Revision {
+				t.Fatal("latest admitted heartbeat not recovered", h)
+			}
+		})
+	}
+}
 
 func TestObserverQuotasSurviveRestartAndReserveHeartbeats(t *testing.T) {
 	for _, quota := range []string{"receipts", "bytes"} {

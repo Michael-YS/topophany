@@ -256,7 +256,9 @@ func TestHeartbeatThatChangesNothingIsNotWritten(t *testing.T) {
 		t.Fatal("observation not written")
 	}
 	size = journal()
-	for i, b := range []model.Batch{beat(now.Add(time.Second), revision), beat(now.Add(time.Second), "f"+revision[1:])} {
+	sampledAt := now.Add(time.Second)
+	for i, b := range []model.Batch{beat(sampledAt, revision), beat(sampledAt, "f"+revision[1:])} {
+		now = now.Add(time.Second)
 		if e := s.Put(b); e != nil {
 			t.Fatal(e)
 		}
@@ -267,7 +269,7 @@ func TestHeartbeatThatChangesNothingIsNotWritten(t *testing.T) {
 	}
 	s.Close()
 	s = openTest(t, dir, Options{Now: func() time.Time { return now }})
-	if _, beats := s.View(); !beats["home"].SampledAt.Equal(now.Add(time.Second)) || beats["home"].Revision != "f"+revision[1:] {
+	if _, beats := s.View(); !beats["home"].SampledAt.Equal(sampledAt) || beats["home"].Revision != "f"+revision[1:] {
 		t.Fatal("heartbeat not recovered", beats["home"])
 	}
 }

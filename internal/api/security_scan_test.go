@@ -77,6 +77,31 @@ func TestSlowBodiesAreIsolatedByObserverAndExpire(t *testing.T) {
 	}
 }
 
+func TestHeartbeatDurabilityRateIsSharedByObserverTokens(t *testing.T) {
+	srv, h, _ := fixture(t)
+	alias, other := strings.Repeat("c", 64), strings.Repeat("d", 64)
+	srv.Auth.Tokens = append(srv.Auth.Tokens, Principal{secure.Hash(alias), "worker", "home"}, Principal{secure.Hash(other), "worker", "cloud"})
+	b := model.Batch{Schema: model.BatchSchema, Project: srv.Config.Project, Revision: config.Revision(srv.Config), Heartbeat: &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: srv.Now()}}
+	post := func(token string) *httptest.ResponseRecorder {
+		return request(h, "POST", "/v1/observations", token, "application/json", payload(t, b))
+	}
+	if w := post(workerToken); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for i := 1; i <= 10; i++ {
+		b.Revision = fmt.Sprintf("%064x", i)
+		b.Heartbeat.SampledAt = srv.Now().Add(time.Duration(i) * time.Millisecond)
+		if w := post(alias); w.Code != 429 || !strings.Contains(w.Body.String(), "observer_heartbeat_rate") || w.Header().Get("Retry-After") != "1" {
+			t.Fatal("alias bypassed heartbeat budget", w.Code, w.Body.String())
+		}
+	}
+	b.Heartbeat.Observer = "cloud"
+	b.Observations = []model.Observation{testkit.Observation(srv.Config, "cloud-http", 1, srv.Now(), "ok")}
+	if w := post(other); w.Code != 202 {
+		t.Fatal("one observer blocked another", w.Code, w.Body.String())
+	}
+}
+
 func TestSnapshotCacheDoesNotRepeatStoreWork(t *testing.T) {
 	srv, h, b := fixture(t)
 	first := request(h, "GET", "/v1/snapshot", viewerToken, "", nil)

@@ -63,7 +63,7 @@ func TestStorageBackpressureDoesNotStopHeartbeats(t *testing.T) {
 				if n, _ := q.Stats(); n != 1 || r[0].Accepted != 0 {
 					t.Fatal("heartbeat acknowledged pending sample", n, r)
 				}
-				clock.Add(int64(500 * time.Millisecond)) // still within sample backoff
+				clock.Add(int64(time.Second)) // respect the collector's heartbeat durability cadence
 			}
 			clock.Add(int64(2 * time.Hour)) // receipt expires; queued sample still within API ingestion window
 			if r := d.Tick(context.Background(), q, &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: now()}); r[0].Accepted != 1 || r[0].Error != "" {

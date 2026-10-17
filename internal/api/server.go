@@ -465,7 +465,7 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request, a authority) {
 	}
 	_ = controller.SetReadDeadline(time.Time{})
 	if status, code := s.put(a, b); code != "" {
-		if code == "topology_reloaded" {
+		if code == "topology_reloaded" || code == "observer_heartbeat_rate" {
 			w.Header().Set("Retry-After", "1")
 		}
 		writeError(w, status, code)
@@ -496,6 +496,8 @@ func (s *Server) put(a authority, b model.Batch) (int, string) {
 			return 409, "observation_id_conflict"
 		case errors.Is(e, store.ErrScopeCapacity):
 			return 429, "observer_storage_quota"
+		case errors.Is(e, store.ErrHeartbeatRate):
+			return 429, "observer_heartbeat_rate"
 		case errors.Is(e, store.ErrCapacity):
 			return 503, "storage_receipt_capacity"
 		default:

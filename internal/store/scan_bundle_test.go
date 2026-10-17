@@ -76,7 +76,8 @@ func TestRecoveredHeartbeatContract(t *testing.T) {
 		c := testkit.Config()
 		now := time.Now().UTC()
 		dir := t.TempDir()
-		s := openTest(t, dir, Options{})
+		opts := Options{Now: func() time.Time { return now }}
+		s := openTest(t, dir, opts)
 		b := batch(c)
 		b.Heartbeat = &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: now}
 		if err := s.Put(b); err != nil {
@@ -88,7 +89,7 @@ func TestRecoveredHeartbeatContract(t *testing.T) {
 			}
 		}
 		s.Close()
-		s = openTest(t, dir, Options{})
+		s = openTest(t, dir, opts)
 		_, _, beats := s.StateView()
 		for _, change := range []string{"project", "revision", "legacy"} {
 			changed := c
@@ -113,12 +114,13 @@ func TestRecoveredHeartbeatContract(t *testing.T) {
 				}
 			}
 		}
-		b.Heartbeat.SampledAt = now.Add(time.Second)
+		now = now.Add(time.Second)
+		b.Heartbeat.SampledAt = now
 		if err := s.Put(b); err != nil {
 			t.Fatal(err)
 		}
 		_, _, beats = s.StateView()
-		snap := engine.Build(c, "test", "home", nil, beats, now.Add(time.Second))
+		snap := engine.Build(c, "test", "home", nil, beats, now)
 		for _, o := range snap.Observers {
 			if o.ID == "home" && o.Health != "up" {
 				t.Fatal("matching beat ignored")

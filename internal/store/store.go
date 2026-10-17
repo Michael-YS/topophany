@@ -33,6 +33,13 @@ import (
 
 var ErrConflict = errors.New("observation ID reused with different contents")
 var ErrCapacity = errors.New("receipt capacity reached; collection paused instead of losing deduplication")
+var ErrHeartbeatRate = errors.New("observer heartbeat durability rate exceeded")
+
+// Heartbeat-only writes get one durable update per observer per second, below
+// the normal worker's two-second delivery interval. ReceivedAt is collector
+// owned and recovered from disk; sender timestamps, boots and revisions cannot
+// reset this budget. Heartbeats piggybacked on new observations cost no extra I/O.
+const heartbeatWriteInterval = time.Second
 
 // Options bound the store. Revision and Contracts, when set, are the
 // topology a collector counts samples under (see config.Counted): only
@@ -588,6 +595,11 @@ func (s *Store) Put(b model.Batch) error {
 	}
 	if len(kept) == 0 && b.Heartbeat == nil {
 		return nil
+	}
+	if len(kept) == 0 && b.Heartbeat != nil {
+		if old, ok := s.beats[b.Heartbeat.Observer]; ok && now.Sub(old.ReceivedAt) < heartbeatWriteInterval {
+			return ErrHeartbeatRate
+		}
 	}
 	record, e := wrap(b)
 	if e != nil {

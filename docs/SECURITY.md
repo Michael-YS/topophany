@@ -32,6 +32,14 @@ Temporary overrides use `--token-stdin` or `--credential-file` (private, regular
 
 ## Capability Boundaries
 
+The optional `scripts/serve_site.py` development bridge requires the private
+one-time launch link printed in its terminal. The fragment secret expires in
+five minutes and is removed from browser history before it is exchanged for a
+process-local viewer token. Unauthenticated pages and scripts never contain
+either secret. Loopback binding and browser-origin headers alone do not
+authenticate a local OS user. Restart the bridge to obtain another launch link;
+keep the terminal link private like other viewer credentials.
+
 The API provides no endpoints for modifying topology, altering proxy routing policies, reading arbitrary files, running remote commands, or restarting services. Workers load reviewed checks from local files and do not poll or receive arbitrary tasks to execute from the collector. Because probing arbitrary targets inherently grants access to networks reachable by the executor, the audited configuration file itself forms the authorization boundary; never load untrusted third-party topology files automatically.
 
 The proxy adapter reads only explicitly allowlisted endpoints (such as safe configuration and status queries), forbidding arbitrary GET endpoints from being treated as side-effect-free authorizations. Tunnel tools (`tailscale` and `wg`) and `ssh` for SSH hops are looked up on the process `PATH` and invoked directly, never through a shell, with fixed argument structures. OpenSSH is used solely for `-W` stream forwarding with strict host-key checking and never opens an interactive shell; unknown host keys are rejected and agent forwarding is disabled. Binary installation directories and system PATH must be trusted. Because tunnel interfaces like WireGuard often require elevated privileges, probe in-tunnel services where possible rather than running the entire monitoring process persistently as root.
