@@ -101,24 +101,29 @@ func AvailabilityDetails(list []model.Availability) []string {
 
 // Up24h is the share of the last day's measured time a check was up, as
 // the Checks tab shows it, or "" when nothing was measured. When the
-// collector holds less than the whole day, the cell says how much it holds:
-// "98.9% · 3h" is that share over three hours, not over a day.
-func Up24h(list []model.Availability, now time.Time) string {
+// collector measured less than the whole day, the cell says how much:
+// "98.9% · 3h" is that share over three measured hours, not over a day.
+// Measured time, not the first sample's age, keeps gaps out of the note.
+func Up24h(list []model.Availability) string {
 	for _, a := range list {
 		if a.Window != "24h" {
 			continue
 		}
 		share := UpShare(a.Rollup)
-		if share == "" || a.Since.IsZero() || !a.Since.After(now.Add(-24*time.Hour)) {
+		if share == "" || share == "incomplete" {
 			return share
 		}
-		return share + " · " + held(now.Sub(a.Since))
+		measured := time.Duration(a.Measured()) * time.Second
+		if measured <= 0 || measured >= 24*time.Hour {
+			return share
+		}
+		return share + " · " + held(measured)
 	}
 	return ""
 }
 
-// held says how much of a window the collector holds, in the two units a
-// table cell can carry.
+// held says how much of a window was measured, in the two units a table
+// cell can carry.
 func held(d time.Duration) string {
 	if d < time.Hour {
 		return strconv.Itoa(max(0, int(d.Minutes()))) + "m"
