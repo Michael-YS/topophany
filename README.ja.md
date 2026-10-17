@@ -5,6 +5,10 @@
 <p align="center"><b>どこから、どの経路で、何に届いたのか — そして、何を根拠に。</b></p>
 
 <p align="center">
+  <a href="https://topophany.com/ja/demo/"><img src="https://img.shields.io/badge/%E2%96%B6%20ライブデモ-ブラウザで試す-5eead4?style=for-the-badge&labelColor=0a1016" alt="ライブデモ：ブラウザで試す"></a>
+</p>
+
+<p align="center">
   <a href="https://topophany.com/ja/"><b>topophany.com</b></a> ·
   <a href="https://github.com/WhitenWhiten/topophany/releases">ダウンロード</a> ·
   <a href="docs/GUIDE.md">ユーザーガイド (英語)</a>
