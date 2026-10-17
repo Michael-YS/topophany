@@ -86,6 +86,10 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 			settlingWindow = true
 		}
 	}
+	// A policy that was already known before the provider comparison (mode
+	// or TUN) is not a settling publication; do not let a provider's settle
+	// window delay its confirmation.
+	policyBefore := o.Outcome == "policy"
 	keys := make([]string, 0, len(expected))
 	for k := range expected {
 		keys = append(keys, k)
@@ -136,7 +140,7 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 			o.Detail = "desired provider membership/order differs from the loaded runtime"
 		}
 	}
-	if mismatched > 0 && unconfirmed == mismatched {
+	if mismatched > 0 && unconfirmed == mismatched && !policyBefore {
 		// Every difference is inside a window the controller may still be
 		// loading. It is a policy sample for confirmation purposes, not an
 		// unknown: a publisher that keeps republishing cannot reset it.
