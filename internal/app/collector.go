@@ -146,8 +146,28 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 		a.watch(ctx, backend, ledger.Settle(c), notifier)
 	}()
 	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
+	// A handshake error is diagnostic. Do not make the connection goroutine
+	// wait for a slow stderr, journald or rotating log file: forward through
+	// a bounded queue and drop lines when the sink cannot keep up. The
+	// counter has already recorded the failure before the line reaches here.
+	handshakeLog := make(chan string, 128)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case line := <-handshakeLog:
+				fmt.Fprintln(a.Err, line)
+			}
+		}
+	}()
 	srv := &http.Server{Addr: *listen, Handler: backend.Handler(), TLSConfig: tc, ConnContext: api.ConnectionContext, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384,
-		ErrorLog: log.New(ingress.Writer(func(line string) { fmt.Fprintln(a.Err, line) }), "", log.LstdFlags)}
+		ErrorLog: log.New(ingress.Writer(func(line string) {
+			select {
+			case handshakeLog <- line:
+			default:
+			}
+		}), "", log.LstdFlags)}
 	// Local checks, if any, under a topology; reloads replace them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
 		if *observer == "" {
