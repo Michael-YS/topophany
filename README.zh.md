@@ -115,6 +115,21 @@ topo --credentials ./demo/credentials.json
 
 [运维指南](docs/OPERATIONS.md)（英文）介绍双采集器、systemd 单元和各项上限，[安全模型](docs/SECURITY.md)（英文）介绍令牌与传输。
 
+### 升级注意事项
+
+- 为避免令牌出现在进程参数中，已移除 `--credential TOKEN`。优先通过 `topo login` 保存凭据；临时覆盖可按下例从标准输入或私密令牌文件读取。`--token-stdin` 和 `--credential-file` 互斥；多服务器配置使用任一种临时覆盖时，都必须显式指定 `--server`。
+- 在 POSIX 系统上，托管日志及已有的编号备份必须使用 `0600` 或更严格的权限。如果 `serve` 或 `worker` 拒绝 `--log-file` 指定的文件，请先修正这些文件的权限，再重启。
+- 配置重载前已认证的快照请求可能返回 `503 topology_reloaded`，并附带 `Retry-After: 1`。重新发送请求后，会按当前令牌配置重新认证。
+
+请保护好 `token.txt`（POSIX 上使用 `0600`，Windows 上限制其 ACL）：
+
+```sh
+topo --json --token-stdin < token.txt
+topo --credential-file token.txt
+```
+
+[变更记录](CHANGELOG.md)（英文）也说明了 Webhook 响应头上限和发布打包的防护措施。
+
 ## 它能检查什么
 
 - **原生探针：** HTTP（状态码、正文、响应头、出口 IP）、TCP、带证书校验的 TLS、SSH banner、DNS A/AAAA、UDP echo、ICMP（IPv4）。

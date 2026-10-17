@@ -115,6 +115,21 @@ Run `topo help` for the full list.
 
 The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units and limits, and the [security model](docs/SECURITY.md) covers tokens and transport.
 
+### Upgrading
+
+- The `--credential TOKEN` option has been removed to keep tokens out of process arguments. Prefer saved credentials through `topo login`; for a temporary override, use stdin or a private token file as below. `--token-stdin` and `--credential-file` are mutually exclusive, and a multi-server profile requires an explicit `--server` for either override.
+- On POSIX, managed logs and their existing numbered backups must have permissions `0600` or stricter. If `serve` or `worker` refuses a file selected by `--log-file`, correct those permissions before restarting.
+- A snapshot request admitted before a configuration reload may return `503 topology_reloaded` with `Retry-After: 1`. Send a new request; it will authenticate against the current tokens.
+
+Keep `token.txt` private (`0600` on POSIX; restrict its ACL on Windows):
+
+```sh
+topo --json --token-stdin < token.txt
+topo --credential-file token.txt
+```
+
+The [changelog](CHANGELOG.md) also covers the webhook response-header limit and release-packaging protections.
+
 ## What it checks
 
 - **Native probes:** HTTP (status, body, headers, egress IP), TCP, TLS with certificate validation, SSH banner, DNS A/AAAA, UDP echo, ICMP (IPv4).

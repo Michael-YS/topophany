@@ -115,6 +115,21 @@ topo --credentials ./demo/credentials.json
 
 [運用ガイド](docs/OPERATIONS.md) (英語) ではデュアルコレクター、systemd ユニット、各種上限を、[セキュリティモデル](docs/SECURITY.md) (英語) ではトークンと通信を扱います。
 
+### アップグレード時の注意
+
+- トークンをプロセス引数に残さないため、`--credential TOKEN` は削除されました。通常は `topo login` で認証情報を保存してください。一時的に上書きする場合は、以下のように標準入力か非公開のトークンファイルから読み取れます。`--token-stdin` と `--credential-file` は併用できず、複数サーバーのプロファイルでは、どちらも明示的な `--server` が必要です。
+- POSIX では、管理対象のログと既存の番号付きバックアップの権限を `0600` 以下に制限する必要があります。`serve` や `worker` が `--log-file` のファイルを拒否した場合は、権限を修正してから再起動してください。
+- 設定の再読み込み前に認証されたスナップショット要求は、`Retry-After: 1` を伴う `503 topology_reloaded` を返すことがあります。要求を送り直すと、現在のトークン設定で再認証されます。
+
+`token.txt` は非公開にしてください（POSIX では `0600`、Windows では ACL を制限）：
+
+```sh
+topo --json --token-stdin < token.txt
+topo --credential-file token.txt
+```
+
+[変更履歴](CHANGELOG.md)（英語）には、Webhook の応答ヘッダー上限とリリースのパッケージング保護についても記載しています。
+
 ## 計測できるもの
 
 - **ネイティブプローブ:** HTTP (ステータス、本文、ヘッダー、出口 IP)、TCP、証明書を検証する TLS、SSH バナー、DNS A/AAAA、UDP エコー、ICMP (IPv4)。
