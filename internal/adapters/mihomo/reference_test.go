@@ -20,6 +20,8 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
+var testControllerUpdated = time.Date(2026, 10, 17, 6, 0, 0, 0, time.UTC)
+
 func referenceDocument(at time.Time, names []string) string {
 	raw, _ := json.Marshal(map[string]any{"schema": 1, "published_at": at.UTC(), "providers": map[string][]string{"edge-local": names}})
 	return string(raw)
@@ -49,7 +51,7 @@ func referenceHarness(t *testing.T, reference http.HandlerFunc, loaded func() []
 			for _, name := range loaded() {
 				proxies = append(proxies, map[string]string{"name": name})
 			}
-			json.NewEncoder(w).Encode(map[string]any{"providers": map[string]any{"fixed": map[string]any{"proxies": []map[string]string{{"name": "fixed-node"}}}, "edge-local": map[string]any{"proxies": proxies}}})
+			json.NewEncoder(w).Encode(map[string]any{"providers": map[string]any{"fixed": map[string]any{"proxies": []map[string]string{{"name": "fixed-node"}}, "updatedAt": testControllerUpdated}, "edge-local": map[string]any{"proxies": proxies, "updatedAt": testControllerUpdated}}})
 		default:
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -57,7 +59,7 @@ func referenceHarness(t *testing.T, reference http.HandlerFunc, loaded func() []
 	t.Cleanup(srv.Close)
 	x := httpCheck(srv.URL)
 	x.Kind = "mihomo"
-	x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_CONTROLLER_TEST", RootProxy: "root", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"fixed": {"fixed-node"}}, ProviderReference: &model.MihomoProviderReference{URL: srv.URL + "/reference", Providers: []string{"edge-local"}, MaxAgeSeconds: 3600, TokenEnv: "TOPH_PUBLISHER_TEST"}}
+	x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_CONTROLLER_TEST", RootProxy: "root", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"fixed": {"fixed-node"}}, ProviderReference: &model.MihomoProviderReference{URL: srv.URL + "/reference", Providers: []string{"edge-local"}, MaxAgeSeconds: 3600, SettleSeconds: new(int), TokenEnv: "TOPH_PUBLISHER_TEST"}}
 	return x
 }
 func runReference(x model.Check) model.Observation {
@@ -89,6 +91,41 @@ func TestMihomoDynamicProviderRotation(t *testing.T) {
 	}
 	if config.Contract(testkit.Config(), x) != contract {
 		t.Fatal("dynamic contents changed the configured contract")
+	}
+	if got := second.Facts["provider_updated_at"]; got != testControllerUpdated.Format(time.RFC3339Nano) {
+		t.Fatalf("controller report time not recorded beside the publisher time: %q", got)
+	}
+}
+
+func TestMihomoReferenceSettlesAfterPublication(t *testing.T) {
+	names := []string{"edge-a", "edge-b"}
+	doc := referenceDocument(time.Now().UTC().Add(-30*time.Second), names)
+	drifted := referenceHarness(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, doc) }, func() []string { return []string{"old"} })
+	// Unset uses the default wait: a publication 30s old may still be loading.
+	drifted.Adapter.ProviderReference.SettleSeconds = nil
+	o := runReference(drifted)
+	if o.Outcome != "unknown" || o.Code != "provider_reference_settling" || o.Facts["provider_reference_settling"] != "true" {
+		t.Fatal(o)
+	}
+	if !strings.Contains(o.Facts["provider_comparison"], "=settling(") {
+		t.Fatalf("comparison does not say why it is deferred: %q", o.Facts["provider_comparison"])
+	}
+	one, zero := 1, 0
+	drifted.Adapter.ProviderReference.SettleSeconds = &one
+	if o = runReference(drifted); o.Outcome != "policy" || o.Code != "provider_membership_mismatch" {
+		t.Fatal("a window shorter than the publication age hid a violation", o)
+	}
+	drifted.Adapter.ProviderReference.SettleSeconds = &zero
+	if o = runReference(drifted); o.Outcome != "policy" {
+		t.Fatal("zero did not disable the wait", o)
+	}
+
+	// A matching publication is never held back by the wait.
+	fresh := referenceDocument(time.Now().UTC(), names)
+	matched := referenceHarness(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, fresh) }, func() []string { return names })
+	matched.Adapter.ProviderReference.SettleSeconds = nil
+	if o = runReference(matched); o.Outcome != "ok" || o.Facts["provider_reference_settling"] != "" {
+		t.Fatal("matching membership was reported as settling", o)
 	}
 }
 

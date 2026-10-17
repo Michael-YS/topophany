@@ -50,6 +50,10 @@ func Clone(c model.Config) model.Config {
 		if ref := x.Adapter.ProviderReference; ref != nil {
 			v := *ref
 			v.Providers = slices.Clone(ref.Providers)
+			if ref.SettleSeconds != nil {
+				settle := *ref.SettleSeconds
+				v.SettleSeconds = &settle
+			}
 			x.Adapter.ProviderReference = &v
 		}
 		x.Adapter.ProviderMatchModes = maps.Clone(x.Adapter.ProviderMatchModes)

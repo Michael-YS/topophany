@@ -70,6 +70,21 @@ are refused, and controller credentials are never forwarded to the publisher.
 be nonempty, unique, free of control characters and at most 2048 bytes. Static
 and dynamic providers must be distinct, with at most 16 combined per check.
 
+`provider_reference.settle_seconds` (0..3600, default 120) is the window after
+`published_at` in which a difference is not yet a violation: a controller loads
+a new provider over a minute or two, and every publication would otherwise
+report `policy / provider_membership_mismatch` while it catches up. Inside the
+window a difference is `unknown / provider_reference_settling`, with
+`provider_reference_settling: true` and `provider_comparison` saying
+`=settling(`. Matching membership is never deferred; `0` disables the wait and
+restores immediate comparison.
+
+Facts put three times side by side: `provider_reference_published_at` from the
+publisher, `provider_updated_at` from the controller's own `updatedAt` when it
+reports one, and the sample's own time. A difference that outlives the window
+is the drift this check exists to find; one that does not is the publication
+loading.
+
 The adapter reads the publication immediately before and after the runtime
 provider read. A stable, fresh publication with different loaded members/order
 still produces `policy / provider_membership_mismatch`. A publication that

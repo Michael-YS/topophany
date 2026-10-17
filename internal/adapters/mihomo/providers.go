@@ -59,6 +59,7 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		return err
 	}
 	stable := true
+	settling := false
 	if options.ProviderReference != nil {
 		after, err := readReference(ctx, deps, x)
 		if err != nil {
@@ -70,6 +71,12 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		if !stable {
 			o.Facts["provider_reference_consistency"] = "changed"
 		}
+		// A controller loads a new provider over a minute or two. Inside
+		// that window a difference is not yet a violation: it is what every
+		// publication looks like before the runtime catches up.
+		if wait := settle(options.ProviderReference); wait > 0 && !before.PublishedAt.IsZero() && time.Since(before.PublishedAt) < wait {
+			settling = true
+		}
 	}
 	keys := make([]string, 0, len(expected))
 	for k := range expected {
@@ -77,8 +84,12 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 	}
 	sort.Strings(keys)
 	summaries := []string{}
+	newest := time.Time{}
 	for _, k := range keys {
 		p, ok := out.Providers[k]
+		if p.UpdatedAt.After(newest) {
+			newest = p.UpdatedAt
+		}
 		actual, shown := []string{}, []string{}
 		for _, v := range p.Proxies {
 			actual = append(actual, v.Name)
@@ -96,11 +107,27 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		if dynamic && !stable {
 			status = "unverified"
 		}
+		if dynamic && stable && settling && !same {
+			status = "settling"
+		}
 		summaries = append(summaries, fmt.Sprintf("%s=%s(expected:%d loaded:%d missing:%d extra:%d order_changed:%t present:%t)", k, status, len(expected[k]), len(actual), comparison.missing, comparison.extra, comparison.orderChanged, ok))
 		if !same && (!dynamic || stable) {
+			if dynamic && settling {
+				if o.Outcome != "policy" {
+					o.Outcome, o.Code = "unknown", "provider_reference_settling"
+					o.Detail = "provider membership differs while the controller may still be loading the publication; not yet a violation"
+					o.Facts["provider_reference_settling"] = "true"
+				}
+				continue
+			}
 			o.Outcome, o.Code = "policy", "provider_membership_mismatch"
 			o.Detail = "desired provider membership/order differs from the loaded runtime"
 		}
+	}
+	if !newest.IsZero() {
+		// The controller's own account of when it last loaded a provider,
+		// beside the publisher's time and this sample's time.
+		o.Facts["provider_updated_at"] = newest.UTC().Format(time.RFC3339Nano)
 	}
 	o.Facts["provider_comparison"] = adapters.SafeFact(strings.Join(summaries, "; "))
 	if !stable && o.Outcome != "policy" {

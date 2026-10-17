@@ -23,6 +23,14 @@ func TestMihomoProviderReferenceValidation(t *testing.T) {
 			o.ProviderReference.URL = "https://publisher.invalid/members.json#secret"
 		},
 		func(o *model.MihomoOptions) { o.ProviderReference.URL = "file:///tmp/members.json" },
+		func(o *model.MihomoOptions) {
+			negative := -1
+			o.ProviderReference.SettleSeconds = &negative
+		},
+		func(o *model.MihomoOptions) {
+			tooLong := 3601
+			o.ProviderReference.SettleSeconds = &tooLong
+		},
 		func(o *model.MihomoOptions) { o.ProviderReference.MaxAgeSeconds = 0 },
 		func(o *model.MihomoOptions) { o.ProviderReference.MaxAgeSeconds = 604801 },
 		func(o *model.MihomoOptions) { o.ProviderReference.Providers = nil },
@@ -41,6 +49,16 @@ func TestMihomoProviderReferenceValidation(t *testing.T) {
 		if Validate(o) == nil {
 			t.Fatal("invalid reference accepted", o)
 		}
+	}
+	for _, settle := range []int{0, 1, 120, 3600} {
+		o := good()
+		o.ProviderReference.SettleSeconds = &settle
+		if err := Validate(o); err != nil {
+			t.Fatal(settle, err)
+		}
+	}
+	if err := Validate(good()); err != nil {
+		t.Fatal("unset settle_seconds must be valid", err)
 	}
 	for _, url := range []string{"https://publisher.invalid/members.json", "http://127.0.0.1:8080/members.json", "http://[::1]:8080/members.json"} {
 		o := good()

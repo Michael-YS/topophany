@@ -4,10 +4,26 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
+
+// DefaultSettle is how long a membership difference is treated as not yet
+// confirmed after a publication. A controller loads a new provider over a
+// minute or two, and comparing inside that window would report a violation
+// for every publication.
+const DefaultSettle = 120 * time.Second
+
+// settle is the wait after a publication before a membership difference
+// counts as a violation: the default when unset, none when zero.
+func settle(ref *model.MihomoProviderReference) time.Duration {
+	if ref == nil || ref.SettleSeconds == nil {
+		return DefaultSettle
+	}
+	return time.Duration(*ref.SettleSeconds) * time.Second
+}
 
 func Validate(options model.MihomoOptions) error {
 	if len(options.ExpectedProviders) > 16 {
@@ -24,6 +40,9 @@ func Validate(options model.MihomoOptions) error {
 		}
 		if ref.MaxAgeSeconds < 1 || ref.MaxAgeSeconds > 604800 || len(ref.Providers) == 0 || len(options.ExpectedProviders)+len(ref.Providers) > 16 {
 			return errors.New("provider reference requires 1..604800 max_age_seconds and 1..16 total expected providers")
+		}
+		if ref.SettleSeconds != nil && (*ref.SettleSeconds < 0 || *ref.SettleSeconds > 3600) {
+			return errors.New("provider reference settle_seconds must be 0..3600")
 		}
 		seen := map[string]bool{}
 		for _, name := range ref.Providers {

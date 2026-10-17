@@ -21,6 +21,10 @@ type MihomoProviderReference struct {
 	URL           string   `json:"url"`
 	Providers     []string `json:"providers"`
 	MaxAgeSeconds int      `json:"max_age_seconds"`
-	TokenEnv      string   `json:"token_env,omitempty"`
-	CAFile        string   `json:"ca_file,omitempty"`
+	// SettleSeconds is how long after PublishedAt a membership difference is
+	// treated as not yet confirmed, because the controller may still be
+	// loading the publication. Nil uses the default, 0 disables the wait.
+	SettleSeconds *int   `json:"settle_seconds,omitempty"`
+	TokenEnv      string `json:"token_env,omitempty"`
+	CAFile        string `json:"ca_file,omitempty"`
 }
