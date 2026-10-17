@@ -383,6 +383,11 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 	// Incidents aggregate only confirmed failures in the same observer/endpoint
 	// scope. They do not diagnose an IP-wide ban, GFW, or untested UDP behavior.
 	incidents := map[string]*model.Incident{}
+	// An incident can hold several checks on one node. Remember every status
+	// each of them reported through the edge so one check's code cannot
+	// stand for another's.
+	edgeStatuses := map[string][]string{}
+	edgeChecks, incidentChecks := map[string]int{}, map[string]int{}
 	for _, x := range c.Checks {
 		if !relevant(x) {
 			continue
@@ -411,6 +416,7 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 			incidents[scope] = inc
 		}
 		inc.Checks = append(inc.Checks, x.ID)
+		incidentChecks[scope]++
 		if s.Since.Before(inc.Since) {
 			inc.Since = s.Since
 		}
@@ -424,15 +430,19 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 					inc.CounterEvidence = boundedChecks(inc.CounterEvidence, []string{other.ID})
 				}
 			}
-			switch {
-			case len(ep.Via) > 0 && s.Last.Connectivity:
-				inc.Hypothesis = edgeHypothesis(s.Last)
-			case len(inc.CounterEvidence) > 0:
-				inc.Hypothesis = "source/path-specific interference, filtering or routing fault is possible; blocking authority and untested protocols are not established"
+			if len(ep.Via) > 0 && s.Last.Connectivity {
+				edgeChecks[scope]++
+				edgeStatuses[scope] = append(edgeStatuses[scope], s.Last.Facts["http_status"])
 			}
 		}
 	}
-	for _, inc := range incidents {
+	for scope, inc := range incidents {
+		switch {
+		case incidentChecks[scope] > 0 && edgeChecks[scope] == incidentChecks[scope]:
+			inc.Hypothesis = edgeHypothesisStatuses(edgeStatuses[scope])
+		case len(inc.CounterEvidence) > 0:
+			inc.Hypothesis = "source/path-specific interference, filtering or routing fault is possible; blocking authority and untested protocols are not established"
+		}
 		sort.Strings(inc.Checks)
 		sort.Strings(inc.CounterEvidence)
 		inc.CounterEvidence = dedup(inc.CounterEvidence)
@@ -474,25 +484,46 @@ func implicated(ep model.Endpoint, node string, v *model.Observation) bool {
 	return len(ep.Via) == 0 || ep.Via[0] != node || !v.Connectivity
 }
 
-func withStatus(v *model.Observation) string {
-	if code := v.Facts["http_status"]; code != "" {
-		return " with HTTP " + code
-	}
-	return ""
-}
-
-// edgeHypothesis explains a failed request whose response came back through
-// an edge in front. Any response proves that hop and nothing behind it, and
-// an error status is a word the edge or the origin can send whatever
+// edgeHypothesisStatuses explains a failed request whose response came back
+// through an edge in front. Any response proves that hop and nothing behind
+// it, and an error status is a word the edge or the origin can send whatever
 // happened, so the hypothesis says only what is established and names a
 // candidate cause only where the status class supports one. An HTTP 403 is
 // not proof of a WAF, and 521 is the platform's own account of an origin it
 // could not reach, not an independent observation of that origin.
-func edgeHypothesis(v *model.Observation) string {
-	head := "the edge in front answered" + withStatus(v) + "; "
+//
+// An incident may aggregate checks that saw different statuses. One check's
+// code must not be presented as another's, so mixed statuses get a sentence
+// without a single code.
+func edgeHypothesisStatuses(statuses []string) string {
+	seen := map[string]bool{}
+	unique := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		if status == "" || seen[status] {
+			continue
+		}
+		seen[status] = true
+		unique = append(unique, status)
+	}
+	switch len(unique) {
+	case 0:
+		return edgeHypothesisStatus("")
+	case 1:
+		return edgeHypothesisStatus(unique[0])
+	}
+	slices.Sort(unique)
+	return "the edge in front answered with different HTTP statuses (" + strings.Join(unique, ", ") + "); the requests did not satisfy their assertions and the failing layer is not located; the origin's own state is not established"
+}
+
+func edgeHypothesisStatus(status string) string {
+	head := "the edge in front answered"
+	if status != "" {
+		head += " with HTTP " + status
+	}
+	head += "; "
 	const unlocated = "the request did not satisfy its assertions and the failing layer is not located"
 	const originUnknown = "the origin's own state is not established"
-	switch status := v.Facts["http_status"]; {
+	switch {
 	case status == "403" || status == "429":
 		return head + unlocated + "; the response may be edge policy or a challenge page rather than the origin's answer, and " + originUnknown
 	case status == "521" || status == "522" || status == "523" || status == "524":

@@ -499,6 +499,32 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		}
 	}
 
+	// One incident can aggregate several checks on the same node. It must
+	// not present one check's status as the explanation for another's.
+	mixedConfig := edged()
+	for i := range mixedConfig.Endpoints {
+		if mixedConfig.Endpoints[i].ID == "dmit-ssh" {
+			mixedConfig.Endpoints[i].Via = []string{"edge"}
+		}
+	}
+	mixed := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		at := now.Add(time.Duration(i-3) * time.Second)
+		mixed = append(mixed, through(mixedConfig, "home-http", uint64(i+1), at, "fail", "521", "", true))
+		mixed = append(mixed, through(mixedConfig, "home-ssh", uint64(i+10), at, "fail", "403", "", true))
+	}
+	st := Build(mixedConfig, "a", "home", mixed, nil, now)
+	if len(st.Incidents) != 1 || len(st.Incidents[0].Checks) != 2 {
+		t.Fatalf("mixed-status checks did not aggregate: %+v", st.Incidents)
+	}
+	got := st.Incidents[0].Hypothesis
+	if strings.Contains(got, "with HTTP 403") || strings.Contains(got, "with HTTP 521") {
+		t.Fatalf("one check's status spoke for the other: %q", got)
+	}
+	if !strings.Contains(got, "different HTTP statuses") || !strings.Contains(got, "origin's own state is not established") {
+		t.Fatalf("mixed statuses were not described honestly: %q", got)
+	}
+
 	// Where the edge says its answer came from is its own word, which the
 	// edge, or the origin behind it, can send whatever happened: no cache
 	// status proves the origin, not even one that says the edge fetched it.
