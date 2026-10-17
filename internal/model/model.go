@@ -2,7 +2,12 @@
 // and terminal clients. Identity is never derived from an IP address.
 package model
 
-import "time"
+import (
+	"regexp"
+	"runtime/debug"
+	"strings"
+	"time"
+)
 
 const MaxSnapshotBytes = 8 << 20
 
@@ -16,7 +21,52 @@ const (
 	BatchSchema    = 2
 	SnapshotSchema = 2
 )
-const Version = "1.1.1"
+
+// release is the last released version. A build that carries its own
+// version reports that instead; see Version.
+const release = "1.1.1"
+
+// Version is what this binary reports: the module version the Go toolchain
+// stamped, the VCS revision of a local build, or the last release when the
+// build carries neither. A constant here went stale the moment a commit
+// landed, so `topo version` could not say what was running.
+var Version = buildVersion(debug.ReadBuildInfo())
+
+// pseudoVersion is what the toolchain stamps for a build that is not at a
+// tag; it is truthful but too long for a banner, so the revision says it
+// better.
+var pseudoVersion = regexp.MustCompile(`^\d+\.\d+\.\d+-0\.\d{14}-[0-9a-f]{12}$`)
+
+func buildVersion(info *debug.BuildInfo, ok bool) string {
+	revision, modified := "", false
+	if ok && info != nil {
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				revision = setting.Value
+			case "vcs.modified":
+				modified = setting.Value == "true"
+			}
+		}
+		// A tagged module install carries a clean version; a checkout does
+		// not, and its pseudo-version or +dirty suffix is better said by
+		// the revision that follows.
+		version := strings.TrimPrefix(info.Main.Version, "v")
+		if version != "" && version != "(devel)" && !strings.Contains(version, "+dirty") && !pseudoVersion.MatchString(version) {
+			return version
+		}
+	}
+	if revision != "" {
+		if len(revision) > 7 {
+			revision = revision[:7]
+		}
+		if modified {
+			revision += "-dirty"
+		}
+		return "dev-" + revision
+	}
+	return release
+}
 
 type Config struct {
 	Applications []Application     `json:"applications,omitempty"`

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `topo version` reports what the binary carries: the module version the Go
+  toolchain stamped, or `dev-<short revision>[-dirty]` for a local build. The
+  constant said 1.1.1 on builds that already contained unreleased changes.
 - A Tailscale diagnostic that times out inside the CLI now reports `unknown`
   with `diagnostic_response: timed_out` instead of a monitor-side error. Only
   the CLI's exact `ping "<ip>" timed out` text for the fixed target counts;
