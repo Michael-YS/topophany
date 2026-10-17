@@ -11,6 +11,11 @@ import (
 
 const MaxSnapshotBytes = 8 << 20
 
+// MaxObservationFacts is how many facts a collector admits on one
+// observation. One over it refuses the observation, and with it the batch
+// that carries it, so a probe adding optional facts has to stop here.
+const MaxObservationFacts = 32
+
 // Schemas of what is written and sent. A topology file is schema 1. Batches
 // and snapshots are schema 2: observations carry the contract of their
 // check, not the revision of the whole topology. A collector still accepts

@@ -75,7 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window's equivalent consecutive policy samples, so repeated publications
   cannot defer it forever. Facts record the controller's own
   `provider.<name>.updated_at` beside the publisher's time and the sample's
-  time.
+  time, reference providers first and only while the observation stays within
+  the collector's 32-fact budget.
 - Optional WireGuard AllowedIPs and keepalive expectations, collected through
   public-field commands without reading private or preshared keys.
 - Opt-in bounded Tailscale DISCO/TSMP diagnostics. Replies retain reported

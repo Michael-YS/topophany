@@ -109,7 +109,7 @@ func ObservationBounds(v model.Observation, took time.Duration) string {
 	default:
 		return "invalid_outcome"
 	}
-	if v.DurationMS < 0 || v.DurationMS > limit || len(v.Detail) > 1024 || len(v.Code) > 96 || len(v.Stage) > 96 || len(v.PathEvidence) > 128 || len(v.Facts) > 32 || len(v.Timings) > 16 {
+	if v.DurationMS < 0 || v.DurationMS > limit || len(v.Detail) > 1024 || len(v.Code) > 96 || len(v.Stage) > 96 || len(v.PathEvidence) > 128 || len(v.Facts) > model.MaxObservationFacts || len(v.Timings) > 16 {
 		return "observation_budget_exceeded"
 	}
 	for k, val := range v.Facts {

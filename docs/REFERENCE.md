@@ -121,7 +121,9 @@ after the window's equivalent consecutive policy samples (and at least
 `failure_threshold`), so repeated publications cannot defer it forever.
 Matching membership is never deferred. Facts record
 `provider_reference_published_at` (publisher), `provider.<name>.updated_at`
-(the controller's own load time for that provider) and the sample's own time.
+(the controller's own load time for that provider, reference providers first,
+while the observation stays within the collector's 32 facts) and the sample's
+own time.
 An explicit `settle_seconds` is a new topology field: upgrade every collector
 and worker before adding it, because older binaries reject unknown topology
 fields. Omitting it uses the default and needs no topology change. See the

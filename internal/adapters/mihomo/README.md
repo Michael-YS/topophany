@@ -85,7 +85,9 @@ republishing cannot defer it forever. Matching membership is never deferred;
 Facts put the three times side by side: `provider_reference_published_at` from
 the publisher, `provider.<name>.updated_at` from the controller's own
 `updatedAt` for each provider that reports one, and the sample's own
-`sampled_at`. A difference that outlives the window is the drift this check
+`sampled_at`. Load times are optional evidence: they are added last,
+reference providers first, and only while the observation stays within the
+collector's 32 facts, because one fact more would refuse the whole batch. A difference that outlives the window is the drift this check
 exists to find; one that does not is the publication loading. A provider whose
 controller reports an `updatedAt` after the publication is not still loading
 it, so its difference is not marked settling. The field is absent from the

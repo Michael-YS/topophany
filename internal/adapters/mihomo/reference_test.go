@@ -294,6 +294,50 @@ func TestMihomoReferenceFitsObservationBudget(t *testing.T) {
 	}
 }
 
+// Every provider loaded reports a load time, one optional fact each. The
+// maximum providers, the reference facts and every fixed fact still have to
+// fit the collector's budget, or the whole batch is refused.
+func TestMihomoLoadedProviderTimesFitObservationBudget(t *testing.T) {
+	doc := referenceDocument(time.Now().UTC(), []string{"edge-a"})
+	loaded := map[string]any{"edge-local": map[string]any{"proxies": []map[string]string{{"name": "edge-a"}}, "updatedAt": testControllerUpdated}}
+	fixed := map[string][]string{}
+	for i := 0; i < 15; i++ {
+		name := fmt.Sprintf("fixed-%02d", i)
+		fixed[name] = []string{"fixed-node"}
+		loaded[name] = map[string]any{"proxies": []map[string]string{{"name": "fixed-node"}}, "updatedAt": testControllerUpdated}
+	}
+	x := referenceHarness(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, doc) }, func() []string {
+		t.Error("read the harness controller instead of the loaded one")
+		return nil
+	})
+	controller := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/configs":
+			fmt.Fprint(w, `{"mode":"rule","tun":{"enable":true}}`)
+		case "/proxies":
+			fmt.Fprint(w, `{"proxies":{"root":{"type":"Selector","now":"fixed-node","history":[{"time":"2026-10-17T06:00:00Z","delay":5}]},"fixed-node":{"type":"VLESS"}}}`)
+		case "/providers/proxies":
+			json.NewEncoder(w).Encode(map[string]any{"providers": loaded})
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer controller.Close()
+	x.Target = controller.URL
+	x.BindIP = "127.0.0.1"
+	x.Adapter.ExpectedProviders = fixed
+	o := runReference(x)
+	if o.Outcome != "ok" {
+		t.Fatal(o)
+	}
+	if code := config.ObservationBounds(o, time.Second); code != "" {
+		t.Fatalf("%s with %d facts: a full set of loaded providers would refuse the batch", code, len(o.Facts))
+	}
+	if o.Facts["provider.edge-local.updated_at"] == "" {
+		t.Fatal("the reference provider's load time, which settling turns on, gave way to a fixed provider's")
+	}
+}
+
 func TestMihomoPublicReferenceReceivesNoControllerToken(t *testing.T) {
 	doc := referenceDocument(time.Now().UTC(), []string{"edge-a"})
 	var reads atomic.Int32

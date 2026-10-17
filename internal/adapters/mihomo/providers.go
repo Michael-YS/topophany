@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -97,13 +98,16 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 	sort.Strings(keys)
 	summaries := []string{}
 	mismatched, unconfirmed := 0, 0
+	// The controller's own account of when it last loaded each provider,
+	// beside the publisher's time and the sample's time. Reference
+	// providers come first: settling turns on their load times.
+	var loads []providerLoad
 	for _, k := range keys {
 		p, ok := out.Providers[k]
+		_, dynamic := before.Providers[k]
 		updatedAt := providerUpdatedAt(p.UpdatedAt)
 		if !updatedAt.IsZero() {
-			// The controller's own account of when it last loaded this
-			// provider, beside the publisher's time and the sample's time.
-			o.Facts["provider."+adapters.SafeFact(k)+".updated_at"] = updatedAt.UTC().Format(time.RFC3339Nano)
+			loads = append(loads, providerLoad{name: k, at: updatedAt, dynamic: dynamic})
 		}
 		actual, shown := []string{}, []string{}
 		for _, v := range p.Proxies {
@@ -114,7 +118,6 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		same := ok && comparison.matches
 
 		o.Facts["provider."+adapters.SafeFact(k)] = adapters.SafeFact(strings.Join(shown, ","))
-		_, dynamic := before.Providers[k]
 		status := "match"
 		if !same {
 			status = "mismatch"
@@ -152,7 +155,37 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		o.Outcome, o.Code = "unknown", "provider_reference_changed"
 		o.Detail = "provider publication changed during sampling; loaded membership cannot be compared consistently"
 	}
+	addLoadTimes(o, loads)
 	return nil
+}
+
+type providerLoad struct {
+	name    string
+	at      time.Time
+	dynamic bool
+}
+
+// addLoadTimes records each provider's load time while the observation has
+// room for it. A load time is optional evidence, one fact per provider:
+// sixteen providers with their members and the fixed facts already fill
+// the collector's budget, and one fact more would refuse the observation
+// with its whole batch. The facts it needs are all set before this runs.
+func addLoadTimes(o *model.Observation, loads []providerLoad) {
+	slices.SortStableFunc(loads, func(a, b providerLoad) int {
+		switch {
+		case a.dynamic == b.dynamic:
+			return 0
+		case a.dynamic:
+			return -1
+		}
+		return 1
+	})
+	for _, l := range loads {
+		if len(o.Facts) >= model.MaxObservationFacts {
+			return
+		}
+		o.Facts["provider."+adapters.SafeFact(l.name)+".updated_at"] = l.at.UTC().Format(time.RFC3339Nano)
+	}
 }
 
 // providerUpdatedAt parses the controller's optional loaded-at metadata.
