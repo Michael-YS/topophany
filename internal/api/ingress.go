@@ -239,7 +239,6 @@ func (c *IngressCounter) Summary(now time.Time) *model.Ingress {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.prune(now)
 	failures := c.sum(&c.total, now)
 	if failures == 0 {
 		return nil
