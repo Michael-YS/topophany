@@ -162,7 +162,7 @@ func handshakeOffset(line string) int {
 		return 0
 	}
 	const stamp = "2006/01/02 15:04:05 "
-	if len(line) > len(stamp) {
+	if len(line) > len(stamp) && strings.HasPrefix(line[len(stamp):], tlsHandshakePrefix) {
 		if _, err := time.Parse("2006/01/02 15:04:05", line[:len(stamp)-1]); err == nil {
 			return len(stamp)
 		}

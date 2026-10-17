@@ -54,6 +54,7 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 		"http: TLS handshake error from [2605:52c0::1]:443: remote error: tls: bad certificate",
 		"2026/10/17 06:39:20 http: TLS handshake error from 100.75.127.43:1: i/o timeout",
 		"prefix http: TLS handshake error from 198.51.100.9:443: quoted",
+		"2026/10/17 06:39:20 incident http: TLS handshake error from 198.51.100.10:443: quoted",
 		"http: TLS handshake error from 100.75.127.43:1",
 		"http: TLS handshake error from 10.0.0.1:not-a-port: EOF",
 		"incident opened: s2-local/path/s2-collector",
@@ -63,7 +64,7 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(logged) != 9 || logged[0] != "http: TLS handshake error from 100.74.137.62:44484: EOF" {
+	if len(logged) != 10 || logged[0] != "http: TLS handshake error from 100.74.137.62:44484: EOF" {
 		t.Fatalf("writer did not pass every line through: %q", logged)
 	}
 	got := c.Summary(now)
