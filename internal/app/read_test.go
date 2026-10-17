@@ -467,6 +467,18 @@ func TestStatusPrintsCollectorIngress(t *testing.T) {
 	if !strings.Contains(text, "Collector ingress: 1 TLS handshake failure in 30m from 1 source") {
 		t.Fatalf("status did not print the ingress summary: %q", text)
 	}
+
+	// A snapshot from before source_count existed still lists its sources.
+	out.Reset()
+	v.Snapshot.Ingress.SourceCount = 0
+	v.Snapshot.Ingress.Sources = []model.IngressSource{{Address: "source-abc", Count: 1, Last: now}}
+	var legacyExit *ExitError
+	if err := a.status(v, header{Project: "lab", Instance: "collector", Server: "test"}, false); err != nil && !errors.As(err, &legacyExit) {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "from 1 source") {
+		t.Fatalf("legacy snapshot lost its source count: %q", out.String())
+	}
 }
 
 func TestHowChecksFaredFromRollups(t *testing.T) {

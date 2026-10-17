@@ -125,14 +125,20 @@ func (a *App) status(v view.View, h header, asJSON bool) error {
 	t.kv("Incidents", strconv.Itoa(s.Incidents))
 	t.kv("Observers", fmt.Sprintf("%d/%d live", s.Observers.Live, s.Observers.Total))
 	if in := s.Ingress; in != nil {
+		// A snapshot from before source_count existed still has its listed
+		// sources; do not print "from 0 sources" for it.
+		sourceCount := in.SourceCount
+		if sourceCount == 0 && len(in.Sources) > 0 {
+			sourceCount = len(in.Sources)
+		}
 		failures, sources := "failures", "sources"
 		if in.Failures == 1 {
 			failures = "failure"
 		}
-		if in.SourceCount == 1 {
+		if sourceCount == 1 {
 			sources = "source"
 		}
-		count := strconv.Itoa(in.SourceCount)
+		count := strconv.Itoa(sourceCount)
 		if in.Truncated {
 			count = "at least " + count
 		}
