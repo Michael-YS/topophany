@@ -29,7 +29,7 @@
 <meta property="og:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
-<link rel="stylesheet" href="/css/site.648ffd30aff7.css">
+<link rel="stylesheet" href="/css/site.5a6f877734f0.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.0f7e987ccb32.js"></script>
 <script type="application/json" id="strings">{"replay":"replay","paused":"paused","pause":"Pause the replay","play":"Play the replay","recording":"Recording of the Topophany terminal UI: {title}. {text}","missing":"{tab} is not in this recording. Run {cmd} to see it.","failed":"the recording could not be loaded","copy":"Copy","copied":"Copied","place.shanghai":"Shanghai","place.tokyo":"Tokyo","place.singapore":"Singapore","place.frankfurt":"Frankfurt","place.london":"London","place.ashburn":"Ashburn","place.los-angeles":"Los Angeles","place.sao-paulo":"São Paulo","place.sydney":"Sydney","place.mumbai":"Mumbai","demo.title":"Try the terminal","demo.loading":"Starting the terminal… · click or press Enter to cancel","demo.ended":"Session ended · click or press Enter to restart","demo.failed":"Terminal unavailable · click or press Enter to retry","connect.title":"Your network","connect.failed":"Could not start the connection. Check the URL, project and viewer token, then try again.","connect.reconnect":"Press q to reconnect. Check the address, project and viewer token.","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
@@ -362,10 +362,49 @@
   </div>
 </section>
 
+<section class="section duo" id="duo">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>06</span> Designed for iPhone Duo</p>
+      <h2>The map above the hinge</h2>
+      <p class="lead">There's no iPhone app yet. What there is, is the TUI's design for one: <code>--device</code> lays the TUI out for the screen of an iPhone, an iPad, or iPhone Duo in each of its poses, and simulates that screen in your terminal. On the open Duo, what you look at and what you touch go on either side of the crease.</p>
+    </div>
+
+    <div class="duo-grid">
+      <figure class="duo-phone">
+        <div class="duo-frame"><img src="/img/duo-laptop.webp" width="900" height="1279" alt="The TUI laid out for iPhone Duo held upright, as the terminal simulator draws it: the network map above the hinge, an affected route in amber; below it the status card reading 5 incidents, the observers, what needs attention, and the tabs along the foot" loading="lazy" decoding="async"></div>
+        <figcaption>Drawn by the terminal simulator, upright and part folded like a laptop: <code>topo preview --device duo-laptop</code>.</figcaption>
+      </figure>
+      <div class="duo-side">
+        <ul class="kit kit-duo">
+          <li><b>Look up, touch down</b><span>Laid out for the laptop pose, the map goes on the raised half, the screen, and the events and every control on the flat half, where fingers rest.</span></li>
+          <li><b>Folding redraws nothing</b><span>The layout keeps the crease clear even lying flat, so folding moves no cell. Fold, unfold or turn the simulated phone, and the tab, the selection and the open evidence stay put.</span></li>
+          <li><b>Clear of the system</b><span>The layout puts no control on the crease, under the clock or the camera, or outside the safe area, and makes every target a finger tall. The tests check every tab on every device.</span></li>
+        </ul>
+        <div class="panel duo-try">
+          <h3 class="panel-title">Try it in your terminal</h3>
+          <div class="cmd cmd-multi" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@main&#10;topo preview --device duo-laptop"><code><span class="cmd-prompt" aria-hidden="true">$ </span>go install github.com/WhitenWhiten/topophany/cmd/topo@main
+<span class="cmd-prompt" aria-hidden="true">$ </span>topo preview --device duo-laptop</code><button class="copy" type="button" aria-label="Copy the commands"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+          <p><kbd>[</kbd> and <kbd>]</kbd> fold it through the poses, <kbd>\</kbd> picks the next device, and the mouse stands in for a finger. The terminal needs about 99×70 cells. Until the next release, <code>--device</code> is on <code>main</code>.</p>
+        </div>
+        <div class="cta">
+          <a class="btn btn-primary btn-star" href="https://github.com/WhitenWhiten/topophany"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#star"/></svg>Star on GitHub</a>
+          <a class="btn btn-go" href="https://github.com/WhitenWhiten/topophany/blob/main/docs/DEVICES.md">How each device is laid out<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
+        </div>
+      </div>
+    </div>
+
+    <figure class="duo-poses">
+      <a href="/img/duo-poses.webp"><img src="/img/duo-poses.webp" width="2400" height="524" alt="The TUI laid out for iPhone Duo in five poses, as the terminal simulator draws them, the same moment in each: shut on the cover display with the tabs in the column under the clock, open sideways with the map on the left and the list on the right, part folded like a book, upright with the map above the hinge, and part folded like a laptop" loading="lazy" decoding="async"></a>
+      <figcaption>The same moment in every pose, as the simulator draws it. Shut, the tabs go in the column under the clock; open sideways, each side of the spread gets a job; upright, the map goes above the hinge.</figcaption>
+    </figure>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>06</span> Install</p>
+      <p class="eyebrow"><span>07</span> Install</p>
       <h2>Up in a minute</h2>
       <p class="lead">Prebuilt archives, or one <code>go install</code>.</p>
     </div>
@@ -453,6 +492,7 @@
   <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
   <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
   <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
+  <symbol id="star" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z"/></symbol>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>

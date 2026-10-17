@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and taps, swipes and two-finger pinches read as on a device. A page
   wider than a phone is the terminal again. `--device fit` lays out the
   terminal itself for touch the same way.
+- topophany.com has a section on the iPhone Duo layouts: the laptop pose
+  as `topo preview --device duo-laptop` draws it, every pose side by side,
+  and the commands to try the simulator. There is no iPhone app; the
+  section says so. Each README links the live demo in its language.
 
 ### Changed
 

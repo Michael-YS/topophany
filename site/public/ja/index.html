@@ -29,7 +29,7 @@
 <meta property="og:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="Topophany のワードマークと、上海・東京・シンガポール・ムンバイ・シドニーが光り、経路で結ばれた点描の地球儀。">
-<link rel="stylesheet" href="/css/site.648ffd30aff7.css">
+<link rel="stylesheet" href="/css/site.5a6f877734f0.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.0f7e987ccb32.js"></script>
 <script type="application/json" id="strings">{"replay":"再生中","paused":"一時停止","pause":"再生を一時停止","play":"再生する","recording":"Topophany ターミナル UI の録画：{title}。{text}","missing":"{tab} はこの録画に含まれていません。{cmd} を実行すると見られます。","failed":"録画を読み込めませんでした","copy":"コピー","copied":"コピーしました","place.shanghai":"上海","place.tokyo":"東京","place.singapore":"シンガポール","place.frankfurt":"フランクフルト","place.london":"ロンドン","place.ashburn":"アッシュバーン","place.los-angeles":"ロサンゼルス","place.sao-paulo":"サンパウロ","place.sydney":"シドニー","place.mumbai":"ムンバイ","demo.title":"ターミナルを試す","demo.loading":"ターミナルを起動中… · クリックまたは Enter でキャンセル","demo.ended":"セッション終了 · クリックまたは Enter で再開","demo.failed":"起動できませんでした · クリックまたは Enter で再試行","connect.title":"自分のネットワーク","connect.failed":"接続を開始できませんでした。URL、プロジェクト、Viewer トークンを確認して再試行してください。","connect.reconnect":"q で接続画面に戻り、URL、プロジェクト、Viewer トークンを確認してください。","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
@@ -362,10 +362,49 @@
   </div>
 </section>
 
+<section class="section duo" id="duo">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>06</span> iPhone Duo のための設計</p>
+      <h2>地図はヒンジの上に</h2>
+      <p class="lead">iPhone アプリはまだありません。あるのは、そのための TUI の設計です。<code>--device</code> は TUI を iPhone、iPad、そして姿勢ごとの iPhone Duo の画面に合わせてレイアウトし、その画面をターミナルの中でシミュレートします。開いた Duo では、見るものと触るものが折り目の両側に分かれます。</p>
+    </div>
+
+    <div class="duo-grid">
+      <figure class="duo-phone">
+        <div class="duo-frame"><img src="/img/duo-laptop.webp" width="900" height="1279" alt="ターミナルのシミュレーターが描いた、縦に持った iPhone Duo 向けの TUI。ヒンジの上にネットワークの地図と琥珀色の影響ルート、下に 5 件のインシデントを示すステータスカード、オブザーバー、要対応の一覧、下端のタブ" loading="lazy" decoding="async"></div>
+        <figcaption>ターミナルのシミュレーターで、縦に開いてノートパソコンのように半分折った状態：<code>topo preview --device duo-laptop</code>。</figcaption>
+      </figure>
+      <div class="duo-side">
+        <ul class="kit kit-duo">
+          <li><b>見るのは上、触るのは下</b><span>ノートパソコンの姿勢では、立てた半分（画面）に地図を、指を置く寝かせた半分にイベントとすべての操作を置きます。</span></li>
+          <li><b>折っても描き直さない</b><span>平らに開いた時点で折り目を空けているので、折ってもセルは 1 つも動きません。シミュレーターの中で折っても、開いても、向きを変えても、タブ、選択、開いた根拠はそのままです。</span></li>
+          <li><b>システムの領域を避ける</b><span>折り目の上、時計やカメラの下、セーフエリアの外には操作を置かず、どのタップ領域も指 1 本分の高さにします。テストがすべてのデバイスのすべてのタブを確かめます。</span></li>
+        </ul>
+        <div class="panel duo-try">
+          <h3 class="panel-title">ターミナルで試す</h3>
+          <div class="cmd cmd-multi" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@main&#10;topo preview --device duo-laptop"><code><span class="cmd-prompt" aria-hidden="true">$ </span>go install github.com/WhitenWhiten/topophany/cmd/topo@main
+<span class="cmd-prompt" aria-hidden="true">$ </span>topo preview --device duo-laptop</code><button class="copy" type="button" aria-label="コマンドをコピー"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+          <p><kbd>[</kbd> と <kbd>]</kbd> で姿勢を切り替え、<kbd>\</kbd> で次のデバイスへ。マウスが指の代わりになります。ターミナルは 99×70 セルほど必要です。次のリリースまで、<code>--device</code> は <code>main</code> にあります。</p>
+        </div>
+        <div class="cta">
+          <a class="btn btn-primary btn-star" href="https://github.com/WhitenWhiten/topophany"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#star"/></svg>GitHub でスターを付ける</a>
+          <a class="btn btn-go" href="https://github.com/WhitenWhiten/topophany/blob/main/docs/DEVICES.md">デバイスごとのレイアウト<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
+        </div>
+      </div>
+    </div>
+
+    <figure class="duo-poses">
+      <a href="/img/duo-poses.webp"><img src="/img/duo-poses.webp" width="2400" height="524" alt="ターミナルのシミュレーターが描いた、5 つの姿勢の iPhone Duo 向け TUI、どれも同じ瞬間。閉じてカバーディスプレイに（タブは時計の下の列）、横に開いて（左に地図、右に一覧）、本のように半分折って、縦に開いて（ヒンジの上に地図）、ノートパソコンのように半分折って" loading="lazy" decoding="async"></a>
+      <figcaption>シミュレーターが描く、どの姿勢でも同じ瞬間。閉じるとタブは時計の下の列に入り、横に開くと見開きの左右がそれぞれの役目を持ち、縦にすると地図はヒンジの上に来ます。</figcaption>
+    </figure>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>06</span> インストール</p>
+      <p class="eyebrow"><span>07</span> インストール</p>
       <h2>1 分で動く</h2>
       <p class="lead">ビルド済みアーカイブ、または <code>go install</code> ひとつで。</p>
     </div>
@@ -453,6 +492,7 @@
   <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
   <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
   <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
+  <symbol id="star" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z"/></symbol>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>

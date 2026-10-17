@@ -29,7 +29,7 @@
 <meta property="og:image:alt" content="Topophany 字标，旁边是点阵地球，上海、东京、新加坡、孟买和悉尼亮起并由路径相连。">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image:alt" content="Topophany 字标，旁边是点阵地球，上海、东京、新加坡、孟买和悉尼亮起并由路径相连。">
-<link rel="stylesheet" href="/css/site.648ffd30aff7.css">
+<link rel="stylesheet" href="/css/site.5a6f877734f0.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
 <script type="module" src="/js/site.0f7e987ccb32.js"></script>
 <script type="application/json" id="strings">{"replay":"回放","paused":"已暂停","pause":"暂停回放","play":"播放回放","recording":"Topophany 终端界面的录像：{title}。{text}","missing":"这段录像里没有 {tab}。运行 {cmd} 即可查看。","failed":"无法加载录像","copy":"复制","copied":"已复制","place.shanghai":"上海","place.tokyo":"东京","place.singapore":"新加坡","place.frankfurt":"法兰克福","place.london":"伦敦","place.ashburn":"阿什本","place.los-angeles":"洛杉矶","place.sao-paulo":"圣保罗","place.sydney":"悉尼","place.mumbai":"孟买","demo.title":"亲手试试这个终端","demo.loading":"正在启动终端… · 点击或按 Enter 取消","demo.ended":"会话已结束 · 点击或按 Enter 重新开始","demo.failed":"终端未能启动 · 点击或按 Enter 重试","connect.title":"你的网络","connect.failed":"连接未能启动。请检查地址、项目和 Viewer 令牌后重试。","connect.reconnect":"按 q 返回连接界面，检查地址、项目和 Viewer 令牌。","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
@@ -362,10 +362,49 @@
   </div>
 </section>
 
+<section class="section duo" id="duo">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>06</span> 为 iPhone Duo 设计</p>
+      <h2>地图在铰链上方</h2>
+      <p class="lead">iPhone App 还没有做。现在有的是 TUI 为它做的设计：<code>--device</code> 让 TUI 按 iPhone、iPad 以及 iPhone Duo 每种姿态的屏幕排版，并在终端里模拟出这块屏幕。在展开的 Duo 上，要看的和要点的分在折痕两侧。</p>
+    </div>
+
+    <div class="duo-grid">
+      <figure class="duo-phone">
+        <div class="duo-frame"><img src="/img/duo-laptop.webp" width="900" height="1279" alt="终端模拟器画出的、为竖拿的 iPhone Duo 排版的 TUI：铰链上方是网络地图，一条受影响的路径标成琥珀色；下方是显示 5 个事件的状态卡、观测点、需要处理的列表，以及底部的标签页" loading="lazy" decoding="async"></div>
+        <figcaption>终端模拟器里，竖着展开、像笔记本电脑一样半折：<code>topo preview --device duo-laptop</code>。</figcaption>
+      </figure>
+      <div class="duo-side">
+        <ul class="kit kit-duo">
+          <li><b>上面看，下面点</b><span>按笔记本式姿态排版时，地图放在立起的一半，也就是屏幕上；事件和所有控件放在手指所在的平放的一半。</span></li>
+          <li><b>折叠不重绘</b><span>平放时布局就已经给折痕留出了位置，所以折叠不会移动任何一个字符格。在模拟器里折叠、展开或转向手机，当前的标签页、选中项和打开的证据都会保留。</span></li>
+          <li><b>避开系统区域</b><span>布局不在折痕上、时钟和摄像头下方、安全区域之外放置控件，每个点按目标都有一指高。测试会检查每台设备上的每个标签页。</span></li>
+        </ul>
+        <div class="panel duo-try">
+          <h3 class="panel-title">在终端里试试</h3>
+          <div class="cmd cmd-multi" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@main&#10;topo preview --device duo-laptop"><code><span class="cmd-prompt" aria-hidden="true">$ </span>go install github.com/WhitenWhiten/topophany/cmd/topo@main
+<span class="cmd-prompt" aria-hidden="true">$ </span>topo preview --device duo-laptop</code><button class="copy" type="button" aria-label="复制命令"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+          <p><kbd>[</kbd> 和 <kbd>]</kbd> 切换姿态，<kbd>\</kbd> 换下一台设备，鼠标代替手指。终端需要约 99×70 个字符格。下一个版本发布之前，<code>--device</code> 只在 <code>main</code> 上。</p>
+        </div>
+        <div class="cta">
+          <a class="btn btn-primary btn-star" href="https://github.com/WhitenWhiten/topophany"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#star"/></svg>在 GitHub 上点 Star</a>
+          <a class="btn btn-go" href="https://github.com/WhitenWhiten/topophany/blob/main/docs/DEVICES.md">每台设备如何排版<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
+        </div>
+      </div>
+    </div>
+
+    <figure class="duo-poses">
+      <a href="/img/duo-poses.webp"><img src="/img/duo-poses.webp" width="2400" height="524" alt="终端模拟器画出的、五种姿态下为 iPhone Duo 排版的 TUI，都是同一时刻：合上时在外屏上，标签页在时钟下方的竖栏里；横向展开，左边是地图，右边是列表；像书一样半折；竖着展开，地图在铰链上方；像笔记本电脑一样半折" loading="lazy" decoding="async"></a>
+      <figcaption>模拟器画出的每种姿态下的同一时刻。合上时，标签页进入时钟下方的竖栏；横向展开，跨页的左右两边各司其职；竖着时，地图移到铰链上方。</figcaption>
+    </figure>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>06</span> 安装</p>
+      <p class="eyebrow"><span>07</span> 安装</p>
       <h2>一分钟上手</h2>
       <p class="lead">预编译归档，或者一条 <code>go install</code>。</p>
     </div>
@@ -453,6 +492,7 @@
   <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
   <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
   <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
+  <symbol id="star" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z"/></symbol>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>

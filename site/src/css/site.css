@@ -693,6 +693,41 @@ em.unknown { color: var(--unknown); font-family: var(--mono); font-size: .92em; 
 .kit-edges b { color: #fdba74; }
 .kit-edges code { border-color: rgba(253, 186, 116, .3); color: #fdba74; }
 
+/* iPhone Duo: the laptop pose's screen in a frame drawn here, beside what
+   it does and how to try it, then the poses strip. */
+.duo-grid { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 40px 64px; align-items: center; }
+.duo-phone { margin: 0; }
+.duo-frame {
+  position: relative;
+  padding: 9px; border-radius: 38px;
+  background: linear-gradient(#282f42, #141823);
+  box-shadow: inset 0 0 0 1.5px #4e5874, 0 36px 70px -28px rgba(0, 0, 0, .8);
+}
+/* The hinge, where the crease runs across the screen (455.5 to 495.5 of 951 pt). */
+.duo-frame::before, .duo-frame::after {
+  content: ""; position: absolute; top: calc(50% - 15px); width: 3px; height: 30px; border-radius: 2px; background: #4e5874;
+}
+.duo-frame::before { left: -2px; }
+.duo-frame::after { right: -2px; }
+.duo-frame img { width: 100%; height: auto; border-radius: 30px; background: var(--ink); }
+.duo-phone figcaption, .duo-poses figcaption { color: var(--muted); font-size: 14px; line-height: 1.55; margin-top: 18px; text-align: center; text-wrap: pretty; }
+/* One column no wider than the screen, however long the install line is. */
+.duo-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 36px; }
+.kit-duo li::before { content: "▪"; color: var(--accent); }
+.kit-duo b { color: var(--glow); font-family: var(--sans); font-size: 16px; }
+.duo-try .cmd { font-size: 12.5px; padding-left: 14px; }
+.duo-try > p { margin-top: 16px; font-size: 14.5px; }
+.duo-side .cta { margin-bottom: 0; }
+.btn-star svg { width: 14px; height: 14px; }
+.duo-poses { margin: clamp(48px, 6vw, 72px) 0 0; }
+.duo-poses a { display: block; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
+.duo-poses img { width: 100%; height: auto; }
+@media (max-width: 900px) {
+  .duo-grid { grid-template-columns: minmax(0, 1fr); }
+  .duo-phone { width: min(100%, 320px); margin: 0 auto; }
+}
+@media (max-width: 420px) { .duo-frame { padding: 7px; border-radius: 32px; } .duo-frame img { border-radius: 26px; } }
+
 /* Install */
 .install-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 40px 48px; align-items: start; }
 .install-side { display: grid; gap: 36px; }

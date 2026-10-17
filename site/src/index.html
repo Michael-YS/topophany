@@ -358,10 +358,49 @@
   </div>
 </section>
 
+<section class="section duo" id="duo">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>06</span> {{duo.eyebrow}}</p>
+      <h2>{{duo.title}}</h2>
+      <p class="lead">{{duo.lead.html}}</p>
+    </div>
+
+    <div class="duo-grid">
+      <figure class="duo-phone">
+        <div class="duo-frame"><img src="/img/duo-laptop.webp" width="900" height="1279" alt="{{duo.alt}}" loading="lazy" decoding="async"></div>
+        <figcaption>{{duo.caption.html}}</figcaption>
+      </figure>
+      <div class="duo-side">
+        <ul class="kit kit-duo">
+          <li><b>{{duo.look}}</b><span>{{duo.look-text}}</span></li>
+          <li><b>{{duo.bend}}</b><span>{{duo.bend-text}}</span></li>
+          <li><b>{{duo.clear}}</b><span>{{duo.clear-text}}</span></li>
+        </ul>
+        <div class="panel duo-try">
+          <h3 class="panel-title">{{duo.try}}</h3>
+          <div class="cmd cmd-multi" data-copy="go install github.com/WhitenWhiten/topophany/cmd/topo@main&#10;topo preview --device duo-laptop"><code><span class="cmd-prompt" aria-hidden="true">$ </span>go install github.com/WhitenWhiten/topophany/cmd/topo@main
+<span class="cmd-prompt" aria-hidden="true">$ </span>topo preview --device duo-laptop</code><button class="copy" type="button" aria-label="{{duo.copy}}"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button></div>
+          <p>{{duo.try-note.html}}</p>
+        </div>
+        <div class="cta">
+          <a class="btn btn-primary btn-star" href="https://github.com/WhitenWhiten/topophany"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#star"/></svg>{{duo.star}}</a>
+          <a class="btn btn-go" href="https://github.com/WhitenWhiten/topophany/blob/main/docs/DEVICES.md">{{duo.layouts}}<svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
+        </div>
+      </div>
+    </div>
+
+    <figure class="duo-poses">
+      <a href="/img/duo-poses.webp"><img src="/img/duo-poses.webp" width="2400" height="524" alt="{{duo.poses-alt}}" loading="lazy" decoding="async"></a>
+      <figcaption>{{duo.poses-caption}}</figcaption>
+    </figure>
+  </div>
+</section>
+
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>06</span> {{install.eyebrow}}</p>
+      <p class="eyebrow"><span>07</span> {{install.eyebrow}}</p>
       <h2>{{install.title}}</h2>
       <p class="lead">{{install.lead.html}}</p>
     </div>
@@ -449,6 +488,7 @@
   <symbol id="check" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5l3.2 3L13 4.5"/></symbol>
   <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
   <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
+  <symbol id="star" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z"/></symbol>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>
