@@ -13,12 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   independent names-only JSON publication. Fixed expectations remain strict;
   unavailable references are monitor errors and publications changing during
   sampling are unknown. Publisher credentials and TLS settings are separate.
+- Optional Mihomo TUN expectations and ordered/set provider comparisons, with
+  bounded counts explaining missing, extra and reordered members.
+- Optional WireGuard AllowedIPs and keepalive expectations, collected through
+  public-field commands without reading private or preshared keys.
+- Opt-in bounded Tailscale DISCO/TSMP diagnostics. Replies retain reported
+  evidence and do not imply application reachability; default collection stays
+  passive. Versioned synthetic fixtures document supported response formats.
 
 ### Changed
 
 - Mihomo, Tailscale and WireGuard implementations, validators and tests now live
   in separate adapter packages, preserving existing configuration contracts and
   observation behavior. Each package includes contribution and evidence notes.
+- Tailscale peer identity resolution is deterministic and reports ambiguous
+  identities, backend states, missing online state and peer relay separately.
+- Software check details distinguish runtime reads, policy assertions and
+  unmeasured application paths; stale reports do not become current evidence.
 
 ## [1.1.1] - 2026-10-16
 

@@ -1,4 +1,4 @@
-// Package tailscale collects read-only local runtime telemetry.
+// Package tailscale collects local runtime telemetry and opt-in peer diagnostics.
 package tailscale
 
 import (
@@ -11,6 +11,9 @@ import (
 )
 
 func Collect(ctx context.Context, command adapters.Command, options model.TailscaleOptions, o *model.Observation) error {
+	if Validate(options) != nil {
+		return adapters.Local("setup", "invalid_tailscale_options")
+	}
 	b, err := command(ctx, "tailscale", "status", "--json")
 	if err != nil {
 		return adapters.CommandFailure(err, "tailscale_unavailable_or_permission_denied")
@@ -65,5 +68,5 @@ func Collect(ctx context.Context, command adapters.Command, options model.Tailsc
 			o.Detail = "peer is reported offline; host power state and service reachability are unknown"
 		}
 	}
-	return nil
+	return diagnose(ctx, command, options, peer, o)
 }

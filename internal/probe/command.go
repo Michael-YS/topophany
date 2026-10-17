@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/netip"
 	"os/exec"
 	"strings"
 	"time"
@@ -42,7 +43,20 @@ func defaultCommand(ctx context.Context, name string, args ...string) ([]byte, e
 
 func allowedCommand(name string, args []string) bool {
 	if name == "tailscale" {
-		return len(args) == 2 && args[0] == "status" && args[1] == "--json"
+		if len(args) == 2 && args[0] == "status" && args[1] == "--json" {
+			return true
+		}
+		if len(args) != 5 && len(args) != 6 {
+			return false
+		}
+		if args[0] != "ping" || args[1] != "--c=1" || args[2] != "--until-direct=false" || args[3] != "--timeout=2s" {
+			return false
+		}
+		if len(args) == 6 && args[4] != "--tsmp" {
+			return false
+		}
+		target, err := netip.ParseAddr(args[len(args)-1])
+		return err == nil && target.Zone() == "" && target.IsGlobalUnicast() && !target.IsLoopback()
 	}
 	if name != "wg" || len(args) != 3 || args[0] != "show" || args[1] == "" || strings.HasPrefix(args[1], "-") || args[1] == "all" || args[1] == "interfaces" {
 		return false

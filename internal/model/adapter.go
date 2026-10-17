@@ -12,4 +12,5 @@ type AdapterOptions struct {
 	ExpectedKeepaliveSeconds *int                     `json:"expected_keepalive_seconds,omitempty"`
 	ExpectedTUN              *bool                    `json:"expected_tun,omitempty"`
 	ProviderMatchModes       map[string]string        `json:"provider_match_modes,omitempty"`
+	TailscaleDiagnostic      string                   `json:"tailscale_diagnostic,omitempty"`
 }

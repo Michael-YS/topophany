@@ -1,0 +1,1 @@
+pong from private-node-name (100.64.0.1) via peer-relay(192.0.2.2:7777:vni:7) in 17ms

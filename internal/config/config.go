@@ -411,6 +411,9 @@ func validateResolved(c model.Config) error {
 				return fmt.Errorf("check %s: ICMP binds only an IPv4 address", x.ID)
 			}
 		case "tailscale":
+			if x.Adapter.TailscaleDiagnostic != "" && x.TimeoutSeconds < 4 {
+				return errors.New("Tailscale diagnostics need at least 4 timeout_seconds")
+			}
 			if err := tailscale.Validate(x.Adapter.Tailscale()); err != nil {
 				return err
 			}

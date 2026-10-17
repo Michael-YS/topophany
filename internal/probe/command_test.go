@@ -53,3 +53,29 @@ func TestSoftwareCommandsAreReadOnly(t *testing.T) {
 		t.Fatal("valid read refused")
 	}
 }
+
+func TestTailscaleDiagnosticsHaveFixedBudgetAndLiteralTarget(t *testing.T) {
+	for _, args := range [][]string{
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "100.64.0.1"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "--tsmp", "fd7a:115c:a1e0::1"},
+	} {
+		if !allowedCommand("tailscale", args) {
+			t.Fatal("bounded diagnostic refused", args)
+		}
+	}
+	for _, args := range [][]string{
+		{"ping", "--c=0", "--until-direct=false", "--timeout=2s", "100.64.0.1"},
+		{"ping", "--c=1", "--until-direct=true", "--timeout=2s", "100.64.0.1"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=1h", "100.64.0.1"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "--icmp", "100.64.0.1"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "example.invalid"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "127.0.0.1"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "::ffff:127.0.0.1"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "fe80::1%eth0"},
+		{"ping", "--c=1", "--until-direct=false", "--timeout=2s", "--verbose"},
+	} {
+		if allowedCommand("tailscale", args) {
+			t.Fatal("unbounded or unresolved diagnostic accepted", args)
+		}
+	}
+}

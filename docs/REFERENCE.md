@@ -434,3 +434,11 @@ WireGuard `adapter.expected_allowed_ips` optionally asserts a nonempty set of
 1..128 CIDRs. `expected_keepalive_seconds` asserts 0..65535 seconds (0 is off).
 These inspect public runtime fields, not OS route correctness or business
 reachability. Use an application check inside the tunnel for that evidence.
+
+Tailscale `adapter.tailscale_diagnostic` optionally accepts `disco` or `tsmp`
+and requires `timeout_seconds >= 4`. Omission keeps collection passive. Enabled
+checks issue one bounded ping to the uniquely selected peer's reported IP.
+DISCO records direct/DERP/peer-relay response hints and may negotiate transport;
+TSMP records a response without identifying the actual transport. Both retain
+reported evidence and leave application reachability unverified. No application
+or host health is inferred from a diagnostic timeout.
