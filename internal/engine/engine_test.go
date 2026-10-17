@@ -524,6 +524,16 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	if !strings.Contains(got, "different HTTP statuses") || !strings.Contains(got, "origin's own state is not established") {
 		t.Fatalf("mixed statuses were not described honestly: %q", got)
 	}
+	same := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		at := now.Add(time.Duration(i-3) * time.Second)
+		same = append(same, through(mixedConfig, "home-http", uint64(i+1), at, "fail", "521", "", true))
+		same = append(same, through(mixedConfig, "home-ssh", uint64(i+10), at, "fail", "521", "", true))
+	}
+	st = Build(mixedConfig, "a", "home", same, nil, now)
+	if len(st.Incidents) != 1 || !strings.Contains(st.Incidents[0].Hypothesis, "with HTTP 521") {
+		t.Fatalf("one shared status was not described: %+v", st.Incidents)
+	}
 
 	// Where the edge says its answer came from is its own word, which the
 	// edge, or the origin behind it, can send whatever happened: no cache

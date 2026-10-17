@@ -505,14 +505,16 @@ func edgeHypothesisStatuses(statuses []string) string {
 		seen[status] = true
 		unique = append(unique, status)
 	}
-	switch len(unique) {
-	case 0:
-		return edgeHypothesisStatus("")
-	case 1:
+	if len(unique) == 1 && !slices.Contains(statuses, "") {
 		return edgeHypothesisStatus(unique[0])
 	}
-	slices.Sort(unique)
-	return "the edge in front answered with different HTTP statuses (" + strings.Join(unique, ", ") + "); the requests did not satisfy their assertions and the failing layer is not located; the origin's own state is not established"
+	if len(unique) > 1 {
+		slices.Sort(unique)
+		return "the edge in front answered with different HTTP statuses (" + strings.Join(unique, ", ") + "); the requests did not satisfy their assertions and the failing layer is not located; the origin's own state is not established"
+	}
+	// One check without a status, or several checks that agree but do not
+	// all carry one: no single code can explain the whole incident.
+	return edgeHypothesisStatus("")
 }
 
 func edgeHypothesisStatus(status string) string {
