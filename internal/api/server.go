@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -91,10 +92,14 @@ type Server struct {
 	// snapshots. Off by default: a viewer token is read-only, not a licence
 	// to learn every observer's or scanner's address.
 	ExposeIngressSources bool
-	configMu             sync.RWMutex
-	gen                  *generation  // what Config and Auth give every request; nil until first asked
-	reloadMu             sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
-	MaxSampleAge         time.Duration
+	// ingressSalt keys the pseudonyms viewer snapshots use instead of raw
+	// addresses, so an offline guess at the small IPv4 space cannot reverse
+	// them.
+	ingressSalt  [32]byte
+	configMu     sync.RWMutex
+	gen          *generation  // what Config and Auth give every request; nil until first asked
+	reloadMu     sync.RWMutex // held by Reload, and by ingest from its check of the generation until it stores
+	MaxSampleAge time.Duration
 	// Ingress counts TLS handshake failures the HTTP server's error log
 	// reported; nil when the collector did not wire it.
 	Ingress            *IngressCounter
@@ -142,7 +147,11 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 	if s != nil {
 		s.SetAllocation(ids, config.StorageWeights(c))
 	}
-	return &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
+	server := &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
+	if _, e := rand.Read(server.ingressSalt[:]); e != nil {
+		panic("api: no entropy for ingress pseudonyms: " + e.Error())
+	}
+	return server
 }
 
 // A generation is what every request served under one topology and its

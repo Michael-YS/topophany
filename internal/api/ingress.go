@@ -2,6 +2,7 @@ package api
 
 import (
 	"cmp"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -129,7 +130,8 @@ func (c *IngressCounter) observe(line string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// Pruning is O(sources); do it only when the map is full, so a normal
-	// line costs one bucket update. Summary prunes unconditionally.
+	// line costs one bucket update. Expired entries stay until a new source
+	// needs their slot; Summary counts only buckets inside the window.
 	if len(c.sources) >= maxIngressSources {
 		c.prune(now)
 	}
@@ -212,20 +214,23 @@ func (c *IngressCounter) prune(now time.Time) {
 	}
 }
 
-// pseudonymousIngress replaces each source address with a stable short
+// pseudonymousIngress replaces each source address with a short keyed
 // digest. Viewer snapshots use it unless the collector explicitly exposes
 // addresses: a viewer token is read-only, not a licence to learn every
 // observer's or scanner's address. The counts and last-seen times stay
-// usable, and the same address keeps the same digest across snapshots.
-func pseudonymousIngress(in *model.Ingress) *model.Ingress {
+// usable, and the same address keeps the same digest for the collector's
+// lifetime; the key changes on restart, so the digest cannot be reversed
+// by enumerating the small IPv4 space offline.
+func pseudonymousIngress(in *model.Ingress, salt []byte) *model.Ingress {
 	if in == nil {
 		return nil
 	}
 	out := *in
 	out.Sources = slices.Clone(in.Sources)
 	for i := range out.Sources {
-		sum := sha256.Sum256([]byte(out.Sources[i].Address))
-		out.Sources[i].Address = "source-" + hex.EncodeToString(sum[:6])
+		mac := hmac.New(sha256.New, salt)
+		mac.Write([]byte(out.Sources[i].Address))
+		out.Sources[i].Address = "source-" + hex.EncodeToString(mac.Sum(nil)[:6])
 	}
 	return &out
 }

@@ -103,7 +103,7 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 	}
 	snap.Storage = &usage
 	if !s.ExposeIngressSources {
-		snap.Ingress = pseudonymousIngress(snap.Ingress)
+		snap.Ingress = pseudonymousIngress(snap.Ingress, s.ingressSalt[:])
 	}
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)

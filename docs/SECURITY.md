@@ -31,10 +31,13 @@ HTTP/Mihomo bearer credentials, custom request headers (including API keys), and
 Temporary overrides use `--token-stdin` or `--credential-file` (private, regular files only); raw `--credential TOKEN` arguments are rejected. An override requires `--server` when the saved profile contains multiple endpoints. It never replaces credentials across an implicit failover set. Terminal output removes every Unicode `Bidi_Control` character as well as terminal control characters, and so does everything `topo` writes to stderr, its errors and logs, but for newlines and tabs. `--json` output writes each of them, C0, DEL and the C1 controls a terminal may read as escape sequences alike, as a `\u` escape, so it reads back as the collector sent it with none of them literal. A topology value an error refuses is quoted, its controls escaped, so the error shows what is wrong with it.
 
 Ingress diagnostics name the addresses that failed a TLS handshake before
-authenticating. Viewer snapshots pseudonymize those addresses with a stable
-short digest by default, because a viewer token is read-only but not a licence
-to learn every observer's or scanner's address. `--expose-ingress-sources`
-explicitly includes the raw addresses for an operator who needs them.
+authenticating. Viewer snapshots pseudonymize those addresses with a short
+keyed digest by default, because a viewer token is read-only but not a licence
+to learn every observer's or scanner's address. The key lives only in the
+collector process and changes on restart, so the digest is stable across
+snapshots but cannot be reversed by enumerating the IPv4 space offline.
+`--expose-ingress-sources` explicitly includes the raw addresses for an
+operator who needs them.
 
 ## Capability Boundaries
 
