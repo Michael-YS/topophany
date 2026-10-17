@@ -219,16 +219,24 @@ func (s *Server) Reload(c model.Config, a Auth) {
 	s.snapshotMu.Unlock()
 }
 
+// buildSnapshot is the one place every reader adds the collector-wide
+// evidence that is not part of the engine's check derivation. A new field
+// belongs here, not in each of the three snapshot readers.
+func (s *Server) buildSnapshot(g *generation, view string, rows []model.Observation, carries []engine.Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
+	snap := g.engine.Build(s.Instance, view, rows, carries, beats, now)
+	if s.Ingress != nil {
+		snap.Ingress = s.Ingress.Summary(now)
+	}
+	return snap
+}
+
 // Observe judges the evidence of all observers at now, as a snapshot of
 // them would, and records in the ledger the incidents that open, recover
 // and close (see ledger.Observe). It returns that snapshot too.
 func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.Change, error) {
 	g := s.generation()
 	rows, carries, beats := s.Store.StateView()
-	snap := g.engine.Build(s.Instance, "", rows, carries, beats, now)
-	if s.Ingress != nil {
-		snap.Ingress = s.Ingress.Summary(now)
-	}
+	snap := s.buildSnapshot(g, "", rows, carries, beats, now)
 	if s.Ledger == nil {
 		return snap, nil, nil
 	}
@@ -243,11 +251,7 @@ func (s *Server) MonitorSnapshot(now time.Time) model.Snapshot {
 	defer s.reloadMu.RUnlock()
 	g := s.generation()
 	rows, carries, beats := s.Store.StateView()
-	snap := g.engine.Build(s.Instance, "", rows, carries, beats, now)
-	if s.Ingress != nil {
-		snap.Ingress = s.Ingress.Summary(now)
-	}
-	return snap
+	return s.buildSnapshot(g, "", rows, carries, beats, now)
 }
 
 func (s *Server) Handler() http.Handler {

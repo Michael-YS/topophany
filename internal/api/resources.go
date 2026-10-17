@@ -95,20 +95,15 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 	}
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
-	snap := g.engine.Build(s.Instance, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
+	snap := s.buildSnapshot(g, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
 	usage := model.StorageUsage(s.snapshotStorage)
 	usage.Observers = slices.Clone(usage.Observers)
 	if view != "" {
 		usage.Observers = slices.DeleteFunc(usage.Observers, func(o model.StorageObserverUsage) bool { return o.Observer != view })
 	}
 	snap.Storage = &usage
-	if s.Ingress != nil {
-		// The cached path is what clients read; Observe and MonitorSnapshot
-		// are separate readers of the same collector.
-		snap.Ingress = s.Ingress.Summary(s.snapshotAt)
-		if !s.ExposeIngressSources {
-			snap.Ingress = pseudonymousIngress(snap.Ingress)
-		}
+	if !s.ExposeIngressSources {
+		snap.Ingress = pseudonymousIngress(snap.Ingress)
 	}
 	if s.Ledger != nil {
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
