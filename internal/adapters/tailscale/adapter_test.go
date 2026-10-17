@@ -48,3 +48,23 @@ func TestTailscaleIdleOfflineAndScope(t *testing.T) {
 func httpCheck(url string) model.Check {
 	return model.Check{ID: "check", Observer: "home", Kind: "http", Target: url, TimeoutSeconds: 1, HTTP: model.HTTPOptions{Method: "GET", MaxBodyBytes: 65536}}
 }
+
+func TestTailscaleMissingLastSeenIsNotTheYearOne(t *testing.T) {
+	r := probe.Runner{Command: func(context.Context, string, ...string) ([]byte, error) {
+		// A peer the control plane reports as online carries no LastSeen,
+		// which the zero time would render as 0001-01-01.
+		return []byte(`{"BackendState":"Running","Peer":{"key":{"ID":"peer-1","TailscaleIPs":["100.64.0.1"],"Online":true}}}`), nil
+	}}
+	x := httpCheck("")
+	x.Kind = "tailscale"
+	x.Adapter.Peer = "100.64.0.1"
+	o := r.Run(context.Background(), testkit.Config(), x)
+	if got := o.Facts["last_seen"]; got != "not reported" {
+		t.Fatalf("missing LastSeen rendered as %q", got)
+	}
+	for _, fact := range o.Facts {
+		if strings.Contains(fact, "0001-01-01") {
+			t.Fatalf("a fabricated time reached the facts: %v", o.Facts)
+		}
+	}
+}

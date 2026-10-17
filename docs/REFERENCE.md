@@ -472,3 +472,11 @@ DISCO records direct/DERP/peer-relay response hints and may negotiate transport;
 TSMP records a response without identifying the actual transport. Both retain
 reported evidence and leave application reachability unverified. No application
 or host health is inferred from a diagnostic timeout.
+
+The CLI can report an internal timeout on stdout and still exit non-zero
+(`ping "<ip>" timed out`). The adapter recognizes exactly that text for the
+fixed target and reports `unknown` with `diagnostic_response: timed_out`; every
+other non-zero exit stays a monitor-side error, so a stopped daemon, a missing
+peer or a permission problem is never read as the peer not answering. Facts
+carry `last_seen` only when the control plane reports it; a missing time reads
+`not reported`, not the year 1 and not the sample's own time.

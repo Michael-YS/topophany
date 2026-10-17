@@ -44,7 +44,14 @@ func Collect(ctx context.Context, command adapters.Command, options model.Tailsc
 	o.Outcome, o.Stage = "ok", "adapter"
 	o.PathEvidence = "peer_local_runtime_reported"
 	o.Facts["active_reported"] = strconv.FormatBool(peer.Active)
-	o.Facts["last_seen"] = peer.LastSeen.UTC().Format(time.RFC3339)
+	// The control plane reports LastSeen only for some peers, usually when
+	// they are offline. A missing time is not the year 1, and the sample's
+	// own time is not it either.
+	if peer.LastSeen.IsZero() {
+		o.Facts["last_seen"] = "not reported"
+	} else {
+		o.Facts["last_seen"] = peer.LastSeen.UTC().Format(time.RFC3339)
+	}
 	o.Detail = "peer telemetry collected; idle is not offline; probe tailnet service separately"
 	switch {
 	case peer.PeerRelay != "":

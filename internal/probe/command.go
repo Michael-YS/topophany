@@ -35,8 +35,11 @@ func defaultCommand(ctx context.Context, name string, args ...string) ([]byte, e
 	w := &cappedOutput{limit: 2 << 20}
 	cmd.Stdout = w
 	cmd.Stderr = io.Discard
+	// A command can say something and still exit non-zero: tailscale ping
+	// reports an internal timeout on stdout and exits 1. Return what it
+	// said; the adapter decides whether that is a failure or an answer.
 	if e = cmd.Run(); e != nil {
-		return nil, e
+		return w.b.Bytes(), e
 	}
 	return w.b.Bytes(), nil
 }

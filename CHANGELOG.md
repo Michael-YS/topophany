@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Tailscale diagnostic that times out inside the CLI now reports `unknown`
+  with `diagnostic_response: timed_out` instead of a monitor-side error. Only
+  the CLI's exact `ping "<ip>" timed out` text for the fixed target counts;
+  other non-zero exits stay errors, and the command probe hands an adapter the
+  output it captured on failure instead of discarding it.
+- A peer whose control-plane response carries no `LastSeen` reports
+  `last_seen: not reported` instead of a fabricated `0001-01-01T00:00:00Z`.
 - A policy violation now needs `failure_threshold` consecutive violating
   samples before it opens an incident; the first one is a warning. Policy never
   reads as down, and a passing sample breaks the run, so a provider publication

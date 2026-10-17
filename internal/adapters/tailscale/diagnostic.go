@@ -50,6 +50,12 @@ func diagnose(ctx context.Context, command adapters.Command, options model.Tails
 			o.Detail = "optional Tailscale diagnostic did not complete; application reachability is unverified"
 			return nil
 		}
+		if pingTimedOut(raw, target) {
+			o.Outcome, o.Code = "unknown", "diagnostic_ping_timed_out"
+			o.Facts["diagnostic_response"] = "timed_out"
+			o.Detail = "the peer did not answer the diagnostic within its own timeout; application reachability is unverified"
+			return nil
+		}
 		return adapters.CommandFailure(err, "tailscale_diagnostic_failed")
 	}
 	result, err := parsePing(raw, target, options.Diagnostic)
@@ -62,6 +68,15 @@ func diagnose(ctx context.Context, command adapters.Command, options model.Tails
 	o.PathEvidence = "peer_runtime_reported_with_" + options.Diagnostic + "_diagnostic"
 	o.Detail += "; optional diagnostic response received; application reachability is unverified"
 	return nil
+}
+
+// pingTimedOut recognizes the CLI's own account of an internal timeout for
+// exactly the fixed target this check names. Nothing broader: "no matching
+// peer", a stopped daemon and permission errors also exit non-zero, and they
+// are monitor-side failures, not a peer that did not answer.
+func pingTimedOut(raw []byte, target netip.Addr) bool {
+	text := strings.TrimSpace(string(raw))
+	return len(raw) <= 256 && !strings.ContainsAny(text, "\r\n\x00") && text == "ping \""+target.String()+"\" timed out"
 }
 
 func parsePing(raw []byte, target netip.Addr, protocol string) (pingResult, error) {

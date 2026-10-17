@@ -224,7 +224,7 @@
         "active_reported": "false",
         "backend_state": "Running",
         "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
-        "last_seen": "0001-01-01T00:00:00Z",
+        "last_seen": "not reported",
         "online_reported": "true",
         "relay": "hkg",
         "transport_hint": "relay_preference_reported"

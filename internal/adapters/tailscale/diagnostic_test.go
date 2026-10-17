@@ -118,3 +118,34 @@ func TestTailscaleDiagnosticPreservesOfflineAndHandlesDeadline(t *testing.T) {
 		t.Fatal(o, err)
 	}
 }
+
+func TestTailscaleInternalTimeoutIsNotAMonitorError(t *testing.T) {
+	timedOut := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if args[0] == "status" {
+			return []byte(`{"BackendState":"Running","Peer":{"key":{"ID":"peer","TailscaleIPs":["100.64.0.1"],"Online":true}}}`), nil
+		}
+		return []byte("ping \"100.64.0.1\" timed out\n"), errors.New("exit status 1")
+	}
+	o := model.Observation{Facts: map[string]string{}}
+	if err := Collect(context.Background(), timedOut, model.TailscaleOptions{Peer: "peer", Diagnostic: "disco"}, &o); err != nil {
+		t.Fatal("an internal ping timeout was promoted to a monitor error", err)
+	}
+	if o.Outcome != "unknown" || o.Code != "diagnostic_ping_timed_out" || o.Facts["diagnostic_response"] != "timed_out" || o.Facts["diagnostic_route"] != "" {
+		t.Fatalf("timeout not reported as no answer: %+v", o)
+	}
+
+	// Any other non-zero exit stays a monitor-side failure, even when the
+	// CLI wrote something first.
+	for _, raw := range []string{"no matching peer\n", "", "ping \"100.64.0.2\" timed out\n", "ping \"100.64.0.1\" timed out and then some\n"} {
+		o := model.Observation{Facts: map[string]string{}}
+		failing := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			if args[0] == "status" {
+				return []byte(`{"BackendState":"Running","Peer":{"key":{"ID":"peer","TailscaleIPs":["100.64.0.1"],"Online":true}}}`), nil
+			}
+			return []byte(raw), errors.New("exit status 1")
+		}
+		if err := Collect(context.Background(), failing, model.TailscaleOptions{Peer: "peer", Diagnostic: "disco"}, &o); err == nil {
+			t.Fatalf("%q was treated as the peer's own timeout: %+v", raw, o)
+		}
+	}
+}
