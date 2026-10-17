@@ -266,18 +266,14 @@
       "outcome": "unknown",
       "evidence": "reported",
       "stage": "adapter",
-      "code": "peer_or_backend_not_online",
-      "detail": "peer/backend not reported online; host power state and service reachability unknown",
+      "code": "backend_stopped",
+      "detail": "local Tailscale backend is not running; peer reachability is unverified",
       "duration_ms": 0,
       "connectivity": false,
-      "path_evidence": "peer_local_runtime_reported",
+      "path_evidence": "local_backend_runtime_reported",
       "facts": {
-        "active_reported": "false",
         "backend_state": "Stopped",
-        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown",
-        "last_seen": "0001-01-01T00:00:00Z",
-        "online_reported": "false",
-        "transport_hint": "unknown"
+        "connection_semantics": "new_client_stream; upstream_core_multiplexing_unknown"
       }
     }
   },

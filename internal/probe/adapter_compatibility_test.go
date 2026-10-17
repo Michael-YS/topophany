@@ -18,7 +18,8 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
-// These observations and contracts were captured from the pre-split adapters.
+// Captured before the package split; named semantic regressions update only
+// their observations. Legacy contract hashes remain pinned.
 // Only the listener address, sampling timestamp and elapsed time are variable.
 func TestAdapterCompatibility(t *testing.T) {
 	t.Setenv("TOPH_COMPAT_TOKEN", "synthetic-token")

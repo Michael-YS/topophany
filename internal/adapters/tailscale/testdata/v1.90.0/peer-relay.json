@@ -1,0 +1,1 @@
+{"Version":"1.90.0","BackendState":"Running","Peer":{"nodekey:synthetic-a":{"ID":"stable-a","HostName":"node-a","TailscaleIPs":["100.64.0.1"],"Online":true,"Active":true,"CurAddr":"192.0.2.1:41641","Relay":"hkg","PeerRelay":"192.0.2.2:7777:vni:7"}}}

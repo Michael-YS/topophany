@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -35,3 +36,15 @@ func Fail(stage string, err error) error {
 
 // Withheld marks peer-controlled text withheld after sending credentials.
 const Withheld = "withheld_secret_request"
+
+// CommandFailure classifies only errors with reliable local provenance.
+func CommandFailure(err error, fallback string) error {
+	switch {
+	case errors.Is(err, exec.ErrNotFound), errors.Is(err, os.ErrNotExist):
+		return Local("adapter", "command_not_found")
+	case errors.Is(err, os.ErrPermission):
+		return Local("adapter", "command_permission_denied")
+	default:
+		return Local("adapter", fallback)
+	}
+}

@@ -116,6 +116,7 @@ def main() -> int:
             ("config", "FuzzDecodeTopology"),
             ("store", "FuzzEnvelope"),
             ("probe", "FuzzSOCKSAddress"),
+            ("adapters/tailscale", "FuzzTailscaleStatus"),
             ("probe", "FuzzDNSPacket"),
             ("probe", "FuzzICMPChecksum"),
             ("rollup", "FuzzLateSampleOrder"),
