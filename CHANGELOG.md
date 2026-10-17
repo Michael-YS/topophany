@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Checks tab's `UP 24H` cell says how much of the day the collector holds
+  when the rollups begin inside it (`98.9% · 3h`), instead of showing a
+  partial window as if it were a full day. A whole day is unchanged.
 - `topo version` reports what the binary carries: the module version the Go
   toolchain stamped, or `dev-<short revision>[-dirty]` for a local build. The
   constant said 1.1.1 on builds that already contained unreleased changes.

@@ -363,7 +363,7 @@ func (v View) Rows(tab int) []Row {
 					details = append(details, k+": "+o.Facts[k])
 				}
 			}
-			r := Row{Kind: "check", ID: e.ID, Title: title, Health: e.Health, Meta: meta, Cols: []string{observerNames[d.Observer], d.Kind, took, e.Freshness, Up24h(e.Availability)}, Details: details}
+			r := Row{Kind: "check", ID: e.ID, Title: title, Health: e.Health, Meta: meta, Cols: []string{observerNames[d.Observer], d.Kind, took, e.Freshness, Up24h(e.Availability, v.Now)}, Details: details}
 			if e.Freshness == "paused" || e.Freshness == "maintenance" {
 				r.Note = e.Freshness
 			}
