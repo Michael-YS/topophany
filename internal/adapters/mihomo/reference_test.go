@@ -132,6 +132,18 @@ func TestMihomoReferenceSettlesAfterPublication(t *testing.T) {
 	}
 }
 
+func TestMihomoKnownModePolicyIsNotSettledByAProvider(t *testing.T) {
+	names := []string{"edge-a", "edge-b"}
+	doc := referenceDocument(time.Now().UTC().Add(-30*time.Second), names)
+	x := referenceHarness(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, doc) }, func() []string { return []string{"old"} })
+	x.Adapter.ExpectedMode = "global" // the controller reports rule
+	x.Adapter.ProviderReference.SettleSeconds = nil
+	o := runReference(x)
+	if o.Outcome != "policy" || o.Facts["provider_reference_settling"] != "" {
+		t.Fatalf("a known mode policy was marked as a settling publication: %+v", o)
+	}
+}
+
 func TestMihomoReferenceFailuresAreMonitorErrors(t *testing.T) {
 	at := time.Now().UTC().Truncate(time.Second)
 	valid := referenceDocument(at, []string{"edge-a", "edge-b"})
