@@ -24,6 +24,10 @@ site:
 	TOPO_SITE=$(CURDIR)/site/public/data go test -count=1 -run '^TestSite$$' ./internal/tui
 	python3 scripts/build_demo.py
 	python3 scripts/build_site.py
+# Rebuild and fail when the result is not what is committed: the pages and the
+# recorded tours are generated, and a stale one makes every later build churn.
+site-check: site
+	@git diff --exit-code -- site/ || { echo "site/ is stale: commit the regenerated pages and tours"; exit 1; }
 captures:
 	python3 scripts/capture.py $(if $(FONTS),--fonts $(FONTS))
 device-shots:

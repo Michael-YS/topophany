@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -258,13 +259,38 @@ func recordTour(t *testing.T, lang string) tour {
 	if out, ok := tours.Load(lang); ok {
 		return out.(tour)
 	}
+	out := recordTourOnce(t, lang)
+	tours.Store(lang, out)
+	return out
+}
+
+// recordTourOnce records without the shared cache, so a test can record the
+// same tour twice: the homepage is generated from it and has to be the same
+// bytes every time it is rebuilt from the same source.
+func recordTourOnce(t *testing.T, lang string) tour {
+	t.Helper()
 	local := time.Local
 	time.Local = time.UTC
 	defer func() { time.Local = local }()
 	r := newRecorder(t, lang)
 	r.record()
-	tours.Store(lang, r.out)
 	return r.out
+}
+
+func TestTourIsReproducible(t *testing.T) {
+	lang := preview.DefaultLanguage
+	first, second := recordTourOnce(t, lang), recordTourOnce(t, lang)
+	a, e := json.Marshal(first)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := json.Marshal(second)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !bytes.Equal(a, b) {
+		t.Fatal("recording the same tour twice produced different bytes; the site would churn on every rebuild")
+	}
 }
 
 func TestSite(t *testing.T) {
