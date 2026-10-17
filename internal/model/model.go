@@ -308,9 +308,11 @@ type CheckState struct {
 	Since     time.Time    `json:"since"`
 	Last      *Observation `json:"last,omitempty"`
 	// PolicyConfirmed says the latest sample's policy violation has stood
-	// for as many consecutive samples as the check's failure threshold. A
-	// single violating sample stays a warning: it may be a publication
-	// still loading, and only a sustained one is a policy incident.
+	// for as many consecutive samples as the check's confirmation threshold:
+	// failure_threshold, or the provider reference's settle window expressed
+	// in samples. A single violating sample stays a warning: it may be a
+	// publication still loading, and only a sustained one is a policy
+	// incident.
 	PolicyConfirmed bool `json:"policy_confirmed,omitempty"`
 	// Availability is how the check fared over the last day, week and
 	// month, from the collector's rollups of its samples.
