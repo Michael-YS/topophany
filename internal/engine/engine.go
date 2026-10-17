@@ -81,6 +81,16 @@ func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.T
 	case "policy":
 		s.Health = "degraded"
 		s.Reason = "policy violation: " + last.Code
+		// A policy violation is a state assertion, not a failed request, so
+		// it never reads as down. It still has to stand for as many
+		// consecutive samples as a failure would before it opens an
+		// incident: a publication the runtime has not loaded yet produces
+		// one or two violating samples and then passes.
+		run, threshold := k.PolicyRun, max(x.FailureThreshold, 1)
+		s.PolicyConfirmed = run >= threshold
+		if !s.PolicyConfirmed {
+			s.Reason = fmt.Sprintf("%s; confirmation threshold not reached (%d/%d)", s.Reason, run, threshold)
+		}
 	default:
 		if last.Outcome == "error" {
 			s.Reason = "monitor-side error: " + last.Code
@@ -360,7 +370,9 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 			continue
 		}
 		policy := s.Last.Outcome == "policy"
-		if s.Health != "down" && !policy {
+		// A policy violation opens an incident only once it has stood for the
+		// check's failure threshold; see evaluate. Until then it is a warning.
+		if s.Health != "down" && !(policy && s.PolicyConfirmed) {
 			continue
 		}
 		base := p.scope(x)
@@ -392,8 +404,7 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 			}
 			switch {
 			case len(ep.Via) > 0 && s.Last.Connectivity:
-				// The edge in front answered; whatever failed is behind it.
-				inc.Hypothesis = "the edge in front answered" + withStatus(s.Last) + "; the fault lies behind it, at the origin or on the edge's leg to it, and the origin's own state is not established"
+				inc.Hypothesis = edgeHypothesis(s.Last)
 			case len(inc.CounterEvidence) > 0:
 				inc.Hypothesis = "source/path-specific interference, filtering or routing fault is possible; blocking authority and untested protocols are not established"
 			}
@@ -446,6 +457,28 @@ func withStatus(v *model.Observation) string {
 		return " with HTTP " + code
 	}
 	return ""
+}
+
+// edgeHypothesis explains a failed request whose response came back through
+// an edge in front. Any response proves that hop and nothing behind it, and
+// an error status is a word the edge or the origin can send whatever
+// happened, so the hypothesis says only what is established and names a
+// candidate cause only where the status class supports one. An HTTP 403 is
+// not proof of a WAF, and 521 is the platform's own account of an origin it
+// could not reach, not an independent observation of that origin.
+func edgeHypothesis(v *model.Observation) string {
+	head := "the edge in front answered" + withStatus(v) + "; "
+	const unlocated = "the request did not satisfy its assertions and the failing layer is not located"
+	const originUnknown = "the origin's own state is not established"
+	switch status := v.Facts["http_status"]; {
+	case status == "403" || status == "429":
+		return head + unlocated + "; the response may be edge policy or a challenge page rather than the origin's answer, and " + originUnknown
+	case status == "521" || status == "522" || status == "523" || status == "524":
+		return head + "the request did not satisfy its assertions; the edge reports that it could not reach the origin, which is the platform's own account, and " + originUnknown
+	case strings.HasPrefix(status, "5"):
+		return head + unlocated + "; the response may come from the edge itself or from the origin, whose own state is not established"
+	}
+	return head + unlocated + "; " + originUnknown
 }
 
 // digest is the SHA-256 of a set of strings, in hex.

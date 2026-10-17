@@ -19,14 +19,18 @@ const thresholds = 20
 // down and not yet recovered. A carry belongs to one check under one
 // contract, and holds the samples up to and including the one it names.
 type Carry struct {
-	Check     string             `json:"check"`
-	Contract  string             `json:"contract"`
-	At        time.Time          `json:"at"`
-	Boot      string             `json:"boot,omitempty"`
-	Sequence  uint64             `json:"sequence,omitempty"`
-	ID        string             `json:"id"`
-	Failures  int                `json:"failures,omitempty"`
-	Successes int                `json:"successes,omitempty"`
+	Check     string    `json:"check"`
+	Contract  string    `json:"contract"`
+	At        time.Time `json:"at"`
+	Boot      string    `json:"boot,omitempty"`
+	Sequence  uint64    `json:"sequence,omitempty"`
+	ID        string    `json:"id"`
+	Failures  int       `json:"failures,omitempty"`
+	Successes int       `json:"successes,omitempty"`
+	// PolicyRun is how many samples in a row at the end found a policy
+	// violated. A policy violation clears Failures and Down, so without it
+	// dropped samples would make a sustained violation look new.
+	PolicyRun int                `json:"policy_run,omitempty"`
 	Since     time.Time          `json:"since"`
 	Down      [thresholds]uint32 `json:"down"`
 }
@@ -53,7 +57,7 @@ func (k Carry) Holds(v model.Observation) bool {
 // stale between two samples starts the count afresh; zero means none does.
 func (k *Carry) Fold(v model.Observation, stale time.Duration) {
 	if !k.At.IsZero() && stale > 0 && v.SampledAt.Sub(k.At) > stale {
-		k.Failures, k.Successes, k.Down = 0, 0, [thresholds]uint32{}
+		k.Failures, k.Successes, k.PolicyRun, k.Down = 0, 0, 0, [thresholds]uint32{}
 	}
 	k.Check, k.At, k.Boot, k.Sequence, k.ID = v.Check, v.SampledAt, v.Boot, v.Sequence, v.ID
 	if v.Contract != "" {
@@ -62,7 +66,7 @@ func (k *Carry) Fold(v model.Observation, stale time.Duration) {
 	switch v.Outcome {
 	case "ok":
 		k.Successes++
-		k.Failures = 0
+		k.Failures, k.PolicyRun = 0, 0
 		k.Since = v.SampledAt
 		// Still down under every recovery threshold the run has not reached.
 		for f := range k.Down {
@@ -73,15 +77,24 @@ func (k *Carry) Fold(v model.Observation, stale time.Duration) {
 			k.Since = v.SampledAt
 		}
 		k.Failures++
-		k.Successes = 0
+		k.Successes, k.PolicyRun = 0, 0
 		// Confirmed under every failure threshold the run has reached.
 		for f := 0; f < min(k.Failures, thresholds); f++ {
 			k.Down[f] = 1<<thresholds - 1
 		}
-	default:
-		// A policy violation, a monitor-side error or an unknown outcome
-		// ends whatever was confirmed.
+	case "policy":
+		// A policy violation ends whatever was confirmed, and counts its
+		// own run: the engine needs it to tell a publication still loading
+		// from a sustained drift.
+		if k.PolicyRun == 0 {
+			k.Since = v.SampledAt
+		}
+		k.PolicyRun++
 		k.Failures, k.Successes, k.Down = 0, 0, [thresholds]uint32{}
+	default:
+		// A monitor-side error or an unknown outcome ends whatever was
+		// confirmed and does not stand for a policy violation either.
+		k.Failures, k.Successes, k.PolicyRun, k.Down = 0, 0, 0, [thresholds]uint32{}
 		k.Since = v.SampledAt
 	}
 }

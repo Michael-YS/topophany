@@ -54,6 +54,56 @@ func TestConfirmationRecoveryFreshnessAndMonitorErrors(t *testing.T) {
 		t.Fatal(s)
 	}
 }
+func TestPolicyViolationNeedsTheFailureThreshold(t *testing.T) {
+	c := testkit.Config()
+	x := c.Checks[0]
+	now := time.Now().UTC()
+	samples := func(outcomes ...string) []model.Observation {
+		rows := make([]model.Observation, 0, len(outcomes))
+		for i, outcome := range outcomes {
+			rows = append(rows, testkit.Observation(c, x.ID, uint64(i+1), now.Add(time.Duration(i-len(outcomes))*time.Second), outcome))
+		}
+		return rows
+	}
+	state := func(s model.Snapshot) model.CheckState {
+		t.Helper()
+		for _, st := range s.Checks {
+			if st.ID == x.ID {
+				return st
+			}
+		}
+		t.Fatalf("check %s missing from snapshot", x.ID)
+		return model.CheckState{}
+	}
+
+	// One violating sample is a warning, not an incident: a publication the
+	// runtime has not loaded yet looks exactly like this for a minute.
+	s := Build(c, "a", "", samples("policy"), nil, now)
+	st := state(s)
+	if st.Health != "degraded" || st.PolicyConfirmed || !strings.Contains(st.Reason, "(1/3)") {
+		t.Fatalf("a single policy sample was confirmed: %+v", st)
+	}
+	if len(s.Incidents) != 0 {
+		t.Fatalf("incident opened before the confirmation threshold: %+v", s.Incidents)
+	}
+
+	// Passing samples break the run, however long the earlier violation was.
+	s = Build(c, "a", "", samples("policy", "policy", "ok", "policy"), nil, now)
+	if st = state(s); st.PolicyConfirmed || len(s.Incidents) != 0 {
+		t.Fatalf("non-consecutive policy samples were confirmed: %+v %+v", st, s.Incidents)
+	}
+
+	// A sustained violation is an incident, and still not an outage.
+	s = Build(c, "a", "", samples("policy", "policy", "policy"), nil, now)
+	st = state(s)
+	if st.Health != "degraded" || !st.PolicyConfirmed {
+		t.Fatalf("threshold reached but not confirmed: %+v", st)
+	}
+	if len(s.Incidents) != 1 || !strings.HasSuffix(s.Incidents[0].Scope, "/policy") || !slices.Contains(s.Incidents[0].Checks, x.ID) {
+		t.Fatalf("no policy incident after the threshold: %+v", s.Incidents)
+	}
+}
+
 func TestOutOfOrderAndGapDoNotFabricateConfirmation(t *testing.T) {
 	c := testkit.Config()
 	x := c.Checks[0]
@@ -356,6 +406,36 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	}
 	if len(s.Incidents) != 1 || !strings.Contains(s.Incidents[0].Hypothesis, "edge in front answered with HTTP 521") || !strings.Contains(s.Incidents[0].Hypothesis, "not established") {
 		t.Fatal("no bounded diagnosis behind the edge", s.Incidents)
+	}
+	if !strings.Contains(s.Incidents[0].Hypothesis, "platform's own account") {
+		t.Fatal("521 presented as an independent observation of the origin", s.Incidents[0].Hypothesis)
+	}
+
+	// An error status is a word the edge or the origin can send whatever
+	// happened: the failure layer stays unlocated unless the status class
+	// supports a candidate cause, and the origin is never declared at fault
+	// from the response alone.
+	for _, tt := range []struct{ status, want string }{
+		{"403", "edge policy or a challenge page"},
+		{"429", "edge policy or a challenge page"},
+		{"503", "edge itself or from the origin"},
+		{"200", "failing layer is not located"},
+	} {
+		var statusRows []model.Observation
+		for i := 0; i < 3; i++ {
+			statusRows = append(statusRows, through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", tt.status, "", true))
+		}
+		st := Build(c, "a", "home", statusRows, nil, now)
+		if len(st.Incidents) != 1 {
+			t.Fatalf("HTTP %s: no incident: %+v", tt.status, st.Incidents)
+		}
+		got := st.Incidents[0].Hypothesis
+		if !strings.Contains(got, tt.want) {
+			t.Fatalf("HTTP %s: hypothesis %q does not mention %q", tt.status, got, tt.want)
+		}
+		if strings.Contains(got, "behind it") {
+			t.Fatalf("HTTP %s: claimed the fault lies behind the edge: %q", tt.status, got)
+		}
 	}
 
 	// Where the edge says its answer came from is its own word, which the
