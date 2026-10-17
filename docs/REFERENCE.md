@@ -231,7 +231,8 @@ A snapshot from a collector that saw TLS handshake failures also carries
 `ingress`: `window_seconds`, `failures`, `source_count`, `last`, and up to
 eight busiest `sources` (`address`, `count`, `last`) inside a rolling
 30-minute window. The window is counted in sixty equal buckets, so a source
-that keeps failing does not accumulate a lifetime total. `source_count` is
+that keeps failing does not accumulate a lifetime total; a bucket at the old
+edge may be omitted, so `failures` has one bucket's (30-second) resolution. `source_count` is
 the number of distinct addresses the counter tracked; `truncated` says more
 addresses were seen than it can track, making that count a lower bound.
 `failures` counts every failure in the window, including addresses omitted

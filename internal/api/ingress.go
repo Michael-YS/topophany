@@ -186,8 +186,9 @@ func (c *IngressCounter) add(buckets *[ingressBuckets]ingressBucket, t time.Time
 }
 
 // sum counts the failures in buckets whose start falls inside the window
-// ending at now. The bucket width is window/ingressBuckets, so at most one
-// bucket at the old edge can be outside it.
+// ending at now. The bucket width is window/ingressBuckets; a bucket that
+// starts before the cutoff is dropped even though its tail may overlap the
+// window, so the count has one bucket's resolution at the old edge.
 func (c *IngressCounter) sum(buckets *[ingressBuckets]ingressBucket, now time.Time) int {
 	cutoff := now.Add(-c.window).UnixNano()
 	end := now.UnixNano()
