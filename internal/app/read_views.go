@@ -125,7 +125,18 @@ func (a *App) status(v view.View, h header, asJSON bool) error {
 	t.kv("Incidents", strconv.Itoa(s.Incidents))
 	t.kv("Observers", fmt.Sprintf("%d/%d live", s.Observers.Live, s.Observers.Total))
 	if in := s.Ingress; in != nil {
-		t.kv("Collector ingress", fmt.Sprintf("%d TLS handshake failures in %s from %d sources, last %s", in.Failures, view.Duration(time.Duration(in.WindowSeconds)*time.Second), len(in.Sources), view.Age(v.Now, in.Last)))
+		failures, sources := "failures", "sources"
+		if in.Failures == 1 {
+			failures = "failure"
+		}
+		if in.SourceCount == 1 {
+			sources = "source"
+		}
+		count := strconv.Itoa(in.SourceCount)
+		if in.Truncated {
+			count = "at least " + count
+		}
+		t.kv("Collector ingress", fmt.Sprintf("%d TLS handshake %s in %s from %s %s, last %s", in.Failures, failures, view.Duration(time.Duration(in.WindowSeconds)*time.Second), count, sources, view.Age(v.Now, in.Last)))
 	}
 	look := []string{}
 	for i, b := range s.Tabs {

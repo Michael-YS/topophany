@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"net"
 	"slices"
 	"strconv"
@@ -16,18 +17,27 @@ const (
 	// Delivery retries are minutes apart, so a short window would miss a
 	// burst that has just stopped.
 	DefaultIngressWindow = 30 * time.Minute
-	// maxIngressSources bounds memory: a scanner can present many addresses.
+	// maxIngressSources bounds the sources kept individually: a scanner can
+	// present many addresses. Failures of sources beyond it still count.
 	maxIngressSources = 256
 	// shownIngressSources bounds what a snapshot shows.
 	shownIngressSources = 8
+	// ingressBuckets is the resolution of the rolling window. Each source,
+	// and the total, keeps one count per bucket instead of a lifetime count.
+	ingressBuckets = 60
 	// tlsHandshakePrefix is net/http's own wording for a failed handshake
 	// on the HTTP server's connection. Only lines with it count.
 	tlsHandshakePrefix = "http: TLS handshake error from "
 )
 
-type ingressSource struct {
+type ingressBucket struct {
+	at    int64 // the bucket's start, in Unix nanoseconds
 	count int
-	last  time.Time
+}
+
+type ingressSource struct {
+	buckets [ingressBuckets]ingressBucket
+	last    time.Time
 }
 
 // IngressCounter counts TLS handshake failures by source over a rolling
@@ -40,15 +50,27 @@ type ingressSource struct {
 type IngressCounter struct {
 	mu      sync.Mutex
 	window  time.Duration
+	width   time.Duration
 	now     func() time.Time
 	sources map[string]*ingressSource
+	// total counts every failure in the window, including failures from
+	// addresses the source map could not keep.
+	total [ingressBuckets]ingressBucket
+	last  time.Time
+	// lastReject is when an address beyond maxIngressSources last failed.
+	// It makes Truncated a statement about the current window, not history.
+	lastReject time.Time
 }
 
 func NewIngressCounter(window time.Duration) *IngressCounter {
 	if window <= 0 {
 		window = DefaultIngressWindow
 	}
-	return &IngressCounter{window: window, now: time.Now, sources: map[string]*ingressSource{}}
+	width := window / ingressBuckets
+	if width < time.Nanosecond {
+		width = time.Nanosecond
+	}
+	return &IngressCounter{window: window, width: width, now: time.Now, sources: map[string]*ingressSource{}}
 }
 
 // Writer passes every byte to next and counts the handshake failures among
@@ -65,10 +87,10 @@ type ingressWriter struct {
 
 func (w *ingressWriter) Write(p []byte) (int, error) {
 	line := strings.TrimSuffix(string(p), "\n")
+	w.counter.observe(line)
 	if w.next != nil {
 		w.next(line)
 	}
-	w.counter.observe(line)
 	return len(p), nil
 }
 
@@ -98,16 +120,57 @@ func (c *IngressCounter) observe(line string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.prune(now)
-	s := c.sources[host]
-	if s == nil {
-		if len(c.sources) >= maxIngressSources {
-			c.evictOldest()
-		}
-		s = &ingressSource{}
-		c.sources[host] = s
+	c.add(&c.total, now)
+	c.last = now
+	if s := c.sources[host]; s != nil {
+		c.add(&s.buckets, now)
+		s.last = now
+		return
 	}
-	s.count++
+	if len(c.sources) >= maxIngressSources {
+		// Do not evict a live source to make room: a scanner can rotate
+		// addresses, and losing the observer whose delivery is failing is
+		// the one outcome this counter exists to prevent. Count the failure
+		// in the total and say the source list is truncated.
+		c.lastReject = now
+		return
+	}
+	s := &ingressSource{}
+	c.add(&s.buckets, now)
 	s.last = now
+	c.sources[host] = s
+}
+
+// add records one failure at t in a bucket. Callers hold c.mu.
+func (c *IngressCounter) add(buckets *[ingressBuckets]ingressBucket, t time.Time) {
+	at := t.UnixNano() / int64(c.width)
+	slot := int(at % ingressBuckets)
+	if slot < 0 {
+		slot += ingressBuckets
+	}
+	if buckets[slot].at != at {
+		buckets[slot] = ingressBucket{at: at}
+	}
+	buckets[slot].count++
+}
+
+// sum counts the failures in buckets whose start falls inside the window
+// ending at now. The bucket width is window/ingressBuckets, so at most one
+// bucket at the old edge can be outside it.
+func (c *IngressCounter) sum(buckets *[ingressBuckets]ingressBucket, now time.Time) int {
+	cutoff := now.Add(-c.window).UnixNano()
+	end := now.UnixNano()
+	total := 0
+	for _, b := range buckets {
+		if b.count == 0 {
+			continue
+		}
+		start := b.at * int64(c.width)
+		if start >= cutoff && start <= end {
+			total += b.count
+		}
+	}
+	return total
 }
 
 // prune drops sources whose last failure fell out of the window. Callers
@@ -120,38 +183,30 @@ func (c *IngressCounter) prune(now time.Time) {
 	}
 }
 
-// evictOldest makes room for a new address. Callers hold c.mu.
-func (c *IngressCounter) evictOldest() {
-	oldest := ""
-	var at time.Time
-	for host, s := range c.sources {
-		if oldest == "" || s.last.Before(at) {
-			oldest, at = host, s.last
-		}
-	}
-	delete(c.sources, oldest)
-}
-
 // Summary is the window as a snapshot shows it, or nil when nothing failed
-// inside it. Sources are the busiest first, bounded.
+// inside it. Sources are the busiest first; SourceCount counts every source
+// the counter could track, and Truncated says some were not tracked.
 func (c *IngressCounter) Summary(now time.Time) *model.Ingress {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.prune(now)
-	if len(c.sources) == 0 {
+	failures := c.sum(&c.total, now)
+	if failures == 0 {
 		return nil
 	}
-	out := &model.Ingress{WindowSeconds: int(c.window / time.Second)}
+	out := &model.Ingress{WindowSeconds: int(c.window / time.Second), Failures: failures, Last: c.last}
 	for host, s := range c.sources {
-		out.Failures += s.count
-		if s.last.After(out.Last) {
-			out.Last = s.last
+		count := c.sum(&s.buckets, now)
+		if count == 0 {
+			continue
 		}
-		out.Sources = append(out.Sources, model.IngressSource{Address: host, Count: s.count, Last: s.last})
+		out.SourceCount++
+		out.Sources = append(out.Sources, model.IngressSource{Address: host, Count: count, Last: s.last})
 	}
+	out.Truncated = !c.lastReject.IsZero() && now.Sub(c.lastReject) <= c.window
 	slices.SortFunc(out.Sources, func(a, b model.IngressSource) int {
 		if a.Count != b.Count {
-			return b.Count - a.Count
+			return cmp.Compare(b.Count, a.Count)
 		}
 		return strings.Compare(a.Address, b.Address)
 	})

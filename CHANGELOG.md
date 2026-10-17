@@ -49,10 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The TUI and the browser viewer built from it count collector ingress failures
   in the status row, and the Overview keeps that row while delivery is failing,
   beside the CLI's `Collector ingress` line.
-- A collector snapshot now carries `ingress`: TLS handshake failures by source
-  over a rolling 30-minute window, counted from the HTTP server's own error
-  log. They say delivery into the collector failed, so the affected checks read
-  stale rather than failed; `topo status` prints the summary.
+- A collector snapshot now carries `ingress`: TLS handshake failures in a
+  rolling 30-minute window, counted from the HTTP server's own error log.
+  `failures` is the window total, `source_count` counts the distinct
+  addresses the counter tracked, and `truncated` marks the ones it could not.
+  The failures say delivery into the collector failed, so the affected checks
+  read stale rather than failed; `topo status` prints the summary.
 - Mihomo checks can compare rotating provider membership against a fresh,
   independent names-only JSON publication. Fixed expectations remain strict;
   unavailable references are monitor errors and publications changing during

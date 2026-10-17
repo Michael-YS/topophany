@@ -35,7 +35,7 @@ func TestIngressCountsOnlyHandshakeFailures(t *testing.T) {
 		t.Fatalf("writer did not pass every line through: %q", logged)
 	}
 	got := c.Summary(now)
-	if got == nil || got.Failures != 4 || got.WindowSeconds != 60 {
+	if got == nil || got.Failures != 4 || got.SourceCount != 3 || got.WindowSeconds != 60 {
 		t.Fatalf("counted %+v", got)
 	}
 	if len(got.Sources) != 3 {
@@ -57,7 +57,7 @@ func TestIngressReadsTheServersFormattedLog(t *testing.T) {
 	logger := log.New(c.Writer(func(line string) { kept.WriteString(line + "\n") }), "", log.LstdFlags)
 	logger.Print("http: TLS handshake error from 100.74.137.62:44484: i/o timeout")
 	summary := c.Summary(time.Now())
-	if summary == nil || summary.Failures != 1 || summary.Sources[0].Address != "100.74.137.62" {
+	if summary == nil || summary.Failures != 1 || summary.SourceCount != 1 || summary.Sources[0].Address != "100.74.137.62" {
 		t.Fatalf("formatted log line was not read: %+v", summary)
 	}
 	if !strings.Contains(kept.String(), "http: TLS handshake error from 100.74.137.62") {
@@ -78,8 +78,10 @@ func TestIngressForgetsOutsideTheWindowAndBoundsSources(t *testing.T) {
 		t.Fatal("failure outlived its window", s)
 	}
 
-	// More addresses than the bound must not grow the map without limit,
-	// and the newest failures must survive eviction of the oldest.
+	// More addresses than the bound must not grow the map without limit.
+	// A live source already in the map must survive the flood, and failures
+	// from addresses that cannot be tracked still count in the total.
+	c.observe("http: TLS handshake error from 192.0.2.10:1: EOF")
 	for i := 0; i < maxIngressSources+32; i++ {
 		now = now.Add(time.Millisecond)
 		c.observe("http: TLS handshake error from 10.1." + itoa(i/256) + "." + itoa(i%256) + ":1: EOF")
@@ -87,12 +89,36 @@ func TestIngressForgetsOutsideTheWindowAndBoundsSources(t *testing.T) {
 	if len(c.sources) > maxIngressSources {
 		t.Fatalf("source map grew past its bound: %d", len(c.sources))
 	}
-	c.observe("http: TLS handshake error from 192.0.2.10:1: EOF")
 	if _, ok := c.sources["192.0.2.10"]; !ok {
-		t.Fatal("newest source evicted itself")
+		t.Fatal("a live source was evicted to make room")
 	}
-	if s := c.Summary(now); s == nil || len(s.Sources) > shownIngressSources {
+	s := c.Summary(now)
+	if s == nil || s.Failures != 1+maxIngressSources+32 || s.SourceCount != maxIngressSources || !s.Truncated {
+		t.Fatalf("summary lost failures or sources: %+v", s)
+	}
+	if len(s.Sources) > shownIngressSources {
 		t.Fatalf("summary not bounded: %+v", s)
+	}
+}
+
+func TestIngressWindowIsRollingNotLifetime(t *testing.T) {
+	base := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	now := base
+	c := NewIngressCounter(10 * time.Minute)
+	c.now = func() time.Time { return now }
+	for i := 0; i < 30; i++ {
+		now = base.Add(time.Duration(i) * time.Minute)
+		c.observe("http: TLS handshake error from 192.0.2.10:1: EOF")
+	}
+	got := c.Summary(base.Add(29 * time.Minute))
+	if got == nil {
+		t.Fatal("rolling window lost every failure")
+	}
+	if got.Failures >= 30 {
+		t.Fatalf("window kept a lifetime count: %+v", got)
+	}
+	if got.Failures < 9 || got.Failures > 11 {
+		t.Fatalf("window count is not the last ten minutes: %+v", got)
 	}
 }
 
@@ -129,7 +155,7 @@ func TestSnapshotCarriesIngressHandshakeFailures(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
 		t.Fatal(err)
 	}
-	if snap.Ingress == nil || snap.Ingress.Failures != 2 || len(snap.Ingress.Sources) != 1 {
+	if snap.Ingress == nil || snap.Ingress.Failures != 2 || snap.Ingress.SourceCount != 1 || len(snap.Ingress.Sources) != 1 {
 		t.Fatalf("snapshot did not carry ingress: %+v", snap.Ingress)
 	}
 	if snap.Ingress.Sources[0].Address != "100.74.137.62" || snap.Ingress.Sources[0].Count != 2 {
