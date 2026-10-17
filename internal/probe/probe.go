@@ -31,11 +31,15 @@ type Runner struct {
 	ListenPacket func(string, string) (net.PacketConn, error)
 	// HostSample is injectable for hermetic resource tests. Production reads OS state.
 	HostSample func(context.Context, model.HostOptions) (HostSample, error)
+	// since defaults to time.Since; tests model wall-clock steps independently
+	// of the monotonic clock without changing the system clock.
+	since func(time.Time) time.Duration
 }
 
 func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Observation {
-	start := time.Now().UTC()
-	o := model.Observation{Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: x.Observer, SampledAt: start, Outcome: "unknown", Evidence: "measured", Stage: "setup", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
+	// Keep the monotonic reading for elapsed time across wall-clock changes.
+	start := time.Now()
+	o := model.Observation{Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: x.Observer, SampledAt: start.UTC(), Outcome: "unknown", Evidence: "measured", Stage: "setup", Facts: map[string]string{}, Timings: map[string]int64{}, PathEvidence: "requested_not_route_verified"}
 	resolved, err := config.ResolveCheck(c, x)
 	if err != nil {
 		o.Outcome = "error"
@@ -101,7 +105,11 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 		o.Outcome, o.Stage, o.Code = classify(e)
 		o.Detail = o.Stage + ": " + o.Code
 	}
-	o.DurationMS = time.Since(start).Milliseconds()
+	since := r.since
+	if since == nil {
+		since = time.Since
+	}
+	o.DurationMS = since(start).Milliseconds()
 	return o
 }
 func pinned(address, ip string) string {

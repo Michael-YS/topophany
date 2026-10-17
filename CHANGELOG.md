@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-16
+
+### Fixed
+
+- Probe durations retain Go's monotonic clock across system clock adjustments,
+  while sample timestamps remain UTC. Previously, a backward clock step could
+  produce negative durations and a forward step could exceed the check's
+  timeout budget, causing valid observations to be rejected with
+  `observation_budget_exceeded` and quarantined. Invalid samples could also
+  delay delivery of valid observations in the same batch.
+
 ## [1.1.0] - 2026-10-16
 
 ### Security
@@ -1032,7 +1043,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/WhitenWhiten/topophany/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/WhitenWhiten/topophany/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/WhitenWhiten/topophany/compare/v0.9.1...v1.0.0
 [0.9.1]: https://github.com/WhitenWhiten/topophany/compare/v0.9.0...v0.9.1

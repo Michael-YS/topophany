@@ -16,7 +16,7 @@ const (
 	BatchSchema    = 2
 	SnapshotSchema = 2
 )
-const Version = "1.1.0"
+const Version = "1.1.1"
 
 type Config struct {
 	Applications []Application     `json:"applications,omitempty"`
