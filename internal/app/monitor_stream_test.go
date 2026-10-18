@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -21,8 +22,38 @@ import (
 
 const previewStreamRequest = `{"schema":1,"request_id":"one","source":"preview","interval":"1s","template":{"schema":1,"title":"Topophany","bar":{"row":"status"},"rows":[{"id":"status","metric":"summary.verdict","visual":"status"},{"id":"observers","metric":"observers.verdicts","visual":"list"},{"id":"attention","metric":"attention.list","visual":"list"},{"id":"applications","metric":"applications.list","visual":"list"},{"id":"server","metric":"server.card","visual":"card","select":{"node":"app"}}]}}`
 
+func TestMonitorStreamClosedPipeErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"no error", nil, false},
+		{"POSIX broken pipe", syscall.EPIPE, true},
+		{"Windows broken pipe", syscall.Errno(109), runtime.GOOS == "windows"},
+		{"Windows closing pipe", syscall.Errno(232), runtime.GOOS == "windows"},
+		{"permission denied", os.ErrPermission, false},
+		{"short write", io.ErrShortWrite, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isStreamClosedPipe(tc.err); got != tc.want {
+				t.Fatalf("closed pipe = %v, want %v", got, tc.want)
+			}
+			if tc.err != nil {
+				wrapped := &os.PathError{Op: "write", Path: "stdout", Err: tc.err}
+				if got := isStreamClosedPipe(wrapped); got != tc.want {
+					t.Fatalf("wrapped closed pipe = %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
 func TestMonitorStreamProtocol(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "topo")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
 	build := exec.Command("go", "build", "-o", binary, "../../cmd/topo")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if output, err := build.CombinedOutput(); err != nil {
