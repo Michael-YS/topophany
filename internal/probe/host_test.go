@@ -142,3 +142,40 @@ func TestDarwinCounterFixtures(t *testing.T) {
 		t.Fatal("RSS failure ignored")
 	}
 }
+
+func TestDarwinCPUCachedTicksRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		cachedReads int
+		bad         bool
+	}{{"retry", 2, false}, {"exhausted", 6, true}, {"first window", 0, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			reads := 0
+			waits := []time.Duration{}
+			read := func() ([4]uint32, error) {
+				reads++
+				if reads <= tc.cachedReads {
+					return [4]uint32{100, 100, 100, 0}, nil
+				}
+				n := uint32(reads - tc.cachedReads)
+				return [4]uint32{100 + 10*n, 100, 100 + 30*n, 0}, nil
+			}
+			wait := func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }
+			percent, err := sampleDarwinCPU(context.Background(), read, wait)
+			if (err != nil) != tc.bad || !tc.bad && percent != 25 {
+				t.Fatal(percent, err)
+			}
+			if reads > 6 {
+				t.Fatal("CPU read budget exceeded", reads)
+			}
+			if tc.cachedReads == 2 && (len(waits) != 3 || waits[0] != 200*time.Millisecond || waits[1] != time.Second || waits[2] != 200*time.Millisecond) {
+				t.Fatal(waits)
+			}
+		})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := sampleDarwinCPU(ctx, func() ([4]uint32, error) { return [4]uint32{}, nil }, waitDarwinSample); err == nil {
+		t.Fatal("canceled CPU collection continued")
+	}
+}

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"sync"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -47,22 +46,8 @@ func darwinCPUTicks() ([4]uint32, error) {
 
 func sampleHostRuntime(ctx context.Context, names []string) (hostRuntime, error) {
 	s := newHostRuntime(names)
-	before, err := darwinCPUTicks()
-	if err != nil {
-		return s, err
-	}
-	timer := time.NewTimer(200 * time.Millisecond)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return s, local("host", "host_sampling_canceled")
-	case <-timer.C:
-	}
-	after, err := darwinCPUTicks()
-	if err != nil {
-		return s, err
-	}
-	s.CPUPercent, err = darwinCPUPercent(before, after)
+	var err error
+	s.CPUPercent, err = sampleDarwinCPU(ctx, darwinCPUTicks, waitDarwinSample)
 	if err != nil {
 		return s, err
 	}

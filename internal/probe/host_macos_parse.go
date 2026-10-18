@@ -2,7 +2,9 @@ package probe
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"time"
 )
 
 // Darwin's 64-bit kinfo_proc ABI is shared by arm64 and amd64. Only the
@@ -74,4 +76,43 @@ func parseDarwinProcessTable(raw []byte, s *hostRuntime, rss func(int32) (uint64
 		}
 	}
 	return nil
+}
+
+// The kernel can return cached CPU ticks to ordinary processes, with a global
+// randomized request limit per second. Do not report zero CPU for that case.
+// Retry a new 200 ms window after a cooldown, bounded to 2.6 seconds total.
+func sampleDarwinCPU(ctx context.Context, read func() ([4]uint32, error), wait func(context.Context, time.Duration) error) (float64, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		before, err := read()
+		if err != nil {
+			return 0, err
+		}
+		if err := wait(ctx, 200*time.Millisecond); err != nil {
+			return 0, err
+		}
+		after, err := read()
+		if err != nil {
+			return 0, err
+		}
+		if before != after {
+			return darwinCPUPercent(before, after)
+		}
+		if attempt < 2 {
+			if err := wait(ctx, time.Second); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return 0, local("host", "invalid_cpu_counters")
+}
+
+func waitDarwinSample(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return local("host", "host_sampling_canceled")
+	case <-timer.C:
+		return nil
+	}
 }
