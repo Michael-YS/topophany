@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
@@ -92,7 +93,7 @@ func TestMihomoDynamicProviderRotation(t *testing.T) {
 	if config.Contract(testkit.Config(), x) != contract {
 		t.Fatal("dynamic contents changed the configured contract")
 	}
-	if got := second.Facts["provider.edge-local.updated_at"]; got != testControllerUpdated.Format(time.RFC3339Nano) {
+	if got := second.Facts["provider_updated_at.edge-local"]; got != testControllerUpdated.Format(time.RFC3339Nano) {
 		t.Fatalf("controller report time not recorded beside the publisher time: %q", got)
 	}
 }
@@ -139,7 +140,7 @@ func TestMihomoKnownModePolicyIsNotSettledByAProvider(t *testing.T) {
 	x.Adapter.ExpectedMode = "global" // the controller reports rule
 	x.Adapter.ProviderReference.SettleSeconds = nil
 	o := runReference(x)
-	if o.Outcome != "policy" || o.Facts["provider_reference_settling"] != "" {
+	if o.Outcome != "policy" || o.Facts["provider_reference_settling"] != "" || o.Facts["provider_reference_load_pending"] != "false" {
 		t.Fatalf("a known mode policy was marked as a settling publication: %+v", o)
 	}
 }
@@ -333,8 +334,52 @@ func TestMihomoLoadedProviderTimesFitObservationBudget(t *testing.T) {
 	if code := config.ObservationBounds(o, time.Second); code != "" {
 		t.Fatalf("%s with %d facts: a full set of loaded providers would refuse the batch", code, len(o.Facts))
 	}
-	if o.Facts["provider.edge-local.updated_at"] == "" {
+	if o.Facts["provider_updated_at.edge-local"] == "" {
 		t.Fatal("the reference provider's load time, which settling turns on, gave way to a fixed provider's")
+	}
+}
+
+func TestMihomoSettleReloadReevaluatesWorkerEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		worker, collector int
+		age               time.Duration
+		fixedPolicy       bool
+		confirmed         bool
+	}{
+		{"enable window", 0, 120, 20 * time.Second, false, false},
+		{"extend window", 10, 120, 20 * time.Second, false, false},
+		{"shorten window", 120, 10, 20 * time.Second, false, true},
+		{"disable window", 120, 0, 20 * time.Second, false, true},
+		{"fixed violation", 0, 120, 20 * time.Second, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := referenceDocument(time.Now().UTC().Add(-tc.age), []string{"new"})
+			x := referenceHarness(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, doc) }, func() []string { return []string{"old"} })
+			x.IntervalSeconds, x.StaleSeconds, x.FailureThreshold = 10, 90, 2
+			x.Adapter.ProviderReference.SettleSeconds = &tc.worker
+			if tc.fixedPolicy {
+				x.Adapter.ExpectedProviders["fixed"] = []string{"changed"}
+			}
+			o := runReference(x)
+			wantPending := "true"
+			if tc.fixedPolicy {
+				wantPending = "false"
+			}
+			if o.Outcome != "policy" || o.Facts["provider_reference_load_pending"] != wantPending {
+				t.Fatal("worker lost window-independent load evidence", o)
+			}
+			rows := []model.Observation{o, o}
+			rows[0].SampledAt = o.SampledAt.Add(-10 * time.Second)
+			before := config.Contract(testkit.Config(), x)
+			x.Adapter.ProviderReference.SettleSeconds = &tc.collector
+			if config.Contract(testkit.Config(), x) != before {
+				t.Fatal("threshold reload invalidated worker history")
+			}
+			if got := engine.Evaluate(x, rows, o.SampledAt); got.PolicyConfirmed != tc.confirmed {
+				t.Fatalf("collector used worker's window: %+v", got)
+			}
+		})
 	}
 }
 

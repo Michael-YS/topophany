@@ -77,20 +77,37 @@ minute or two, and every publication would otherwise report a violation while
 it catches up. A difference inside the window is still a policy sample, but
 `provider_reference_settling: true` and `provider_comparison` saying
 `=settling(` mark it as not yet confirmed. The engine opens the incident only
-after as many consecutive policy samples as the window represents at the
-check's interval (and at least `failure_threshold`), so a publisher that keeps
+after the window has elapsed across as many consecutive policy samples as it
+represents at the check's interval (and at least `failure_threshold`), so a publisher that keeps
 republishing cannot defer it forever. Matching membership is never deferred;
 `0` disables the extra wait.
 
+`provider_reference_load_pending` records whether every known difference
+could still be the controller loading the publication, independently of the
+worker's configured wait. The collector applies its current `settle_seconds`
+to that evidence and the publication age at `sampled_at`, so changing the
+window takes effect for retained and queued samples before workers reload.
+The worker's `provider_reference_settling` and comparison labels describe its
+own window. Older samples without independent load evidence conservatively
+wait inside the collector's current publication window; explicitly known mode
+and TUN violations still use the ordinary confirmation threshold.
+At the full fact budget, a true `provider_reference_settling` already supplies
+the pending-load evidence, so the redundant `provider_reference_load_pending`
+fact may be omitted.
+
 Facts put the three times side by side: `provider_reference_published_at` from
-the publisher, `provider.<name>.updated_at` from the controller's own
+the publisher, `provider_updated_at.<name>` from the controller's own
 `updatedAt` for each provider that reports one, and the sample's own
 `sampled_at`. Load times are optional evidence: they are added last,
 reference providers first, and only while the observation stays within the
-collector's 32 facts, because one fact more would refuse the whole batch. A difference that outlives the window is the drift this check
+collector's 32 facts and each complete key fits 128 bytes. Longer metadata
+keys are omitted; membership remains in `provider.<name>`, so a provider named
+`pool.updated_at` cannot be overwritten by `pool`'s load time. The independent
+load evidence remains available even when optional times are omitted.
+A difference that outlives the window is the drift this check
 exists to find; one that does not is the publication loading. A provider whose
 controller reports an `updatedAt` after the publication is not still loading
-it, so its difference is not marked settling. The field is absent from the
+it, so its difference is not marked settling. `settle_seconds` is absent from the
 measurement contract, so changing it does not discard history. It is still a
 topology field: upgrade every collector and worker before adding it, because
 older binaries reject unknown fields.

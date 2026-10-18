@@ -523,6 +523,7 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		{"403", "edge policy or a challenge page"},
 		{"429", "edge policy or a challenge page"},
 		{"503", "edge itself or from the origin"},
+		{"524", "read or write timeout after connecting to the origin"},
 		{"200", "failing layer is not located"},
 	} {
 		var statusRows []model.Observation
@@ -539,6 +540,9 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		}
 		if strings.Contains(got, "behind it") {
 			t.Fatalf("HTTP %s: claimed the fault lies behind the edge: %q", tt.status, got)
+		}
+		if tt.status == "524" && (strings.Contains(got, "could not reach") || !strings.Contains(got, "platform's own account") || !strings.Contains(got, "origin's own state is not established")) {
+			t.Fatalf("524 lost its connection/timeout evidence limits: %q", got)
 		}
 	}
 

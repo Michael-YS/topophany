@@ -28,7 +28,7 @@ A site behind Cloudflare, or an app on Vercel or Supabase, is modeled with the s
 {"id": "worker", "name": "Short links", "node": "cf", "runtime": "workers", "endpoints": ["worker-url"]}
 ```
 
-The edge answers first, so evidence is attributed along `via`. Any response (an error page included) proves that the first hop answered, and nothing behind it: the nodes behind it, the origin among them, count only checks that reach them without going through it. What the edge says of where a response came from, its `edge_cache` status among them, is recorded as reported labels and proves nothing, since the edge, or anything behind it, can send it whatever happened; a node reached only through the edge reads unknown and says so, and an answer through the edge is no evidence against a failure of the origin's own check. Give the origin a check of its own, not through the edge, to measure it. A Cloudflare `521` therefore leaves the edge up and the origin unproven; an incident on that address says the request did not satisfy its assertions and the failing layer is not located, because the status is a word the edge or the origin can send whatever happened. Where the status class supports a candidate the incident names it: `403` and `429` may be edge policy or a challenge page rather than the origin's answer, `521`/`522`/`523`/`524` are the platform's own account of an origin it could not reach, and any other `5xx` may come from either side. The origin is never declared at fault from the response alone. A confirmed failure without any response leaves every hop on the chain affected.
+The edge answers first, so evidence is attributed along `via`. Any response (an error page included) proves that the first hop answered, and nothing behind it: the nodes behind it, the origin among them, count only checks that reach them without going through it. What the edge says of where a response came from, its `edge_cache` status among them, is recorded as reported labels and proves nothing, since the edge, or anything behind it, can send it whatever happened; a node reached only through the edge reads unknown and says so, and an answer through the edge is no evidence against a failure of the origin's own check. Give the origin a check of its own, not through the edge, to measure it. A Cloudflare `521` therefore leaves the edge up and the origin unproven; an incident on that address says the request did not satisfy its assertions and the failing layer is not located, because the status is a word the edge or the origin can send whatever happened. Where the status class supports a candidate the incident names it: `403` and `429` may be edge policy or a challenge page rather than the origin's answer, `521`/`522`/`523` are the platform's own account of an origin it could not reach, `524` reports a read or write timeout after a successful origin connection, and any other `5xx` may come from either side. The origin is never declared at fault from the response alone. A confirmed failure without any response leaves every hop on the chain affected.
 
 HTTP probes record which edge answered from the headers edges add to their responses: `edge_provider` (`cloudflare`, `vercel`, `cloudfront`, `fastly`, `netlify`), `edge_pop` (the point of presence, e.g. `NRT` from `CF-Ray`), `edge_region` (a function region named in `X-Vercel-Id`) and `edge_cache` (one of the statuses edges report, such as `HIT`, `MISS` or `DYNAMIC`; any other is not kept). These are what the response says, not verified routing: an origin can send the same headers. Values are reduced to short label characters.
 
@@ -120,10 +120,16 @@ difference inside that window remains a policy sample, with
 after the window's equivalent consecutive policy samples (and at least
 `failure_threshold`), so repeated publications cannot defer it forever.
 Matching membership is never deferred. Facts record
-`provider_reference_published_at` (publisher), `provider.<name>.updated_at`
+`provider_reference_published_at` (publisher), `provider_updated_at.<name>`
 (the controller's own load time for that provider, reference providers first,
-while the observation stays within the collector's 32 facts) and the sample's
-own time.
+while the observation stays within the collector's 32 facts and each complete
+key fits 128 bytes) and the sample's own time. Optional load-time keys that do
+not fit are omitted; provider membership is preserved.
+`provider_reference_load_pending` records load evidence independently of the
+worker's wait. The collector applies its current window at the sample's time,
+including after a reload and for queued samples. Legacy samples lacking this
+evidence conservatively wait within the current publication window, except
+for explicitly known mode/TUN violations.
 An explicit `settle_seconds` is a new topology field: upgrade every collector
 and worker before adding it, because older binaries reject unknown topology
 fields. Omitting it uses the default and needs no topology change. See the

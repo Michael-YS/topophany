@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -97,7 +98,7 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 	}
 	sort.Strings(keys)
 	summaries := []string{}
-	mismatched, unconfirmed := 0, 0
+	mismatched, pending := 0, 0
 	// The controller's own account of when it last loaded each provider,
 	// beside the publisher's time and the sample's time. Reference
 	// providers come first: settling turns on their load times.
@@ -128,22 +129,24 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		// The controller may still be loading a fresh publication. If it
 		// says it loaded this provider after that publication, it is not
 		// still loading: the difference is real.
-		providerSettling := dynamic && stable && settlingWindow && !same &&
+		loadPending := dynamic && stable && !same &&
 			(updatedAt.IsZero() || !updatedAt.After(before.PublishedAt))
+		providerSettling := loadPending && settlingWindow
 		if providerSettling {
 			status = "settling"
 		}
 		summaries = append(summaries, fmt.Sprintf("%s=%s(expected:%d loaded:%d missing:%d extra:%d order_changed:%t present:%t)", k, status, len(expected[k]), len(actual), comparison.missing, comparison.extra, comparison.orderChanged, ok))
 		if !same && (!dynamic || stable) {
 			mismatched++
-			if providerSettling {
-				unconfirmed++
+			if loadPending {
+				pending++
 			}
 			o.Outcome, o.Code = "policy", "provider_membership_mismatch"
 			o.Detail = "desired provider membership/order differs from the loaded runtime"
 		}
 	}
-	if mismatched > 0 && unconfirmed == mismatched && !policyBefore {
+	allPending := mismatched > 0 && pending == mismatched && !policyBefore
+	if allPending && settlingWindow {
 		// Every difference is inside a window the controller may still be
 		// loading. It is a policy sample for confirmation purposes, not an
 		// unknown: a publisher that keeps republishing cannot reset it.
@@ -151,6 +154,13 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		o.Detail = "provider membership differs while the controller may still be loading the publication; not yet confirmed"
 	}
 	o.Facts["provider_comparison"] = adapters.SafeFact(strings.Join(summaries, "; "))
+	if options.ProviderReference != nil && len(o.Facts) < model.MaxObservationFacts {
+		// This evidence does not depend on the worker's settle_seconds. The
+		// collector can apply a new window before the worker reloads. At the
+		// full budget, a true settling marker already establishes a pending
+		// load; without that marker there is always room for this fact.
+		o.Facts["provider_reference_load_pending"] = strconv.FormatBool(allPending)
+	}
 	if !stable && o.Outcome != "policy" {
 		o.Outcome, o.Code = "unknown", "provider_reference_changed"
 		o.Detail = "provider publication changed during sampling; loaded membership cannot be compared consistently"
@@ -181,10 +191,16 @@ func addLoadTimes(o *model.Observation, loads []providerLoad) {
 		return 1
 	})
 	for _, l := range loads {
+		// Keep metadata outside the provider.<name> membership namespace.
+		// A valid provider name can still make this optional key too long.
+		key := "provider_updated_at." + l.name
+		if len(key) > 128 {
+			continue
+		}
 		if len(o.Facts) >= model.MaxObservationFacts {
 			return
 		}
-		o.Facts["provider."+adapters.SafeFact(l.name)+".updated_at"] = l.at.UTC().Format(time.RFC3339Nano)
+		o.Facts[key] = l.at.UTC().Format(time.RFC3339Nano)
 	}
 }
 

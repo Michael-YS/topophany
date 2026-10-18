@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mihomo provider load times use a separate `provider_updated_at.<name>`
+  namespace and omit keys over 128 bytes, so valid long provider names do not
+  refuse a batch and metadata cannot overwrite another provider's membership.
+- Reloading a collector's provider settle window re-evaluates retained and
+  queued samples using independent load evidence, even before workers reload.
+  Older samples with insufficient evidence conservatively wait within the
+  current publication window. Measurement contracts and history are preserved.
+- HTTP 524 describes the platform's reported read/write timeout after a
+  successful origin connection, preserving the distinction from an unreachable
+  origin and from independently measured origin health.
 - The Checks tab's `UP 24H` cell says how much of the day was actually
   measured when less than all of it (`98.9% · 3h`), instead of showing a
   partial window as if it were a full day. Gaps stay gaps; a whole day is
@@ -78,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `provider_reference_settling: true`; the incident opens only after the
   window's equivalent consecutive policy samples, so repeated publications
   cannot defer it forever. Facts record the controller's own
-  `provider.<name>.updated_at` beside the publisher's time and the sample's
+  `provider_updated_at.<name>` beside the publisher's time and the sample's
   time, reference providers first and only while the observation stays within
   the collector's 32-fact budget.
 - Optional WireGuard AllowedIPs and keepalive expectations, collected through
