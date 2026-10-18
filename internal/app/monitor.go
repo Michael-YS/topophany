@@ -21,7 +21,7 @@ func (a *App) monitor(ctx context.Context, args []string) error {
 		return a.monitorStream(ctx, args[1:])
 	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help" || args[0] == "-h") {
-		_, e := fmt.Fprintln(a.Out, "topo monitor configure|run|show|path|preview|export NAME [--monitor-dir DIR]\ntopo monitor metrics\nConfigure imports a template; run starts a client panel; preview reads the current output. Changes apply after restart.")
+		_, e := fmt.Fprintln(a.Out, "topo monitor configure|run|show|path|preview|export NAME [--monitor-dir DIR]\ntopo monitor metrics\ntopo monitor stream [--capabilities]\nStream accepts requests on stdin and writes frames on stdout; client or credential-free preview.\nConfigure imports a template; run starts a client panel; preview reads the current output. Changes apply after restart.")
 		return e
 	}
 	if len(args) == 1 && args[0] == "metrics" {

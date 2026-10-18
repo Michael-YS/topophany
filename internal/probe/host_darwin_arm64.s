@@ -39,4 +39,3 @@ TEXT ·hostProcInfoPC(SB),NOSPLIT,$0-8
 
 TEXT topo_proc_pidinfo_trampoline(SB),NOSPLIT,$0-0
 	B topo_proc_pidinfo(SB)
-

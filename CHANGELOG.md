@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `topo monitor stream` accepts replaceable NDJSON requests and publishes
+  bounded frames without configuration files or locks, with capability
+  discovery, saved client profiles and credential-free preview scenarios.
+  A cancellable function API accepts request lines and a frame callback for
+  embedding.
+- Monitor metrics `summary.verdict`, `observers.verdicts`, `attention.list`,
+  `applications.list` and `server.card` reuse the terminal's views. Templates
+  accept `status`, `list` and `card` visuals, attention limits and node
+  selectors; resource numbers remain withheld when evidence is not current.
+
 ### Changed
 
 - macOS host checks read CPU, memory and process counters in process through
@@ -15,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Monitor summary and delivery rows use the documented health vocabulary;
+  verdict words remain in their values. Panel readers apply the five-minute
+  future-clock bound and withhold implausibly future row evidence.
 - Isolate TUI fuzz tests from the user's saved preferences. Random input
   could select Settings' Save action and overwrite real startup defaults
   while running local verification before an upgrade. Upgrade acceptance

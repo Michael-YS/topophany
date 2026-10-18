@@ -389,10 +389,56 @@ requires explicit reconfiguration. Offline entities are allowed; unknown metric
 names, unsupported source capabilities, invalid row references and incompatible
 formats fail validation.
 
+### Streaming panels
+
+`topo monitor stream` reads one JSON request per line on stdin and writes one
+JSON frame per line on stdout. It creates no panel configuration, output file or
+lock. `topo monitor stream --capabilities` prints one line with protocol 1, the
+binary version, sources, visuals and the metric catalog, then exits.
+
+A request has `schema: 1`, an optional `request_id` (at most 64 bytes), `source`
+(`client` by default), `interval` (5s by default, 1s–1h), and a schema-1
+`template`. Client requests accept an absolute `credentials` path, a saved
+`profile`, a `project` guard and an `observer` view. Empty credentials/profile
+use normal credential discovery and the active profile. Credentials are read
+only for the client source. Preview requests accept `scenario` (0 by default)
+and `lang` (`en`, `ja` or `zh`, default `en`); they read synthetic evidence
+from the same simulator as `topo preview`, without credentials or host probes.
+
+For example, this request displays all five evidence metrics:
+
+```sh
+printf '%s\n' '{"schema":1,"request_id":"preview","source":"preview","template":{"schema":1,"title":"Topophany","bar":{"row":"status"},"rows":[{"id":"status","metric":"summary.verdict","visual":"status"},{"id":"observers","metric":"observers.verdicts","visual":"list"},{"id":"attention","metric":"attention.list","visual":"list","limit":5},{"id":"applications","metric":"applications.list","visual":"list"},{"id":"server","metric":"server.card","visual":"card","select":{"node":"app"}}]}}' | topo monitor stream
+```
+
+No frame precedes the first request. A valid request replaces the current one
+and publishes immediately, with a new `config_revision` and the echoed
+`request_id`. A client starts with unavailable rows while its first collector
+read is pending. An invalid request publishes an `error` frame with no rows and
+keeps the previous request running. Error codes are `invalid_request`,
+`unsupported_protocol`, `credentials_unavailable`, `profile_not_found` and
+`project_mismatch`; messages contain no raw upstream errors. A collector that
+cannot be read produces running frames with null values and
+`reason: "source_unavailable"`.
+
+Requests are bounded to 256 KiB per line; an oversized line is drained and
+rejected without ending the stream. Frames are bounded to 1 MiB, each written
+once and flushed. Values too large for a frame are withheld with
+`reason: "frame_budget_exceeded"`. EOF, SIGINT or SIGTERM publishes one final
+`stopped` frame with an empty `rows` array. A closed stdout ends quietly.
+Runtime failures exit 0; only bad command-line flags exit 2.
+
+The stream uses the same source refresh, one-second evidence aging, display
+cadence, immediate safety transitions and publisher lease as file panels below.
+Its function API in `internal/monitor/stream` accepts request lines and a frame
+callback, honors context cancellation, and allows another source adapter for
+embedding.
+
 ### Sources and process ownership
 
 | Source | Process | Scope |
 |---|---|---|
+| `client` / `preview` | `topo monitor stream` | Requests on stdin; saved connection or synthetic evidence |
 | `client` | `topo monitor run NAME` | Saved profile; optional `--observer` configured view |
 | `client` | `topo --monitor NAME` | The TUI's actual fetch results, including view switches and failures |
 | `collector` | `topo serve … --monitor NAME` | Current collector's complete project view, read without persistence side effects |
@@ -420,12 +466,31 @@ topo worker --config topology.json --credentials worker-credentials.json --obser
 Templates have `schema: 1`, `title`, optional symbolic `icon`, `bar.row` and an
 ordered `rows` array (1–128 rows, at most 256 KiB for the saved configuration).
 Each row has a unique `id`, optional `label`, `metric`, optional `select`, optional
-`format` and `visual` (`text` or `bar`). `bar.row` references a row; it is metadata
-for a future system-bar consumer. Icons are symbolic names; consumer-specific
+`format`, `visual` and optional `limit`. `bar.row` references a row for a
+system-bar consumer. Icons are symbolic names; consumer-specific
 icon rendering is not implemented here.
 
-The initial metric catalog includes:
+The metric catalog includes:
 
+- `summary.verdict` (`status`): the Overview verdict, glyph and text, check
+  counts, configured total, incident count and live/total observers. Paused and
+  maintenance counts are subsets of unknown and never add to the total.
+- `observers.verdicts` (`list`): each observer's own verdict and counts, liveness
+  and last evidence, ordered down, degraded, unknown, up, then by name; at most
+  64 entries. A scoped client view also reads the complete snapshot for these
+  verdicts.
+- `attention.list` (`list`): the Overview's Needs attention list in its order,
+  with a total, titles, routes, observers and incident start times. Its row
+  `limit` defaults to 5 and accepts 1–20. Incident states are lowercase
+  `view.Pill`; other states are lowercase `view.State`, or `up` when empty.
+- `applications.list` (`list`): the Services tab's application/environment
+  groups, evidence counts and services in topology order, with attention and
+  unmonitored counts; at most 64 groups and 64 services per group.
+- `server.card` (`card`): a required `select: {"node":"ID"}` names the server.
+  Its card carries the node state, place, local resources (primary disk first),
+  up to 32 services in trouble-first order, and observers with their verdicts.
+  Stale, cached and unreadable resource numbers are null; original sample
+  timestamps remain. An unknown node yields `entity_missing`.
 - `summary.status`: complete source-view verdict, independent of which other
   rows the template displays; available to client/collector sources.
 - `local.status`: the worker's local view verdict.
@@ -445,6 +510,12 @@ The initial metric catalog includes:
   `storage.sync.count`, `storage.sync.duration_ms` for both local service roles.
   These are counters since process start, not remote client metrics.
 
+The five structured metrics above support client and collector sources; preview
+uses the client capabilities. Each requires its listed visual. Existing metrics
+keep `text` and percent metrics also accept `bar`. `limit` belongs only to
+`attention.list`; `select.node` belongs only to `server.card`. Validation errors
+identify the row.
+
 Check metrics accept `select: {"check":"ID"}`. Delivery metrics accept
 `select: {"collector":"16-character-lowercase-hex-digest"}`. A missing selector
 is permitted only when runtime matching yields exactly one entity. Zero matches
@@ -458,13 +529,14 @@ Panel output has its own `schema: 1`: `name`, `config_revision`, `instance`,
 `sequence`, `source`, `project`, optional `observer`, `lifecycle`, `generated_at`,
 `publisher_expires_at`, `title`, `icon`, `bar_row`, and ordered `rows`. Sequence
 numbers advance within a publisher instance and can skip for slow consumers.
-Each row includes its template fields, scalar `value`, `unit`, formatted `text`,
+Each row includes its template fields, scalar or structured `value`, `unit`, formatted `text`,
 `health`, `freshness`, optional `reason`, `sampled_at`, `valid_until`, and resolved
 check/observer/collector identity where applicable. Unknown numbers are `null`,
 never zero. Health and data freshness are separate dimensions.
 
-All rows are projected from one source snapshot at one evaluation time; their
-underlying samples can have different timestamps. Actual sample timestamps
+Rows are projected at one evaluation time; their underlying samples can have
+different timestamps. Observer verdicts in a scoped stream use an accompanying
+complete snapshot from the same source. Actual sample timestamps
 survive refresh and replay. Summary rows use the newest underlying check sample
 when one exists and expire at the earliest relevant fresh-evidence boundary.
 Source snapshots also expire after 15 seconds, independently of check TTLs.

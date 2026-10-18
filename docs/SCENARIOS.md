@@ -4,6 +4,11 @@ This document lists the finite, verifiable scenario contracts for version 1.2.0,
 
 | Scenario and Invariant | Automated Test Evidence |
 |---|---|
+| Streaming requests replace atomically; rejected requests keep the active configuration, oversized lines recover, EOF and signals stop with no values, and a closed stdout exits 0 | `TestMonitorStreamProtocol`, `TestStreamReplacementErrorsAndCancellation`, `TestAllErrorsLeaveRunningRequest`, `TestRequestLineBoundsAndRecovery`, `TestFrameBoundWriteAndFlush` |
+| Structured monitor values match the terminal's verdict, counts, observer scopes, attention order, application groups and server resources; paused and maintenance are subsets of unknown, and collection sizes stay bounded | `TestMetricsAgreeWithView`, `TestSummarySubsetsAndHealthVocabulary`, `TestRichResourcesWithholdOldNumbers`, `TestMetricCollectionBoundsAndTopologyOrder`, `TestPreviewGoldenFrames` |
+| Monitor summary and delivery healths use up/degraded/down/unknown; reader clock tolerance is five minutes, and nested callback evidence is owned by each reader | `TestSummarySubsetsAndHealthVocabulary`, `TestReaderFutureClockBounds`, `TestHubOwnsNestedEvidence` |
+| Native macOS host counters use a 200 ms CPU window and bounded process reads; available memory counts speculative pages once, matching the previous vm_stat basis, and RSS is read only for configured names | `TestDarwinCounterFixtures`, `TestDarwinNativeHostMatchesRunningProcess`, `TestDarwinNativeCountersAgainstSystemTools` |
+
 | TUI fuzz input can open Settings and save without changing the user's saved startup preferences; tests write only to their own temporary files | `TestRenderingFuzzPreservesUserPreferences`, `FuzzDecoderAndRendering/seed#2` |
 | A native client upgrade, dry-run, rollback and reinstall retain the user's saved display preferences byte-for-byte in an isolated OS config directory | `scripts/accept_release_upgrade.py` (opt-in native execution with supplied previous/candidate binaries and test CA) |
 | Probe elapsed time retains a monotonic reading across simulated backward and forward wall-clock steps; sample timestamps remain UTC and otherwise valid observations stay within the collector's duration bounds | `TestProbeDurationSurvivesWallClockSteps` (injected elapsed-clock model; does not change the system clock) |
