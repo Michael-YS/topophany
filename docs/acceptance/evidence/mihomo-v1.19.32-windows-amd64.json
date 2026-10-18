@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "core_sha256": "0b54ea7b10e26f6ca628b49e77c13ad9b2587b23393a5b715769cbaeed012af6",
+  "topo_sha256": "581b1915ed96607ac7c37bf8711a6fc6a8c8235795128c2ccf9ef1d86912301d",
+  "runner_sha256": "befcfad809bafbf70c322818aec58c825001061e9ce85afd445f33e128dd6d0c",
+  "native_platform": "Windows",
+  "native_machine": "AMD64",
+  "topo_version": "Topophany dev-0f62dc2",
+  "started_at": "2026-10-18T06:55:49Z",
+  "scope": "isolated core; fake file providers; controller reads only",
+  "cases": [
+    {
+      "configured_nodes": 1,
+      "inventory_nodes": 10,
+      "provider_members": 1,
+      "inventory_bytes": 2319,
+      "provider_bytes": 1865,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "ok",
+      "code": null,
+      "duration_ms": 28,
+      "secrets_withheld": true,
+      "pass": true
+    },
+    {
+      "configured_nodes": 1000,
+      "inventory_nodes": 1009,
+      "provider_members": 1000,
+      "inventory_bytes": 14307,
+      "provider_bytes": 286580,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "ok",
+      "code": null,
+      "duration_ms": 49,
+      "secrets_withheld": true,
+      "pass": true
+    },
+    {
+      "configured_nodes": 4087,
+      "inventory_nodes": 4096,
+      "provider_members": 4087,
+      "inventory_bytes": 51351,
+      "provider_bytes": 1166375,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "ok",
+      "code": null,
+      "duration_ms": 115,
+      "secrets_withheld": true,
+      "pass": true
+    },
+    {
+      "configured_nodes": 4088,
+      "inventory_nodes": 4097,
+      "provider_members": 4088,
+      "inventory_bytes": 51363,
+      "provider_bytes": 1166660,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "error",
+      "code": "proxy_inventory_capacity_exceeded",
+      "duration_ms": 115,
+      "secrets_withheld": true,
+      "pass": true
+    }
+  ],
+  "pass": true
+}

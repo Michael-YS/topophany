@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import secrets
 import socket
@@ -28,6 +29,9 @@ def main() -> int:
     args = parser.parse_args()
     core, topo = args.core.resolve(), args.topo.resolve()
     report = {"schema": 1, "core_sha256": hashlib.sha256(core.read_bytes()).hexdigest(),
+              "topo_sha256": hashlib.sha256(topo.read_bytes()).hexdigest(),
+              "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              "native_platform": platform.system(), "native_machine": platform.machine(),
               "topo_version": subprocess.check_output([str(topo), "version"], text=True).strip(),
               "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "scope": "isolated core; fake file providers; controller reads only", "cases": []}
