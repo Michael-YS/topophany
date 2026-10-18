@@ -2,8 +2,8 @@ package probe
 
 import (
 	"context"
+	"encoding/binary"
 	"math"
-	"strings"
 	"testing"
 	"time"
 
@@ -86,84 +86,59 @@ func TestHostReadErrorsNeverBecomeTargetFailures(t *testing.T) {
 	}
 }
 
-const darwinVMFixture = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
-Pages free:                                100.
-Pages inactive:                            200.
-Pages speculative:                          50.
-Pages active:                              600.
-Pages wired down:                          100.
-Pages occupied by compressor:               25.
-`
-
-func TestDarwinHostOutputFixtures(t *testing.T) {
-	commands := []string{}
-	command := func(_ context.Context, name string, args ...string) ([]byte, error) {
-		commands = append(commands, name+" "+strings.Join(args, " "))
-		switch name {
-		case "/usr/bin/top":
-			return []byte("CPU usage: 1.0% user, 1.0% sys, 98.0% idle\nCPU usage: 10.0% user, 15.0% sys, 75.0% idle\n"), nil
-		case "/usr/sbin/sysctl":
-			return []byte("16777216\n"), nil
-		case "/usr/bin/vm_stat":
-			return []byte(darwinVMFixture), nil
-		case "/bin/ps":
-			return []byte(" 100 S 1024 /Applications/Some App/topo\n101 Z 0 topo\n102 R 2048 /usr/bin/other\n"), nil
-		}
-		t.Fatal("unexpected system command", name, args)
-		return nil, nil
-	}
-	s, err := sampleDarwinRuntime(context.Background(), []string{"topo"}, command)
-	if err != nil || s.CPUPercent != 25 || s.MemoryAvailable != 350*16384 || s.Processes != 3 || s.Zombies != 1 || s.matches["topo"].count != 1 || s.matches["topo"].rss != 1048576 {
-		t.Fatal(s, err)
-	}
-	if len(commands) != 4 || commands[3] != "/bin/ps -ww -axo pid=,stat=,rss=,comm=" {
-		t.Fatal(commands)
-	}
-	for _, top := range []string{"CPU usage: 0% user, 0% sys, 100% idle\n", "CPU usage: 0% user, 0% sys, 100% idle\nCPU usage: 0% user, 0% sys, 101% idle\n"} {
-		if _, err := parseDarwinCPU(top); err == nil {
-			t.Fatal("invalid CPU sample accepted")
-		}
-	}
-	for _, vm := range []string{strings.Replace(darwinVMFixture, "16384", "4096", 1), darwinVMFixture} {
-		if _, err := parseDarwinMemory(vm, 1); err == nil {
-			t.Fatal("impossible memory counters accepted")
-		}
-	}
-	for _, ps := range []string{"", "100 R bad topo", "100 R 10"} {
-		if err := parseDarwinProcesses(ps, &hostRuntime{}); err == nil {
-			t.Fatal("malformed process snapshot accepted")
-		}
-	}
-	for _, failed := range []string{"/usr/bin/top", "/usr/sbin/sysctl", "/usr/bin/vm_stat", "/bin/ps"} {
-		_, err := sampleDarwinRuntime(context.Background(), nil, func(ctx context.Context, name string, args ...string) ([]byte, error) {
-			if name == failed {
-				return nil, hostReadError("command")
-			}
-			return command(ctx, name, args...)
-		})
-		if err == nil {
-			t.Fatal("command failure ignored", failed)
-		}
-	}
-}
-
-func TestDarwinProcessFallbackAndSelectedAggregates(t *testing.T) {
-	s := newHostRuntime([]string{"topo", "other", "(literal)", "space name", "nested"})
-	raw := "100 S 10 (topo)\n101 R 20 /Applications/Some App/topo\n" +
-		"102 Z 0 (topo)\n103 S 30 /usr/bin/other\n104 S 40 /bin/(literal)\n" +
-		"105 S 50 (space name)\n106 S 60 ((nested))\n107 S 70 unselected\n"
-	if err := parseDarwinProcesses(raw, &s); err != nil {
-		t.Fatal(err)
-	}
-	if s.Processes != 8 || s.Zombies != 1 || len(s.matches) != 5 {
-		t.Fatal(s)
-	}
-	for name, want := range map[string]processUsage{
-		"topo": {2, 30 * 1024}, "other": {1, 30 * 1024},
-		"(literal)": {1, 40 * 1024}, "space name": {1, 50 * 1024}, "nested": {},
+func TestDarwinCounterFixtures(t *testing.T) {
+	for _, tc := range []struct {
+		before, after [4]uint32
+		want          float64
+		bad           bool
+	}{
+		{before: [4]uint32{100, 200, 300, 0}, after: [4]uint32{110, 215, 375, 0}, want: 25},
+		{before: [4]uint32{^uint32(0) - 4, 0, 100, 0}, after: [4]uint32{5, 0, 110, 0}, want: 50},
+		{bad: true},
 	} {
-		if s.matches[name] != want {
-			t.Fatal(name, s.matches[name], want)
+		got, err := darwinCPUPercent(tc.before, tc.after)
+		if (err != nil) != tc.bad || !tc.bad && got != tc.want {
+			t.Fatal(got, err, tc)
 		}
+	}
+	raw := make([]byte, 96)
+	binary.LittleEndian.PutUint32(raw[0:4], 150) // free includes 50 speculative
+	binary.LittleEndian.PutUint32(raw[8:12], 200)
+	binary.LittleEndian.PutUint32(raw[92:96], 50)
+	if got, err := darwinAvailable(raw, 16384, 1<<24); err != nil || got != 350*16384 {
+		t.Fatal(got, err)
+	}
+	for _, data := range [][]byte{nil, raw[:95], raw} {
+		if _, err := darwinAvailable(data, 16384, 1); err == nil {
+			t.Fatal("invalid memory counters accepted")
+		}
+	}
+	raw = make([]byte, 3*darwinProcSize)
+	for i, name := range []string{"topo", "topo", "other"} {
+		p := raw[i*darwinProcSize:]
+		p[36] = 2
+		binary.LittleEndian.PutUint32(p[40:44], uint32(100+i))
+		copy(p[243:260], name)
+	}
+	raw[darwinProcSize+36] = 5
+	s := newHostRuntime([]string{"topo"})
+	calls := 0
+	rss := func(pid int32) (uint64, error) {
+		calls++
+		if pid != 100 {
+			t.Fatal(pid)
+		}
+		return 1024, nil
+	}
+	if err := parseDarwinProcessTable(raw, &s, rss); err != nil || s.Processes != 3 || s.Zombies != 1 || s.matches["topo"] != (processUsage{1, 1024}) || calls != 1 {
+		t.Fatal(s, err, calls)
+	}
+	for _, data := range [][]byte{nil, raw[:len(raw)-1], make([]byte, (8<<20)+1)} {
+		if err := parseDarwinProcessTable(data, &s, rss); err == nil {
+			t.Fatal("invalid process counters accepted")
+		}
+	}
+	if err := parseDarwinProcessTable(raw, &s, func(int32) (uint64, error) { return 0, hostReadError("processes") }); err == nil {
+		t.Fatal("RSS failure ignored")
 	}
 }

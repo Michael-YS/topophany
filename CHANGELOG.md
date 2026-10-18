@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- macOS host checks read CPU, memory and process counters in process through
+  libSystem, with a 200 ms CPU sample. They no longer run system commands;
+  configured process names alone receive RSS reads.
+
 ### Fixed
 
 - Isolate TUI fuzz tests from the user's saved preferences. Random input

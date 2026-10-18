@@ -1,132 +1,77 @@
 package probe
 
 import (
-	"context"
-	"math"
-	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
+	"bytes"
+	"encoding/binary"
 )
 
-// Kept portable so macOS output fixtures can be validated on every build host.
-func sampleDarwinRuntime(ctx context.Context, names []string, command Command) (hostRuntime, error) {
-	s := newHostRuntime(names)
-	top, err := command(ctx, "/usr/bin/top", "-l", "2", "-n", "0", "-s", "1", "-R", "-F")
-	if err != nil {
-		return s, hostReadError("cpu")
-	}
-	s.CPUPercent, err = parseDarwinCPU(string(top))
-	if err != nil {
-		return s, err
-	}
-	s.CPUSampleMS = 1000
-	mem, err := command(ctx, "/usr/sbin/sysctl", "-n", "hw.memsize")
-	if err != nil {
-		return s, hostReadError("memory")
-	}
-	s.MemoryTotal, err = counter(strings.TrimSpace(string(mem)))
-	if err != nil || s.MemoryTotal == 0 {
-		return s, local("host", "invalid_memory_counters")
-	}
-	vm, err := command(ctx, "/usr/bin/vm_stat")
-	if err != nil {
-		return s, hostReadError("memory")
-	}
-	s.MemoryAvailable, err = parseDarwinMemory(string(vm), s.MemoryTotal)
-	if err != nil {
-		return s, err
-	}
-	s.MemoryBasis = "macos_estimated_free_inactive_speculative"
-	ps, err := command(ctx, "/bin/ps", "-ww", "-axo", "pid=,stat=,rss=,comm=")
-	if err != nil {
-		return s, hostReadError("processes")
-	}
-	err = parseDarwinProcesses(string(ps), &s)
-	return s, err
-}
+// Darwin's 64-bit kinfo_proc ABI is shared by arm64 and amd64. Only the
+// process status, PID and kernel command name are read; the rest is discarded.
+const darwinProcSize = 648
 
-var darwinCPU = regexp.MustCompile(`(?m)^CPU usage:.*?([0-9]+(?:\.[0-9]+)?)% idle\s*$`)
-
-func parseDarwinCPU(raw string) (float64, error) {
-	matches := darwinCPU.FindAllStringSubmatch(raw, -1)
-	// The first top sample is since boot. Only the second is the sampled interval.
-	if len(matches) != 2 {
+func darwinCPUPercent(before, after [4]uint32) (float64, error) {
+	var total, idle uint64
+	for i := range before {
+		delta := uint64(after[i] - before[i]) // kernel tick counters wrap at 32 bits
+		total += delta
+		if i == 2 {
+			idle = delta
+		}
+	}
+	if total == 0 {
 		return 0, local("host", "invalid_cpu_counters")
 	}
-	idle, err := strconv.ParseFloat(matches[1][1], 64)
-	if err != nil || idle < 0 || idle > 100 {
-		return 0, local("host", "invalid_cpu_counters")
-	}
-	return 100 - idle, nil
+	return percentage(total-idle, total), nil
 }
 
-var darwinPageSize = regexp.MustCompile(`page size of ([0-9]+) bytes`)
-
-func parseDarwinMemory(raw string, total uint64) (uint64, error) {
-	found := darwinPageSize.FindStringSubmatch(raw)
-	if len(found) != 2 {
+func darwinAvailable(raw []byte, page, total uint64) (uint64, error) {
+	if len(raw) < 96 {
 		return 0, local("host", "invalid_memory_counters")
 	}
-	page, err := counter(found[1])
-	if err != nil || page == 0 {
+	free := uint64(binary.LittleEndian.Uint32(raw[0:4]))
+	inactive := uint64(binary.LittleEndian.Uint32(raw[8:12]))
+	speculative := uint64(binary.LittleEndian.Uint32(raw[92:96]))
+	if speculative > free {
 		return 0, local("host", "invalid_memory_counters")
 	}
-	want := map[string]bool{"Pages free": true, "Pages inactive": true, "Pages speculative": true}
-	var pages uint64
-	for _, line := range strings.Split(raw, "\n") {
-		key, val, ok := strings.Cut(line, ":")
-		if !ok || !want[key] {
-			continue
-		}
-		n, err := counter(strings.TrimSuffix(strings.TrimSpace(val), "."))
-		if err != nil || n > math.MaxUint64-pages {
-			return 0, local("host", "invalid_memory_counters")
-		}
-		pages += n
-		delete(want, key)
-	}
-	available, err := bytesFromUnits(pages, page)
-	if err != nil || len(want) != 0 || available > total {
+	// vm_stat prints free excluding speculative pages. Mach's free_count
+	// includes them, so normalize before summing the three available classes.
+	available, err := bytesFromUnits((free-speculative)+inactive+speculative, page)
+	if err != nil || available > total {
 		return 0, local("host", "invalid_memory_counters")
 	}
 	return available, nil
 }
 
-func parseDarwinProcesses(raw string, s *hostRuntime) error {
-	for _, line := range strings.Split(raw, "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		// The executable path may contain spaces. Consume only the three
-		// leading numeric/state fields, keeping the whole command as the last.
-		var f [3]string
-		rest := strings.TrimSpace(line)
-		for i := 0; i < 3; i++ {
-			j := strings.IndexAny(rest, " \t")
-			if j < 0 {
-				return local("host", "invalid_process_counters")
-			}
-			f[i] = rest[:j]
-			rest = strings.TrimSpace(rest[j:])
-		}
-		pid, e1 := counter(f[0])
-		rss, e2 := counter(f[2])
-		if e1 != nil || e2 != nil || pid > math.MaxInt32 || rest == "" || s.Processes >= 65536 {
+func parseDarwinProcessTable(raw []byte, s *hostRuntime, rss func(int32) (uint64, error)) error {
+	if len(raw) == 0 || len(raw) > 8<<20 || len(raw)%darwinProcSize != 0 || len(raw)/darwinProcSize > 65536 {
+		return local("host", "invalid_process_counters")
+	}
+	for len(raw) > 0 {
+		p := raw[:darwinProcSize]
+		raw = raw[darwinProcSize:]
+		pid := int32(binary.LittleEndian.Uint32(p[40:44]))
+		if pid < 0 {
 			return local("host", "invalid_process_counters")
 		}
-		// ps falls back to (p_comm) when another user's argv is unreadable.
-		// Normalize only that form; parentheses in an executable path are literal.
-		name := rest
-		if strings.HasPrefix(name, "(") && strings.HasSuffix(name, ")") && !strings.Contains(name, "/") {
-			name = name[1 : len(name)-1]
+		name := p[243:260]
+		end := bytes.IndexByte(name, 0)
+		if end < 0 {
+			return local("host", "invalid_process_counters")
 		}
-		if err := s.addProcess(filepath.Base(name), strings.HasPrefix(f[1], "Z"), rss, 1024); err != nil {
+		command := string(name[:end])
+		zombie := p[36] == 5 // SZOMB
+		var resident uint64
+		if _, selected := s.matches[command]; selected && !zombie {
+			var err error
+			resident, err = rss(pid)
+			if err != nil {
+				return err
+			}
+		}
+		if err := s.addProcess(command, zombie, resident, 1); err != nil {
 			return err
 		}
-	}
-	if s.Processes == 0 {
-		return local("host", "invalid_process_counters")
 	}
 	return nil
 }
