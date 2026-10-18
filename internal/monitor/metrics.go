@@ -1,0 +1,516 @@
+package monitor
+
+import (
+	"fmt"
+	"math"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/view"
+)
+
+type SummaryCounts struct {
+	view.Counts
+	Paused      int `json:"paused"`
+	Maintenance int `json:"maintenance"`
+}
+type SummaryVerdict struct {
+	view.Verdict
+	Counts     SummaryCounts `json:"counts"`
+	Configured int           `json:"configured"`
+	Incidents  int           `json:"incidents"`
+	Observers  struct {
+		Live int `json:"live"`
+		All  int `json:"all"`
+	} `json:"observers"`
+}
+type ObserverVerdict struct {
+	ID       string      `json:"id"`
+	Name     string      `json:"name"`
+	Node     string      `json:"node"`
+	Health   string      `json:"health"`
+	State    string      `json:"state"`
+	Live     bool        `json:"live"`
+	LastSeen *time.Time  `json:"last_seen"`
+	Counts   view.Counts `json:"counts"`
+}
+type AttentionItem struct {
+	Kind         string     `json:"kind"`
+	ID           string     `json:"id"`
+	Title        string     `json:"title"`
+	Route        []string   `json:"route"`
+	Observer     string     `json:"observer"`
+	ObserverName string     `json:"observer_name"`
+	Since        *time.Time `json:"since"`
+	Health       string     `json:"health"`
+	State        string     `json:"state"`
+}
+type AttentionList struct {
+	Total int             `json:"total"`
+	Items []AttentionItem `json:"items"`
+}
+type ServiceValue struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Health    string `json:"health"`
+	Monitored bool   `json:"monitored"`
+	Affected  bool   `json:"affected"`
+}
+type ApplicationValue struct {
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Environment string         `json:"environment"`
+	Health      string         `json:"health"`
+	Services    []ServiceValue `json:"services"`
+	Counts      view.Counts    `json:"counts"`
+	Attention   int            `json:"attention"`
+	Unmonitored int            `json:"unmonitored"`
+}
+type ResourceValue struct {
+	Check      string     `json:"check"`
+	Observer   string     `json:"observer"`
+	Health     string     `json:"health"`
+	Freshness  string     `json:"freshness"`
+	SampledAt  *time.Time `json:"sampled_at"`
+	ValidUntil *time.Time `json:"valid_until"`
+	CPU        struct {
+		Percent *float64 `json:"percent"`
+		Limit   *float64 `json:"limit"`
+		Logical *uint64  `json:"logical"`
+	} `json:"cpu"`
+	Memory struct {
+		Percent *float64 `json:"percent"`
+		Limit   *float64 `json:"limit"`
+		Used    *uint64  `json:"used_bytes"`
+		Total   *uint64  `json:"total_bytes"`
+		Basis   string   `json:"basis"`
+	} `json:"memory"`
+	Disk struct {
+		Percent *float64 `json:"percent"`
+		Limit   *float64 `json:"limit"`
+		Path    string   `json:"path"`
+		Used    *uint64  `json:"used_bytes"`
+		Total   *uint64  `json:"total_bytes"`
+	} `json:"disk"`
+	Process *ProcessValue `json:"process"`
+}
+type ProcessValue struct {
+	Name     string  `json:"name"`
+	Matching *uint64 `json:"matching"`
+}
+type ServerCard struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Kind      string            `json:"kind"`
+	Provider  string            `json:"provider"`
+	Group     string            `json:"group"`
+	Where     string            `json:"where"`
+	Health    string            `json:"health"`
+	Note      string            `json:"note"`
+	Resources []ResourceValue   `json:"resources"`
+	Services  []ServiceValue    `json:"services"`
+	Observes  []ObserverVerdict `json:"observes"`
+}
+
+func verdictHealth(state string) string {
+	switch state {
+	case "clear":
+		return "up"
+	case "degraded":
+		return "degraded"
+	case "incidents", "down":
+		return "down"
+	}
+	return "unknown"
+}
+func healthRank(health string) int {
+	switch health {
+	case "down":
+		return 0
+	case "degraded":
+		return 1
+	case "up":
+		return 3
+	}
+	return 2
+}
+func worse(a, b string) string {
+	if healthRank(b) < healthRank(a) {
+		return b
+	}
+	return a
+}
+func named(id, name string) string {
+	if name != "" {
+		return name
+	}
+	return id
+}
+func stamp(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	u := t.UTC()
+	return &u
+}
+func summary(v view.View) SummaryVerdict {
+	out := SummaryVerdict{Verdict: v.Verdict(), Counts: SummaryCounts{Counts: v.Counts()}, Incidents: len(v.Snapshot.Incidents)}
+	out.Configured = out.Counts.Total()
+	out.Observers.Live, out.Observers.All = v.Live()
+	for _, c := range v.Snapshot.Checks {
+		if c.Health != "unknown" && !v.Cached {
+			continue
+		}
+		switch c.Freshness {
+		case "paused":
+			out.Counts.Paused++
+		case "maintenance":
+			out.Counts.Maintenance++
+		}
+	}
+	return out
+}
+func observerVerdicts(v view.View) []ObserverVerdict {
+	defs := map[string]model.Observer{}
+	for _, o := range v.Snapshot.Topology.Observers {
+		defs[o.ID] = o
+	}
+	out := []ObserverVerdict{}
+	for _, o := range v.Snapshot.Observers {
+		own := v.ObserverView(o.ID)
+		verdict := own.Verdict()
+		d := defs[o.ID]
+		live := o.Health == "up" && !v.Cached
+		h := verdictHealth(verdict.State)
+		if !live {
+			h = "unknown"
+		}
+		out = append(out, ObserverVerdict{ID: o.ID, Name: named(o.ID, d.Name), Node: d.Node, Health: h, State: verdict.State, Live: live, LastSeen: stamp(o.LastSeen), Counts: own.Counts()})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if healthRank(out[i].Health) != healthRank(out[j].Health) {
+			return healthRank(out[i].Health) < healthRank(out[j].Health)
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+func attention(v view.View, limit int) AttentionList {
+	rows := v.List(view.Overview, "")
+	out := AttentionList{Total: len(rows), Items: []AttentionItem{}}
+	names := map[string]string{}
+	for _, o := range v.Snapshot.Topology.Observers {
+		names[o.ID] = named(o.ID, o.Name)
+	}
+	for _, r := range rows[:min(limit, len(rows))] {
+		o := ""
+		var since *time.Time
+		if r.Kind == "incident" {
+			for _, i := range v.Snapshot.Incidents {
+				if i.ID == r.ID {
+					o, _, _ = strings.Cut(i.Scope, "/")
+					since = stamp(i.Since)
+					break
+				}
+			}
+			for _, i := range v.Snapshot.Ledger {
+				if i.ID == r.ID && (i.State == "open" || i.State == "recovering") {
+					o, _, _ = strings.Cut(i.Scope, "/")
+					since = stamp(i.Since)
+					break
+				}
+			}
+		} else if r.Kind == "observer" {
+			o = r.ID
+		} else if r.Kind == "check" {
+			for _, c := range v.Snapshot.Checks {
+				if c.ID == r.ID {
+					o = c.Observer
+					break
+				}
+			}
+		} else if r.Kind == "path" {
+			for _, p := range v.Snapshot.Topology.Paths {
+				if p.ID == r.ID {
+					o = p.Observer
+					break
+				}
+			}
+		}
+		state := strings.ToLower(view.State(r))
+		if r.Kind == "incident" {
+			state = strings.ToLower(view.Pill(r))
+		}
+		if state == "" {
+			state = "up"
+		}
+		route := strings.Split(r.Title, " → ")
+		if len(route) > 1 && route[0] == names[o] {
+			route = route[1:]
+		}
+		out.Items = append(out.Items, AttentionItem{Kind: r.Kind, ID: r.ID, Title: r.Title, Route: route, Observer: o, ObserverName: names[o], Since: since, Health: r.Health, State: state})
+	}
+	return out
+}
+func services(v view.View) map[string]ServiceValue {
+	out := map[string]ServiceValue{}
+	fleet := v.Fleet()
+	// Include services on an undeclared/empty node too, as the Services tab does.
+	nodes := map[string]bool{}
+	for _, s := range v.Snapshot.Topology.Services {
+		if nodes[s.Node] {
+			continue
+		}
+		nodes[s.Node] = true
+		for _, c := range fleet.Card(s.Node).Services {
+			out[c.ID] = ServiceValue{ID: c.ID, Name: named(c.ID, c.Name), Health: c.Health, Monitored: c.Monitored, Affected: c.Affected}
+		}
+	}
+	return out
+}
+func applications(v view.View) []ApplicationValue {
+	out := []ApplicationValue{}
+	svcs := services(v)
+	for _, g := range v.ApplicationGroups() {
+		a := ApplicationValue{ID: g.ID, Name: g.Name, Environment: g.Environment, Health: g.Health, Counts: g.Counts, Services: []ServiceValue{}}
+		for _, r := range g.Rows {
+			svc := svcs[r.ID]
+			if !svc.Monitored {
+				a.Unmonitored++
+			} else if svc.Health != "up" {
+				a.Attention++
+			}
+			if len(a.Services) < 64 {
+				a.Services = append(a.Services, svc)
+			}
+		}
+		out = append(out, a)
+		if len(out) == 64 {
+			break
+		}
+	}
+	return out
+}
+
+// evidenceTimes keeps the original sample clocks. Renewing the source envelope
+// cannot extend an observation's own deadline.
+func evidenceTimes(v view.View, ids map[string]bool, includeObservers bool) (sampled, until time.Time) {
+	s := v.Snapshot
+	until = s.GeneratedAt.Add(15 * time.Second)
+	defs := map[string]model.Check{}
+	for _, c := range s.Topology.Checks {
+		defs[c.ID] = c
+	}
+	for _, c := range s.Checks {
+		if ids != nil && !ids[c.ID] || c.Last == nil {
+			continue
+		}
+		if c.Last.SampledAt.After(sampled) {
+			sampled = c.Last.SampledAt
+		}
+		deadline := c.Last.SampledAt.Add(time.Duration(defs[c.ID].StaleSeconds) * time.Second)
+		if c.Freshness == "fresh" && deadline.Before(until) {
+			until = deadline
+		}
+	}
+	if includeObservers {
+		for _, o := range s.Observers {
+			if o.LastSeen.After(sampled) {
+				sampled = o.LastSeen
+			}
+			for _, d := range s.Topology.Observers {
+				if d.ID == o.ID && o.Health == "up" && !o.LastSeen.IsZero() {
+					deadline := o.LastSeen.Add(time.Duration(d.StaleSeconds) * time.Second)
+					if deadline.Before(until) {
+						until = deadline
+					}
+				}
+			}
+		}
+	}
+	return sampled.UTC(), until.UTC()
+}
+func percent(f map[string]string, key string) *float64 {
+	n, e := strconv.ParseFloat(f[key], 64)
+	if e != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 100 {
+		return nil
+	}
+	return &n
+}
+func number(f map[string]string, key string) *uint64 {
+	n, e := strconv.ParseUint(f[key], 10, 64)
+	if e != nil {
+		return nil
+	}
+	return &n
+}
+func threshold(n float64) *float64 {
+	if n <= 0 {
+		return nil
+	}
+	return &n
+}
+func resource(v view.View, r view.CardResource) ResourceValue {
+	out := ResourceValue{Check: r.Check, Observer: r.Observer.ID, Health: r.Health, Freshness: r.Freshness, SampledAt: stamp(r.SampledAt)}
+	var def model.Check
+	for _, c := range v.Snapshot.Topology.Checks {
+		if c.ID == r.Check {
+			def = c
+			break
+		}
+	}
+	if !r.SampledAt.IsZero() {
+		out.ValidUntil = stamp(minTime(r.SampledAt.Add(time.Duration(def.StaleSeconds)*time.Second), v.Snapshot.GeneratedAt.Add(15*time.Second)))
+	}
+	h := def.Host
+	if h == nil {
+		h = &model.HostOptions{}
+	}
+	out.Disk.Path = h.DiskPath
+	if out.Disk.Path == "" {
+		out.Disk.Path = "/"
+	}
+	if h.ProcessName != "" {
+		out.Process = &ProcessValue{Name: h.ProcessName}
+	}
+	// Facts are the view's authority on readable, fresh local telemetry.
+	if r.Freshness != "fresh" || r.Facts == nil {
+		return out
+	}
+	f := r.Facts
+	out.CPU.Percent, out.CPU.Logical, out.CPU.Limit = percent(f, "cpu_used_percent"), number(f, "cpu_logical_count"), threshold(h.MaxCPUPercent)
+	out.Memory.Percent, out.Memory.Limit = percent(f, "memory_used_percent"), threshold(h.MaxMemoryPercent)
+	out.Memory.Used, out.Memory.Total, out.Memory.Basis = number(f, "memory_used_bytes"), number(f, "memory_total_bytes"), f["memory_basis"]
+	out.Disk.Percent, out.Disk.Limit = percent(f, "disk_used_percent"), threshold(h.MaxDiskPercent)
+	out.Disk.Used, out.Disk.Total = number(f, "disk_used_bytes"), number(f, "disk_total_bytes")
+	if out.Process != nil {
+		out.Process.Matching = number(f, "process_matching_count")
+	}
+	return out
+}
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+func server(v view.View, all view.View, id string) (ServerCard, time.Time, time.Time, bool) {
+	fleet := v.Fleet()
+	n, ok := fleet.Nodes[id]
+	if !ok {
+		return ServerCard{}, time.Time{}, time.Time{}, false
+	}
+	card := fleet.Card(id)
+	out := ServerCard{ID: id, Name: fleet.Names[id], Kind: n.Kind, Provider: view.ProviderName(n.Provider), Group: card.Group, Where: card.Where, Health: "unknown", Resources: []ResourceValue{}, Services: []ServiceValue{}, Observes: []ObserverVerdict{}}
+	for _, r := range v.List(view.Topology, "") {
+		if r.ID == id && r.Kind == "node" {
+			out.Health, out.Note = r.Health, r.Note
+			break
+		}
+	}
+	ids := map[string]bool{}
+	for _, e := range v.Snapshot.Nodes {
+		if e.ID == id {
+			for _, c := range e.Checks {
+				ids[c] = true
+			}
+		}
+	}
+	for _, r := range card.Resources {
+		ids[r.Check] = true
+		out.Resources = append(out.Resources, resource(v, r))
+	}
+	// A primary-root filesystem precedes additional volumes.
+	slices.SortStableFunc(out.Resources, func(a, b ResourceValue) int {
+		if (a.Disk.Path == "/") != (b.Disk.Path == "/") {
+			if a.Disk.Path == "/" {
+				return -1
+			}
+			return 1
+		}
+		return 0
+	})
+	sampled, until := evidenceTimes(v, ids, false)
+	for _, r := range out.Resources {
+		if r.ValidUntil != nil {
+			until = minTime(until, *r.ValidUntil)
+		}
+	}
+	for _, s := range card.Services[:min(32, len(card.Services))] {
+		out.Services = append(out.Services, ServiceValue{ID: s.ID, Name: named(s.ID, s.Name), Health: s.Health, Monitored: s.Monitored, Affected: s.Affected})
+	}
+	onNode := map[string]bool{}
+	for _, o := range card.Observers {
+		onNode[o.ID] = true
+	}
+	for _, o := range observerVerdicts(all) {
+		if onNode[o.ID] {
+			out.Observes = append(out.Observes, o)
+		}
+		if len(out.Observes) == 64 {
+			break
+		}
+	}
+	return out, sampled, until, true
+}
+
+func richValue(value Value, v, all view.View) Value {
+	value.SampledAt, value.ValidUntil = evidenceTimes(v, nil, true)
+	value.Health = "up"
+	if v.Cached {
+		value.Freshness = "cached"
+		value.Health = "unknown"
+	}
+	switch value.Metric {
+	case "summary.verdict":
+		s := summary(v)
+		value.Value = s
+		value.Text = s.Text
+		value.Health = verdictHealth(s.State)
+	case "observers.verdicts":
+		observers := observerVerdicts(all)
+		problems := 0
+		for _, o := range observers {
+			value.Health = worse(value.Health, o.Health)
+			if o.Health == "down" || o.Health == "degraded" {
+				problems++
+			}
+		}
+		value.Value = observers[:min(64, len(observers))]
+		value.Text = fmt.Sprintf("%d of %d see a problem", problems, len(observers))
+		value.SampledAt, value.ValidUntil = evidenceTimes(all, nil, true)
+	case "attention.list":
+		limit := 5
+		if value.Limit != nil {
+			limit = *value.Limit
+		}
+		a := attention(v, limit)
+		value.Value = a
+		value.Text = fmt.Sprintf("%d need attention", a.Total)
+		for _, item := range a.Items {
+			value.Health = worse(value.Health, item.Health)
+		}
+	case "applications.list":
+		apps := applications(v)
+		value.Value = apps
+		value.Text = fmt.Sprintf("%d applications", len(apps))
+		for _, a := range apps {
+			value.Health = worse(value.Health, a.Health)
+		}
+	case "server.card":
+		card, sampled, until, ok := server(v, all, value.Select.Node)
+		if !ok {
+			return missing(value, "entity_missing")
+		}
+		value.Value = card
+		value.Text = card.Name
+		value.Health = card.Health
+		value.SampledAt = sampled
+		value.ValidUntil = until
+	}
+	return value
+}

@@ -24,22 +24,15 @@ func (v View) groupEvidence(rows []Row) []string {
 			checks[x.ID] = true
 		}
 	}
-	total, failed, unknown, stale, paused := 0, 0, 0, 0, 0
+	counts := v.GroupCounts(rows)
+	stale, paused := 0, 0
 	for _, x := range v.Snapshot.Checks {
 		if !checks[x.ID] {
 			continue
 		}
-		total++
 		if v.Cached {
-			unknown++
 			stale++
 			continue
-		}
-		if x.Health == "down" || x.Health == "degraded" {
-			failed++
-		}
-		if x.Health == "unknown" {
-			unknown++
 		}
 		if x.Freshness == "stale" {
 			stale++
@@ -48,7 +41,7 @@ func (v View) groupEvidence(rows []Row) []string {
 			paused++
 		}
 	}
-	out := []string{fmt.Sprintf("Checks: %d total · %d failing · %d unknown · %d stale · %d paused", total, failed, unknown, stale, paused)}
+	out := []string{fmt.Sprintf("Checks: %d total · %d failing · %d unknown · %d stale · %d paused", counts.Total(), counts.Down+counts.Warn, counts.Unknown, stale, paused)}
 	defs := map[string]model.Service{}
 	states := map[string]string{}
 	for _, s := range v.Snapshot.Topology.Services {

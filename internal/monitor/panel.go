@@ -14,27 +14,31 @@ import (
 )
 
 type Input struct {
+	// AllSnapshot supplies observer verdicts when Snapshot is an observer-scoped view.
+	AllSnapshot *model.Snapshot
 	IO          ioaccount.Snapshot
 	Snapshot    model.Snapshot
 	Delivery    []model.DeliveryStatus
 	Unavailable bool
 }
 type Panel struct {
-	Schema             int       `json:"schema"`
-	Name               string    `json:"name"`
-	ConfigRevision     string    `json:"config_revision"`
-	Instance           string    `json:"instance"`
-	Sequence           uint64    `json:"sequence"`
-	Source             string    `json:"source"`
-	Project            string    `json:"project"`
-	Observer           string    `json:"observer,omitempty"`
-	Lifecycle          string    `json:"lifecycle"`
-	GeneratedAt        time.Time `json:"generated_at"`
-	PublisherExpiresAt time.Time `json:"publisher_expires_at"`
-	Title              string    `json:"title"`
-	Icon               string    `json:"icon,omitempty"`
-	BarRow             string    `json:"bar_row"`
-	Rows               []Value   `json:"rows"`
+	RequestID          string      `json:"request_id,omitempty"`
+	Error              *FrameError `json:"error,omitempty"`
+	Schema             int         `json:"schema"`
+	Name               string      `json:"name"`
+	ConfigRevision     string      `json:"config_revision"`
+	Instance           string      `json:"instance"`
+	Sequence           uint64      `json:"sequence"`
+	Source             string      `json:"source"`
+	Project            string      `json:"project"`
+	Observer           string      `json:"observer,omitempty"`
+	Lifecycle          string      `json:"lifecycle"`
+	GeneratedAt        time.Time   `json:"generated_at"`
+	PublisherExpiresAt time.Time   `json:"publisher_expires_at"`
+	Title              string      `json:"title"`
+	Icon               string      `json:"icon,omitempty"`
+	BarRow             string      `json:"bar_row"`
+	Rows               []Value     `json:"rows"`
 }
 type Value struct {
 	Basis          string `json:"basis,omitempty"`
@@ -80,17 +84,22 @@ func resolve(r Row, source string, in Input, now time.Time) Value {
 		return missing(v, "source_unavailable")
 	}
 	s := in.Snapshot
-	s.Checks = slices.Clone(s.Checks)
+	s = ageSnapshot(s, now)
 	stale := map[string]int{}
 	for _, check := range s.Topology.Checks {
 		stale[check.ID] = check.StaleSeconds
 	}
-	for i := range s.Checks {
-		cs := &s.Checks[i]
-		if cs.Freshness == "fresh" && cs.Last != nil && (cs.Last.SampledAt.After(now.Add(5*time.Second)) || !now.Before(cs.Last.SampledAt.Add(time.Duration(stale[cs.ID])*time.Second))) {
-			cs.Freshness = "stale"
-			cs.Health = "unknown"
+	if m.Visual == "status" || m.Visual == "list" || m.Visual == "card" {
+		if s.GeneratedAt.IsZero() || s.GeneratedAt.After(now.Add(5*time.Second)) {
+			return missing(v, "source_expired")
 		}
+		current := view.View{Snapshot: s, Now: now, Cached: view.Expired(s, now)}
+		all := current
+		if in.AllSnapshot != nil {
+			all.Snapshot = ageSnapshot(*in.AllSnapshot, now)
+			all.Cached = view.Expired(all.Snapshot, now)
+		}
+		return richValue(v, current, all)
 	}
 	if strings.HasPrefix(r.Metric, "delivery.") {
 		return deliveryValue(v, in.Delivery, now)
@@ -124,7 +133,7 @@ func resolve(r Row, source string, in Input, now time.Time) Value {
 		verdict := (view.View{Snapshot: s, Now: now}).Verdict()
 		v.Value = verdict.State
 		v.Text = verdict.Text
-		v.Health = verdict.State
+		v.Health = verdictHealth(verdict.State)
 		v.ValidUntil = s.GeneratedAt.Add(15 * time.Second)
 		for _, cs := range s.Checks {
 			if cs.Last != nil {
@@ -244,7 +253,7 @@ func deliveryValue(v Value, reports []model.DeliveryStatus, now time.Time) Value
 	}
 	v.Health = "up"
 	if r.Code != "" {
-		v.Health = "warn"
+		v.Health = "degraded"
 	}
 	switch v.Metric {
 	case "delivery.status":
@@ -261,4 +270,37 @@ func deliveryValue(v Value, reports []model.DeliveryStatus, now time.Time) Value
 		v.Text = strconv.FormatInt(r.PendingBytes, 10) + " B"
 	}
 	return v
+}
+
+// ageSnapshot preserves collector judgments while allowing check and observer
+// evidence to expire between source refreshes. It never mutates its input.
+func ageSnapshot(s model.Snapshot, now time.Time) model.Snapshot {
+	s.Checks = slices.Clone(s.Checks)
+	stale := map[string]int{}
+	for _, c := range s.Topology.Checks {
+		stale[c.ID] = c.StaleSeconds
+	}
+	for i := range s.Checks {
+		c := &s.Checks[i]
+		if c.Freshness == "fresh" && c.Last != nil && (c.Last.SampledAt.After(now.Add(5*time.Second)) || !now.Before(c.Last.SampledAt.Add(time.Duration(stale[c.ID])*time.Second))) {
+			c.Freshness = "stale"
+			c.Health = "unknown"
+		}
+	}
+	s.Observers = slices.Clone(s.Observers)
+	for i := range s.Observers {
+		o := &s.Observers[i]
+		for _, d := range s.Topology.Observers {
+			if d.ID == o.ID && o.Health == "up" && (o.LastSeen.After(now.Add(5*time.Second)) || !now.Before(o.LastSeen.Add(time.Duration(d.StaleSeconds)*time.Second))) {
+				o.Health = "unknown"
+			}
+		}
+	}
+	return s
+}
+
+// FrameError describes a rejected stream request without exposing upstream details.
+type FrameError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }

@@ -27,8 +27,10 @@ type Row struct {
 	Select Selector `json:"select,omitempty"`
 	Format string   `json:"format,omitempty"`
 	Visual string   `json:"visual"`
+	Limit  *int     `json:"limit,omitempty"`
 }
 type Selector struct {
+	Node      string `json:"node,omitempty"`
 	Check     string `json:"check,omitempty"`
 	Collector string `json:"collector,omitempty"`
 }
@@ -38,12 +40,18 @@ type Metric struct {
 	Unit     string   `json:"unit,omitempty"`
 	Sources  []string `json:"sources"`
 	Selector string   `json:"selector,omitempty"`
+	Visual   string   `json:"visual"`
 	Fact     string   `json:"-"`
 }
 
 func Catalog() []Metric {
 	all := []string{"client", "collector", "worker"}
-	return []Metric{
+	catalog := []Metric{
+		{Name: "summary.verdict", Type: "object", Sources: []string{"client", "collector"}, Visual: "status"},
+		{Name: "observers.verdicts", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
+		{Name: "attention.list", Type: "object", Sources: []string{"client", "collector"}, Visual: "list"},
+		{Name: "applications.list", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
+		{Name: "server.card", Type: "object", Sources: []string{"client", "collector"}, Selector: "node", Visual: "card"},
 		{Name: "summary.status", Type: "text", Sources: []string{"client", "collector"}},
 		{Name: "local.status", Type: "text", Sources: []string{"worker"}},
 		{Name: "check.status", Type: "text", Sources: all, Selector: "check"},
@@ -60,6 +68,15 @@ func Catalog() []Metric {
 		{Name: "storage.sync.count", Type: "number", Unit: "count", Sources: []string{"collector", "worker"}},
 		{Name: "storage.sync.duration_ms", Type: "number", Unit: "milliseconds", Sources: []string{"collector", "worker"}},
 	}
+	for i := range catalog {
+		if catalog[i].Visual == "" {
+			catalog[i].Visual = "text"
+			if catalog[i].Unit == "percent" {
+				catalog[i].Visual = "bar"
+			}
+		}
+	}
+	return catalog
 }
 func metric(name string) (Metric, bool) {
 	for _, m := range Catalog() {
@@ -70,6 +87,9 @@ func metric(name string) (Metric, bool) {
 	return Metric{}, false
 }
 func (t Template) Validate(source string) error {
+	if source == "preview" {
+		source = "client"
+	}
 	if !slices.Contains([]string{"client", "collector", "worker"}, source) {
 		return errors.New("unknown monitor source")
 	}
@@ -79,18 +99,25 @@ func (t Template) Validate(source string) error {
 	ids := map[string]bool{}
 	for _, r := range t.Rows {
 		if !config.ID(r.ID) || ids[r.ID] || len(r.Label) > 256 {
-			return errors.New("invalid or duplicate monitor row ID/label")
+			return fmt.Errorf("row %s: invalid or duplicate row ID/label", r.ID)
 		}
 		ids[r.ID] = true
 		m, ok := metric(r.Metric)
 		if !ok || !slices.Contains(m.Sources, source) {
 			return fmt.Errorf("row %s: metric %s unsupported by %s", r.ID, r.Metric, source)
 		}
-		if r.Visual != "text" && r.Visual != "bar" {
-			return fmt.Errorf("row %s: visual must be text or bar", r.ID)
+		if m.Visual == "status" || m.Visual == "list" || m.Visual == "card" {
+			if r.Visual != m.Visual {
+				return fmt.Errorf("row %s: visual must be %s", r.ID, m.Visual)
+			}
+		} else if r.Visual != "text" && !(r.Visual == "bar" && m.Unit == "percent") {
+			return fmt.Errorf("row %s: incompatible visual", r.ID)
 		}
-		if r.Visual == "bar" && m.Unit != "percent" {
-			return fmt.Errorf("row %s: bar requires a percent metric", r.ID)
+		if r.Limit != nil && (r.Metric != "attention.list" || *r.Limit < 1 || *r.Limit > 20) {
+			return fmt.Errorf("row %s: limit must be 1..20 and is only for attention.list", r.ID)
+		}
+		if m.Selector == "node" && !config.ID(r.Select.Node) || r.Select.Node != "" && m.Selector != "node" {
+			return fmt.Errorf("row %s: invalid or missing node selector", r.ID)
 		}
 		if r.Format != "" && r.Format != m.Unit {
 			return fmt.Errorf("row %s: incompatible format", r.ID)
