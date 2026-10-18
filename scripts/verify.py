@@ -103,9 +103,10 @@ def main() -> int:
         cov_path = str((output / "coverage.out").relative_to(ROOT)) if (output / "coverage.out").is_relative_to(ROOT) else str(output / "coverage.out")
         run("tests-json", ["go", "test", "-json", "-count=1",
                            "-coverprofile=" + cov_path, "./..."])
-        # The race detector runs the suite four to five times slower than
-        # tests-json; 300 s was spent by 0.9.1 and is outgrown.
-        run("race", ["go", "test", "-race", "-count=1", "./..."], timeout=600)
+        # Race-instrumented TUI rendering can outgrow the former 600 s limit
+        # on shared CI runners. Let Go report stacks for a hung package before
+        # the outer deadline, which also allows time for compilation.
+        run("race", ["go", "test", "-race", "-count=1", "-timeout=15m", "./..."], timeout=1200)
         run("repeat", ["go", "test", "-count=3", "./..."], timeout=300)
         run("coverage-summary", ["go", "tool", "cover", "-func=" + cov_path])
         fuzz = [
