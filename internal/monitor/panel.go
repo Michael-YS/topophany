@@ -65,8 +65,9 @@ func Build(c Config, in Input, now time.Time) Panel {
 	if p.Project == "" {
 		p.Project = c.Project
 	}
+	projection := newProjection(in, now)
 	for _, r := range c.Template.Rows {
-		p.Rows = append(p.Rows, resolve(r, c.Source, in, now))
+		p.Rows = append(p.Rows, resolve(r, in, now, projection))
 	}
 	return p
 }
@@ -80,32 +81,19 @@ func missing(v Value, reason string) Value {
 	}
 	return v
 }
-func resolve(r Row, source string, in Input, now time.Time) Value {
+func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 	m, _ := metric(r.Metric)
 	v := Value{Row: r, Unit: m.Unit, Text: "unknown", Health: "unknown", Freshness: "fresh"}
 	if in.Unavailable {
 		return missing(v, "source_unavailable")
 	}
-	s := in.Snapshot
-	s = ageSnapshot(s, now)
+	if m.Visual == "status" || m.Visual == "list" || m.Visual == "card" {
+		return projection.resolve(v)
+	}
+	s := ageSnapshot(in.Snapshot, now)
 	stale := map[string]int{}
 	for _, check := range s.Topology.Checks {
 		stale[check.ID] = check.StaleSeconds
-	}
-	if m.Visual == "status" || m.Visual == "list" || m.Visual == "card" {
-		if s.GeneratedAt.IsZero() || s.GeneratedAt.After(now.Add(5*time.Second)) {
-			return missing(v, "source_expired")
-		}
-		current := view.View{Snapshot: s, Now: now, Cached: view.Expired(s, now)}
-		all := current
-		if s.ViewObserver != "" && in.AllSnapshot == nil {
-			all.Cached = true
-		}
-		if in.AllSnapshot != nil {
-			all.Snapshot = ageSnapshot(*in.AllSnapshot, now)
-			all.Cached = view.Expired(all.Snapshot, now)
-		}
-		return richValue(v, current, all)
 	}
 	if strings.HasPrefix(r.Metric, "delivery.") {
 		return deliveryValue(v, in.Delivery, now)

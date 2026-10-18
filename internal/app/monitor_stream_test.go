@@ -144,6 +144,26 @@ func TestMonitorStreamProtocol(t *testing.T) {
 		}
 		finish(t, p)
 	})
+	t.Run("escaped invalid request cannot end stream", func(t *testing.T) {
+		p := start(t)
+		send(t, p, previewStreamRequest)
+		next(t, p)
+		send(t, p, `{"schema":1,"request_id":"`+strings.Repeat("<", 200000)+`"}`)
+		rejected := next(t, p)
+		if rejected.Lifecycle != "error" || rejected.Error == nil || rejected.Error.Code != "invalid_request" || len(rejected.RequestID) > 64 {
+			t.Fatal(rejected)
+		}
+		send(t, p, strings.Replace(previewStreamRequest, `"one"`, `"two"`, 1))
+		for frame := next(t, p); frame.RequestID != "two"; frame = next(t, p) {
+			if frame.Lifecycle != "running" {
+				t.Fatal(frame)
+			}
+		}
+		p.in.Close()
+		for frame := next(t, p); frame.Lifecycle != "stopped"; frame = next(t, p) {
+		}
+		finish(t, p)
+	})
 	t.Run("SIGTERM", func(t *testing.T) {
 		if os.PathSeparator == '\\' {
 			t.Skip("signal delivery is not available")

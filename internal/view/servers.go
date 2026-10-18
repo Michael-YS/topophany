@@ -198,6 +198,19 @@ func (v View) Fleet() *Fleet {
 	return f
 }
 
+// NodeState is the node's health and presentation note, shared with topology
+// rows without constructing their endpoint lists and explanatory details.
+func (f *Fleet) NodeState(id string) (health, note string) {
+	if f.cached {
+		return "unknown", "cached"
+	}
+	e, ok := f.nodeState[id]
+	if !ok {
+		return "unknown", ""
+	}
+	return entityPresentation(e)
+}
+
 // Card is the card of the server with the given ID.
 func (f *Fleet) Card(id string) Card {
 	n := f.Nodes[id]

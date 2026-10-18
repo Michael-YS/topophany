@@ -21,12 +21,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Monitor cards share topology and evidence indexes within each frame,
+  avoiding full topology rendering for every selected server.
 - macOS host checks read CPU, memory and process counters in process through
   libSystem, with a 200 ms CPU sample. They no longer run system commands;
   configured process names alone receive RSS reads.
 
 ### Fixed
 
+- Structured monitor rows retain their original evidence deadlines and hide
+  expired values until a new collector judgment arrives. Server deadlines
+  include their displayed services and observer verdicts; summary liveness
+  changes publish without waiting for display cadence.
+- Client stream replacements validate their first read before releasing the
+  active request. Foreign-project responses keep the old source running.
+  Oversized error identifiers and messages cannot terminate the stream.
 - Structured monitor rows publish nested health and freshness transitions
   immediately, and application services retain topology order.
 - Monitor summary and delivery rows use the documented health vocabulary;

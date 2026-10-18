@@ -3,6 +3,7 @@ package monitor
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -78,14 +79,54 @@ func TestMetricsAgreeWithView(t *testing.T) {
 				}
 			}
 			apps := p.Rows[3].Value.([]ApplicationValue)
-			groups := v.ApplicationGroups()
+			// Compare to the actual Services tab, not the new projection helper.
+			groups := map[string][]view.Row{}
+			health := map[string]string{}
+			key := ""
+			for _, row := range v.GroupedList(view.Services, view.GroupOptions{}) {
+				if row.Kind == "group" {
+					key = row.ID
+					health[key] = row.Health
+				} else if row.Kind == "service" {
+					groups[key] = append(groups[key], row)
+				}
+			}
 			if len(apps) != min(64, len(groups)) {
 				t.Fatal(len(apps), len(groups))
 			}
-			for i, a := range apps {
-				g := groups[i]
-				if a.ID != g.ID || a.Health != g.Health || a.Counts != g.Counts || len(a.Services) != min(64, len(g.Rows)) {
-					t.Fatal(a, g)
+			checkServices := map[string]string{}
+			for _, c := range snap.Topology.Checks {
+				checkServices[c.ID] = c.Service
+			}
+			for _, a := range apps {
+				key := fmt.Sprintf("%d//%s/%s", view.Services, a.ID, a.Environment)
+				members := map[string]bool{}
+				for _, row := range groups[key] {
+					members[row.ID] = true
+				}
+				counts := view.Counts{}
+				for _, c := range snap.Checks {
+					if !members[checkServices[c.ID]] {
+						continue
+					}
+					switch c.Health {
+					case "up":
+						counts.Up++
+					case "down":
+						counts.Down++
+					case "degraded":
+						counts.Warn++
+					default:
+						counts.Unknown++
+					}
+				}
+				if a.Health != health[key] || a.Counts != counts || len(a.Services) != min(64, len(members)) {
+					t.Fatal(a, health[key], counts, members)
+				}
+				for _, svc := range a.Services {
+					if !members[svc.ID] {
+						t.Fatal("service in wrong application", a.ID, svc)
+					}
 				}
 			}
 			card := p.Rows[4].Value.(ServerCard)
@@ -107,8 +148,25 @@ func TestMetricsAgreeWithView(t *testing.T) {
 				if vr.Facts == nil && (r.CPU.Percent != nil || r.Memory.Percent != nil || r.Disk.Percent != nil || r.CPU.Logical != nil) {
 					t.Fatal("unreadable resources exposed", r)
 				}
-				if vr.Facts != nil && r.CPU.Percent != nil && fmt.Sprintf("%.1f%%", *r.CPU.Percent) != view.ResourceValues(vr)[0][1] {
-					t.Fatal(r, vr)
+				if vr.Facts != nil {
+					for key, got := range map[string]*float64{"cpu_used_percent": r.CPU.Percent, "memory_used_percent": r.Memory.Percent, "disk_used_percent": r.Disk.Percent} {
+						want, err := strconv.ParseFloat(vr.Facts[key], 64)
+						if err != nil || got == nil || *got != want {
+							t.Fatalf("%s: got %v, want %s", key, got, vr.Facts[key])
+						}
+					}
+					for key, got := range map[string]*uint64{"cpu_logical_count": r.CPU.Logical, "memory_used_bytes": r.Memory.Used, "memory_total_bytes": r.Memory.Total, "disk_used_bytes": r.Disk.Used, "disk_total_bytes": r.Disk.Total} {
+						want, err := strconv.ParseUint(vr.Facts[key], 10, 64)
+						if err != nil || got == nil || *got != want {
+							t.Fatalf("%s: got %v, want %s", key, got, vr.Facts[key])
+						}
+					}
+					if r.Process != nil {
+						want, err := strconv.ParseUint(vr.Facts["process_matching_count"], 10, 64)
+						if err != nil || r.Process.Matching == nil || *r.Process.Matching != want {
+							t.Fatal("missing or incorrect process count", r.Process, vr.Facts)
+						}
+					}
 				}
 			}
 		})
@@ -216,7 +274,7 @@ func TestMetricCollectionBoundsAndTopologyOrder(t *testing.T) {
 		t.Fatal(len(apps), apps[0], apps[len(apps)-1])
 	}
 	v := view.View{Snapshot: snap, Now: now}
-	card, _, _, ok := server(v, v, "host")
+	card, _, _, ok := (&projection{v: v, all: v}).server("host")
 	if !ok || len(card.Services) != 32 {
 		t.Fatal(card)
 	}
@@ -231,7 +289,7 @@ func TestServerSampleClockIncludesItsObservers(t *testing.T) {
 	in.Snapshot.Topology.Observers[0].StaleSeconds = 90
 	in.Snapshot.Observers = []model.ObserverState{{ID: "local", Health: "up", LastSeen: now.Add(-time.Second)}}
 	v := view.View{Snapshot: in.Snapshot, Now: now}
-	card, sampled, _, ok := server(v, v, "host")
+	card, sampled, _, ok := (&projection{v: v, all: v}).server("host")
 	if !ok || len(card.Observes) != 1 || !sampled.Equal(now.Add(-time.Second)) {
 		t.Fatal(card, sampled)
 	}

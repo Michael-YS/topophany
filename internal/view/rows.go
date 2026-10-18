@@ -35,9 +35,7 @@ func (v View) Rows(tab int) []Row {
 	}
 	entity := func(kind string, e model.EntityState, title, meta string, details []string) Row {
 		r := Row{Kind: kind, ID: e.ID, Health: e.Health, Title: title, Meta: meta, Details: append([]string{"ID: " + e.ID, "State: " + e.Health, "Evidence: " + e.Evidence, "Affected dependency: " + fmt.Sprint(e.Affected), "", e.Reason, "Checks: " + strings.Join(e.Checks, ", ")}, details...)}
-		if e.Affected && e.Health != "down" {
-			r.Note = "affected"
-		}
+		r.Health, r.Note = entityPresentation(e)
 		return r
 	}
 	index := func(list []model.EntityState) map[string]model.EntityState {
@@ -574,3 +572,11 @@ func Plural(n int, word string) string {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// entityPresentation is the health and note shared by entity rows and cards.
+func entityPresentation(e model.EntityState) (health, note string) {
+	if e.Affected && e.Health != "down" {
+		note = "affected"
+	}
+	return e.Health, note
+}

@@ -121,8 +121,8 @@ func TestPreviewGoldenFrames(t *testing.T) {
 			if err := json.Unmarshal(sink.Bytes(), &generic); err != nil {
 				t.Fatal(err)
 			}
-			// Normalize every RFC3339 timestamp, including nested resources/incidents.
-			normalizeTimes(generic)
+			// Shift timestamps together: goldens retain sample/deadline offsets.
+			normalizeTimes(generic, now)
 			data, err2 := json.Marshal(generic)
 			if err2 != nil {
 				t.Fatal(err2)
@@ -147,21 +147,21 @@ func TestPreviewGoldenFrames(t *testing.T) {
 		})
 	}
 }
-func normalizeTimes(v any) {
+func normalizeTimes(v any, origin time.Time) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, v := range x {
 			if s, ok := v.(string); ok {
-				if _, e := time.Parse(time.RFC3339Nano, s); e == nil && strings.Contains(s, "T") {
-					x[k] = "2000-01-01T00:00:00Z"
+				if at, e := time.Parse(time.RFC3339Nano, s); e == nil && strings.Contains(s, "T") {
+					x[k] = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Add(at.Sub(origin)).Format(time.RFC3339Nano)
 					continue
 				}
 			}
-			normalizeTimes(v)
+			normalizeTimes(v, origin)
 		}
 	case []any:
 		for _, v := range x {
-			normalizeTimes(v)
+			normalizeTimes(v, origin)
 		}
 	}
 }

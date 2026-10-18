@@ -126,5 +126,19 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 		previous = in
 		return in, nil
 	}
-	return Source{Project: p.Project, Initial: previous, Fetch: fetch, Close: cl.Close, Errors: sourceErrors}, nil
+	prepare := func(ctx context.Context) (monitor.Input, *Error) {
+		in, err := fetch(ctx)
+		select {
+		case e := <-sourceErrors:
+			return monitor.Input{}, e
+		default:
+		}
+		if err != nil {
+			// An unreachable collector is a valid, unavailable source; a
+			// positively identified foreign project is a rejected replacement.
+			in = monitor.Input{Unavailable: true}
+		}
+		return in, nil
+	}
+	return Source{Project: p.Project, Initial: previous, Prepare: prepare, Fetch: fetch, Close: cl.Close, Errors: sourceErrors}, nil
 }

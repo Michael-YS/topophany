@@ -25,7 +25,7 @@ func safetyState(p Panel) string {
 		state := []any{r.ID, r.Health, r.Freshness, r.Reason}
 		switch v := r.Value.(type) {
 		case SummaryVerdict:
-			state = append(state, v.State, v.Counts)
+			state = append(state, v.State, v.Counts, v.Observers)
 		case []ObserverVerdict:
 			state = append(state, observers(v))
 		case AttentionList:

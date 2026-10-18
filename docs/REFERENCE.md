@@ -414,10 +414,15 @@ printf '%s\n' '{"schema":1,"request_id":"preview","source":"preview","template":
 No frame precedes the first request. A valid request replaces the current one
 and publishes immediately, with a new `config_revision` and the echoed
 `request_id`. A client starts with unavailable rows while its first collector
-read is pending. An invalid request publishes an `error` frame with no rows and
+read is pending. A replacement client source checks its first read within a
+five-second budget while the previous request continues publishing; only then
+is the replacement committed. A foreign-project response rejects the candidate.
+An invalid request publishes an `error` frame with no rows and
 keeps the previous request running. Error codes are `invalid_request`,
 `unsupported_protocol`, `credentials_unavailable`, `profile_not_found` and
-`project_mismatch`; messages contain no raw upstream errors. A collector that
+`project_mismatch`; messages contain no raw upstream errors and are bounded to
+1024 UTF-8 bytes. An invalid request ID longer than 64 bytes is omitted from
+the error's identity (the field is empty). A collector that
 cannot be read produces running frames with null values and
 `reason: "source_unavailable"`.
 
@@ -430,6 +435,11 @@ Runtime failures exit 0; only bad command-line flags exit 2.
 
 The stream uses the same source refresh, one-second evidence aging, display
 cadence, immediate safety transitions and publisher lease as file panels below.
+Structured rows keep the original deadlines of the evidence behind their
+collector judgments. When a deadline passes, the row's value is withheld until
+a new snapshot supplies a current judgment; aging a check never extends an old
+healthy service or node. Server card deadlines also cover displayed services
+and the checks and heartbeats behind their nested observer verdicts.
 Its function API in `internal/monitor/stream` accepts request lines and a frame
 callback, honors context cancellation, and allows another source adapter for
 embedding.

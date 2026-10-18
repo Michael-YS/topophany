@@ -296,44 +296,6 @@ func applications(v view.View) []ApplicationValue {
 	return out
 }
 
-// evidenceTimes keeps the original sample clocks. Renewing the source envelope
-// cannot extend an observation's own deadline.
-func evidenceTimes(v view.View, ids map[string]bool, includeObservers bool) (sampled, until time.Time) {
-	s := v.Snapshot
-	until = s.GeneratedAt.Add(15 * time.Second)
-	defs := map[string]model.Check{}
-	for _, c := range s.Topology.Checks {
-		defs[c.ID] = c
-	}
-	for _, c := range s.Checks {
-		if ids != nil && !ids[c.ID] || c.Last == nil {
-			continue
-		}
-		if c.Last.SampledAt.After(sampled) {
-			sampled = c.Last.SampledAt
-		}
-		deadline := c.Last.SampledAt.Add(time.Duration(defs[c.ID].StaleSeconds) * time.Second)
-		if c.Freshness == "fresh" && deadline.Before(until) {
-			until = deadline
-		}
-	}
-	if includeObservers {
-		for _, o := range s.Observers {
-			if o.LastSeen.After(sampled) {
-				sampled = o.LastSeen
-			}
-			for _, d := range s.Topology.Observers {
-				if d.ID == o.ID && o.Health == "up" && !o.LastSeen.IsZero() {
-					deadline := o.LastSeen.Add(time.Duration(d.StaleSeconds) * time.Second)
-					if deadline.Before(until) {
-						until = deadline
-					}
-				}
-			}
-		}
-	}
-	return sampled.UTC(), until.UTC()
-}
 func percent(f map[string]string, key string) *float64 {
 	n, e := strconv.ParseFloat(f[key], 64)
 	if e != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 100 {
@@ -398,26 +360,23 @@ func minTime(a, b time.Time) time.Time {
 	}
 	return b
 }
-func server(v view.View, all view.View, id string) (ServerCard, time.Time, time.Time, bool) {
-	fleet := v.Fleet()
+func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) {
+	v := p.v
+	fleet := p.serverFleet()
 	n, ok := fleet.Nodes[id]
 	if !ok {
 		return ServerCard{}, time.Time{}, time.Time{}, false
 	}
 	card := fleet.Card(id)
 	out := ServerCard{ID: id, Name: fleet.Names[id], Kind: n.Kind, Provider: view.ProviderName(n.Provider), Group: card.Group, Where: card.Where, Health: "unknown", Resources: []ResourceValue{}, Services: []ServiceValue{}, Observes: []ObserverVerdict{}}
-	for _, r := range v.List(view.Topology, "") {
-		if r.ID == id && r.Kind == "node" {
-			out.Health, out.Note = r.Health, r.Note
-			break
-		}
-	}
+	out.Health, out.Note = fleet.NodeState(id)
 	ids := map[string]bool{}
-	for _, e := range v.Snapshot.Nodes {
-		if e.ID == id {
-			for _, c := range e.Checks {
-				ids[c] = true
-			}
+	for _, c := range p.nodeChecks[id] {
+		ids[c] = true
+	}
+	for _, s := range card.Services[:min(32, len(card.Services))] {
+		for _, c := range p.serviceChecks[s.ID] {
+			ids[c] = true
 		}
 	}
 	for _, r := range card.Resources {
@@ -434,7 +393,7 @@ func server(v view.View, all view.View, id string) (ServerCard, time.Time, time.
 		}
 		return 0
 	})
-	sampled, until := evidenceTimes(v, ids, false)
+	sampled, until := p.evidence().times(ids, false)
 	for _, r := range out.Resources {
 		if r.ValidUntil != nil {
 			until = minTime(until, *r.ValidUntil)
@@ -447,11 +406,12 @@ func server(v view.View, all view.View, id string) (ServerCard, time.Time, time.
 	for _, o := range card.Observers {
 		onNode[o.ID] = true
 	}
-	for _, o := range observerVerdicts(all) {
+	for _, o := range p.observerValues() {
 		if onNode[o.ID] {
-			until = minTime(until, all.Snapshot.GeneratedAt.Add(15*time.Second))
-			if o.LastSeen != nil && o.LastSeen.After(sampled) {
-				sampled = *o.LastSeen
+			clock := p.completeEvidence().byObserver[o.ID]
+			until = minTime(until, clock.until)
+			if clock.sampled.After(sampled) {
+				sampled = clock.sampled
 			}
 			out.Observes = append(out.Observes, o)
 		}
@@ -462,8 +422,9 @@ func server(v view.View, all view.View, id string) (ServerCard, time.Time, time.
 	return out, sampled, until, true
 }
 
-func richValue(value Value, v, all view.View) Value {
-	value.SampledAt, value.ValidUntil = evidenceTimes(v, nil, true)
+func (p *projection) richValue(value Value) Value {
+	v := p.v
+	value.SampledAt, value.ValidUntil = p.evidence().times(nil, true)
 	value.Health = "up"
 	if v.Cached {
 		value.Freshness = "cached"
@@ -476,7 +437,7 @@ func richValue(value Value, v, all view.View) Value {
 		value.Text = s.Text
 		value.Health = verdictHealth(s.State)
 	case "observers.verdicts":
-		observers := observerVerdicts(all)
+		observers := p.observerValues()
 		problems := 0
 		for _, o := range observers {
 			value.Health = worse(value.Health, o.Health)
@@ -486,7 +447,7 @@ func richValue(value Value, v, all view.View) Value {
 		}
 		value.Value = observers[:min(64, len(observers))]
 		value.Text = fmt.Sprintf("%d of %d see a problem", problems, len(observers))
-		value.SampledAt, value.ValidUntil = evidenceTimes(all, nil, true)
+		value.SampledAt, value.ValidUntil = p.completeEvidence().times(nil, true)
 	case "attention.list":
 		limit := 5
 		if value.Limit != nil {
@@ -506,7 +467,7 @@ func richValue(value Value, v, all view.View) Value {
 			value.Health = worse(value.Health, a.Health)
 		}
 	case "server.card":
-		card, sampled, until, ok := server(v, all, value.Select.Node)
+		card, sampled, until, ok := p.server(value.Select.Node)
 		if !ok {
 			return missing(value, "entity_missing")
 		}

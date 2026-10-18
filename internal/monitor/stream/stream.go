@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 )
@@ -15,6 +17,9 @@ type Source struct {
 	Project string
 	Errors  <-chan *Error
 	Initial monitor.Input
+	// Prepare validates a replacement's first read before the active source is
+	// released. The first request still emits Initial immediately.
+	Prepare func(context.Context) (monitor.Input, *Error)
 	Fetch   monitor.Fetch
 	Close   func()
 }
@@ -55,8 +60,29 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 		return emit(p)
 	}
 	reject := func(id string, e *Error) error {
+		// Invalid identifiers and validation messages are untrusted request data.
+		// Bound them before JSON escaping, including errors with no row payload.
+		if len(id) > 64 || !utf8.ValidString(id) {
+			id = ""
+		}
+		bounded := *e
+		bounded.Message = boundedText(e.Message, 1024)
 		now := time.Now().UTC()
-		return send(monitor.Panel{Schema: 1, Name: "stream", RequestID: id, Lifecycle: "error", Error: e, GeneratedAt: now, PublisherExpiresAt: now.Add(30 * time.Second), Rows: []monitor.Value{}})
+		return send(monitor.Panel{Schema: 1, Name: "stream", RequestID: id, Lifecycle: "error", Error: &bounded, GeneratedAt: now, PublisherExpiresAt: now.Add(30 * time.Second), Rows: []monitor.Value{}})
+	}
+	publish := func(p monitor.Panel) error {
+		if p.Lifecycle != "running" {
+			return nil
+		}
+		p.RequestID = active.RequestID
+		if monitor.ShouldPublish(last, digest, p, c.Every()) {
+			if err := send(p); err != nil {
+				return err
+			}
+			last = p
+			digest = monitor.ContentDigest(p)
+		}
+		return nil
 	}
 	stopped := func() error {
 		stop()
@@ -93,6 +119,25 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 					return err
 				}
 				continue
+			}
+			if source.Prepare != nil && cancel != nil {
+				var outputErr error
+				source.Initial, e, outputErr = prepareReplacement(ctx, source, frames, &sourceErrors, publish, func(e *Error) error { return reject(active.RequestID, e) })
+				if e != nil || ctx.Err() != nil || outputErr != nil {
+					if source.Close != nil {
+						source.Close()
+					}
+					if outputErr != nil {
+						return outputErr
+					}
+					if ctx.Err() != nil {
+						return stopped()
+					}
+					if err := reject(request.RequestID, e); err != nil {
+						return err
+					}
+					continue
+				}
 			}
 			stop()
 			revision++
@@ -131,26 +176,32 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 				}
 				monitor.Run(runCtx, c, source.Fetch, nil, hub, nil, source.Initial)
 			}()
-		case e := <-sourceErrors:
-			if e != nil {
+		case e, ok := <-sourceErrors:
+			if !ok {
+				sourceErrors = nil
+			} else if e != nil {
 				if err := reject(active.RequestID, e); err != nil {
 					return err
 				}
 			}
 		case p := <-frames:
-			if p.Lifecycle != "running" {
-				continue
-			}
-			p.RequestID = active.RequestID
-			if monitor.ShouldPublish(last, digest, p, c.Every()) {
-				if err := send(p); err != nil {
-					return err
-				}
-				last = p
-				digest = monitor.ContentDigest(p)
+			if err := publish(p); err != nil {
+				return err
 			}
 		}
 	}
+}
+
+func boundedText(s string, limit int) string {
+	s = strings.ToValidUTF8(s, "�")
+	if len(s) <= limit {
+		return s
+	}
+	s = s[:limit-3]
+	for !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s + "..."
 }
 
 // WriteFrame makes exactly one write, then flushes sinks that support flushing.
