@@ -7,143 +7,134 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- The geographic map cycles through Cards, Locations and Points with `p`.
-  Locations shows compact place labels (coordinates for unnamed sites), with
-  collision-aware placement, selection and zoom, without node or service cards.
-
-### Fixed
-
-- Vercel request IDs use their real colon-separated routing format. Receiving
-  and routing regions are bounded and displayed as regions; arbitrary hops
-  are not called function execution and no Vercel PoP is inferred. New labels
-  remain withheld after private requests, and the frozen legacy oracle remains
-  unchanged with the intentional location differences covered separately.
-
-- Snapshot readers wait one second and retry once when every collector fails
-  and one explicitly reports `429 snapshot_busy`. This avoids offline/cached
-  flicker when LAN and overlay addresses share a collector building a snapshot.
-  Healthy failover stays immediate; persistent failures and authentication or
-  response-validation errors remain visible.
-- Mihomo full-inventory reads support up to 4096 proxy entries and group/provider
-  members using section-specific budgets and 8 MiB inventory responses. Other
-  objects and histories remain tightly bounded; explicit inventory/member
-  capacity errors remain monitor-side errors. An opt-in isolated real-core
-  acceptance harness records exact versions and capacity boundaries.
-- Mihomo resolves subscription-only selected nodes from the provider inventory
-  on cores that omit them from `/proxies`; ambiguous names remain unresolved.
-- The Linux process/PTY acceptance harness refuses other platforms before
-  starting processes or saving credentials, protecting macOS user profiles.
-
-- Privileged Unix installation rejects intermediate symlinks before filesystem
-  mutations, creates directories through verified handles, and changes data
-  directory ownership through an open descriptor.
-- Source identities and ZIP/tar exports reject nonportable paths and aliases
-  under case and Unicode normalization, preventing cross-platform extraction
-  from replacing reviewed files.
-- Alert queues clip presentation text before admission and enforce encoded
-  event and persistence budgets, so saved queues remain readable on restart.
-- Mihomo provider load times use a separate `provider_updated_at.<name>`
-  namespace and omit keys over 128 bytes, so valid long provider names do not
-  refuse a batch and metadata cannot overwrite another provider's membership.
-- Reloading a collector's provider settle window re-evaluates retained and
-  queued samples using independent load evidence, even before workers reload.
-  Older samples with insufficient evidence conservatively wait within the
-  current publication window. Measurement contracts and history are preserved.
-- HTTP 524 describes the platform's reported read/write timeout after a
-  successful origin connection, preserving the distinction from an unreachable
-  origin and from independently measured origin health.
-- The Checks tab's `UP 24H` cell says how much of the day was actually
-  measured when less than all of it (`98.9% · 3h`), instead of showing a
-  partial window as if it were a full day. Gaps stay gaps; a whole day is
-  unchanged.
-- `topo version` reports what the binary carries: a version injected with
-  `-ldflags -X`, the module version the Go toolchain stamped for a tagged
-  build, `dev-<short revision>[-dirty]` for a checkout or a pseudo-version, or
-  `devel` when there is no version information at all. It no longer claims to
-  be the last release, and `-X` is no longer silently overwritten. Release
-  archives inject their tag, and the release build refuses a binary that
-  reports anything else: its checkout has no tags, so the toolchain alone
-  would stamp `0.0.0-<time>-<revision>`, which now also reads as
-  `dev-<short revision>`.
-- A Tailscale diagnostic that times out inside the CLI now reports `unknown`
-  with `diagnostic_response: timed_out` instead of a monitor-side error. Only
-  the CLI's exact `ping "<ip>" timed out` text for the fixed target counts;
-  other non-zero exits stay errors, and the command probe hands an adapter the
-  output it captured on failure instead of discarding it.
-- A peer whose control-plane response carries no `LastSeen` reports
-  `last_seen: not reported` instead of a fabricated `0001-01-01T00:00:00Z`.
-- Ordinary policy incidents retain the immediate 1.1.1 default. The optional
-  `policy_threshold` explicitly requires 1..20 consecutive violating samples,
-  independently of failure/recovery thresholds; provider loading keeps its own
-  bounded settle window. Threshold reloads preserve contracts and history.
-- A failed request whose response came back through an edge no longer says the
-  fault lies behind it. The hypothesis says the request did not satisfy its
-  assertions and the failing layer is not located, naming a candidate only
-  where the status class supports one: 403/429 may be edge policy or a
-  challenge, 521-524 are the platform's own account, other 5xx may come from
-  either side, and the origin is never declared at fault from the response.
-- Snapshot-backed CLI and terminal/browser views pin history to the snapshot's
-  collector, public revision and check contract. Source/revision switches clear
-  cached charts and superseded background history is discarded.
-- Manual rollback requires an installer-created private backup under the same
-  installation, with trusted ownership and authenticated metadata and payload
-  hashes. Unsigned legacy backups are refused before service or file changes.
-- Rollback restores authenticated executable backups larger than 1 MiB within
-  the installer's existing 64 MiB per-file limit.
-- Windows bundle and installation directories replace and verify their entire
-  DACL, including existing children, before writing sensitive payloads. Unrelated
-  explicit grants, untrusted owners and reparse points are refused or removed.
+## [1.2.0] - 2026-10-18
 
 ### Added
 
-- The TUI and the browser viewer built from it count collector ingress failures
-  in the status row, and the Overview keeps that row while delivery is failing,
-  beside the CLI's `Collector ingress` line.
-- A collector snapshot now carries `ingress`: TLS handshake failures in a
-  rolling 30-minute window, counted from the HTTP server's own error log.
-  `failures` is the window total, `source_count` counts the distinct
-  addresses the counter tracked, and `truncated` marks the ones it could not.
-  The failures say delivery into the collector failed, so the affected checks
-  read stale rather than failed; `topo status` prints the summary. Viewer
-  snapshots identify sources by a stable short digest; `--expose-ingress-sources`
-  opts into raw addresses.
-- Mihomo checks can compare rotating provider membership against a fresh,
-  independent names-only JSON publication. Fixed expectations remain strict;
-  unavailable references are monitor errors and publications changing during
-  sampling are unknown. Publisher credentials and TLS settings are separate.
-- Optional Mihomo TUN expectations and ordered/set provider comparisons, with
-  bounded counts explaining missing, extra and reordered members.
-- Mihomo `provider_reference.settle_seconds` (0..3600, default 120, 0
-  disables) marks a membership difference inside the window after a
-  publication as not yet confirmed, because the controller may still be
-  loading it. The sample stays `policy / provider_membership_mismatch` with
-  `provider_reference_settling: true`; the incident opens only after the
-  window's equivalent consecutive policy samples, so repeated publications
-  cannot defer it forever. Facts record the controller's own
-  `provider_updated_at.<name>` beside the publisher's time and the sample's
-  time, reference providers first and only while the observation stays within
-  the collector's 32-fact budget.
-- Optional WireGuard AllowedIPs and keepalive expectations, collected through
-  public-field commands without reading private or preshared keys.
-- Opt-in bounded Tailscale DISCO/TSMP diagnostics. Replies retain reported
-  evidence and do not imply application reachability; default collection stays
-  passive. Versioned synthetic fixtures document supported response formats.
+- The geographic map cycles through Cards, Locations and Points with `p` in
+  the terminal and browser viewer. Locations shows compact city labels, or
+  coordinates for unnamed sites, with collision-aware placement, selection
+  highlighting and clickable labels. The map's label and zoom controls are
+  independent and remain inside narrow panels.
+- Mihomo supports up to 4096 names across the combined proxy/provider graph,
+  4096 members per group/provider and 8 MiB inventory responses. Built-in names
+  and groups count toward the graph limit; over-capacity inventories return
+  explicit monitor errors. Other JSON and history budgets remain bounded.
+- Mihomo can compare rotating provider membership against a fresh, independent
+  names-only JSON publication, with separate publisher credentials and TLS
+  settings. Fixed expectations remain strict; unavailable references are
+  monitor errors and publications changing during sampling are unknown.
+- Optional Mihomo TUN expectations and ordered/set provider comparisons report
+  bounded counts of missing, extra and reordered members.
+- Mihomo `provider_reference.settle_seconds` (0..3600, default 120, 0 disables)
+  allows a bounded loading window after publication. Samples retain
+  `policy / provider_membership_mismatch` with
+  `provider_reference_settling: true`; opening an incident requires both the
+  elapsed window and its equivalent consecutive policy samples. Repeated
+  publications cannot postpone confirmation forever. Separate publisher,
+  controller-load and sample times remain within the 32-fact budget.
+- Optional `policy_threshold` requires 1..20 consecutive ordinary policy
+  violations. Omitted or zero retains the immediate 1.1.1 behavior;
+  failure/recovery thresholds and provider-loading settlement are independent.
+- WireGuard supports AllowedIPs and keepalive expectations through public-field
+  commands, without reading private or preshared keys.
+- Opt-in bounded Tailscale DISCO/TSMP diagnostics retain reported evidence and
+  do not imply application reachability. Default collection stays passive;
+  versioned synthetic fixtures document supported response formats.
+- Collector snapshots and CLI/terminal/browser status show TLS handshake
+  failures in a rolling 30-minute ingress window. Source tracking is bounded
+  and identifies truncated counts. Sources are pseudonymous by default;
+  `--expose-ingress-sources` opts into raw addresses. Failed delivery makes
+  affected evidence stale rather than declaring the monitored target down.
+- Opt-in real-core capacity and isolated native installation acceptance tools
+  record program hashes, versions and scope, including upgrade, credential
+  preservation, authenticated rollback and reinstallation.
 
 ### Changed
 
-- Cloudflare, Vercel, CloudFront, Fastly and Netlify response-header parsing now
-  lives in separate platform adapter packages. Existing HTTP configuration,
-  first-match precedence, fact values, secret filtering and evidence attribution
-  remain unchanged and are checked against a frozen pre-split parser.
-- Mihomo, Tailscale and WireGuard implementations, validators and tests now live
-  in separate adapter packages, preserving existing configuration contracts and
-  observation behavior. Each package includes contribution and evidence notes.
+- Cloudflare, Vercel, CloudFront, Fastly and Netlify header parsing lives in
+  separate platform adapter packages. Existing HTTP configuration, first-match
+  precedence, private-response filtering and evidence attribution are preserved;
+  intentional Vercel location corrections are listed below.
+- Mihomo, Tailscale and WireGuard implementations, validators and tests live in
+  dedicated adapter packages with contribution and evidence notes.
 - Tailscale peer identity resolution is deterministic and reports ambiguous
   identities, backend states, missing online state and peer relay separately.
-- Software check details distinguish runtime reads, policy assertions and
-  unmeasured application paths; stale reports do not become current evidence.
+- Software details distinguish runtime reads, policy assertions and unmeasured
+  application paths; stale reports do not become current evidence.
+
+### Fixed
+
+- Snapshot readers try healthy collector failover first, then wait one second
+  and retry once if every endpoint fails and one explicitly reports
+  `429 snapshot_busy`. This reduces offline/cached flicker when LAN and overlay
+  addresses share a busy collector. Cancellation, persistent failures and
+  authentication/response-validation errors retain their normal behavior.
+- Vercel request IDs use the real colon-separated routing format. Receiving
+  and ordered routing regions are bounded and displayed as regions, without
+  inferring PoPs or arbitrary function execution locations. Historical labels
+  remain role-unverified and private requests withhold every new location key.
+  The frozen pre-split oracle is unchanged; intentional differences have
+  separate regression coverage.
+- Mihomo resolves subscription-only selected nodes from the existing read-only
+  provider inventory when `/proxies` omits them. Ambiguous names and cycles
+  remain unresolved rather than claiming a verified route.
+- Mihomo controller load times use `provider_updated_at.<name>` independently
+  of membership facts. Overlong keys are omitted so long provider names cannot
+  refuse a batch or overwrite membership evidence.
+- Reloading policy confirmation or provider settlement re-evaluates retained
+  and queued evidence while preserving measurement contracts and history.
+  Provider settlement applies only to membership mismatches, requires elapsed
+  time as well as samples, and conservatively waits for missing load evidence
+  within the current publication window.
+- Requests answered through an edge no longer automatically blame the origin.
+  The explanation retains the failed assertion and unlocated failure layer;
+  status codes provide candidate explanations, not proof of root cause.
+  HTTP 524 is described as the platform's reported read/write timeout after an
+  origin connection, separately from an unreachable origin.
+- The Checks tab's `UP 24H` shows measured coverage for partial windows
+  (`98.9% · 3h`, or `<1m`), rather than presenting partial evidence as a full day.
+- Snapshot-backed CLI and terminal/browser views pin history to their
+  collector, public revision and check contract. Source/revision switches
+  clear cached charts and discard superseded background history.
+- `topo version` honors injected release versions and otherwise identifies
+  a tagged build, `dev-<revision>[-dirty]` or `devel` from available build
+  information. Release builds inject and verify their own tag instead of
+  claiming the last release or exposing a toolchain pseudo-version.
+- A Tailscale CLI diagnostic's exact timeout response for its fixed peer is
+  `unknown / diagnostic_response: timed_out`; other nonzero exits remain
+  monitor errors. Missing `LastSeen` is reported as unavailable rather than
+  a fabricated year-zero timestamp.
+- Ingress counts include failures across the actual rolling window, parse
+  only the HTTP server's own handshake log lines, and keep log handling off
+  the connection path. Collector heartbeats tolerate a backward clock step.
+- Authenticated installer rollback restores executable backups larger than
+  1 MiB within the existing 64 MiB per-file limit.
+- The real process/PTY acceptance harness refuses non-Linux hosts before
+  starting processes, opening listeners or saving credentials.
+
+### Security
+
+- Privileged Unix installation rejects intermediate symlinks before mutations,
+  creates directories through verified handles and changes ownership through
+  an open descriptor.
+- Windows bundle/installation directories replace and verify their entire
+  DACL, including existing children, before writing sensitive payloads.
+  Unrelated grants, untrusted owners and reparse points are refused or removed.
+- Manual rollback requires installer-created private backups under the same
+  installation, trusted ownership and authenticated metadata/payload hashes.
+  Unsigned legacy backups are refused before service or file changes.
+- Source identities and ZIP/tar exports reject nonportable paths and aliases
+  under case and Unicode normalization, preventing cross-platform extraction
+  from replacing reviewed files.
+- Alert queues enforce presentation, encoded-event and persistence budgets so
+  saved queues remain bounded and readable on restart.
+- Local browser-viewer bootstrap uses a short-lived, one-time launch capability
+  and a per-process session token; saved collector tokens stay out of the
+  browser. Ingress source pseudonyms use a per-collector secret.
+- Prerelease tags are marked as prereleases and do not replace the latest
+  stable download. Release publication verifies immutable build artifacts and
+  that the tag still resolves to the exact source commit.
 
 ## [1.1.1] - 2026-10-16
 
@@ -1181,7 +1172,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/WhitenWhiten/topophany/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/WhitenWhiten/topophany/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/WhitenWhiten/topophany/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/WhitenWhiten/topophany/compare/v0.9.1...v1.0.0
