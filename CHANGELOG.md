@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Snapshot readers wait one second and retry once when every collector fails
+  and one explicitly reports `429 snapshot_busy`. This avoids offline/cached
+  flicker when LAN and overlay addresses share a collector building a snapshot.
+  Healthy failover stays immediate; persistent failures and authentication or
+  response-validation errors remain visible.
 - Mihomo full-inventory reads support up to 4096 proxy entries and group/provider
   members using section-specific budgets and 8 MiB inventory responses. Other
   objects and histories remain tightly bounded; explicit inventory/member

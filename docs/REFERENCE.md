@@ -180,6 +180,13 @@ Client and worker credential files use the following format, with separate files
 
 Specify either `token` or `token_env`, with up to 8 server addresses. Worker credential files must reference tokens authorized for the worker role on each server. Client read-only failover engages on connection errors, 5xx server errors, rate limits (429), or stale snapshots. Failover is refused on 401/403 authorization failures, project/observer mismatches, and malformed responses.
 
+If no collector answers and a collector explicitly returned `429 snapshot_busy`,
+snapshot reads wait one second and retry the configured collectors once. The
+wait is cancellable, does not extend with the server's retry header, and does
+not delay a successful failover. A viewer keeps drawing its existing evidence
+during the read; its usual expiry rule still applies. Other rate limits and
+authentication or validation failures receive no extra retry.
+
 ## Alerts
 
 A collector started with `--alerts alerts.json` tells webhooks what it concludes. Webhook URLs are secrets, so the file is private to the collector like `auth.json` (a regular file, mode `0600` or stricter, unknown fields refused), never part of the topology that workers and viewers receive:

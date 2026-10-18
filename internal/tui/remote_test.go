@@ -135,6 +135,40 @@ func TestRemoteDisconnectKeepsCachedEvidence(t *testing.T) {
 	}
 }
 
+func TestRemoteSnapshotBusyDoesNotFlashOffline(t *testing.T) {
+	base, p := remoteFixture(t)
+	var busy atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/v1/snapshot" && busy.CompareAndSwap(true, false) {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(429)
+			w.Write([]byte(`{"error":"snapshot_busy"}`))
+			return
+		}
+		base.Config.Handler.ServeHTTP(w, req)
+	}))
+	defer srv.Close()
+	p.Servers[0].URL = srv.URL
+	r, err := NewRemote(p, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	waitRemote(t, r, func() bool { return !r.m.Snapshot.GeneratedAt.IsZero() })
+	before, fetches := r.m.Snapshot.GeneratedAt, r.m.perf.fetches
+	busy.Store(true)
+	r.Key("r", time.Now())
+	waitRemote(t, r, func() bool {
+		if r.m.Error != "" || r.m.Cached() {
+			t.Fatal("one busy snapshot flashed offline", r.m.Error)
+		}
+		return r.m.perf.fetches > fetches
+	})
+	if !r.m.Snapshot.GeneratedAt.After(before) {
+		t.Fatal("busy retry did not refresh the snapshot")
+	}
+}
+
 func TestRemotePendingReadDoesNotBlockKeysAndQuitCancels(t *testing.T) {
 	started, canceled := make(chan struct{}), make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-r.Context().Done(); close(canceled) }))

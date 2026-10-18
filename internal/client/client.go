@@ -164,9 +164,14 @@ func authorize(req *http.Request, ep Endpoint) error {
 	return nil
 }
 func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot, string, error) {
+	return c.snapshot(ctx, observer, true)
+}
+
+func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) (model.Snapshot, string, error) {
 	var empty model.Snapshot
 	var skew error // a collector of another release, passed over
 	var missed misses
+	busy := false
 	for i, ep := range c.profile.Servers {
 		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/snapshot", url.Values{"observer": {observer}}), nil)
 		if e != nil {
@@ -193,6 +198,19 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 			return empty, "", errors.New("collector authentication/authorization rejected; not falling through silently")
 		}
 		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
+			// Concurrent readers can meet the collector while it builds a
+			// snapshot. Both LAN and overlay addresses may be that same
+			// collector, so immediate failover alone cannot clear the lock.
+			// Only this explicit, bounded busy response earns one delayed
+			// retry, after trying the other configured collectors first.
+			if resp.StatusCode == 429 && len(b) <= 1024 {
+				var reason struct {
+					Error string `json:"error"`
+				}
+				if json.Unmarshal(b, &reason) == nil && reason.Error == "snapshot_busy" {
+					busy = true
+				}
+			}
 			missed.add(ep, unavailable(resp.StatusCode))
 			continue
 		}
@@ -229,6 +247,19 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 			continue
 		}
 		return snap, ep.URL, nil
+	}
+	if busy && retryBusy {
+		// The server advertises Retry-After: 1. Use a fixed upper bound
+		// rather than trusting an unbounded response header. The viewer
+		// keeps rendering while this read waits, and cancellation is prompt.
+		timer := time.NewTimer(time.Second)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return empty, "", ctx.Err()
+		case <-timer.C:
+			return c.snapshot(ctx, observer, false)
+		}
 	}
 	if skew != nil {
 		return empty, "", fmt.Errorf("%w with a current, matching snapshot: %v%s", ErrNoCollector, skew, missed)
