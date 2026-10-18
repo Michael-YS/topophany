@@ -11,8 +11,9 @@ type Fetch func(context.Context) (Input, error)
 
 // Run isolates fetches and file writes from the sampling/ingestion path. All
 // queues have capacity one; only display frames may be coalesced. A nil output
-// publishes only in memory, for an embedded consumer.
-func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, report func(string)) {
+// publishes only in memory, for an embedding consumer. An optional prepared
+// input lets a source with immediate evidence publish it in the first frame.
+func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, report func(string), initial ...Input) {
 	if hub == nil {
 		hub = &Hub{}
 	}
@@ -97,6 +98,9 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 	instance := time.Now().UTC().Format("20060102T150405.000000000")
 	var sequence uint64
 	in := Input{Unavailable: true}
+	if len(initial) > 0 {
+		in = initial[0]
+	}
 	publish := func() {
 		sequence++
 		p := Build(c, in, time.Now())

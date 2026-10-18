@@ -22,7 +22,7 @@ type Input struct {
 	Unavailable bool
 }
 type Panel struct {
-	RequestID          string      `json:"request_id,omitempty"`
+	RequestID          string      `json:"request_id"`
 	Error              *FrameError `json:"error,omitempty"`
 	Schema             int         `json:"schema"`
 	Name               string      `json:"name"`
@@ -59,6 +59,9 @@ type Value struct {
 
 func Build(c Config, in Input, now time.Time) Panel {
 	p := Panel{Schema: 1, Name: c.Name, ConfigRevision: c.Revision, Source: c.Source, Project: in.Snapshot.Project, Observer: in.Snapshot.ViewObserver, Lifecycle: "running", GeneratedAt: now.UTC(), Title: c.Template.Title, Icon: c.Template.Icon, BarRow: c.Template.Bar.Row, Rows: []Value{}}
+	if p.Observer == "" {
+		p.Observer = c.Observer
+	}
 	if p.Project == "" {
 		p.Project = c.Project
 	}
@@ -95,6 +98,9 @@ func resolve(r Row, source string, in Input, now time.Time) Value {
 		}
 		current := view.View{Snapshot: s, Now: now, Cached: view.Expired(s, now)}
 		all := current
+		if s.ViewObserver != "" && in.AllSnapshot == nil {
+			all.Cached = true
+		}
 		if in.AllSnapshot != nil {
 			all.Snapshot = ageSnapshot(*in.AllSnapshot, now)
 			all.Cached = view.Expired(all.Snapshot, now)

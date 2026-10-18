@@ -211,3 +211,45 @@ func TestRuntimeWithoutFileOutput(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestReaderFutureClockBounds(t *testing.T) {
+	now := time.Now().UTC()
+	c := testConfig()
+	p := Build(c, hostInput(now), now)
+	p.PublisherExpiresAt = now.Add(30 * time.Second)
+	// A modest reader clock offset is permitted by the five-minute reader rule.
+	p.GeneratedAt = now.Add(time.Minute)
+	if got := Current(p, now); got.Lifecycle != "running" {
+		t.Fatal(got)
+	}
+	p.GeneratedAt = now.Add(6 * time.Minute)
+	if got := Current(p, now); got.Lifecycle != "publisher_expired" {
+		t.Fatal(got)
+	}
+	p.GeneratedAt = now
+	p.Rows[0].SampledAt = now.Add(6 * time.Minute)
+	if got := Current(p, now).Rows[0]; got.Value != nil || got.Reason != "clock_skew" {
+		t.Fatal(got)
+	}
+}
+
+func TestHubOwnsNestedEvidence(t *testing.T) {
+	n := float64(42)
+	p := Panel{Rows: []Value{{Value: ServerCard{Resources: []ResourceValue{{}}}}}}
+	card := p.Rows[0].Value.(ServerCard)
+	card.Resources[0].CPU.Percent = &n
+	p.Rows[0].Value = card
+	h := &Hub{}
+	h.Publish(p)
+	n = 99
+	first, _ := h.Latest()
+	c := first.Rows[0].Value.(ServerCard)
+	if *c.Resources[0].CPU.Percent != 42 {
+		t.Fatal("publisher shared nested value")
+	}
+	*c.Resources[0].CPU.Percent = 18
+	second, _ := h.Latest()
+	if *second.Rows[0].Value.(ServerCard).Resources[0].CPU.Percent != 42 {
+		t.Fatal("subscriber shared nested value")
+	}
+}

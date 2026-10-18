@@ -163,6 +163,10 @@ func authorize(req *http.Request, ep Endpoint) error {
 	req.Header.Set("User-Agent", "Topophany/"+model.Version)
 	return nil
 }
+
+// ErrProjectMismatch means the peer returned evidence for another project.
+var ErrProjectMismatch = errors.New("project identity mismatch; response rejected")
+
 func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot, string, error) {
 	return c.snapshot(ctx, observer, true)
 }
@@ -233,7 +237,7 @@ func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) 
 			return empty, "", errors.New("invalid collector snapshot")
 		}
 		if snap.Project != c.profile.Project || snap.Topology.Project != c.profile.Project {
-			return empty, "", errors.New("project identity mismatch; response rejected")
+			return empty, "", ErrProjectMismatch
 		}
 		if snap.Schema != model.SnapshotSchema || snap.GeneratedAt.IsZero() {
 			return empty, "", errors.New("unsupported snapshot contract")
@@ -337,7 +341,7 @@ func (c *Client) history(ctx context.Context, check string, limit int, snapshot 
 			return empty, "", errors.New("invalid collector history")
 		}
 		if h.Project != c.profile.Project {
-			return empty, "", errors.New("project identity mismatch; response rejected")
+			return empty, "", ErrProjectMismatch
 		}
 		if len(h.Revision) != 64 || len(h.Contract) != 64 || h.Check != check || len(h.Entries) > limit {
 			return empty, "", errors.New("invalid collector history")
@@ -431,7 +435,7 @@ func (c *Client) Rollups(ctx context.Context, check, step, span string) (Rollups
 			return empty, "", errors.New("invalid collector rollups")
 		}
 		if r.Project != c.profile.Project {
-			return empty, "", errors.New("project identity mismatch; response rejected")
+			return empty, "", ErrProjectMismatch
 		}
 		if len(r.Revision) != 64 || len(r.Contract) != 64 || r.Check != check || r.Step <= 0 || len(r.Slots) > 1000 || !validRollup(r.Total) {
 			return empty, "", errors.New("invalid collector rollups")

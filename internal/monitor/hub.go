@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"errors"
-	"slices"
 	"sync"
 )
 
@@ -16,7 +15,6 @@ type Hub struct {
 	subs   map[chan Panel]bool
 }
 
-func clone(p Panel) Panel { p.Rows = slices.Clone(p.Rows); return p }
 func (h *Hub) Publish(p Panel) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

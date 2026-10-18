@@ -17,6 +17,9 @@ import (
 )
 
 func (a *App) monitor(ctx context.Context, args []string) error {
+	if len(args) > 0 && args[0] == "stream" {
+		return a.monitorStream(ctx, args[1:])
+	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help" || args[0] == "-h") {
 		_, e := fmt.Fprintln(a.Out, "topo monitor configure|run|show|path|preview|export NAME [--monitor-dir DIR]\ntopo monitor metrics\nConfigure imports a template; run starts a client panel; preview reads the current output. Changes apply after restart.")
 		return e

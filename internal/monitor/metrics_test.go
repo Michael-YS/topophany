@@ -191,3 +191,31 @@ func TestMetricVisualAndSelectorValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestMetricCollectionBoundsAndTopologyOrder(t *testing.T) {
+	now := time.Now().UTC()
+	snap := model.Snapshot{GeneratedAt: now, Topology: model.Config{Nodes: []model.Node{{ID: "host"}}}}
+	// Reverse the labels to make topology order differ from alphabetical order.
+	for i := 0; i < 65; i++ {
+		id := fmt.Sprintf("app-%02d", i)
+		snap.Topology.Applications = append(snap.Topology.Applications, model.Application{ID: id, Name: fmt.Sprintf("App %02d", 65-i)})
+		members := 1
+		if i == 0 {
+			members = 65
+		}
+		for j := 0; j < members; j++ {
+			service := fmt.Sprintf("%s-svc-%02d", id, j)
+			snap.Topology.Services = append(snap.Topology.Services, model.Service{ID: service, Name: service, Node: "host", Application: id})
+			snap.Services = append(snap.Services, model.EntityState{ID: service, Health: "up", Checks: []string{"check"}})
+		}
+	}
+	apps := applications(view.View{Snapshot: snap, Now: now})
+	if len(apps) != 64 || apps[0].ID != "app-00" || len(apps[0].Services) != 64 || apps[63].ID != "app-63" {
+		t.Fatal(len(apps), apps[0], apps[len(apps)-1])
+	}
+	v := view.View{Snapshot: snap, Now: now}
+	card, _, _, ok := server(v, v, "host")
+	if !ok || len(card.Services) != 32 {
+		t.Fatal(card)
+	}
+}

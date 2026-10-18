@@ -118,17 +118,10 @@ func content(p Panel) string {
 }
 func (o *Output) Write(p Panel, every time.Duration, force bool) error {
 	p = clone(p)
-	digest := content(clone(p))
-	transition := p.Lifecycle != o.last.Lifecycle
-	for i, r := range p.Rows {
-		if i >= len(o.last.Rows) || r.Freshness != o.last.Rows[i].Freshness || r.Reason != o.last.Rows[i].Reason || r.Health != o.last.Rows[i].Health {
-			transition = true
-		}
-	}
-	elapsed := p.GeneratedAt.Sub(o.last.GeneratedAt)
-	if !force && !transition && elapsed < 10*time.Second && (elapsed < every || digest == o.digest) {
+	if !force && !ShouldPublish(o.last, o.digest, p, every) {
 		return nil
 	}
+	digest := content(clone(p))
 	p.PublisherExpiresAt = p.GeneratedAt.Add(30 * time.Second)
 	if p.Lifecycle != "running" {
 		p.PublisherExpiresAt = p.GeneratedAt
@@ -144,3 +137,20 @@ func (o *Output) Write(p Panel, every time.Duration, force bool) error {
 	o.digest = digest
 	return nil
 }
+
+// ShouldPublish is the shared cadence policy for file and callback consumers.
+// Health, freshness, reason and lifecycle transitions bypass display cadence;
+// all content gets a lease renewal within ten seconds.
+func ShouldPublish(last Panel, digest string, p Panel, every time.Duration) bool {
+	transition := p.Lifecycle != last.Lifecycle || p.ConfigRevision != last.ConfigRevision
+	for i, r := range p.Rows {
+		if i >= len(last.Rows) || r.Freshness != last.Rows[i].Freshness || r.Reason != last.Rows[i].Reason || r.Health != last.Rows[i].Health {
+			transition = true
+		}
+	}
+	elapsed := p.GeneratedAt.Sub(last.GeneratedAt)
+	return transition || elapsed >= 10*time.Second || elapsed >= every && content(clone(p)) != digest
+}
+
+// ContentDigest excludes publication clocks and source-envelope deadlines.
+func ContentDigest(p Panel) string { return content(clone(p)) }
