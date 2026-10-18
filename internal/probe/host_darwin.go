@@ -13,7 +13,7 @@ import (
 // and pointer lifetime handling. The linker explicitly supports this symbol.
 //
 //go:linkname darwinCall6 syscall.syscall6
-//go:noescape
+//go:uintptrescapes
 func darwinCall6(fn, a1, a2, a3, a4, a5, a6 uintptr) (uintptr, uintptr, syscall.Errno)
 
 //go:cgo_import_dynamic topo_mach_host_self mach_host_self "/usr/lib/libSystem.B.dylib"

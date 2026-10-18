@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -209,8 +210,9 @@ func TestMetricCollectionBoundsAndTopologyOrder(t *testing.T) {
 			snap.Services = append(snap.Services, model.EntityState{ID: service, Health: "up", Checks: []string{"check"}})
 		}
 	}
+	slices.Reverse(snap.Services)
 	apps := applications(view.View{Snapshot: snap, Now: now})
-	if len(apps) != 64 || apps[0].ID != "app-00" || len(apps[0].Services) != 64 || apps[63].ID != "app-63" {
+	if len(apps) != 64 || apps[0].ID != "app-00" || len(apps[0].Services) != 64 || apps[63].ID != "app-63" || apps[0].Services[0].ID != "app-00-svc-00" {
 		t.Fatal(len(apps), apps[0], apps[len(apps)-1])
 	}
 	v := view.View{Snapshot: snap, Now: now}

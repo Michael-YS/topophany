@@ -253,3 +253,22 @@ func TestHubOwnsNestedEvidence(t *testing.T) {
 		t.Fatal("subscriber shared nested value")
 	}
 }
+
+func TestNestedHealthTransitionsBypassCadence(t *testing.T) {
+	now := time.Now().UTC()
+	last := Panel{Lifecycle: "running", GeneratedAt: now, Rows: []Value{{Health: "up", Freshness: "fresh", Value: ServerCard{Health: "up", Resources: []ResourceValue{{Check: "host", Health: "up", Freshness: "fresh"}}}}}}
+	next := clone(last)
+	next.GeneratedAt = now.Add(time.Second)
+	card := next.Rows[0].Value.(ServerCard)
+	card.Resources[0].Freshness = "stale"
+	next.Rows[0].Value = card
+	if !ShouldPublish(last, ContentDigest(last), next, time.Hour) {
+		t.Fatal("nested stale resource waited for display cadence")
+	}
+	next = clone(last)
+	next.GeneratedAt = now.Add(time.Second)
+	next.Rows[0].Text = "a changed reading"
+	if ShouldPublish(last, ContentDigest(last), next, time.Hour) {
+		t.Fatal("ordinary value bypassed cadence")
+	}
+}

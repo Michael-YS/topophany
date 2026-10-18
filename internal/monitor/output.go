@@ -142,12 +142,7 @@ func (o *Output) Write(p Panel, every time.Duration, force bool) error {
 // Health, freshness, reason and lifecycle transitions bypass display cadence;
 // all content gets a lease renewal within ten seconds.
 func ShouldPublish(last Panel, digest string, p Panel, every time.Duration) bool {
-	transition := p.Lifecycle != last.Lifecycle || p.ConfigRevision != last.ConfigRevision
-	for i, r := range p.Rows {
-		if i >= len(last.Rows) || r.Freshness != last.Rows[i].Freshness || r.Reason != last.Rows[i].Reason || r.Health != last.Rows[i].Health {
-			transition = true
-		}
-	}
+	transition := safetyState(last) != safetyState(p)
 	elapsed := p.GeneratedAt.Sub(last.GeneratedAt)
 	return transition || elapsed >= 10*time.Second || elapsed >= every && content(clone(p)) != digest
 }

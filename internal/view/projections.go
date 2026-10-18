@@ -71,6 +71,10 @@ func (v View) ApplicationGroups() []ApplicationGroup {
 			byService[r.ID] = key
 		}
 	}
+	order := map[string]int{}
+	for i, s := range v.Snapshot.Topology.Services {
+		order[s.ID] = i
+	}
 	out := []ApplicationGroup{}
 	seen := map[string]bool{}
 	for _, s := range v.Snapshot.Topology.Services {
@@ -80,6 +84,7 @@ func (v View) ApplicationGroups() []ApplicationGroup {
 			continue
 		}
 		seen[key] = true
+		slices.SortStableFunc(g.members, func(a, b Row) int { return order[a.ID] - order[b.ID] })
 		out = append(out, ApplicationGroup{ID: s.Application, Name: ApplicationName(v.Snapshot.Topology, s.Application), Environment: s.Environment, Health: g.row.Health, Rows: g.members, Counts: v.GroupCounts(g.members)})
 	}
 	return out

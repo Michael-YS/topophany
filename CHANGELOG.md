@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Structured monitor rows publish nested health and freshness transitions
+  immediately, and application services retain topology order.
 - Monitor summary and delivery rows use the documented health vocabulary;
   verdict words remain in their values. Panel readers apply the five-minute
   future-clock bound and withhold implausibly future row evidence.
