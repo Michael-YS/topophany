@@ -25,8 +25,8 @@ func TestPrivateRequestHeadersCannotReflectIntoViewerEvidence(t *testing.T) {
 			name = "public request"
 		}
 		t.Run(name, func(t *testing.T) {
-			const private = "private-vhost.invalid"
-			const publicLabel = "public-vhost.invalid"
+			const private = "nrt1" // a secret that is also a valid reported region
+			const publicLabel = "iad1"
 			peer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				value := publicLabel
 				if header != "" {
@@ -40,7 +40,7 @@ func TestPrivateRequestHeadersCannotReflectIntoViewerEvidence(t *testing.T) {
 						return
 					}
 				}
-				w.Header().Set("X-Vercel-Id", value+"::"+value+"::x")
+				w.Header().Set("X-Vercel-Id", value+":"+value+"::x")
 				io.WriteString(w, "ok")
 			}))
 			cert, key, ca := testkit.Certificate(t)
@@ -71,7 +71,7 @@ func TestPrivateRequestHeadersCannotReflectIntoViewerEvidence(t *testing.T) {
 			if v.Outcome != "ok" || v.Facts["response_proof"] != "verified_https" || v.Facts["edge_provider"] != "vercel" {
 				t.Fatalf("verified probe evidence lost: %+v", v)
 			}
-			if header == "" && (v.Facts["edge_pop"] != publicLabel || v.Facts["edge_region"] != publicLabel) {
+			if header == "" && (v.Facts["vercel_edge_region"] != publicLabel || v.Facts["vercel_route_regions"] != publicLabel+":"+publicLabel) {
 				t.Fatal("public edge labels lost", v.Facts)
 			}
 			identity := testkit.Observation(c, x.ID, 1, v.SampledAt, "ok")

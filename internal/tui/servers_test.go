@@ -107,7 +107,7 @@ func TestServersUniformGrid(t *testing.T) {
 	// nothing in front of it, who hosts it.
 	for id, want := range map[string][]string{
 		"cf":       {"IN FRONT OF", "www.example.invalid", "→ Oracle", "answered from EWR · FRA · LAX", "RUNS HERE"},
-		"vercel":   {"hosted by Vercel", "answered from fra1"},
+		"vercel":   {"hosted by Vercel", "answered from edge region fra1"},
 		"supabase": {"hosted by Supabase", "no machine of yours to measure"},
 	} {
 		edge := m.tile(f, row(id), 46, false)

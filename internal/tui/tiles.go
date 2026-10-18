@@ -55,6 +55,12 @@ func (m *Model) tilePanel(f fleet, r Row, c view.Card, w int) []cardRow {
 // who hosts it.
 func (m *Model) edgePanel(n model.Node, c view.Card) []cardRow {
 	pops := strings.Join(c.Pops, " · ")
+	if len(c.Regions) > 0 {
+		if pops != "" {
+			pops += " · "
+		}
+		pops += "edge region " + strings.Join(c.Regions, " · ")
+	}
 	if len(c.Fronts) == 0 {
 		host := []span{quiet("a managed " + n.Kind)}
 		if p := view.ProviderName(n.Provider); p != "" {

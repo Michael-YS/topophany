@@ -283,7 +283,7 @@ func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 	if f := check(t, ok, "j-docs").Last.Facts; f["edge_cache"] != "HIT" {
 		t.Fatal("Pages are served from the edge cache", f)
 	}
-	if f := check(t, ok, "j-webapp").Last.Facts; f["edge_provider"] != "vercel" || f["edge_region"] != "hnd1" {
+	if f := check(t, ok, "j-webapp").Last.Facts; f["edge_provider"] != "vercel" || !strings.HasSuffix(f["vercel_route_regions"], ":hnd1") || f["vercel_edge_region"] == "" || f["edge_pop"] != "" {
 		t.Fatal("Vercel evidence", f)
 	}
 	for _, id := range []string{"cf", "app", "vercel", "supabase"} {

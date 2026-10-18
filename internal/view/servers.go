@@ -38,12 +38,13 @@ type Card struct {
 	Where     string         `json:"where,omitempty"` // its place, "anycast", or "on" its host
 	Services  []CardService  `json:"services"`        // what runs here, trouble first
 	Fronts    []CardEndpoint `json:"in_front_of"`     // the addresses it answers first for
-	Pops      []string       `json:"answered_from"`   // where it said it answered, by response headers
-	Addresses []CardEndpoint `json:"addresses"`       // how it is reached
-	Hosts     []CardHost     `json:"hosts"`           // the containers and VMs on it
-	Observers []CardObserver `json:"observers"`       // who observes from here
-	Links     []CardLink     `json:"links"`           // its declared connections
-	Memo      string         `json:"memo,omitempty"`  // the operator's notes
+	Regions   []string       `json:"reported_edge_regions,omitempty"`
+	Pops      []string       `json:"answered_from"`  // where it said it answered, by response headers
+	Addresses []CardEndpoint `json:"addresses"`      // how it is reached
+	Hosts     []CardHost     `json:"hosts"`          // the containers and VMs on it
+	Observers []CardObserver `json:"observers"`      // who observes from here
+	Links     []CardLink     `json:"links"`          // its declared connections
+	Memo      string         `json:"memo,omitempty"` // the operator's notes
 }
 
 // CardService is a service that runs on a server. Via are the edges and
@@ -110,13 +111,14 @@ type Fleet struct {
 	observers map[string][]model.Observer // by node
 	obsState  map[string]model.ObserverState
 	links     map[string][]model.Link // by either end
-	pops      map[string][]string     // where each edge answered
+	regions   map[string][]string
+	pops      map[string][]string // where each edge answered
 }
 
 func (v View) Fleet() *Fleet {
 	s := v.Snapshot
 	t := s.Topology
-	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, topology: t, cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}}
+	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, topology: t, cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}}
 	for _, n := range t.Nodes {
 		f.Nodes[n.ID] = n
 		f.Names[n.ID] = n.Name
@@ -173,6 +175,9 @@ func (v View) Fleet() *Fleet {
 		if len(ep.Via) > 0 {
 			at = ep.Via[0]
 		}
+		if r := cs.Last.Facts["vercel_edge_region"]; cs.Last.Facts["edge_provider"] == "vercel" && r != "" && !slices.Contains(f.regions[at], r) {
+			f.regions[at] = append(f.regions[at], r)
+		}
 		if pop := cs.Last.Facts["edge_pop"]; cs.Last.Facts["edge_provider"] != "vercel" && pop != "" && !slices.Contains(f.pops[at], pop) {
 			f.pops[at] = append(f.pops[at], pop)
 		}
@@ -182,6 +187,9 @@ func (v View) Fleet() *Fleet {
 		if len(e.Checks) > 0 {
 			f.epHealth[e.ID] = map[bool]string{true: "unknown", false: e.Health}[v.Cached]
 		}
+	}
+	for at := range f.regions {
+		sort.Strings(f.regions[at])
 	}
 	for at := range f.pops {
 		sort.Strings(f.pops[at])
@@ -244,6 +252,7 @@ func (f *Fleet) Card(id string) Card {
 		c.Fronts = append(c.Fronts, endpoint(ep))
 	}
 	c.Pops = append(c.Pops, f.pops[n.ID]...)
+	c.Regions = append(c.Regions, f.regions[n.ID]...)
 
 	// How it is reached, what it hosts and who observes from here.
 	for _, ep := range f.endpoints[n.ID] {

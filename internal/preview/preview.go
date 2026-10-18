@@ -852,13 +852,18 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 		provider := s.nodes[edge].Provider
 		if s.nodes[edge].Kind == "edge" && pops[provider] != nil {
 			o.Facts["edge_provider"] = provider
-			o.Facts["edge_pop"], _ = s.edgePop(provider, x.Observer)
+			region, _ := s.edgePop(provider, x.Observer)
+			if provider == "vercel" {
+				o.Facts["vercel_edge_region"] = region
+				o.Facts["vercel_route_regions"] = region + ":hnd1"
+			} else {
+				o.Facts["edge_pop"] = region
+			}
 			switch {
 			case s.services[x.Service].Runtime == "pages":
 				o.Facts["edge_cache"] = "HIT"
 			case provider == "vercel":
 				o.Facts["edge_cache"] = "MISS"
-				o.Facts["edge_region"] = "hnd1"
 			case edge != endpointNode:
 				o.Facts["edge_cache"] = "DYNAMIC"
 			}

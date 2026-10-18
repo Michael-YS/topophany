@@ -181,6 +181,12 @@ func (m *Model) cardSections(f fleet, r Row, c view.Card, hue Color, most int) [
 		done()
 	}
 
+	if len(c.Regions) > 0 {
+		open("REPORTED EDGE REGIONS", 0)
+		add(cardRow{left: []span{{strings.Join(c.Regions, " · "), fg(Mix(hue, cText, .25))}}, right: []span{{"response headers", fg(cFaint)}}})
+		done()
+	}
+
 	// How it is reached.
 	if len(c.Addresses) > 0 {
 		open("ADDRESSES", len(c.Addresses))
