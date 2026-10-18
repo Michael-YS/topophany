@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -45,11 +46,24 @@ func (a *App) monitorStream(ctx context.Context, args []string) error {
 		// A Reader without Close may be owned by the embedding caller and remain
 		// blocked. Its sender still observes cancellation before delivering a line.
 	}
-	if err != nil && !errors.Is(err, syscall.EPIPE) {
+	if err != nil && !isStreamClosedPipe(err) {
 		fmt.Fprintln(a.Err, "monitor stream output unavailable")
 	}
 	return nil
 }
+
+func isStreamClosedPipe(err error) bool {
+	if errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+	// Windows pipe writes return Win32 errors instead of the POSIX EPIPE.
+	const (
+		errorBrokenPipe syscall.Errno = 109
+		errorNoData     syscall.Errno = 232
+	)
+	return runtime.GOOS == "windows" && (errors.Is(err, errorBrokenPipe) || errors.Is(err, errorNoData))
+}
+
 func writeCapabilities(w io.Writer) error {
 	return writeJSONLine(w, struct {
 		Protocol int              `json:"protocol"`
