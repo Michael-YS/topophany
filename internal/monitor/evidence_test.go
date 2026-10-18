@@ -58,7 +58,7 @@ func TestStructuredRowsKeepOriginalEvidenceDeadline(t *testing.T) {
 	}
 }
 
-func TestServerDeadlineIncludesObserverEvidence(t *testing.T) {
+func TestServerObserverEvidenceExpiresIndependently(t *testing.T) {
 	for _, kind := range []string{"heartbeat", "check"} {
 		t.Run(kind, func(t *testing.T) {
 			now := time.Now().UTC()
@@ -75,12 +75,14 @@ func TestServerDeadlineIncludesObserverEvidence(t *testing.T) {
 			snap := engine.Build(c, "fixture", "", samples, map[string]model.Heartbeat{"home": {Project: c.Project, SampledAt: beat}}, now)
 			cfg := Config{Source: "client", Template: Template{Rows: []Row{{ID: "card", Metric: "server.card", Visual: "card", Select: Selector{Node: "home"}}}}}
 			p := Build(cfg, Input{Snapshot: snap}, now)
-			if !p.Rows[0].ValidUntil.Equal(now.Add(time.Second)) {
+			if until := p.Rows[0].Value.(ServerCard).Observes[0].ValidUntil; until == nil || !until.Equal(now.Add(time.Second)) {
 				t.Fatal(p.Rows[0])
 			}
 			p.PublisherExpiresAt = now.Add(30 * time.Second)
-			if Current(p, now.Add(time.Second)).Rows[0].Value != nil {
-				t.Fatal("reader retained expired nested evidence")
+			row := Current(p, now.Add(time.Second)).Rows[0]
+			card, ok := row.Value.(ServerCard)
+			if !ok || card.Observes[0].State != "cached" || card.Observes[0].Live || card.Observes[0].Counts.Up != 0 {
+				t.Fatal("reader lost card or retained expired nested evidence", row)
 			}
 		})
 	}

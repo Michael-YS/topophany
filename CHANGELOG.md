@@ -29,8 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Server cards retain their identity and other evidence when host readings
+  expire. Resource numbers and nested observer verdicts use independent
+  deadlines; readers retain original sample times and apply those deadlines
+  after decoding JSON too. Service judgments include transitive dependencies.
+- Scoped file and attached panels preserve the selected observer's verdict
+  and global heartbeat liveness without inventing other observers' judgments.
+- Stream callbacks own every frame, including the first frame's mutable row
+  limits and nested evidence, without changing the active request.
+
 - Structured monitor rows retain their original evidence deadlines and hide
-  expired values until a new collector judgment arrives. Server deadlines
+  expired values until a new collector judgment arrives. Server judgments
   include their displayed services and observer verdicts; summary liveness
   changes publish without waiting for display cadence.
 - Client stream replacements validate their first read before releasing the

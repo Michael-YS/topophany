@@ -29,14 +29,15 @@ type SummaryVerdict struct {
 	} `json:"observers"`
 }
 type ObserverVerdict struct {
-	ID       string      `json:"id"`
-	Name     string      `json:"name"`
-	Node     string      `json:"node"`
-	Health   string      `json:"health"`
-	State    string      `json:"state"`
-	Live     bool        `json:"live"`
-	LastSeen *time.Time  `json:"last_seen"`
-	Counts   view.Counts `json:"counts"`
+	ID         string      `json:"id"`
+	Name       string      `json:"name"`
+	Node       string      `json:"node"`
+	Health     string      `json:"health"`
+	State      string      `json:"state"`
+	Live       bool        `json:"live"`
+	LastSeen   *time.Time  `json:"last_seen"`
+	ValidUntil *time.Time  `json:"valid_until,omitempty"`
+	Counts     view.Counts `json:"counts"`
 }
 type AttentionItem struct {
 	Kind         string     `json:"kind"`
@@ -182,6 +183,17 @@ func observerVerdicts(v view.View) []ObserverVerdict {
 	out := []ObserverVerdict{}
 	for _, o := range v.Snapshot.Observers {
 		own := v.ObserverView(o.ID)
+		if v.Snapshot.ViewObserver != "" && v.Snapshot.ViewObserver != o.ID {
+			// Scoped feeds retain global heartbeats, but not other observers'
+			// check judgments. Keep liveness and mark only those judgments cached.
+			own.Cached = true
+			own.Snapshot.Checks = nil
+			for _, c := range v.Snapshot.Topology.Checks {
+				if c.Observer == o.ID {
+					own.Snapshot.Checks = append(own.Snapshot.Checks, model.CheckState{ID: c.ID, Health: "unknown"})
+				}
+			}
+		}
 		verdict := own.Verdict()
 		d := defs[o.ID]
 		live := o.Health == "up" && !v.Cached
@@ -374,13 +386,11 @@ func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) 
 	for _, c := range p.nodeChecks[id] {
 		ids[c] = true
 	}
+	seen := map[string]bool{}
 	for _, s := range card.Services[:min(32, len(card.Services))] {
-		for _, c := range p.serviceChecks[s.ID] {
-			ids[c] = true
-		}
+		p.serviceEvidence(s.ID, ids, seen)
 	}
 	for _, r := range card.Resources {
-		ids[r.Check] = true
 		out.Resources = append(out.Resources, resource(v, r))
 	}
 	// A primary-root filesystem precedes additional volumes.
@@ -395,8 +405,9 @@ func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) 
 	})
 	sampled, until := p.evidence().times(ids, false)
 	for _, r := range out.Resources {
-		if r.ValidUntil != nil {
-			until = minTime(until, *r.ValidUntil)
+		// Resource deadlines govern only their numeric payloads.
+		if r.SampledAt != nil && r.SampledAt.After(sampled) {
+			sampled = *r.SampledAt
 		}
 	}
 	for _, s := range card.Services[:min(32, len(card.Services))] {
@@ -409,7 +420,7 @@ func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) 
 	for _, o := range p.observerValues() {
 		if onNode[o.ID] {
 			clock := p.completeEvidence().byObserver[o.ID]
-			until = minTime(until, clock.until)
+			o.ValidUntil = stamp(clock.until)
 			if clock.sampled.After(sampled) {
 				sampled = clock.sampled
 			}
@@ -419,6 +430,7 @@ func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) 
 			break
 		}
 	}
+	ageCard(&out, p.v.Now)
 	return out, sampled, until, true
 }
 

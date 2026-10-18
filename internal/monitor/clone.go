@@ -13,6 +13,7 @@ func cloneObservers(in []ObserverVerdict) []ObserverVerdict {
 	out := slices.Clone(in)
 	for i := range out {
 		out[i].LastSeen = copyPointer(out[i].LastSeen)
+		out[i].ValidUntil = copyPointer(out[i].ValidUntil)
 	}
 	return out
 }
@@ -70,3 +71,6 @@ func clone(p Panel) Panel {
 	}
 	return p
 }
+
+// Clone returns an independently writable panel, including nested metric values.
+func (p Panel) Clone() Panel { return clone(p) }

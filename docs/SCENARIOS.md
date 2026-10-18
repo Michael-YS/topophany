@@ -4,7 +4,11 @@ This document lists the finite, verifiable scenario contracts for version 1.2.0,
 
 | Scenario and Invariant | Automated Test Evidence |
 |---|---|
-| Structured judgments never outlive their original evidence; refreshed unknown evidence cannot revive an expired healthy node or service, and card deadlines include nested observers | `TestStructuredRowsKeepOriginalEvidenceDeadline`, `TestServerDeadlineIncludesObserverEvidence` |
+| Structured judgments never outlive their original evidence; refreshed unknown evidence cannot revive an expired healthy node or service, and nested observers retain their own evidence deadlines | `TestStructuredRowsKeepOriginalEvidenceDeadline`, `TestServerObserverEvidenceExpiresIndependently` |
+| Server card service judgments expire with transitive service and path evidence | `TestServerTransitiveDependencyDeadline` |
+| Stale host readings lose only their numbers; typed and JSON readers retain card identity and sample times, while nested observer evidence expires independently | `TestServerResourceExpiryPreservesCard`, `TestServerObserverEvidenceExpiresIndependently` |
+| Scoped file and attached feeds retain known observer judgments and heartbeat liveness without inventing unprovided verdicts | `TestScopedPanelPreservesKnownObserverEvidence`, `TestMonitorScopedClientPublishesObserverVerdicts` |
+| Every callback owns its limits and nested evidence without changing the running request | `TestStreamCallbackOwnsEveryFrame` |
 | A replacement's real collector project guard keeps the old stream running, including when the complete observer snapshot is foreign; pending preparation keeps publishing and joins on cancellation | `TestForeignCollectorReplacementKeepsPreviousRequest`, `TestPendingReplacementKeepsPublishingAndJoinsOnCancel` |
 | JSON escaping cannot turn an invalid request into a fatal oversized error frame; subsequent requests and orderly EOF still work | `TestInvalidRequestCannotOverflowErrorFrame`, `TestMonitorStreamProtocol/escaped_invalid_request_cannot_end_stream` |
 | Summary liveness changes bypass cadence; shared card state matches topology rows, and golden normalization preserves sample-to-deadline intervals | `TestSummaryLivenessBypassesCadence`, `TestCardNodeStateMatchesTopology`, `TestGoldenNormalizationPreservesDeadlines`; `BenchmarkServerPanels` measures large-panel allocation and runtime |

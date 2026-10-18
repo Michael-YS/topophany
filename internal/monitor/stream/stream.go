@@ -57,7 +57,7 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 		p.Instance = instance
 		p.Sequence = sequence
 		p.Name = "stream"
-		return emit(p)
+		return emit(p.Clone())
 	}
 	reject := func(id string, e *Error) error {
 		// Invalid identifiers and validation messages are untrusted request data.

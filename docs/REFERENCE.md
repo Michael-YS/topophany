@@ -438,11 +438,15 @@ cadence, immediate safety transitions and publisher lease as file panels below.
 Structured rows keep the original deadlines of the evidence behind their
 collector judgments. When a deadline passes, the row's value is withheld until
 a new snapshot supplies a current judgment; aging a check never extends an old
-healthy service or node. Server card deadlines also cover displayed services
-and the checks and heartbeats behind their nested observer verdicts.
+healthy service or node. Server card row deadlines cover node and displayed service judgments, including
+transitive service and path dependencies. Resource readings and nested observer
+verdicts carry independent deadlines: expired readings lose their numbers, and
+expired observer verdicts become cached, without discarding the card. The source
+envelope and publisher lease still bound the entire card.
 Its function API in `internal/monitor/stream` accepts request lines and a frame
 callback, honors context cancellation, and allows another source adapter for
-embedding.
+embedding. Every callback receives an independently writable frame, including
+the first frame and nested metric values.
 
 ### Sources and process ownership
 
@@ -487,8 +491,10 @@ The metric catalog includes:
   maintenance counts are subsets of unknown and never add to the total.
 - `observers.verdicts` (`list`): each observer's own verdict and counts, liveness
   and last evidence, ordered down, degraded, unknown, up, then by name; at most
-  64 entries. A scoped client view also reads the complete snapshot for these
-  verdicts.
+  64 entries. A scoped stream also reads the complete snapshot for these
+  verdicts. Scoped file and attached TUI panels use the evidence they already
+  receive: the selected observer retains its verdict; other observers retain
+  heartbeat liveness but have cached verdicts and unknown check counts.
 - `attention.list` (`list`): the Overview's Needs attention list in its order,
   with a total, titles, routes, observers and incident start times. Its row
   `limit` defaults to 5 and accepts 1–20. Incident states are lowercase

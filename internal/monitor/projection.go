@@ -10,12 +10,13 @@ import (
 // Keep collector judgments and their original clocks together: locally aging
 // only checks would leave entity and incident judgments backed by expired data.
 type projection struct {
-	v, all                        view.View
-	fleet                         *view.Fleet
-	nodeChecks                    map[string][]string
-	serviceChecks                 map[string][]string
-	observers                     []ObserverVerdict
-	currentClocks, completeClocks *evidenceIndex
+	v, all                         view.View
+	fleet                          *view.Fleet
+	nodeChecks                     map[string][]string
+	serviceChecks                  map[string][]string
+	dependencies, dependencyChecks map[string][]string
+	observers                      []ObserverVerdict
+	currentClocks, completeClocks  *evidenceIndex
 }
 
 type evidenceClock struct{ sampled, until time.Time }
@@ -26,8 +27,6 @@ func newProjection(in Input, now time.Time) *projection {
 	if in.AllSnapshot != nil {
 		all.Snapshot = *in.AllSnapshot
 		all.Cached = view.Expired(all.Snapshot, now)
-	} else if in.Snapshot.ViewObserver != "" {
-		all.Cached = true
 	}
 	return &projection{v: v, all: all}
 }
@@ -43,6 +42,7 @@ func (p *projection) serverFleet() *view.Fleet {
 		for _, s := range p.v.Snapshot.Services {
 			p.serviceChecks[s.ID] = s.Checks
 		}
+		p.indexDependencies()
 	}
 	return p.fleet
 }
@@ -161,4 +161,50 @@ func (e *evidenceIndex) times(ids map[string]bool, observers bool) (time.Time, t
 		clock = combineClock(clock, e.observerClock)
 	}
 	return clock.sampled, clock.until
+}
+
+// Dependencies carry both positive and negative judgments. Include transitive
+// services and paths even when the current judgment is not affected.
+func (p *projection) indexDependencies() {
+	p.dependencies = map[string][]string{}
+	p.dependencyChecks = map[string][]string{}
+	for _, s := range p.v.Snapshot.Topology.Services {
+		key := "service/" + s.ID
+		p.dependencyChecks[key] = p.serviceChecks[s.ID]
+		for _, dep := range s.DependsOn {
+			p.dependencies[key] = append(p.dependencies[key], "service/"+dep)
+		}
+	}
+	for _, path := range p.v.Snapshot.Topology.Paths {
+		key := "path/" + path.ID
+		for _, dep := range path.DependsOn {
+			p.dependencies[key] = append(p.dependencies[key], "path/"+dep)
+		}
+		for _, dep := range path.Candidates {
+			p.dependencies[key] = append(p.dependencies[key], "path/"+dep)
+		}
+	}
+	for _, c := range p.v.Snapshot.Topology.Checks {
+		if c.Path != "" {
+			p.dependencyChecks["path/"+c.Path] = append(p.dependencyChecks["path/"+c.Path], c.ID)
+			if c.Service != "" {
+				p.dependencies["service/"+c.Service] = append(p.dependencies["service/"+c.Service], "path/"+c.Path)
+			}
+		}
+	}
+}
+func (p *projection) serviceEvidence(id string, ids map[string]bool, seen map[string]bool) {
+	pending := []string{"service/" + id}
+	for len(pending) > 0 {
+		key := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		for _, check := range p.dependencyChecks[key] {
+			ids[check] = true
+		}
+		pending = append(pending, p.dependencies[key]...)
+	}
 }
