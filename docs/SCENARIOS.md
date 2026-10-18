@@ -1,6 +1,6 @@
 # Scenario Contracts and Test Mapping
 
-This document lists the finite, verifiable scenario contracts for version 1.1.1, deliberately avoiding unsubstantiated claims that "all conceivable network failure scenarios are verified." The unit and integration test cases below reproduce software mechanics under controlled conditions; live operational deployments require separate hardware acceptance per [ACCEPTANCE.md](ACCEPTANCE.md). Automated execution evidence is produced by `scripts/verify.py` and published as a CI artifact.
+This document lists the finite, verifiable scenario contracts for version 1.2.0, deliberately avoiding unsubstantiated claims that "all conceivable network failure scenarios are verified." The unit and integration test cases below reproduce software mechanics under controlled conditions; live operational deployments require separate hardware acceptance per [ACCEPTANCE.md](ACCEPTANCE.md). Automated execution evidence is produced by `scripts/verify.py` and published as a CI artifact.
 
 | Scenario and Invariant | Automated Test Evidence |
 |---|---|
@@ -185,3 +185,15 @@ Interoperability across live OpenSSH, Tailscale, and WireGuard tunnels and nativ
 | Tailscale diagnostics are opt-in, target a uniquely selected literal peer IP with a fixed budget, and preserve offline/unknown and application-evidence semantics | `TestTailscaleDiagnosticFixturesAndEvidence`, `TestTailscaleDiagnosticsAreOptInAndDoNotResolveDNS`, `TestTailscaleDiagnosticsHaveFixedBudgetAndLiteralTarget`, `TestTailscaleDiagnosticValidationAndContract`, `TestTailscaleDiagnosticPreservesOfflineAndHandlesDeadline`, `FuzzTailscaleDiagnostic` |
 
 Vercel routing corrections: `vercel.TestHeaderFacts`, `probe.TestVercelRouteLabelsCannotReflectPrivateRequests`, and `view.TestVercelLocationIsReportedAsRegions` cover real formats, bounds, secret reflection and region terminology. The frozen pre-split oracle is preserved; only selected Vercel location fields have declared differences.
+
+## Geographic map labels (1.2.0)
+
+`TestGeoLabelsCycle` verifies Cards → Locations → Points → Cards, including
+retained city labels without node/service card detail and ignored input on
+other maps. `TestGeoPlatesKeepClearOfEachOther` covers compact labels at three
+viewport sizes, marker clearance and stable placement as selection changes.
+`TestGeoLocationsUsesCoordinatesAndMonochromeFocus` covers unnamed sites and
+monochrome selection; `TestGeoLocationsClickAndModeControl` covers clickable
+labels and label/zoom independence. `TestGeoControlsStayInsideNarrowMap` checks
+that controls and click targets stay inside their panel. Browser regression
+also exercises the complete three-mode cycle in the WebAssembly viewer.
