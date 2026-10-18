@@ -173,7 +173,7 @@ func (v View) Fleet() *Fleet {
 		if len(ep.Via) > 0 {
 			at = ep.Via[0]
 		}
-		if pop := cs.Last.Facts["edge_pop"]; pop != "" && !slices.Contains(f.pops[at], pop) {
+		if pop := cs.Last.Facts["edge_pop"]; cs.Last.Facts["edge_provider"] != "vercel" && pop != "" && !slices.Contains(f.pops[at], pop) {
 			f.pops[at] = append(f.pops[at], pop)
 		}
 	}

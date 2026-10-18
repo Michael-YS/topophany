@@ -115,6 +115,20 @@ func edgeAnswer(facts map[string]string) string {
 		return ""
 	}
 	s := ProviderName(p)
+	if p == "vercel" {
+		if r := facts["vercel_edge_region"]; r != "" {
+			s += " · edge region " + r
+		} else if facts["edge_pop"] != "" || facts["edge_region"] != "" {
+			s += " · legacy region labels (role unverified)"
+		}
+		if route := facts["vercel_route_regions"]; strings.Contains(route, ":") {
+			s += " · reported regions " + strings.ReplaceAll(route, ":", " → ")
+		}
+		if c := facts["edge_cache"]; c != "" {
+			s += " · cache " + c
+		}
+		return s
+	}
 	if pop := facts["edge_pop"]; pop != "" {
 		s += " " + pop
 	}

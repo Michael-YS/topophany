@@ -16,7 +16,7 @@ import (
 // Exercise the real route dialers and both observation producers. TLS to the
 // final peer authenticates its response; TLS only to a proxy does not.
 func TestProxyLoginResponseReflection(t *testing.T) {
-	const login = "private-login"
+	const login = "nrt1" // valid region-shaped secret, absent from hexadecimal digests
 	for _, route := range []string{"public", "connect-user", "https-connect-user", "socks-user", "password", "ssh-user", "later-hop"} {
 		t.Run(route, func(t *testing.T) {
 			c := testkit.Config()
@@ -57,7 +57,7 @@ func TestProxyLoginResponseReflection(t *testing.T) {
 						case "/providers/proxies":
 							io.WriteString(w, `{"providers":{"airport":{"proxies":[{"name":"node-a"},{"name":"`+login+`"}]}}}`)
 						default:
-							w.Header().Set("X-Vercel-Id", login+"::"+login+"::x")
+							w.Header().Set("X-Vercel-Id", login+":"+login+"::x")
 							io.WriteString(w, "192.0.2.1")
 						}
 					})
@@ -85,10 +85,10 @@ func TestProxyLoginResponseReflection(t *testing.T) {
 						t.Fatal(o)
 					}
 					if secret {
-						if o.Facts["edge_pop"] != "" || o.Facts["edge_region"] != "" || o.Facts["exit_ip"] != "" {
+						if o.Facts["edge_pop"] != "" || o.Facts["edge_region"] != "" || o.Facts["vercel_edge_region"] != "" || o.Facts["vercel_route_regions"] != "" || o.Facts["exit_ip"] != "" {
 							t.Fatal("private HTTP evidence retained", o)
 						}
-					} else if o.Facts["edge_pop"] != login || o.Facts["exit_ip"] != "192.0.2.1" {
+					} else if o.Facts["vercel_edge_region"] != login || o.Facts["vercel_route_regions"] != login+":"+login || o.Facts["edge_pop"] != "" || o.Facts["exit_ip"] != "192.0.2.1" {
 						t.Fatal("public HTTP evidence lost", o)
 					}
 					x.Kind = "mihomo"

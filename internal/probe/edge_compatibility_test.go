@@ -2,6 +2,7 @@ package probe
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"reflect"
 	"strings"
@@ -63,15 +64,39 @@ func assertEdgeCompatibility(t *testing.T, headers http.Header) {
 	t.Helper()
 	before := headers.Clone()
 	got, want := EdgeFacts(headers), edgeFactsBeforeSplit(headers)
-	if !reflect.DeepEqual(got, want) {
+	compare := func(facts map[string]string) map[string]string {
+		out := maps.Clone(facts)
+		if want["edge_provider"] == "vercel" {
+			// 1.2 intentionally corrects only Vercel location semantics.
+			// Keep the frozen oracle untouched and compare every other fact.
+			delete(out, "edge_pop")
+			delete(out, "edge_region")
+			delete(out, "vercel_route_regions")
+			delete(out, "vercel_edge_region")
+		}
+		return out
+	}
+	if !reflect.DeepEqual(compare(got), compare(want)) {
 		t.Fatalf("headers %q: got %#v, pre-split %#v", headers, got, want)
+	}
+	if want["edge_provider"] == "vercel" {
+		if _, ok := got["edge_pop"]; ok {
+			t.Fatal("Vercel request ID claimed a physical PoP", got)
+		}
+		if _, ok := got["edge_region"]; ok {
+			t.Fatal("new Vercel evidence reused the legacy function-region field", got)
+		}
+		regions := got["vercel_route_regions"]
+		if len(regions) > 47 || strings.Count(regions, ":") > 7 || strings.Split(regions, ":")[0] != got["vercel_edge_region"] {
+			t.Fatal("Vercel region evidence exceeds its bound or differs from the receiving region", got)
+		}
 	}
 	if !reflect.DeepEqual(headers, before) {
 		t.Fatal("header parsing mutated its input")
 	}
 	// Each observation must own its output even for an unrecognized provider.
 	got["edge_provider"] = "caller-mutation"
-	if !reflect.DeepEqual(EdgeFacts(headers), want) {
+	if !reflect.DeepEqual(compare(EdgeFacts(headers)), compare(want)) {
 		t.Fatal("header parsing shares mutable output")
 	}
 }

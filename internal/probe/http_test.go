@@ -433,33 +433,33 @@ func TestHTTPRecordsTheEdgeThatAnswered(t *testing.T) {
 // and compare exit addresses without retaining them. Public requests keep
 // both their edge labels and exit addresses.
 func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
-	const token = "tok-a1b2c3d4e5f6a7b8c9d0e1f2"
+	const token = "nrt1sin1-a1b2c3d4e5f6a7b8c9d0e1f2"
 	t.Setenv("TOPH_HTTP_TOKEN", token)
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Vercel-Id", token[:12]+"::"+token[12:]+"::x")
+		w.Header().Set("X-Vercel-Id", token[:4]+":"+token[4:8]+"::x")
 		w.Header().Set("X-Vercel-Cache", token[12:])
 		_, _ = io.WriteString(w, "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2")
 	}))
 	defer s.Close()
 	for _, tt := range []struct {
-		name    string
-		check   func(*model.Check)
-		secret  bool
-		pop, ip string
+		name       string
+		check      func(*model.Check)
+		secret     bool
+		region, ip string
 	}{
 		{"bearer", func(x *model.Check) { x.HTTP.BearerEnv = "TOPH_HTTP_TOKEN" }, true, "", ""},
 		{"private header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"X-Key": token} }, true, "", ""},
 		{"query", func(x *model.Check) { x.Target += "/?key=" + token }, true, "", ""},
 		{"host header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"Host": "example.invalid"} }, true, "", ""},
 		{"lowercase host header", func(x *model.Check) { x.HTTP.RequestHeaders = map[string]string{"host": "example.invalid"} }, true, "", ""},
-		{"public request", func(*model.Check) {}, false, token[:12], "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2"},
+		{"public request", func(*model.Check) {}, false, token[:4], "2001:db8:a1b2:c3d4:e5f6:a7b8:c9d0:e1f2"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			x := httpCheck(s.URL)
 			x.HTTP.ExpectedExit = []string{"2001:db8::/32"}
 			tt.check(&x)
 			o := (Runner{}).Run(context.Background(), testkit.Config(), x)
-			if o.Outcome != "ok" || o.Facts["edge_provider"] != "vercel" || o.Facts["edge_pop"] != tt.pop || o.Facts["exit_ip"] != tt.ip || o.Facts["edge_cache"] != "" || (o.Facts["peer_text"] == withheld) != tt.secret {
+			if o.Outcome != "ok" || o.Facts["edge_provider"] != "vercel" || o.Facts["vercel_edge_region"] != tt.region || o.Facts["edge_pop"] != "" || o.Facts["exit_ip"] != tt.ip || o.Facts["edge_cache"] != "" || (o.Facts["peer_text"] == withheld) != tt.secret {
 				t.Fatal(o.Outcome, o.Facts)
 			}
 			if !tt.secret {
@@ -529,8 +529,8 @@ func TestEdgeFactsFromEachNetworkAndUntrustedValues(t *testing.T) {
 		provider, pop, region, cached string
 	}{
 		{header("Cf-Ray", "8f2c1b2a3d4e5f60-LAX", "Cf-Cache-Status", "HIT"), "cloudflare", "LAX", "", "HIT"},
-		{header("X-Vercel-Id", "hnd1::iad1::abcd-1700000000000-0123456789ab", "X-Vercel-Cache", "MISS"), "vercel", "hnd1", "iad1", "MISS"},
-		{header("X-Vercel-Id", "sin1::abcd-1700000000000"), "vercel", "sin1", "", ""},
+		{header("X-Vercel-Id", "hnd1:iad1::abcd-1700000000000-0123456789ab", "X-Vercel-Cache", "MISS"), "vercel", "", "", "MISS"},
+		{header("X-Vercel-Id", "sin1::abcd-1700000000000"), "vercel", "", "", ""},
 		{header("X-Amz-Cf-Pop", "NRT57-P1", "X-Cache", "Hit from cloudfront"), "cloudfront", "NRT57-P1", "", "HIT"},
 		{header("X-Served-By", "cache-iad-kiad7000025-IAD, cache-nrt-rjtf7700040-NRT", "X-Cache", "MISS, HIT"), "fastly", "NRT", "", "HIT"},
 		{header("Server", "Netlify", "Cache-Status", `"Netlify Durable"; fwd=bypass, "Netlify Edge"; hit`), "netlify", "", "", "HIT"},
@@ -546,5 +546,42 @@ func TestEdgeFactsFromEachNetworkAndUntrustedValues(t *testing.T) {
 		if f["edge_provider"] != tt.provider || f["edge_pop"] != tt.pop || f["edge_region"] != tt.region || f["edge_cache"] != tt.cached {
 			t.Fatalf("%v: %v", tt.h, f)
 		}
+	}
+}
+
+func TestVercelRouteLabelsCannotReflectPrivateRequests(t *testing.T) {
+	const token = "abc1def2ghi3jkl4mno5pqr6"
+	t.Setenv("TOPO_VERCEL_REFLECTION_SECRET", token)
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Vercel-Id", token[:4]+":"+token[4:8]+"::request")
+		w.Header().Set("X-Vercel-Cache", "MISS")
+	}))
+	defer s.Close()
+	for _, kind := range []string{"public", "query", "bearer", "header"} {
+		t.Run(kind, func(t *testing.T) {
+			x := httpCheck(s.URL)
+			switch kind {
+			case "query":
+				x.Target += "?key=" + token
+			case "bearer":
+				x.HTTP.BearerEnv = "TOPO_VERCEL_REFLECTION_SECRET"
+			case "header":
+				x.HTTP.RequestHeaders = map[string]string{"X-Key": token}
+			}
+			o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+			if o.Outcome != "ok" || o.Facts["edge_provider"] != "vercel" || o.Facts["edge_cache"] != "MISS" {
+				t.Fatal("closed provider/cache facts changed", o)
+			}
+			if kind == "public" {
+				if o.Facts["vercel_route_regions"] != "abc1:def2" || o.Facts["vercel_edge_region"] != "abc1" {
+					t.Fatal("public route labels missing", o.Facts)
+				}
+			} else {
+				raw, _ := json.Marshal(o)
+				if strings.Contains(string(raw), "abc1") || strings.Contains(string(raw), "def2") || o.Facts["peer_text"] != withheld {
+					t.Fatal("private route reflection reached shared evidence", o.Facts)
+				}
+			}
+		})
 	}
 }

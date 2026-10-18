@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Vercel request IDs use their real colon-separated routing format. Receiving
+  and routing regions are bounded and displayed as regions; arbitrary hops
+  are not called function execution and no Vercel PoP is inferred. New labels
+  remain withheld after private requests, and the frozen legacy oracle remains
+  unchanged with the intentional location differences covered separately.
+
 - Snapshot readers wait one second and retry once when every collector fails
   and one explicitly reports `429 snapshot_busy`. This avoids offline/cached
   flicker when LAN and overlay addresses share a collector building a snapshot.

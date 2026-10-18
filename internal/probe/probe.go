@@ -297,7 +297,7 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		o.Facts["response_proof"] = "verified_https"
 	}
 	for k, v := range EdgeFacts(resp.Header) {
-		if secret && (k == "edge_pop" || k == "edge_region") {
+		if secret && (k == "edge_pop" || k == "edge_region" || k == "vercel_edge_region" || k == "vercel_route_regions") {
 			continue
 		}
 		o.Facts[k] = v

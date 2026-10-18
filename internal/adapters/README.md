@@ -47,7 +47,7 @@ the ephemeral listener address, sampling timestamp and elapsed time.
 `probe.TestEdgeFactsCompatibilityBeforePackageSplit` and
 `probe.FuzzEdgeFactsCompatibility` compare header facts with an independent,
 frozen copy of `599c890:internal/probe/edge.go` in `edge_legacy_test.go`.
-Its original source hash is recorded there. Keep that oracle independent of
+Its original source hash is recorded there. Vercel 1.2 location corrections are explicitly exempted in the comparison harness and covered separately; provider/cache facts and other platforms still match. Keep that oracle independent of
 shared production helpers; do not regenerate it to make a refactor pass.
 
 Run `go test ./internal/adapters/... ./internal/probe ./internal/config` for
