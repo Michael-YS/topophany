@@ -205,9 +205,9 @@ func (r *recorder) record() {
 	m.MapMode = "geo"
 	r.chapter("geo")
 	r.play(3*s, 140*milli, 140*milli)
-	// Give the geographic map room, then show both presentations and
+	// Give the geographic map room, then show all three presentations and
 	// return to the panels before moving on to the network graph.
-	for _, key := range []string{"f", "p", "p", "f"} {
+	for _, key := range []string{"f", "p", "p", "p", "f"} {
 		m.Key(key)
 		r.play(3*s, 140*milli, 140*milli)
 	}

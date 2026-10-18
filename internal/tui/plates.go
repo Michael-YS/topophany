@@ -23,6 +23,7 @@ type plate struct {
 	depth      []int
 	more       int  // nodes the plate has no row for
 	line       bool // folded to one line: the title and a glyph per node
+	location   bool // one quiet place label, without node or service details
 	x, y, w, h int  // cells within the map
 	beside     bool // next to its marker, so no leader is drawn
 }
@@ -47,8 +48,11 @@ func siteTitle(s *geoSite, nodes []mapNode) string {
 // one line. Rows a plate cannot hold go to the selection first, then to
 // nodes with a problem, then to top-level nodes. With runs, a row goes on to
 // say what runs on its node. No plate is wider inside than maxW.
-func plateShapes(s *geoSite, nodes []mapNode, f mapFocus, most, maxW int, runs map[string][]span) []plate {
+func plateShapes(s *geoSite, nodes []mapNode, f mapFocus, most, maxW int, runs map[string][]span, locations bool) []plate {
 	title := ellipsis(siteTitle(s, nodes), maxW)
+	if locations {
+		return []plate{{site: s, title: title, location: true, w: width(title) + 2, h: 1, k: -1}}
+	}
 	c := &vCard{rows: append([]int(nil), s.nodes...), located: true}
 	c.nest(nodes)
 	caps := []int{min(len(c.rows), most)}
@@ -128,11 +132,11 @@ func (t sat) over(x0, y0, x1, y1 int) int32 {
 // aspect is a cell's height over its width. Labels are placed one at a time,
 // each where it costs least around those placed before it; since the order
 // matters, a few orders are tried and the one that costs least in all wins.
-func placePlates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span) ([]plate, bool) {
-	return placePlatesBudget(sites, nodes, f, w, h, aspect, land, arcs, taken, runs, newLayoutWork())
+func placePlates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span, locations bool) ([]plate, bool) {
+	return placePlatesBudget(sites, nodes, f, w, h, aspect, land, arcs, taken, runs, locations, newLayoutWork())
 }
 
-func placePlatesBudget(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span, work *layoutWork) ([]plate, bool) {
+func placePlatesBudget(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, aspect float64, land []uint8, arcs, taken []bool, runs map[string][]span, locations bool, work *layoutWork) ([]plate, bool) {
 	if !mapLayoutAllowed(w, h, len(nodes), 0) || len(sites) > maxLayoutNodes {
 		return nil, false
 	}
@@ -145,7 +149,7 @@ func placePlatesBudget(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, 
 		maxW = min(max(w/3, 18), 48)
 	}
 	for k, s := range sites {
-		shapes[k] = plateShapes(s, nodes, f, most, maxW, runs)
+		shapes[k] = plateShapes(s, nodes, f, most, maxW, runs, locations)
 		for i := range shapes[k] {
 			shapes[k][i].k = k
 		}
@@ -218,7 +222,7 @@ func (m *Model) plates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, 
 			hs.Write([]byte{0})
 		}
 	}
-	num(float64(w), float64(h), aspect)
+	num(float64(w), float64(h), aspect, float64(m.GeoLabels))
 	for _, s := range sites {
 		num(s.x, s.y, float64(len(s.nodes)))
 		str(s.signal)
@@ -245,7 +249,7 @@ func (m *Model) plates(sites []*geoSite, nodes []mapNode, f mapFocus, w, h int, 
 	}
 	key := hs.Sum64()
 	if m.pcache.key != key || m.pcache.plates == nil {
-		ps, complete := placePlates(sites, nodes, f, w, h, aspect, land, arcs, taken, runs)
+		ps, complete := placePlates(sites, nodes, f, w, h, aspect, land, arcs, taken, runs, m.GeoLabels == geoLocations)
 		m.pcache = plateCache{key: key, plates: ps, complete: complete}
 		if m.pcache.plates == nil {
 			m.pcache.plates = []plate{}
@@ -424,6 +428,20 @@ func (m *Model) drawPlate(cv *Canvas, ox, oy int, p plate, nodes []mapNode, f ma
 		}
 	}
 	x, y := ox+p.x, oy+p.y
+	if p.location {
+		paper, text := Mix(cInk, cKeyBG, .4), cText
+		if s.focused || s.onRoute {
+			paper, text = cSelBG, cGlow
+		}
+		st := fg(text).Bg(paper).bold()
+		cv.Fill(x, y, p.w, 1, Style{BG: paper})
+		cv.Text(x+1, y, p.title, st, p.w-2)
+		if m.NoColor && (s.focused || s.onRoute) {
+			cv.Set(x, y, '›', st)
+		}
+		m.hit(x, y, p.w, "select:node:"+nodes[lead].ID)
+		return
+	}
 	if p.line {
 		ts, bg := fg(cText), Color(0)
 		if s.focused || s.onRoute {

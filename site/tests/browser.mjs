@@ -71,6 +71,20 @@ try {
 
   await page.goto(base + '/demo/');
   await ready();
+  await page.locator('canvas').press('2');
+  await page.waitForFunction(() => viewerStats.frame.tab === 1);
+  await page.keyboard.press('m');
+  await page.waitForFunction(() => viewerStats.frame.text?.includes('Cards · p'));
+  await page.keyboard.press('f');
+  await page.keyboard.press('p');
+  await page.waitForFunction(() => viewerStats.frame.text?.includes('Locations · p'));
+  assert.ok((await page.locator('#demo-transcript').textContent()).includes('Tokyo'));
+  await page.keyboard.press('p');
+  await page.waitForFunction(() => viewerStats.frame.text?.includes('Points · p'));
+  await page.keyboard.press('p');
+  await page.waitForFunction(() => viewerStats.frame.text?.includes('Cards · p'));
+  await page.keyboard.press('f');
+  console.log('PASS geographic labels cycle through cards, locations and points in the browser');
   await page.locator('canvas').press('3');
   await page.waitForFunction(() => viewerStats.frame.tab === 2);
   await page.keyboard.press('/');

@@ -5,6 +5,18 @@ import (
 	"sort"
 )
 
+// geoLabels progressively removes detail without changing the map's framing.
+type geoLabels uint8
+
+const (
+	geoCards geoLabels = iota
+	geoLocations
+	geoPoints
+)
+
+func (g geoLabels) next() geoLabels { return (g + 1) % 3 }
+func (g geoLabels) name() string    { return [...]string{"Cards", "Locations", "Points"}[g] }
+
 // The geographic view: declared node locations on a quiet dotted world map.
 // Nodes that share a place become one site; links between sites are arcs
 // colored by what the evidence allows them to claim, and only arcs whose
@@ -471,7 +483,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 			e.Kind = edgeLink
 		}
 		c, pri, dash := edgeStyle(e, mapFocus{})
-		dash = arcDash(dash, m.Points)
+		dash = arcDash(dash, m.GeoLabels != geoCards)
 		if a.focused {
 			c, pri = Mix(c, cGlow, .4), 8
 		}
@@ -500,7 +512,15 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 	}
 	// Labels are placed before the dots are drawn, so their leaders are
 	// dots too, under the arcs.
-	tag := " " + []string{"fit", "focus", "world"}[m.Zoom%3] + " · z "
+	labelTag := " " + m.GeoLabels.name() + " · p "
+	zoomTag := " " + []string{"fit", "focus", "world"}[m.Zoom%3] + " · z "
+	if width(labelTag)+width(zoomTag) > w-2 {
+		labelTag = ""
+	}
+	if width(zoomTag) > w-2 {
+		zoomTag = ellipsis(" z ", max(0, w-2))
+	}
+	tag := labelTag + zoomTag
 	taken := make([]bool, w*mh)
 	for i := max(0, w-width(tag)-2); i < w; i++ {
 		taken[i] = true
@@ -526,11 +546,11 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		}
 	}
 	// With the map to itself, a plate also says what runs on each node.
-	// The points view leaves the markers and dashed arcs, and no plates.
+	// Locations keeps only compact place labels; Points leaves the markers.
 	var runs map[string][]span
 	var plates []plate
-	if !m.Points {
-		if m.FullMap {
+	if m.GeoLabels != geoPoints {
+		if m.FullMap && m.GeoLabels == geoCards {
 			runs = m.nodeServices()
 		}
 		var complete bool
@@ -594,8 +614,13 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		cv.Text(x+max(0, (w-width(msg))/2), y+mh/2, msg, fg(cMuted).italic(), w)
 	}
 	tx := x + w - width(tag) - 1
-	cv.Text(tx, y, tag, fg(cFaint), -1)
-	m.hit(tx, y, width(tag), "key:z")
+	if labelTag != "" {
+		cv.Text(tx, y, labelTag, fg(cMuted), -1)
+		m.hit(tx, y, width(labelTag), "key:p")
+	}
+	tx += width(labelTag)
+	cv.Text(tx, y, zoomTag, fg(cFaint), -1)
+	m.hit(tx, y, width(zoomTag), "key:z")
 }
 
 // halo rings a point with dots r dot widths from it, round on screen when

@@ -251,7 +251,7 @@ func (m *Model) mapLegend(cv *Canvas, x, ly, w int, nodes []mapNode, edges []map
 	item('○', cUnknown, "unknown")
 	cx += 2
 	line := '━'
-	if m.mapMode() == "geo" && m.Points {
+	if m.mapMode() == "geo" && m.GeoLabels != geoCards {
 		line = '┄'
 	}
 	item(line, Mix(cUp, cInk, .45), "path ok")

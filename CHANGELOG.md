@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The geographic map cycles through Cards, Locations and Points with `p`.
+  Locations shows compact place labels (coordinates for unnamed sites), with
+  collision-aware placement, selection and zoom, without node or service cards.
+
 ### Fixed
 
 - Vercel request IDs use their real colon-separated routing format. Receiving

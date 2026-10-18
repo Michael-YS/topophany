@@ -471,11 +471,7 @@ func (m *Model) actions() []action {
 		add(3, "m", "Map", "m")
 		add(4, "z", "Zoom", "z")
 		if m.mapMode() == "geo" {
-			if m.Points {
-				add(2, "p", "Cards", "p")
-			} else {
-				add(2, "p", "Points", "p")
-			}
+			add(2, "p", m.GeoLabels.next().name(), "p")
 		}
 		if m.FullMap {
 			add(1, "f", "Panels", "f")

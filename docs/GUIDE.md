@@ -135,7 +135,7 @@ Press `f` and the map has the screen to itself: the list and the evidence step a
 | `/` | filter rows |
 | `v` | cycle observer vantage points |
 | `m` / `z` | cycle the map (virtual geo, geo, network) / zoom the geo map |
-| `p` | on the geo map, hide the site plates and draw dashed arcs, leaving the markers; `p` brings the plates back |
+| `p` | on the geo map, cycle Cards → Locations → Points: full site cards, compact city names (coordinates when unnamed), then markers alone; Locations and Points use dashed arcs |
 | `s` | on Servers, line the cards up at one size, each saying the same things; `s` brings the wall back |
 | `f` | show the map alone, on the Overview or Topology (from another tab, the Topology's); `f` or `Esc` brings the panels back |
 | `r` | refresh now |

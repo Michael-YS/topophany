@@ -59,16 +59,16 @@ type Model struct {
 	Now                                     time.Time
 	MapMode                                 string // "", "virtual", "geo" or "network"; "" picks virtual when locations exist
 	Zoom                                    int
-	FullMap                                 bool    // the map alone fills the body where a tab has one (f)
-	Points                                  bool    // geo map: plates hidden, every arc dashed (p)
-	Uniform                                 bool    // Servers: a grid of uniform cards rather than the wall (s)
-	NerdFont                                bool    // the terminal's font has the Nerd Fonts' logos, so providers wear them
-	Edit                                    *Editor // non-nil only for topo edit
-	Preview                                 Preview // non-nil only for topo preview
-	Debug                                   bool    // performance/geometry overlay (D)
-	Transparent                             bool    // keep the terminal background (TOPO_BACKGROUND=terminal)
-	Hyperlinks                              bool    // write links as OSC 8 hyperlinks
-	Cell                                    float64 // a cell's height over its width, as the terminal reports it; 0 when unknown
+	FullMap                                 bool      // the map alone fills the body where a tab has one (f)
+	GeoLabels                               geoLabels // geo map: cards, locations, points (p)
+	Uniform                                 bool      // Servers: a grid of uniform cards rather than the wall (s)
+	NerdFont                                bool      // the terminal's font has the Nerd Fonts' logos, so providers wear them
+	Edit                                    *Editor   // non-nil only for topo edit
+	Preview                                 Preview   // non-nil only for topo preview
+	Debug                                   bool      // performance/geometry overlay (D)
+	Transparent                             bool      // keep the terminal background (TOPO_BACKGROUND=terminal)
+	Hyperlinks                              bool      // write links as OSC 8 hyperlinks
+	Cell                                    float64   // a cell's height over its width, as the terminal reports it; 0 when unknown
 	perf                                    perf
 	modal                                   *modal
 	notice                                  string
@@ -421,9 +421,9 @@ func (m *Model) Key(k string) string {
 			m.Detail = false
 		}
 	case "p":
-		// Markers and dashed arcs, and only while the geo map is on screen.
+		// Cycle detail only while the geographic map is on screen.
 		if m.mapShown() && m.mapMode() == "geo" {
-			m.Points = !m.Points
+			m.GeoLabels = m.GeoLabels.next()
 		}
 	case "s":
 		// The Servers cards as a grid of one size, or the wall back.
