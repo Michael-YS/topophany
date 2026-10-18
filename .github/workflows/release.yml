@@ -106,4 +106,8 @@ jobs:
           done
           read -r kind sha <<< "$object"
           [[ "$kind" == commit && "$sha" == "$SOURCE_SHA" ]] || { echo 'Release tag differs from built source' >&2; exit 1; }
-          gh release create "$VERSION" ./*.tar.gz ./*.zip ./SHA256SUMS.txt ./CHANGELOG.md ./RELEASE_NOTES.md --title "Topophany $VERSION" --verify-tag --target "$SOURCE_SHA" --notes-file ./RELEASE_NOTES.md
+          release_flags=(--verify-tag)
+          if [[ "$VERSION" == *-* ]]; then
+            release_flags+=(--prerelease --latest=false)
+          fi
+          gh release create "$VERSION" ./*.tar.gz ./*.zip ./SHA256SUMS.txt ./CHANGELOG.md ./RELEASE_NOTES.md --title "Topophany $VERSION" --target "$SOURCE_SHA" --notes-file ./RELEASE_NOTES.md "${release_flags[@]}"
