@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Isolate TUI fuzz tests from the user's saved preferences. Random input
+  could select Settings' Save action and overwrite real startup defaults
+  while running local verification before an upgrade. Upgrade acceptance
+  now also checks that preferences survive installation and rollback unchanged.
+
 ## [1.2.0] - 2026-10-18
 
 ### Added

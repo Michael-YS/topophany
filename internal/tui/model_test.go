@@ -6,6 +6,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -271,6 +272,8 @@ func TestNonTerminalFailsWithoutControlOutput(t *testing.T) {
 func FuzzDecoderAndRendering(f *testing.F) {
 	f.Add([]byte("\x1b[A中文"), uint8(80))
 	f.Add([]byte("\x1b[200~q\x1b[201~"), uint8(120))
+	// Open preferences and select Save as startup defaults.
+	f.Add([]byte(",\t\t\t\t\t\t\t\r"), uint8(120))
 	f.Fuzz(func(t *testing.T, b []byte, w uint8) {
 		if len(b) > 16384 {
 			return
@@ -278,6 +281,9 @@ func FuzzDecoderAndRendering(f *testing.F) {
 		var d Decoder
 		now := time.Unix(1, 0)
 		var m Model
+		// Random input can open Settings and save. Keep every fuzz case
+		// away from the user's real startup preferences.
+		m.PreferencesPath = filepath.Join(t.TempDir(), "preferences.json")
 		m.Width = int(w)
 		m.Height = 15
 		m.Now = now

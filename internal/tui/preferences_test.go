@@ -2,12 +2,54 @@ package tui
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/WhitenWhiten/topophany/internal/preferences"
 )
+
+func TestRenderingFuzzPreservesUserPreferences(t *testing.T) {
+	// Give the child test process a fake user config directory containing
+	// saved preferences, then replay input that reaches the Save button.
+	variable := "XDG_CONFIG_HOME"
+	switch runtime.GOOS {
+	case "darwin":
+		variable = "HOME"
+	case "windows":
+		variable = "AppData"
+	}
+	t.Setenv(variable, t.TempDir())
+	path, err := preferences.DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := preferences.Settings{Page: "servers", GroupsCollapsed: true, UniformCards: true, FullMap: true, MapMode: "network", NerdFontIcons: true}
+	if err = preferences.Save(path, s); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(exe, "-test.run=^FuzzDecoderAndRendering/seed#2$", "-test.count=1", "-test.v").CombinedOutput()
+	if err != nil {
+		t.Fatalf("replay preference-saving fuzz input: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "--- PASS: FuzzDecoderAndRendering/seed#2") {
+		t.Fatalf("preference-saving fuzz seed did not run:\n%s", output)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("rendering fuzz changed the user's saved preferences: %s, %v", after, err)
+	}
+}
 
 func TestStartupAndDefaultExpandedGroups(t *testing.T) {
 	m := businessFixture()
