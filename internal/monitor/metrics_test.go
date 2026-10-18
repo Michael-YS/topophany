@@ -221,3 +221,18 @@ func TestMetricCollectionBoundsAndTopologyOrder(t *testing.T) {
 		t.Fatal(card)
 	}
 }
+
+func TestServerSampleClockIncludesItsObservers(t *testing.T) {
+	now := time.Now().UTC()
+	in := hostInput(now.Add(-3 * time.Second))
+	in.Snapshot.GeneratedAt = now
+	in.Snapshot.Topology.Nodes = []model.Node{{ID: "host"}}
+	in.Snapshot.Topology.Observers[0].Node = "host"
+	in.Snapshot.Topology.Observers[0].StaleSeconds = 90
+	in.Snapshot.Observers = []model.ObserverState{{ID: "local", Health: "up", LastSeen: now.Add(-time.Second)}}
+	v := view.View{Snapshot: in.Snapshot, Now: now}
+	card, sampled, _, ok := server(v, v, "host")
+	if !ok || len(card.Observes) != 1 || !sampled.Equal(now.Add(-time.Second)) {
+		t.Fatal(card, sampled)
+	}
+}

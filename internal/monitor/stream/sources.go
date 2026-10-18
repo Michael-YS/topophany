@@ -58,7 +58,7 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 		if err != nil {
 			initial = monitor.Input{Unavailable: true}
 		}
-		return Source{Initial: initial, Fetch: fetch}, nil
+		return Source{Project: c.Project, Initial: initial, Fetch: fetch}, nil
 	}
 	path := r.Credentials
 	if path == "" {
@@ -108,18 +108,23 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 		in := monitor.Input{Snapshot: s}
 		if r.Observer != "" {
 			all, e := get("")
-			if e == nil {
-				in.AllSnapshot = &all
-			}
 			if errors.Is(e, client.ErrProjectMismatch) {
 				select {
 				case sourceErrors <- failure("project_mismatch", "snapshot project does not match request"):
 				default:
 				}
+				return previous, nil
 			}
+			if e != nil {
+				return monitor.Input{}, e
+			}
+			if all.Revision != s.Revision {
+				return monitor.Input{}, errors.New("source changed during snapshot read")
+			}
+			in.AllSnapshot = &all
 		}
 		previous = in
 		return in, nil
 	}
-	return Source{Initial: previous, Fetch: fetch, Close: cl.Close, Errors: sourceErrors}, nil
+	return Source{Project: p.Project, Initial: previous, Fetch: fetch, Close: cl.Close, Errors: sourceErrors}, nil
 }

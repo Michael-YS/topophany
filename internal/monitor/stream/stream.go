@@ -12,6 +12,7 @@ import (
 // Source is an owned, prepared source. Open must honor ctx; Fetch follows the
 // same five-second deadline contract as monitor.Run. Close releases resources.
 type Source struct {
+	Project string
 	Errors  <-chan *Error
 	Initial monitor.Input
 	Fetch   monitor.Fetch
@@ -97,7 +98,11 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 			revision++
 			active = request
 			sourceErrors = source.Errors
-			c = monitor.Config{Schema: 1, Name: "stream", Revision: fmt.Sprintf("%s-%d", instance, revision), Source: request.Source, Project: request.Project, Observer: request.Observer, Interval: request.Interval, Template: request.Template}
+			project := source.Project
+			if project == "" {
+				project = request.Project
+			}
+			c = monitor.Config{Schema: 1, Name: "stream", Revision: fmt.Sprintf("%s-%d", instance, revision), Source: request.Source, Project: project, Observer: request.Observer, Interval: request.Interval, Template: request.Template}
 			runCtx, runCancel := context.WithCancel(ctx)
 			hub := &monitor.Hub{}
 			ch, unsub, _ := hub.Subscribe()

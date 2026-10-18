@@ -165,3 +165,22 @@ func normalizeTimes(v any) {
 		}
 	}
 }
+
+func TestUnavailableSourceRetainsProjectIdentity(t *testing.T) {
+	lines := make(chan Line, 1)
+	lines <- line(request())
+	close(lines)
+	var first monitor.Panel
+	open := func(context.Context, Request) (Source, *Error) {
+		return Source{Project: "bound-project", Initial: monitor.Input{Unavailable: true}, Fetch: func(ctx context.Context) (monitor.Input, error) { <-ctx.Done(); return monitor.Input{}, ctx.Err() }}, nil
+	}
+	err := Run(context.Background(), lines, open, func(p monitor.Panel) error {
+		if first.Name == "" {
+			first = p
+		}
+		return nil
+	})
+	if err != nil || first.Project != "bound-project" {
+		t.Fatal(first, err)
+	}
+}

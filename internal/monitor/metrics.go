@@ -449,6 +449,10 @@ func server(v view.View, all view.View, id string) (ServerCard, time.Time, time.
 	}
 	for _, o := range observerVerdicts(all) {
 		if onNode[o.ID] {
+			until = minTime(until, all.Snapshot.GeneratedAt.Add(15*time.Second))
+			if o.LastSeen != nil && o.LastSeen.After(sampled) {
+				sampled = *o.LastSeen
+			}
 			out.Observes = append(out.Observes, o)
 		}
 		if len(out.Observes) == 64 {
