@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Privileged Unix installation rejects intermediate symlinks before filesystem
+  mutations, creates directories through verified handles, and changes data
+  directory ownership through an open descriptor.
+- Source identities and ZIP/tar exports reject nonportable paths and aliases
+  under case and Unicode normalization, preventing cross-platform extraction
+  from replacing reviewed files.
+- Alert queues clip presentation text before admission and enforce encoded
+  event and persistence budgets, so saved queues remain readable on restart.
 - Mihomo provider load times use a separate `provider_updated_at.<name>`
   namespace and omit keys over 128 bytes, so valid long provider names do not
   refuse a batch and metadata cannot overwrite another provider's membership.

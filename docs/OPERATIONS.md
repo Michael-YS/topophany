@@ -62,6 +62,12 @@ Release tests and builds run in separate read-only jobs against the triggering c
 
 Run `scripts/package.py` from a clean committed checkout after verification. The exporter rejects ignored or untracked inputs under source directories, rejects private-key/environment filenames even when tracked, and reads archive content exclusively from the pinned Git revision. Verification captures the commit and a deterministic per-file SHA-256 source manifest before and after testing, failing if either changes. Packaging requires matching clean verification identities and exported blob digests; evidence from another revision is rejected. Its manifest records that revision. Local changes made after validation cannot alter archive bytes.
 
+Source identities and archive manifests use the same portable pathname policy.
+Backslashes, drive/stream syntax, controls, Windows reserved names and trailing
+dots or spaces are refused. Case and Unicode aliases, including directory
+prefixes, are rejected before export; ZIP and tar manifests must match the
+reviewed file set exactly.
+
 ## Capacity planning and collector migration
 
 Before adding observers or moving a collector, save an authenticated `topo --json > snapshot.json`, then run `topo capacity --config proposed-topology.json --snapshot snapshot.json`. This reads only the reviewed topology and saved snapshot; it never opens or changes collector journals. Exit 2 means an existing allocation or the scheduled receipts need attention. Older collectors without `storage` cannot supply migration usage; omit `--snapshot` for schedule-only planning.

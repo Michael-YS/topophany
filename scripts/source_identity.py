@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 import subprocess
 
+from portable_paths import validate_paths
+
 
 ALLOWED_ROOT_FILES = {"go.mod", "go.sum", "README.md", "LICENSE", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
                       "CHANGELOG.md", "Makefile", ".gitignore", ".gitattributes", ".editorconfig"}
@@ -33,6 +35,7 @@ def source_identity(root: Path) -> dict:
     ignored_sources = {name for name in git("ls-files", "-z", "--others", "--ignored", "--exclude-standard").split(b"\0")
                        if name and accepted(Path(os.fsdecode(name)))}
     names.update(ignored_sources)
+    validate_paths(os.fsdecode(name) for name in names - {b""})
     files = {}
     for name in sorted(names - {b""}):
         path = root / os.fsdecode(name)

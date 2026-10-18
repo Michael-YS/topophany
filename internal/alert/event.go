@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"mime"
 	"net/http"
 	"strings"
@@ -92,6 +93,20 @@ func lastSeen(t time.Time) string {
 
 // maxText bounds what a message says, under every service's own limit.
 const maxText = 1500
+
+// bounded is the representation both persisted and delivered. Leave room in
+// each recipient's share for queue metadata, observer IDs and retry counters.
+func (e Event) bounded() (Event, error) {
+	e.Title, e.Text = clip(e.Title, 250), clip(e.Text, maxText)
+	b, err := json.Marshal(e)
+	if err != nil {
+		return e, err
+	}
+	if len(b) > maxBytes/(maxWebhooks*queueSize)-1024 {
+		return e, errors.New("encoded alert exceeds queue budget")
+	}
+	return e, secure.JSONBudget(b)
+}
 
 // clip makes s safe and short: no control characters but line breaks, at
 // most n bytes.

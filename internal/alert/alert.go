@@ -49,6 +49,8 @@ var (
 	Groups  = []string{"incidents", "observers"}
 )
 
+const maxWebhooks = 16
+
 // Load reads and checks the alerts file at path against topology c. Like
 // auth.json it must be a private regular file.
 func Load(path string, c model.Config) (Config, error) {
@@ -65,7 +67,7 @@ func Load(path string, c model.Config) (Config, error) {
 
 // Validate checks an alerts file against topology c.
 func Validate(a Config, c model.Config) error {
-	if a.Schema != 1 || len(a.Webhooks) == 0 || len(a.Webhooks) > 16 {
+	if a.Schema != 1 || len(a.Webhooks) == 0 || len(a.Webhooks) > maxWebhooks {
 		return errors.New("alerts require schema 1 and 1..16 webhooks")
 	}
 	observers := map[string]bool{}

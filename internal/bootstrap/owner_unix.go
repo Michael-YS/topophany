@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"syscall"
@@ -62,30 +63,53 @@ func installers() []int {
 // directories, the path itself included, owned by another user or
 // writable by anyone beyond its owner (a sticky one owned by root, such as
 // /tmp, only shelters what lies below it). Whatever does not exist yet
-// root makes itself. leaf, when not -1, may also own the path itself, as
+// root makes itself. Symlinks are rejected before any path is mutated.
+// leaf, when not -1, may also own the path itself, as
 // the service owns its data directory once installed.
 func trustedPath(path string, trusted []int, leaf int) error {
-	p := filepath.Clean(path)
-	for {
-		info, e := os.Stat(p)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	chain := []string{}
+	for p := abs; ; p = filepath.Dir(p) {
+		chain = append(chain, p)
+		if filepath.Dir(p) == p {
+			break
+		}
+	}
+	// Inspect parents first: even Lstat would resolve an unchecked symlink
+	// in a parent before reporting on a deeper component.
+	for _, p := range slices.Backward(chain) {
+		info, e := os.Lstat(p)
 		switch {
 		case errors.Is(e, os.ErrNotExist):
 		case e != nil:
 			return e
+		case systemDirectoryAlias(p, info) && p != abs:
+			resolved, err := filepath.EvalSymlinks(p)
+			if err != nil {
+				return err
+			}
+			if err := trustedPath(resolved, []int{0}, -1); err != nil {
+				return err
+			}
 		case !info.IsDir():
 			return fmt.Errorf("%s is not a directory", p)
 		default:
 			owner, _ := fileOwner(info)
 			sticky := info.Mode()&os.ModeSticky != 0 && owner == 0
-			allowed := slices.Contains(trusted, owner) || p == filepath.Clean(path) && owner == leaf && leaf >= 0
+			allowed := slices.Contains(trusted, owner) || p == abs && owner == leaf && leaf >= 0
 			if !allowed || info.Mode().Perm()&0o022 != 0 && !sticky {
 				return fmt.Errorf("%s could be changed by another user; choose a directory only root (or you) can write to", p)
 			}
 		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			return nil
-		}
-		p = parent
 	}
+	return nil
+}
+
+// macOS has fixed root-owned aliases for its system directories.
+func systemDirectoryAlias(path string, info os.FileInfo) bool {
+	uid, _ := fileOwner(info)
+	return runtime.GOOS == "darwin" && uid == 0 && info.Mode()&os.ModeSymlink != 0 && (path == "/var" || path == "/tmp" || path == "/etc")
 }

@@ -1,12 +1,131 @@
 package alert
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/ledger"
 )
+
+func TestMaximumAlertQueueCanAlwaysRestart(t *testing.T) {
+	snap, changes := failing(t)
+	name := strings.Repeat("<&\"", 1365)
+	snap.Topology.Observers[0].Name = name
+	for i := range snap.Topology.Checks {
+		snap.Topology.Checks[i].Name = name
+	}
+	if err := config.PresentationBounds(snap.Topology); err != nil {
+		t.Fatal("fixture is not a valid presentation", err)
+	}
+	n := &Notifier{Path: filepath.Join(t.TempDir(), "alert-queue.json"), hooks: map[string]*hook{}, queues: map[string]*queue{}}
+	for i := range maxWebhooks {
+		id := fmt.Sprintf("hook-%d", i)
+		n.hooks[id] = &hook{Webhook: Webhook{ID: id}, wake: make(chan struct{}, 1)}
+		n.queues[id] = &queue{}
+	}
+	batch := []ledger.Change{}
+	for i := range queueSize {
+		change := changes[0]
+		if i%2 != 0 {
+			change.Kind = "closed"
+			change.Record.Ended = "recovered"
+			change.Record.Closed = snap.GeneratedAt
+		}
+		batch = append(batch, change)
+	}
+	n.Observe(snap, batch, false)
+	raw, err := os.ReadFile(n.Path)
+	if err != nil || len(raw) > maxBytes || n.unwritten {
+		t.Fatal("saved queue exceeds its restart budget", len(raw), err)
+	}
+	restarted := &Notifier{Path: n.Path}
+	if err := restarted.Load(); err != nil {
+		t.Fatal("saved maximum queue cannot restart", err)
+	}
+	for id, q := range restarted.queues {
+		if len(q.Waiting) != queueSize || q.Dropped != 0 {
+			t.Fatal("valid events were lost", id, len(q.Waiting), q.Dropped)
+		}
+		for _, item := range q.Waiting {
+			if len(item.Event.Title) > 253 || len(item.Event.Text) > maxText+3 {
+				t.Fatal("unclipped event persisted")
+			}
+			req, err := (Webhook{Format: "json", URL: "http://127.0.0.1"}).request(context.Background(), item.Event, "lab", "primary")
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(req.Body)
+			req.Body.Close()
+			var delivered Event
+			if err := json.Unmarshal(body, &delivered); err != nil || delivered.Title != item.Event.Title || delivered.Text != item.Event.Text {
+				t.Fatal("persisted and delivered presentation differ", err)
+			}
+		}
+	}
+}
+
+func TestOversizedAlertDoesNotEvictAnotherObserver(t *testing.T) {
+	snap, changes := failing(t)
+	n := &Notifier{hooks: map[string]*hook{"ops": {Webhook: Webhook{ID: "ops"}, wake: make(chan struct{}, 1)}},
+		queues: map[string]*queue{"ops": {Waiting: []queued{{Observer: "cloud", Event: Event{Title: "keep"}}}}}}
+	changes[0].Record.Summary = strings.Repeat("<", 4000)
+	n.Observe(snap, changes, false)
+	q := n.queues["ops"]
+	if len(q.Waiting) != 1 || q.Waiting[0].Observer != "cloud" || q.Dropped != 1 {
+		t.Fatal("oversized alert displaced another observer", q)
+	}
+}
+
+func TestQueueWriterPreservesReadableFileOnBudgetFailure(t *testing.T) {
+	n := &Notifier{Path: filepath.Join(t.TempDir(), "alert-queue.json"), queues: map[string]*queue{}}
+	n.save()
+	before, _ := os.ReadFile(n.Path)
+	n.queues["bad"] = &queue{Waiting: []queued{{Event: Event{Title: strings.Repeat("x", maxBytes)}}}}
+	n.save()
+	after, err := os.ReadFile(n.Path)
+	if err != nil || string(after) != string(before) || !n.unwritten {
+		t.Fatal("oversized write replaced the last readable queue", err)
+	}
+	if err := (&Notifier{Path: n.Path}).Load(); err != nil {
+		t.Fatal("queue cannot restart after a rejected write", err)
+	}
+}
+
+func TestLegacyQueueIsBoundedBeforeBeingSavedAgain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "alert-queue.json")
+	legacy := saved{Schema: 1, Webhooks: map[string]*queue{"ops": {Waiting: []queued{
+		{Observer: "home", Event: Event{Title: strings.Repeat("<", 4096), Text: strings.Repeat("&", 4096)}},
+		{Observer: "cloud", Event: Event{Title: "keep"}},
+	}}}}
+	raw, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	n := &Notifier{Path: path}
+	if err := n.Load(); err != nil {
+		t.Fatal(err)
+	}
+	n.save()
+	reloaded := &Notifier{Path: path}
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	q := reloaded.queues["ops"]
+	if len(q.Waiting) != 2 || q.Waiting[0].Observer != "home" || q.Waiting[1].Observer != "cloud" || len(q.Waiting[0].Event.Title) > 253 || len(q.Waiting[0].Event.Text) > maxText+3 {
+		t.Fatal("legacy queue was not normalized without reordering observers")
+	}
+}
 
 // What waits for a webhook is kept: a collector that stops with alerts it
 // could not send sends them when it starts again. The file keeps no

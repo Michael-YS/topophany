@@ -205,7 +205,7 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 			}
 		}
 	}
-	if e = secure.MkdirAll(m.InstallDir, 0755); e != nil {
+	if e = makeInstallDirectory(m.InstallDir, 0755, -1, -1); e != nil {
 		return m, "", e
 	}
 	if runtime.GOOS == "windows" {
@@ -309,6 +309,13 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 		}
 	}
 	if m.Role != "client" {
+		// Recheck after installing payloads, before creating or handing over
+		// service data. Every existing component must still be trusted.
+		if runtime.GOOS != "windows" && os.Geteuid() == 0 {
+			if e = trustedPath(m.DataDir, installers(), uid); e != nil {
+				return fail(e)
+			}
+		}
 		// A link in the data directory's place would have root make or
 		// hand over a directory elsewhere.
 		info, err := os.Lstat(m.DataDir)
@@ -322,13 +329,8 @@ func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error
 		case err != nil && !os.IsNotExist(err):
 			return fail(err)
 		}
-		if e = secure.MkdirAll(m.DataDir, 0700); e != nil {
+		if e = makeInstallDirectory(m.DataDir, 0700, uid, gid); e != nil {
 			return fail(e)
-		}
-		if uid >= 0 {
-			if e = lchown(m.DataDir, uid, gid); e != nil {
-				return fail(e)
-			}
 		}
 		// The service makes its own lock file; here it is only looked at.
 		if busy, err := writerBusy(filepath.Join(m.DataDir, "writer.lock")); err != nil || busy {

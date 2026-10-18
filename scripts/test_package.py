@@ -1,5 +1,6 @@
 """Regression tests use throwaway repositories, never local credentials."""
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -123,6 +124,57 @@ class SourceExportTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             require_verified({"source_before": after, "source_after": after},
                              after["revision"], before["files"])
+
+    @unittest.skipIf(os.name == "nt", "crafted POSIX filenames cannot be created on Windows")
+    def test_nonportable_git_revision_is_rejected_before_export_and_identity(self):
+        from source_identity import source_identity
+        for name in ("topo\\main.go", "CON.go", "main.go."):
+            with self.subTest(name=name):
+                path = self.root / "internal" / name
+                path.parent.mkdir(exist_ok=True)
+                path.write_text("crafted source\n")
+                self.git("add", "-f", "--", str(path))
+                self.commit()
+                with self.assertRaisesRegex(RuntimeError, "nonportable"):
+                    package.files_to_export()
+                with self.assertRaisesRegex(RuntimeError, "nonportable"):
+                    source_identity(self.root)
+                self.git("rm", "--", str(path))
+                self.commit()
+
+
+class PortablePathTests(unittest.TestCase):
+    def test_rejects_platform_specific_names(self):
+        from portable_paths import validate_paths
+        for name in ("/cmd/main.go", "cmd//main.go", "cmd/./main.go", "cmd/../main.go",
+                     "cmd/topo\\main.go", "cmd/..\\main.go", "C:/main.go", "//server/share",
+                     "cmd/main.go:stream", "cmd/AUX", "cmd/con.txt", "cmd/CON .txt", "cmd/LPT¹.go",
+                     "cmd/trailing.", "cmd/trailing ", "cmd/control\x00.go", "cmd/control\x7f.go",
+                     "cmd/*.go", "cmd/surrogate\udcff.go"):
+            with self.subTest(name=name), self.assertRaises(RuntimeError):
+                validate_paths([name])
+
+    def test_rejects_case_unicode_duplicate_and_directory_aliases(self):
+        from portable_paths import validate_paths
+        for names in (("cmd/main.go", "cmd/MAIN.go"),
+                      ("docs/café.md", "docs/cafe\u0301.md"),
+                      ("docs/I.md", "docs/ı.md"),
+                      ("cmd/Topo/a.go", "cmd/topo/b.go"),
+                      ("cmd/main.go", "cmd/main.go"),
+                      ("cmd/topo", "cmd/topo/main.go"),
+                      ("cmd/topo/main.go", "cmd/topo")):
+            with self.subTest(names=names), self.assertRaises(RuntimeError):
+                validate_paths(names)
+        validate_paths(["cmd/topo/main.go", "cmd/topo/main_test.go", "docs/日本語.md"])
+
+    def test_both_archive_manifests_require_exact_portable_members(self):
+        expected = {"cmd/topo/main.go": "digest"}
+        package.validate_archive_names(["topophany/cmd/topo/main.go"], expected)
+        for names in (["topophany/cmd/topo\\main.go"],
+                      ["topophany/cmd/topo/main.go", "topophany/cmd/topo/MAIN.go"],
+                      ["topophany/cmd/topo/main.go"] * 2, [], ["elsewhere/main.go"]):
+            with self.subTest(names=names), self.assertRaises(RuntimeError):
+                package.validate_archive_names(names, expected)
 
 
 if __name__ == "__main__":

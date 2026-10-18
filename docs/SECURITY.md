@@ -24,6 +24,13 @@ Client and executor tokens use private files or `token_env`. HTTP probe bearer t
 
 POSIX credential files, the collector's TLS private key among them, require `0600` or stricter file permissions and reject static symlinks and non-regular files; a collector whose key is otherwise refuses to start. Copy a key out of a certificate tool's directory, such as Let's Encrypt's `live/` whose files are links, rather than pointing `--tls-key` at it. The parent directory must be owned and controlled by a trusted user; no defense is claimed against race-condition replacement attacks within a world-writable parent directory. Windows runtime reads rely on filesystem ACLs. Native bundle generation and installation replace and verify directory and existing child DACLs, allowing only the current user SID and necessary Administrators/SYSTEM before writing credentials. They reject unrelated owners and reparse points; they do not audit arbitrary parent-directory ACLs or defend against replacement races in untrusted writable parents. Manual deployers must confirm those same read-access limits.
 
+Privileged Unix installation checks every existing component of installation
+and data paths before mutation and rejects symbolic links, except macOS's fixed
+root-owned `/etc`, `/var` and `/tmp` system aliases. Directory creation uses
+verified directory handles and data ownership changes use an open descriptor.
+If preparation fails, cleanup removes only empty directories created by that
+attempt. Root and the administrator invoking sudo remain trusted installers.
+
 Remote server URLs must use HTTPS with valid hostnames and CA verification. There is no `InsecureSkipVerify` bypass. Ambient environment `HTTP_PROXY` is ignored and HTTP redirects are not followed, preventing token forwarding to arbitrary servers. Literal loopback addresses may use HTTP, though API bearer tokens are still required. A malicious local user or a rogue proxy listening on loopback is not a secure substitute for TLS. The `--allow-insecure` flag is an explicit acceptance of plaintext risk, not a recommended production deployment method.
 
 HTTP/Mihomo bearer credentials, custom request headers (including API keys), and a query in an HTTP check's URL, which may carry a service's token, require HTTPS except for direct literal-loopback targets. A non-loopback `resolve_ip` or any proxy path removes the plaintext exception. Credentialed HTTP CONNECT and SOCKS5 are allowed only as the first, literal-loopback hop; use HTTPS CONNECT for remote credentialed hops. TLS or SSH to an earlier proxy does not encrypt a later proxy-to-proxy leg. These checks run both during configuration validation and before execution.

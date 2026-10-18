@@ -110,6 +110,20 @@ func (n *Notifier) Load() error {
 		if q == nil || len(q.Waiting) > queueSize {
 			return fmt.Errorf("alert queue %s is invalid; move it aside to start a new one", n.Path)
 		}
+		// Older queues predate admission bounds. Normalize them before they
+		// can be persisted again, keeping survivor order and observer shares.
+		waiting := q.Waiting[:0]
+		for _, item := range q.Waiting {
+			bounded, err := item.Event.bounded()
+			if err != nil {
+				q.Dropped++
+				n.logf("alert %s from observer %s to webhook %s dropped: %v", item.Event.Kind, item.Observer, id, err)
+				continue
+			}
+			item.Event = bounded
+			waiting = append(waiting, item)
+		}
+		q.Waiting = waiting
 		n.queues[id] = q
 		if len(q.Waiting) > 0 {
 			n.logf("alerts: %d wait for webhook %s from before; %d sent and %d dropped so far", len(q.Waiting), id, q.Sent, q.Dropped)
@@ -228,11 +242,18 @@ func (n *Notifier) Observe(snap model.Snapshot, changes []ledger.Change, settled
 	}
 	queuedAny := false
 	for _, e := range events {
+		e, budgetErr := e.bounded()
 		for _, h := range n.hooks {
 			if !h.wants(e.group(), e.Observer) {
 				continue
 			}
 			q := n.queues[h.ID]
+			if budgetErr != nil {
+				q.Dropped++
+				n.logf("alert %s from observer %s to webhook %s dropped: %v", e.Kind, e.Observer, h.ID, budgetErr)
+				queuedAny = true // persist the drop count too
+				continue
+			}
 			if len(q.Waiting) >= queueSize {
 				q.Dropped++
 				gone, ok := q.room(e.Observer)
@@ -380,6 +401,9 @@ func (n *Notifier) save() {
 		return
 	}
 	b, e := json.Marshal(saved{Schema: 1, Webhooks: n.queues})
+	if e == nil && len(b) > maxBytes {
+		e = errors.New("encoded alert queue exceeds restart read budget")
+	}
 	if e == nil {
 		e = secure.AtomicWrite(n.Path, b, 0600)
 	}

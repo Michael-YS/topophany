@@ -21,6 +21,7 @@ import tempfile
 import zipfile
 
 from source_identity import accepted, require_verified
+from portable_paths import validate_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,7 +50,9 @@ def files_to_export(revision: str = "HEAD") -> dict[str, bytes]:
             if name and accepted(Path(os.fsdecode(name))):
                 raise RuntimeError("untracked or ignored source input: " + os.fsdecode(name))
     result = {}
-    for entry in git("ls-tree", "-rz", "--full-tree", revision).split(b"\0"):
+    entries = [entry for entry in git("ls-tree", "-rz", "--full-tree", revision).split(b"\0") if entry]
+    validate_paths(os.fsdecode(entry.split(b"\t", 1)[1]) for entry in entries)
+    for entry in entries:
         if not entry:
             continue
         meta, name = entry.split(b"\t", 1)
@@ -63,6 +66,12 @@ def files_to_export(revision: str = "HEAD") -> dict[str, bytes]:
             raise RuntimeError("runtime/private artifact in source revision: " + str(rel))
         result[rel.as_posix()] = git("cat-file", "blob", oid.decode())
     return result
+
+
+def validate_archive_names(names: list[str], source_names) -> None:
+    validate_paths(names)
+    if set(names) != {"topophany/" + name for name in source_names}:
+        raise RuntimeError("archive member manifest differs")
 
 
 def main() -> int:
@@ -83,6 +92,7 @@ def main() -> int:
         raise RuntimeError("refusing release: verification is missing or failing")
     revision = git("rev-parse", "--verify", "HEAD^{commit}").decode().strip()
     source_files = files_to_export(revision)
+    validate_paths(source_files)
     source_sha = {name: hashlib.sha256(body).hexdigest() for name, body in source_files.items()}
     require_verified(summary, revision, source_sha)
     zip_path = output / (args.name + ".zip")
@@ -106,10 +116,7 @@ def main() -> int:
             bad_member = zf.testzip()
             if bad_member:
                 raise RuntimeError("ZIP CRC/read failure: " + bad_member)
-            for info in zf.infolist():
-                p = Path(info.filename)
-                if p.is_absolute() or ".." in p.parts or not p.parts or p.parts[0] != "topophany":
-                    raise RuntimeError("unsafe ZIP member: " + info.filename)
+            validate_archive_names(zf.namelist(), source_sha)
             zf.extractall(dest)
         extracted = dest / "topophany"
         for rel, expected in source_sha.items():
@@ -117,8 +124,7 @@ def main() -> int:
                 raise RuntimeError("extracted file differs: " + rel)
         with tarfile.open(tar_path, "r:gz") as tf:
             names = tf.getnames()
-            if sorted(names) != sorted("topophany/" + name for name in source_sha):
-                raise RuntimeError("tar member manifest differs")
+            validate_archive_names(names, source_sha)
             for member in tf:
                 body = tf.extractfile(member)
                 if not member.isfile() or body is None:

@@ -200,6 +200,13 @@ There are four events: `incident.opened` and `incident.closed` when the incident
 
 Each webhook has its own queue of 64 alerts, delivered in order, at least once. When it is full, an alert from an observer with fewer waiting takes the place of the newest from the observer with the most, so a worker cannot crowd other observers' alerts out of a webhook they share however many incidents it makes for its own; any other new alert is dropped. Either drop is logged with the observer it was from. An alert is tried again after a failure to connect or a 408, 429 or 5xx status, with pauses doubling from 2 seconds to 5 minutes, until it has waited a day, when it is dropped and logged; any other status, including a redirect, which is never followed, drops it at once. Environment proxies are not used. Response headers are limited to 32 KiB over HTTP/1 and HTTP/2; response bodies are read only up to 4 KiB, with a ten-second request timeout. What waits is kept in `alert-queue.json` in the collector's data directory (mode `0600`; it holds alerts, never a webhook's URL or bearer), rewritten whenever an alert is queued, sent or dropped, so a collector that stops sends what waited when it starts, and logs how many wait for each webhook and how many it has sent and dropped. A reload keeps what waits for a webhook by its `id`, sent as the webhook is now configured; what it no longer takes, by event or observer, is dropped, as is what waits for a webhook removed. A queue file the collector cannot read stops it from starting rather than being replaced; move it aside to start a new one. Each collector with an alerts file sends its own, so give the file to one collector of a pair unless duplicates are wanted. The alerts file applies when the collector reloads (`SIGHUP`) or restarts; one that fails validation is refused with the rest of the reload.
 
+Alert titles and text are clipped before queue admission to the same bounds
+used for delivery (250 and 1500 bytes, plus a truncation marker). Each encoded
+event has a share of the 16 MiB restart read budget, reserving space for all
+16 webhooks, 64 entries each and queue metadata. An oversized event is dropped
+and logged before it can evict another observer's alert. A final byte check
+preserves the last readable queue file if persistence would exceed that budget.
+
 ## HTTP API Specifications
 
 `topo serve --web-origin https://topophany.com` enables browser reads for one
