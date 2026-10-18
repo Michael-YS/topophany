@@ -21,6 +21,9 @@ does not establish compatibility with other releases. Add sanitized response fix
 when supporting another response shape. Never commit full proxy configurations,
 tokens or real subscriber credentials.
 
+See [recorded v1.19.32 real-core acceptance](../../../docs/acceptance/MIHOMO_2026-10-17.md)
+for the exact platforms, bounded capacity cases and remaining gaps.
+
 Run `go test ./internal/adapters/mihomo ./internal/probe`.
 
 ### Inventory capacity

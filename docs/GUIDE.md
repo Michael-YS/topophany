@@ -333,7 +333,7 @@ Test suites cover real local HTTP/TLS servers, DNS UDP/TCP resolution, UDP nonce
 
 [SCENARIOS.md](SCENARIOS.md) maps design scenarios to automated test cases without fabricating observations for unmonitored infrastructure. `scripts/verify.py` writes command logs, exit codes, test events, code coverage, fuzz results, cross-compilation builds, and live process acceptance logs to `.verify-build/verification/` (CI publishes them as the `verification` workflow artifact). When reviewing results, distinguish between top-level test functions, subtest events, and fuzz seeds; these are not conflated into independent feature scenarios.
 
-Production Windows TUN drivers, live third-party proxy core configurations, external proxy providers, live Tailscale/WireGuard tunnels, OpenSSH cryptographic handshakes, and live intermittent transit route issues were not executed on end-user hardware. Local protocol integration and structured fixtures verify software mechanics; cross-compilation passes do not substitute for native OS runtime acceptance. Prior to production deployment, complete the [Hardware Acceptance Checklist](ACCEPTANCE.md).
+Targeted [Mihomo v1.19.32 real-core acceptance](acceptance/MIHOMO_2026-10-17.md) records macOS ARM64 and Linux AMD64 inventory capacity runs separately from synthetic fixtures. It does not establish physical Windows TUN capture, other core versions or proxy protocols, live Tailscale/WireGuard tunnel failure behavior, Topophany SSH-jump cryptography, or intermittent transit fault acceptance. Cross-compilation passes do not substitute for native runtime execution. Complete the relevant remaining [Hardware Acceptance Checklist](ACCEPTANCE.md) items for each deployment.
 
 ## Applications and environments
 

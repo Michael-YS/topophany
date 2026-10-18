@@ -1,0 +1,274 @@
+{
+  "schema": 1,
+  "revision": "9917564c4583cd03df6d325ff31b812a2e685829",
+  "version": "dev-9917564",
+  "scope": "native WSL viewer reads against existing production collector; no routing changes",
+  "pre_fix": {
+    "version": "dev-926b000",
+    "reads": 35,
+    "failed_reads": 3,
+    "error": "both configured addresses returned HTTP 429; raw endpoint sampling separately confirmed snapshot_busy"
+  },
+  "post_fix": {
+    "reads": 40,
+    "failed_reads": 0,
+    "reads_over_one_second": 5,
+    "max_seconds": 1.341,
+    "results": [
+      {
+        "at": "2026-10-18T06:18:40Z",
+        "seconds": 0.066,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:41Z",
+        "seconds": 0.071,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:42Z",
+        "seconds": 0.187,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:43Z",
+        "seconds": 0.196,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:44Z",
+        "seconds": 0.202,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:46Z",
+        "seconds": 0.278,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:47Z",
+        "seconds": 0.291,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:49Z",
+        "seconds": 1.221,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:50Z",
+        "seconds": 0.167,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:52Z",
+        "seconds": 0.196,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:53Z",
+        "seconds": 0.276,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:54Z",
+        "seconds": 0.274,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:55Z",
+        "seconds": 0.186,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:57Z",
+        "seconds": 0.179,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:58Z",
+        "seconds": 0.242,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:18:59Z",
+        "seconds": 0.223,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:00Z",
+        "seconds": 0.22,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:01Z",
+        "seconds": 0.196,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:03Z",
+        "seconds": 0.209,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:04Z",
+        "seconds": 0.202,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:05Z",
+        "seconds": 0.222,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:06Z",
+        "seconds": 1.291,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:07Z",
+        "seconds": 0.219,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:08Z",
+        "seconds": 0.193,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:10Z",
+        "seconds": 0.251,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:12Z",
+        "seconds": 1.341,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:13Z",
+        "seconds": 0.198,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:14Z",
+        "seconds": 0.203,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:15Z",
+        "seconds": 0.183,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:17Z",
+        "seconds": 0.263,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:18Z",
+        "seconds": 0.222,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:19Z",
+        "seconds": 0.256,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:20Z",
+        "seconds": 0.211,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:22Z",
+        "seconds": 0.196,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:24Z",
+        "seconds": 1.252,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:25Z",
+        "seconds": 0.242,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:26Z",
+        "seconds": 0.237,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:28Z",
+        "seconds": 0.221,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:30Z",
+        "seconds": 1.087,
+        "code": 0,
+        "error": ""
+      },
+      {
+        "at": "2026-10-18T06:19:31Z",
+        "seconds": 0.199,
+        "code": 0,
+        "error": ""
+      }
+    ]
+  },
+  "tests": {
+    "ordinary_all": "pass",
+    "client_and_tui_race": "pass",
+    "client_busy_race_repeat_3": "pass",
+    "remote_busy_disconnect_cancellation_repeat_3": "pass",
+    "client_and_tui_vet": "pass",
+    "site_regeneration": "pass",
+    "native_cross_builds": [
+      "darwin-arm64",
+      "linux-amd64",
+      "windows-amd64"
+    ],
+    "wsl_client_and_remote_busy_race_repeat_3": "pass"
+  }
+}

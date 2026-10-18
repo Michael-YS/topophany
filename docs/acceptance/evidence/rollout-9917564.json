@@ -1,0 +1,260 @@
+{
+  "schema": 1,
+  "checked_at": "2026-10-18T06:33:39.350163+00:00",
+  "revision": "9917564c4583cd03df6d325ff31b812a2e685829",
+  "version": "dev-9917564",
+  "binaries": {
+    "linux-amd64": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+    "darwin-arm64": "fec79086a7829f9492b2efb42cfbb2d79fb0de3bda43cc2f4762121d675f89ac",
+    "windows-amd64": "2f1f9113b0ea7f6130ff6b9ca6fa0d42a99a8e446002c3ab3861f8a10847f47d"
+  },
+  "scope": "one production collector and nine workers; unchanged topology and routing; core processes not restarted",
+  "observers": [
+    {
+      "id": "home-wsl",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "dmit-local",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "s1-local",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "s2-local",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "aaitr-local",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "huawei-local",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "aliyun-local",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "azure-local",
+      "platform": "linux-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "running_process_sha256": "e3ec318d57dfe910630488edff9fc5355c447604cff54b5a8578c0210a604b01",
+      "version": "dev-9917564",
+      "topology_unchanged": true
+    },
+    {
+      "id": "home-windows",
+      "platform": "windows-amd64",
+      "role": "worker",
+      "service_active": true,
+      "installed_sha256": "2f1f9113b0ea7f6130ff6b9ca6fa0d42a99a8e446002c3ab3861f8a10847f47d",
+      "version": "dev-9917564",
+      "topology_unchanged": true,
+      "verification": "fresh worker PID from rollout still running from the validated executable; installed hash matches candidate",
+      "existing_core_process_unchanged": true
+    },
+    {
+      "id": "mac-mini",
+      "platform": "darwin-arm64",
+      "role": "collector",
+      "service_active": true,
+      "installed_sha256": "fec79086a7829f9492b2efb42cfbb2d79fb0de3bda43cc2f4762121d675f89ac",
+      "version": "dev-9917564",
+      "topology_unchanged": true,
+      "verification": "collector API reports deployed version; installed SHA matches candidate"
+    }
+  ],
+  "production": {
+    "schema": 1,
+    "generated_at": "2026-10-18T06:33:49.732581Z",
+    "collector_version": "dev-9917564",
+    "checks_total": 79,
+    "observer_states": [
+      {
+        "id": "home-wsl",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:48.267579308Z"
+      },
+      {
+        "id": "mac-mini",
+        "health": "up",
+        "contracts": null,
+        "last_seen": "2026-10-18T06:33:46.065008Z"
+      },
+      {
+        "id": "home-windows",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:48.9027718Z"
+      },
+      {
+        "id": "aliyun-local",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:47.22229158Z"
+      },
+      {
+        "id": "dmit-local",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:47.552572645Z"
+      },
+      {
+        "id": "s1-local",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:46.794229225Z"
+      },
+      {
+        "id": "s2-local",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:47.433990988Z"
+      },
+      {
+        "id": "azure-local",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:48.388091121Z"
+      },
+      {
+        "id": "aaitr-local",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:48.40663993Z"
+      },
+      {
+        "id": "huawei-local",
+        "health": "up",
+        "contracts": "current",
+        "last_seen": "2026-10-18T06:33:47.78635132Z"
+      }
+    ],
+    "checks": [
+      {
+        "id": "mihomo-core",
+        "health": "up",
+        "freshness": "fresh",
+        "outcome": "ok",
+        "evidence": "reported",
+        "sampled_at": "2026-10-18T06:33:45.267281092Z",
+        "provider_load_time_fields": 1,
+        "load_evidence_present": true
+      },
+      {
+        "id": "mihomo-residential-core",
+        "health": "up",
+        "freshness": "fresh",
+        "outcome": "ok",
+        "evidence": "reported",
+        "sampled_at": "2026-10-18T06:33:46.267287405Z",
+        "provider_load_time_fields": 1,
+        "load_evidence_present": true
+      },
+      {
+        "id": "wsl-mihomo-daily-listener-https",
+        "health": "up",
+        "freshness": "fresh",
+        "outcome": "ok",
+        "evidence": "measured",
+        "sampled_at": "2026-10-18T06:33:01.533328114Z",
+        "provider_load_time_fields": 0,
+        "load_evidence_present": false
+      },
+      {
+        "id": "wsl-mihomo-residential-listener-https",
+        "health": "up",
+        "freshness": "fresh",
+        "outcome": "ok",
+        "evidence": "measured",
+        "sampled_at": "2026-10-18T06:32:34.060007966Z",
+        "provider_load_time_fields": 0,
+        "load_evidence_present": false
+      },
+      {
+        "id": "wsl-mihomo-daily-system-https",
+        "health": "up",
+        "freshness": "fresh",
+        "outcome": "ok",
+        "evidence": "measured",
+        "sampled_at": "2026-10-18T06:32:35.560222461Z",
+        "provider_load_time_fields": 0,
+        "load_evidence_present": false
+      }
+    ],
+    "recent_mihomo_history": [
+      {
+        "id": "mihomo-core",
+        "since": "2026-10-18T06:19:23Z",
+        "samples": 16,
+        "outcomes": {
+          "ok": 16
+        }
+      },
+      {
+        "id": "mihomo-residential-core",
+        "since": "2026-10-18T06:19:23Z",
+        "samples": 16,
+        "outcomes": {
+          "ok": 16
+        }
+      }
+    ]
+  },
+  "browser_deployment": {
+    "check": "Workers Builds: topophany",
+    "status": "success",
+    "version_id": "3b0ba4bf-65b9-4bce-8b3c-3e9f25673937",
+    "build_id": "2092de03-04db-4254-9f5a-822593f20bb6",
+    "scope": "control-plane build/deployment confirmation; plain HTTP inspection returned Cloudflare 403/1010, so not a browser runtime acceptance claim"
+  }
+}

@@ -3,6 +3,8 @@
 > [!NOTE]
 > This checklist is an operational procedure guide, not a declaration of completion. Automated test suites (`scripts/verify.py`) verify local software mechanics. The following operations must be performed on designated hardware during authorized maintenance windows. Do not generate large cross-border test traffic or alter active routing rules merely to complete acceptance.
 
+Recorded targeted runs: [Mihomo v1.19.32 capacity and deployment acceptance, 2026-10-17](acceptance/MIHOMO_2026-10-17.md). Each record states its scope and remaining gaps; it does not mark this entire checklist complete.
+
 | Scenario | Inspection Method | Acceptance Criteria |
 |---|---|---|
 | Native Host vs Virtual Container (e.g. WSL) | Run two separate observers; inspect network namespaces and interface routing | Observer identities match their actual processes; if direct routing cannot be verified, route state remains flagged as unverified |

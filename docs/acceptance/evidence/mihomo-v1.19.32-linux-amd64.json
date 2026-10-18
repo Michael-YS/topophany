@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "core_sha256": "3122d100e8177501776109f1a6253a694611627cf4d7c7ec82705855cf8626a8",
+  "topo_version": "Topophany dev-9917564",
+  "started_at": "2026-10-18T06:21:07Z",
+  "scope": "isolated core; fake file providers; controller reads only",
+  "cases": [
+    {
+      "configured_nodes": 1,
+      "inventory_nodes": 10,
+      "provider_members": 1,
+      "inventory_bytes": 2319,
+      "provider_bytes": 1869,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "ok",
+      "code": null,
+      "duration_ms": 4,
+      "secrets_withheld": true,
+      "pass": true
+    },
+    {
+      "configured_nodes": 1000,
+      "inventory_nodes": 1009,
+      "provider_members": 1000,
+      "inventory_bytes": 14307,
+      "provider_bytes": 286584,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "ok",
+      "code": null,
+      "duration_ms": 28,
+      "secrets_withheld": true,
+      "pass": true
+    },
+    {
+      "configured_nodes": 4087,
+      "inventory_nodes": 4096,
+      "provider_members": 4087,
+      "inventory_bytes": 51351,
+      "provider_bytes": 1166379,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "ok",
+      "code": null,
+      "duration_ms": 93,
+      "secrets_withheld": true,
+      "pass": true
+    },
+    {
+      "configured_nodes": 4088,
+      "inventory_nodes": 4097,
+      "provider_members": 4088,
+      "inventory_bytes": 51363,
+      "provider_bytes": 1166664,
+      "core_version": {
+        "meta": true,
+        "version": "v1.19.32"
+      },
+      "outcome": "error",
+      "code": "proxy_inventory_capacity_exceeded",
+      "duration_ms": 92,
+      "secrets_withheld": true,
+      "pass": true
+    }
+  ],
+  "pass": true
+}

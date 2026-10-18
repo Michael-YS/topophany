@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "revision": "9917564c4583cd03df6d325ff31b812a2e685829",
+  "recorded_at": "2026-10-18T06:36:00.897533+00:00",
+  "scope": "completed checks only; the separate long CI acceptance job is not counted as completed",
+  "checks": [
+    {
+      "name": "Workers Builds: topophany",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhitenWhiten/topophany/runs/117605176659",
+      "started_at": "2026-10-18T06:21:41Z",
+      "completed_at": "2026-10-18T06:21:41Z"
+    },
+    {
+      "name": "test (macos-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhitenWhiten/topophany/actions/runs/39103716078/job/117605124041",
+      "started_at": "2026-10-18T06:21:29Z",
+      "completed_at": "2026-10-18T06:30:52Z"
+    },
+    {
+      "name": "test (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhitenWhiten/topophany/actions/runs/39103716078/job/117605124036",
+      "started_at": "2026-10-18T06:21:26Z",
+      "completed_at": "2026-10-18T06:25:10Z"
+    },
+    {
+      "name": "lint",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhitenWhiten/topophany/actions/runs/39103716078/job/117605123978",
+      "started_at": "2026-10-18T06:21:25Z",
+      "completed_at": "2026-10-18T06:22:13Z"
+    },
+    {
+      "name": "test (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/WhitenWhiten/topophany/actions/runs/39103716078/job/117605123834",
+      "started_at": "2026-10-18T06:21:25Z",
+      "completed_at": "2026-10-18T06:31:57Z"
+    }
+  ]
+}

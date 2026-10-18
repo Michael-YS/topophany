@@ -1,0 +1,371 @@
+{
+  "schema": 1,
+  "status": "pass",
+  "started_utc": "2026-10-18T05:51:51.314738+00:00",
+  "finished_utc": "2026-10-18T06:00:45.047561+00:00",
+  "go_version": "go version go1.26.9 linux/amd64",
+  "host_platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "coverage_statement_percent": 85.3,
+  "test_events": {
+    "pass": 1682,
+    "fail": 0,
+    "skip": 4
+  },
+  "top_level_test_functions": {
+    "pass": 609,
+    "fail": 0,
+    "skip": 4
+  },
+  "cross_builds_are_execution_tests": false,
+  "source_revision": "926b000a3076b5199e74bef739322ab9cbdde85b",
+  "source_clean": true,
+  "source_unchanged": true,
+  "checks": [
+    {
+      "name": "go-version",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "go-environment",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "gofmt",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.167
+    },
+    {
+      "name": "source-and-release-boundaries",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 6.709
+    },
+    {
+      "name": "module-integrity",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "vet",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.215
+    },
+    {
+      "name": "tests-json",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 53.364
+    },
+    {
+      "name": "race",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 299.921
+    },
+    {
+      "name": "repeat",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 139.845
+    },
+    {
+      "name": "coverage-summary",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.166
+    },
+    {
+      "name": "fuzz-FuzzDecoderAndRendering",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 10.275
+    },
+    {
+      "name": "fuzz-FuzzValidateBatch",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 2.224
+    },
+    {
+      "name": "fuzz-FuzzSnapshotStructure",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 7.301
+    },
+    {
+      "name": "fuzz-FuzzStateNeverPromotesExpiredSample",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.422
+    },
+    {
+      "name": "fuzz-FuzzDecodeTopology",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 3.137
+    },
+    {
+      "name": "fuzz-FuzzEnvelope",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.62
+    },
+    {
+      "name": "fuzz-FuzzSOCKSAddress",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 2.074
+    },
+    {
+      "name": "fuzz-FuzzEdgeFactsCompatibility",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 4.035
+    },
+    {
+      "name": "fuzz-FuzzTailscaleStatus",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 2.174
+    },
+    {
+      "name": "fuzz-FuzzTailscaleDiagnostic",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.52
+    },
+    {
+      "name": "fuzz-FuzzWireGuardRows",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.975
+    },
+    {
+      "name": "fuzz-FuzzDNSPacket",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.521
+    },
+    {
+      "name": "fuzz-FuzzICMPChecksum",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.572
+    },
+    {
+      "name": "fuzz-FuzzLateSampleOrder",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.37
+    },
+    {
+      "name": "build-native",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.925
+    },
+    {
+      "name": "build-linux-amd64",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.266
+    },
+    {
+      "name": "build-linux-arm64",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.823
+    },
+    {
+      "name": "build-windows-amd64",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.874
+    },
+    {
+      "name": "build-darwin-amd64",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.824
+    },
+    {
+      "name": "build-darwin-arm64",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.931
+    },
+    {
+      "name": "build-windows-arm64",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 1.723
+    },
+    {
+      "name": "example-minimal",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "example-homelab",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.008
+    },
+    {
+      "name": "example-host-resources",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "monitor-example-desktop",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.016
+    },
+    {
+      "name": "monitor-preview-desktop",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "monitor-example-worker",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.016
+    },
+    {
+      "name": "monitor-preview-worker",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-topo",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-serve",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-worker",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-login",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-init",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-validate",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-export",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-once",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-token",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "help-monitor",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 0.004
+    },
+    {
+      "name": "process-smoke",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_seconds": 6.119
+    }
+  ],
+  "process_acceptance": {
+    "schema": 1,
+    "kind": "real Linux processes + PTY, loopback only",
+    "checks": [
+      {
+        "name": "two independently stored collector processes start",
+        "status": "pass"
+      },
+      {
+        "name": "one worker delivers real HTTP results to both collectors",
+        "status": "pass"
+      },
+      {
+        "name": "verified login, private saved credentials and flag-free default connection",
+        "status": "pass"
+      },
+      {
+        "name": "real PTY: alternate screen, all nine tabs, About, read-only edit hint, mouse, observer switching, safe paste",
+        "status": "pass"
+      },
+      {
+        "name": "primary collector loss: live TUI and default JSON client fail over to matching backup",
+        "status": "pass"
+      },
+      {
+        "name": "worker stopped: old results become stale/unknown, not remote-host outage",
+        "status": "pass"
+      },
+      {
+        "name": "TUI q exits cleanly and restores terminal modes/cursor/alternate screen",
+        "status": "pass"
+      },
+      {
+        "name": "topo edit: keyboard add + validated atomic private save of a new local topology",
+        "status": "pass"
+      },
+      {
+        "name": "collector restart recovers durable historical evidence without refreshing sample time",
+        "status": "pass"
+      },
+      {
+        "name": "collectors release exclusive journals on graceful shutdown",
+        "status": "pass"
+      }
+    ],
+    "demo_rss_kib": {
+      "collector-0": 11136,
+      "collector-1": 13184
+    },
+    "status": "pass",
+    "duration_seconds": 6.044
+  }
+}
