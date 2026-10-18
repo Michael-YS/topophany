@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+var errMissingProxy = errors.New("missing proxy")
+
 func expandProxy(all map[string]coreProxy, root string) ([]string, error) {
 	state := map[string]bool{}
 	var visit func(string, int) ([]string, error)
@@ -17,7 +19,7 @@ func expandProxy(all map[string]coreProxy, root string) ([]string, error) {
 		}
 		p, ok := all[name]
 		if !ok {
-			return nil, errors.New("missing proxy")
+			return nil, errMissingProxy
 		}
 		state[name] = true
 		defer delete(state, name)

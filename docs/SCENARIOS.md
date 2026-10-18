@@ -100,6 +100,9 @@ This document lists the finite, verifiable scenario contracts for version 1.1.1,
 | A viewer admitted before reload receives neither the new storage allocation nor new incident metadata after revocation | `TestReloadCannotExposeNewMetadataToOldViewer`, `TestARequestIsServedUnderTheTokensThatAdmittedIt` |
 | Exit-IP structural JSON budgets | `TestExitJSONComplexity` |
 | Mihomo proxy/provider/history/member budgets | `TestMihomoResponseBudgets` |
+| Large Mihomo inventories preserve selected chains and provider drift; only inventory/member sections get larger budgets, exact capacity and byte overflows remain monitor errors, and ignored fields, duplicate keys, depth and history stay bounded | `TestMihomoLargeSubscriptionKeepsSelectionAndProviderPolicy`, `TestMihomoInventoryCapacityAndIgnoredFieldBounds`, `TestMihomoInventoryByteBudgetIsSeparateFromConfig` |
+| A core reporting subscription nodes only under providers can resolve a selected chain without another API endpoint; duplicate provider names, cycles and known mode violations remain unresolved or policy as appropriate | `TestMihomoProviderOnlyChainAndAmbiguousNames` |
+| Linux process acceptance refuses non-Linux platforms before starting sockets, processes or credential-backed logins | `SmokePlatformIsolation.test_non_linux_never_starts_processes_or_network` |
 | Non-acknowledging collector isolation | `TestUnacknowledgedDestinationCannotStopHealthyDelivery`, `TestInvalidACKCollectorIsolationEndToEnd` |
 | Observer history reservations across restart | `TestHistoryReservationSurvivesCheckpoint`, `TestObserverQuotasSurviveRestartAndReserveHeartbeats` |
 | Pre-authentication connection and request admission | `TestConnectionLimitCoversPartialHeadersAndReleases`, `TestPreauthenticationConcurrencyAndRateBounds` |

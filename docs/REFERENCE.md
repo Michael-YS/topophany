@@ -107,6 +107,14 @@ Three-hop sequence: `Local Observer -> CONNECT Ingress -> SOCKS5 Transit -> CONN
 
 `mihomo` adapter supports `token_env`, `root_proxy`, `expected_mode`, and `expected_providers` (mapping provider names to ordered node name arrays). Mismatched runtime members or ordering emit `policy` outcomes; identical names with differing internal parameters cannot be distinguished. Unresolved routing groups, load-balancing groups without single selections, and dependency loops report unknown status. TUN status and modes reflect controller reports rather than kernel routing table inspections.
 
+The full controller proxy inventory is bounded at 4096 entries (including
+built-ins and groups), with up to 4096 members per group/provider and 8 MiB per
+inventory response. `/configs` retains its 2 MiB limit; unrelated objects,
+history arrays, depth and duplicate keys remain strictly bounded. Inventory and
+member overflows report `proxy_inventory_capacity_exceeded` and
+`proxy_members_capacity_exceeded` as monitor errors. See the
+[adapter capacity notes](../internal/adapters/mihomo/README.md#inventory-capacity).
+
 For rotating providers, `adapter.provider_reference` can select fresh ordered
 member lists from an independent HTTPS JSON publisher. Keep fixed groups in
 `expected_providers`; unavailable or stale reference data is a monitor error,

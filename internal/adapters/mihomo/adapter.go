@@ -3,6 +3,7 @@ package mihomo
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -101,8 +102,10 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 		}
 	}
 
+	var chainErr error
 	if options.RootProxy != "" {
 		chain, e := expandProxy(proxies.Proxies, options.RootProxy)
+		chainErr = e
 		if e != nil {
 			o.Facts["chain_resolution"] = "unresolved"
 			if o.Outcome != "policy" {
@@ -128,5 +131,29 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 			}
 		}
 	}
-	return collectProviders(ctx, deps, client, x, target, token, name, o)
+	var providers coreProviders
+	missing := errors.Is(chainErr, errMissingProxy)
+	if err := collectProviders(ctx, deps, client, x, target, token, name, o, &providers, missing); err != nil {
+		return err
+	}
+	// Newer cores keep subscription nodes only in the provider inventory.
+	// Complete a missing chain from that separate read, without claiming an
+	// atomic snapshot or guessing which duplicate provider name was selected.
+	if missing {
+		if err := mergeProviderProxies(proxies.Proxies, providers); err != nil {
+			return err
+		}
+		if chain, err := expandProxy(proxies.Proxies, options.RootProxy); err == nil {
+			for i := range chain {
+				chain[i] = name(chain[i])
+			}
+			delete(o.Facts, "chain_resolution")
+			o.Facts["reported_chain"] = adapters.SafeFact(strings.Join(chain, " -> "))
+			if o.Outcome == "unknown" && o.Code == "runtime_chain_unresolved" {
+				o.Outcome, o.Code = "ok", ""
+				o.Detail = "read-only runtime telemetry collected; not an end-to-end service check"
+			}
+		}
+	}
+	return nil
 }

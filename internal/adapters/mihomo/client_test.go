@@ -46,9 +46,9 @@ func TestMihomoResponseBudgets(t *testing.T) {
 	raw, _ := json.Marshal(wide)
 	array := "[" + strings.Repeat("{},", 256) + "{}]"
 	for _, body := range []string{
-		`{"proxies":` + string(raw) + `}`, `{"providers":` + string(raw) + `}`,
-		`{"proxies":{"p":{"history":` + array + `}}}`, `{"proxies":{"p":{"all":` + array + `}}}`,
-		`{"providers":{"p":{"proxies":` + array + `}}}`, `{"mode":"a","mode":"b"}`,
+		`{"ignored":` + string(raw) + `}`, `{"providers":` + string(raw) + `}`,
+		`{"proxies":{"p":{"history":` + array + `}}}`, `{"proxies":{"p":{"ignored":` + array + `}}}`,
+		`{"providers":{"p":{"ignored":` + array + `}}}`, `{"mode":"a","mode":"b"}`,
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 		for _, path := range []string{"/configs", "/proxies", "/providers/proxies"} {

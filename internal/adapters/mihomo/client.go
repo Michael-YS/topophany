@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters"
-	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
 // Only these three Mihomo API reads are permitted. In particular GET delay
@@ -61,17 +60,21 @@ func readCore(ctx context.Context, c *http.Client, base, path, token string, v a
 	if resp.StatusCode != 200 {
 		return &adapters.Failure{Stage: "adapter_api", Code: fmt.Sprintf("http_%d", resp.StatusCode)}
 	}
-	b, e := io.ReadAll(io.LimitReader(resp.Body, 2<<20+1))
+	limit := int64(2 << 20)
+	if path == "/proxies" || path == "/providers/proxies" {
+		limit = 8 << 20
+	}
+	b, e := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if e != nil {
 		return adapters.Fail("adapter_api", e)
 	}
-	if len(b) > 2<<20 {
+	if int64(len(b)) > limit {
 		return adapters.Local("adapter_api", "response_limit_exceeded")
 	}
 	// Bound proxy/provider maps, member/history arrays and aggregate containers
 	// before allocating typed response objects, including ignored fields.
-	if e = secure.JSONResponseBudget(b, 128, 256, 4096); e != nil {
-		return adapters.Local("adapter_api", "response_complexity_exceeded")
+	if code := coreResponseBudget(b, path); code != "" {
+		return adapters.Local("adapter_api", code)
 	}
 	if e = json.Unmarshal(b, v); e != nil {
 		return adapters.Local("adapter_api", "unsupported_response_shape")

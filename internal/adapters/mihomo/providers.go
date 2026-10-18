@@ -16,12 +16,19 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
-func collectProviders(ctx context.Context, deps Dependencies, client *http.Client, x model.Check, target, token string, name func(string) string, o *model.Observation) error {
+type coreProviders struct {
+	Providers map[string]struct {
+		Proxies   []coreProxy     `json:"proxies"`
+		UpdatedAt json.RawMessage `json:"updatedAt"`
+	} `json:"providers"`
+}
+
+func collectProviders(ctx context.Context, deps Dependencies, client *http.Client, x model.Check, target, token string, name func(string) string, o *model.Observation, out *coreProviders, needChain bool) error {
 	options := x.Adapter.Mihomo()
 	if len(options.ProviderMatchModes) > 0 && Validate(options) != nil {
 		return adapters.Local("setup", "invalid_provider_options")
 	}
-	if len(options.ExpectedProviders) == 0 && options.ProviderReference == nil {
+	if len(options.ExpectedProviders) == 0 && options.ProviderReference == nil && !needChain {
 		return nil
 	}
 	// Preserve the existing direct-run checks and diagnostic codes for static lists.
@@ -52,14 +59,11 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 			expected[k] = v
 		}
 	}
-	var out struct {
-		Providers map[string]struct {
-			Proxies   []coreProxy     `json:"proxies"`
-			UpdatedAt json.RawMessage `json:"updatedAt"`
-		} `json:"providers"`
-	}
-	if err := readCore(ctx, client, target, "/providers/proxies", token, &out); err != nil {
+	if err := readCore(ctx, client, target, "/providers/proxies", token, out); err != nil {
 		return err
+	}
+	if len(expected) == 0 && options.ProviderReference == nil {
+		return nil
 	}
 	stable := true
 	settlingWindow := false

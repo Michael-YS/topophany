@@ -71,6 +71,12 @@ func TestProxyLoginResponseReflection(t *testing.T) {
 					}
 					secret := route != "public" && !encrypted
 					x := httpCheck(s.URL)
+					if route == "ssh-user" {
+						// This checks secret reflection, not helper startup speed.
+						// Race-instrumented subprocesses need headroom when the
+						// whole suite is running packages in parallel.
+						x.TimeoutSeconds = 5
+					}
 					x.Path = "direct"
 					x.CAFile = ca
 					x.HTTP.ExpectedExit = []string{"192.0.2.1"}

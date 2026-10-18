@@ -54,6 +54,9 @@ def main() -> int:
     toolchain_bin = next(Path.home().glob("go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.*/bin"), None)
     if toolchain_bin and toolchain_bin.is_dir():
         env["PATH"] = str(toolchain_bin) + os.pathsep + env.get("PATH", "")
+        # A version-manager shim may have exported another toolchain's GOROOT.
+        # Keep the selected compiler and standard-library sources together.
+        env["GOROOT"] = str(toolchain_bin.parent)
 
     def sanitize_str(s: str) -> str:
         s = s.replace(str(ROOT) + "/", "").replace(str(ROOT), ".")

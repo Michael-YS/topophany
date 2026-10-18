@@ -15,12 +15,42 @@ parameters. Unknown group shapes, cycles and ambiguous load balancing remain
 unresolved. Credential-bearing controller responses may display only names
 already declared by the topology; arbitrary returned names are withheld.
 
-Compatibility is tested against synthetic API responses, not a claimed matrix
-of live Mihomo releases. Add sanitized response fixtures and named regressions
+Default automated compatibility tests use synthetic API responses. Opt-in live
+acceptance is recorded separately with exact core versions and platforms; it
+does not establish compatibility with other releases. Add sanitized response fixtures and named regressions
 when supporting another response shape. Never commit full proxy configurations,
 tokens or real subscriber credentials.
 
 Run `go test ./internal/adapters/mihomo ./internal/probe`.
+
+### Inventory capacity
+
+Collection reads the full controller inventory, then resolves the configured
+root and compares only the configured providers. `/proxies` accepts up to 4096
+entries, including built-in proxies and groups. A group's `all` list and a
+provider's `proxies` list each allow up to 4096 entries. Each inventory response
+is limited to 8 MiB; `/configs` remains limited to 2 MiB. Other objects retain
+128 keys, other arrays (including each history) retain 256 entries, and JSON
+depth, duplicate-key, string, aggregate entry and container limits still apply.
+Names used as object keys remain limited to 128 bytes. This is bounded full
+inventory collection, not a targeted API read or an unlimited subscription size.
+For cores that omit subscription nodes from `/proxies`, a missing chain also
+reads `/providers/proxies` and completes the graph from unique provider node
+names. The combined graph is limited to 4096 names; ambiguous names remain
+unresolved. Group lists nested in provider responses use the same member limit.
+
+Excess inventory reports `proxy_inventory_capacity_exceeded`; excess group or
+provider membership reports `proxy_members_capacity_exceeded`. Bytes and other
+complexity use `response_limit_exceeded` and `response_complexity_exceeded`.
+These are monitor-side errors, never evidence that a proxy or business is down.
+Expected membership configuration and the independent reference document retain
+their existing smaller budgets. Larger actual providers can still be read and
+compared, including reporting unexpected extra members.
+
+`scripts/accept_mihomo.py --core /path/to/mihomo --topo /path/to/topo --output result.json`
+starts isolated cores with synthetic file providers, disabled TUN/listeners and
+health checks. It checks 1000 nodes, the 4096-entry boundary and explicit
+overflow. It does not read or alter the production configuration.
 
 
 Dynamic providers can opt into `adapter.provider_reference`, an independent

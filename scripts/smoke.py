@@ -3,8 +3,8 @@
 No production hosts, system services, network routes or proxy policies are touched.
 Usage: python3 scripts/smoke.py --binary /absolute/path/to/topo --output report.json
 """
-import argparse, contextlib, fcntl, http.server, json, os, pathlib, pty, re
-import select, signal, socket, struct, subprocess, tempfile, termios, threading, time
+import argparse, contextlib, http.server, json, os, pathlib, platform, re
+import select, signal, socket, struct, subprocess, tempfile, threading, time
 import urllib.request
 
 from terminal_screen import TerminalScreen
@@ -18,6 +18,16 @@ def main():
     binary = str(pathlib.Path(args.binary).resolve())
     output = pathlib.Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
+    # XDG_CONFIG_HOME isolates the saved login on Linux only. On macOS Go
+    # uses the real user's Library, and the final RSS check also requires /proc.
+    # Refuse this harness before creating processes or touching credentials.
+    if platform.system() != 'Linux':
+        report = {'schema': 1, 'kind': 'real Linux processes + PTY, loopback only',
+                  'status': 'skipped', 'checks': [], 'reason': 'Linux-only harness; no processes or credentials touched'}
+        output.write_text(json.dumps(report, indent=2) + '\n')
+        print(json.dumps(report))
+        return 0
+    import fcntl, pty, termios
     results, processes, streams = [], [], []
     start = time.monotonic()
     report = {'schema': 1, 'kind': 'real Linux processes + PTY, loopback only', 'checks': results}

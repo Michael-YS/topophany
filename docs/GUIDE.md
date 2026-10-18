@@ -242,7 +242,7 @@ Layered proxy protocols (such as Reality, XHTTP, or VLESS) are hosted by externa
 
 The Mihomo adapter reads only `/configs`, `/proxies`, and `/providers/proxies`, recursively expands `dialer-proxy` chains, and records mode, TUN status, selected nodes, provider names/order, and test URLs. It is forbidden from invoking latency measurement endpoints that could influence routing decisions, and never queries full client connection tables. Parameter consistency cannot be verified solely by node name, and sequential API reads do not form an atomic snapshot.
 
-Tailscale status is queried via local `tailscale status --json`; WireGuard reads handshakes and byte counters via `wg show <interface> dump` while stripping private keys. Both serve as auxiliary telemetry and do not substitute for end-to-end service checks; idle states or older handshakes do not immediately declare outages. Missing host executables report monitor-side errors.
+Tailscale status is queried via local `tailscale status --json`; WireGuard reads only the public `latest-handshakes`, `transfer`, and optional `allowed-ips` and `persistent-keepalive` fields with `wg show <interface> <field>`. It never requests `dump`, private keys or preshared keys. Both serve as auxiliary telemetry and do not substitute for end-to-end service checks; idle states or older handshakes do not immediately declare outages. Missing host executables report monitor-side errors.
 
 ## Edges and Platforms
 

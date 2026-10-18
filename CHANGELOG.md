@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Mihomo full-inventory reads support up to 4096 proxy entries and group/provider
+  members using section-specific budgets and 8 MiB inventory responses. Other
+  objects and histories remain tightly bounded; explicit inventory/member
+  capacity errors remain monitor-side errors. An opt-in isolated real-core
+  acceptance harness records exact versions and capacity boundaries.
+- Mihomo resolves subscription-only selected nodes from the provider inventory
+  on cores that omit them from `/proxies`; ambiguous names remain unresolved.
+- The Linux process/PTY acceptance harness refuses other platforms before
+  starting processes or saving credentials, protecting macOS user profiles.
+
 - Privileged Unix installation rejects intermediate symlinks before filesystem
   mutations, creates directories through verified handles, and changes data
   directory ownership through an open descriptor.
