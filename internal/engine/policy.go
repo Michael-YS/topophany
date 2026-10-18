@@ -52,7 +52,7 @@ func knownRuntimePolicy(a model.AdapterOptions, facts map[string]string) bool {
 // before it opens an incident. Carry retains the run across restarts and
 // publications, so repeated publications cannot postpone confirmation forever.
 func policyThreshold(x model.Check, settling bool) int {
-	threshold := max(x.FailureThreshold, 1)
+	threshold := max(x.PolicyThreshold, 1)
 	ref := x.Adapter.ProviderReference
 	if ref == nil || !settling {
 		return threshold

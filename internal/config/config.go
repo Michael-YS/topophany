@@ -336,7 +336,7 @@ func validateResolved(c model.Config) error {
 				return fmt.Errorf("check %s: probe individual candidate or a named production-listener path, not an abstract policy", x.ID)
 			}
 		}
-		if x.IntervalSeconds < 1 || x.IntervalSeconds > 86400 || x.TimeoutSeconds < 1 || x.TimeoutSeconds > MaxTimeoutSeconds || x.StaleSeconds < x.IntervalSeconds || x.StaleSeconds > 604800 || x.FailureThreshold < 1 || x.FailureThreshold > 20 || x.RecoveryThreshold < 1 || x.RecoveryThreshold > 20 {
+		if x.IntervalSeconds < 1 || x.IntervalSeconds > 86400 || x.TimeoutSeconds < 1 || x.TimeoutSeconds > MaxTimeoutSeconds || x.StaleSeconds < x.IntervalSeconds || x.StaleSeconds > 604800 || x.FailureThreshold < 1 || x.FailureThreshold > 20 || x.RecoveryThreshold < 1 || x.RecoveryThreshold > 20 || x.PolicyThreshold < 0 || x.PolicyThreshold > 20 {
 			return fmt.Errorf("check %s: invalid timing/threshold", x.ID)
 		}
 		for _, ip := range []string{x.BindIP, x.ResolveIP} {

@@ -208,6 +208,7 @@ type Check struct {
 	StaleSeconds      int            `json:"stale_seconds"`
 	FailureThreshold  int            `json:"failure_threshold"`
 	RecoveryThreshold int            `json:"recovery_threshold"`
+	PolicyThreshold   int            `json:"policy_threshold,omitempty"` // 0/omitted confirms immediately; explicit 1..20
 	Disabled          bool           `json:"disabled,omitempty"`
 	Maintenance       bool           `json:"maintenance,omitempty"`
 	BindIP            string         `json:"bind_ip,omitempty"`
@@ -317,9 +318,9 @@ type CheckState struct {
 	// PolicyConfirmed says the latest sample's policy violation has stood
 	// for as many consecutive samples as the check's confirmation threshold
 	// and, when a provider reference is settling, for the settle window in
-	// elapsed time: failure_threshold, or the settle samples and duration.
-	// A single violating sample stays a warning: it may be a publication
-	// still loading, and only a sustained one is a policy incident.
+	// elapsed time. Ordinary policies confirm immediately unless an explicit
+	// policy_threshold requires more samples; provider loading adds its own
+	// bounded settle requirement.
 	PolicyConfirmed bool `json:"policy_confirmed,omitempty"`
 	// Availability is how the check fared over the last day, week and
 	// month, from the collector's rollups of its samples.

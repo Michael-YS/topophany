@@ -82,10 +82,9 @@ func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.T
 		s.Health = "degraded"
 		s.Reason = "policy violation: " + last.Code
 		// A policy violation is a state assertion, not a failed request, so
-		// it never reads as down. It still has to stand for as many
-		// consecutive samples as a failure would before it opens an
-		// incident: a publication the runtime has not loaded yet produces
-		// one or two violating samples and then passes.
+		// it never reads as down. Preserve immediate ordinary policy
+		// incidents unless confirmation is explicitly configured. A pending
+		// provider load independently adds its bounded settle window.
 		settling := providerSettling(x, last)
 		run, threshold := k.PolicyRun, policyThreshold(x, settling)
 		s.PolicyConfirmed = run >= threshold

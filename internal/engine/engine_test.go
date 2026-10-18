@@ -54,8 +54,9 @@ func TestConfirmationRecoveryFreshnessAndMonitorErrors(t *testing.T) {
 		t.Fatal(s)
 	}
 }
-func TestPolicyViolationNeedsTheFailureThreshold(t *testing.T) {
+func TestPolicyViolationUsesExplicitPolicyThreshold(t *testing.T) {
 	c := testkit.Config()
+	c.Checks[0].PolicyThreshold = 3
 	x := c.Checks[0]
 	now := time.Now().UTC()
 	samples := func(outcomes ...string) []model.Observation {
@@ -163,7 +164,7 @@ func TestProviderSettleExtendsPolicyConfirmation(t *testing.T) {
 	}
 
 	// Once the controller is no longer loading the publication, the ordinary
-	// failure threshold applies again; the settle samples do not delay a
+	// policy threshold applies again; the settle samples do not delay a
 	// known drift.
 	s = Build(c, "a", "", samples(3, false), nil, now)
 	if st = state(s); !st.PolicyConfirmed || len(s.Incidents) != 1 {

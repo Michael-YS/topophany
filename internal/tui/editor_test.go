@@ -29,6 +29,29 @@ func typeText(m *Model, s string) {
 }
 func visible(m *Model) string { return ansi.ReplaceAllString(strings.Join(m.Render(), "\n"), "") }
 
+func TestEditorPolicyThresholdIsExplicit(t *testing.T) {
+	m, _ := editorModel(t)
+	id := m.Edit.Config.Checks[0].ID
+	m.openForm("check", id)
+	f := m.modal.form
+	if f.val("Policy after") != "" {
+		t.Fatal("editor opted an existing check into delayed policy alerts")
+	}
+	f.get("Policy after").value = "3"
+	if err := f.commit(&m.Edit.Config); err != nil {
+		t.Fatal(err)
+	}
+	if m.Edit.Config.Checks[0].PolicyThreshold != 3 || config.Validate(m.Edit.Config) != nil {
+		t.Fatal("policy confirmation was not saved")
+	}
+	m.openForm("check", id)
+	f = m.modal.form
+	f.get("Policy after").value = ""
+	if err := f.commit(&m.Edit.Config); err != nil || m.Edit.Config.Checks[0].PolicyThreshold != 0 {
+		t.Fatal("editor could not restore immediate policy alerts", err)
+	}
+}
+
 func TestEditorAddNodeWithPlaceLookupAndSave(t *testing.T) {
 	m, path := editorModel(t)
 	m.Key("2")

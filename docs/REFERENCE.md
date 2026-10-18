@@ -38,7 +38,9 @@ A peer that is sent a secret could hand it back in what it answers, and observat
 
 Defaults: `interval_seconds=60`, `timeout_seconds=8`, `stale_seconds=3*interval`, `failure_threshold=3`, `recovery_threshold=2`. The first detected failure transitions state to `degraded`; reaching `failure_threshold` consecutive failures transitions state to `down`. An established outage requires `recovery_threshold` consecutive successes to return to healthy. Stale samples, monitor errors, and unknown states reset consecutive confirmation counters; observation gaps do not accumulate across lapses.
 
-A `policy` outcome is a state assertion, not a failed request, so it never reads as `down`. The first violating sample is a warning; reaching `failure_threshold` consecutive violating samples opens a policy incident, and any other outcome breaks the run. This applies to every policy outcome, including host resource assertions, WireGuard policy and expected egress addresses, so an incident may open up to `failure_threshold` sample intervals after the first violation. It keeps a publication the runtime has not loaded yet from paging: provider membership is compared right after it is published, and the runtime converges a minute or two later.
+A `policy` outcome is a state assertion, not a failed request, so it never reads as `down`. An ordinary policy violation opens an incident on its first current sample, preserving the 1.1.1 default. Set `policy_threshold` to 1..20 to explicitly require consecutive violating samples; omitted or 0 means immediate confirmation. Any other outcome or a stale gap breaks the run. This setting is independent of `failure_threshold` and does not change measurement contracts or discard history. Reloading it re-evaluates retained evidence. A pending Mihomo provider load separately adds its configured settle window.
+
+Older collectors/viewers reject the new `policy_threshold` field. Upgrade collectors and all viewers to 1.2.0 or newer before enabling it in a topology; default configurations omit the field and remain readable by older clients.
 
 `disabled` pauses execution and `maintenance` flags planned work; neither state executes active probes or emits actionable incident alerts. Supported ranges: `interval_seconds` in 1..86400, `timeout_seconds` in 1..300. (The 1-second interval used in test suites is not recommended for production). Probes run with random jitter, non-overlapping executions per target, and a default global worker concurrency limit of 4. When more checks are due than workers are free, the one overdue longest goes first, so an observer with too much to do runs every check late rather than some never.
 
@@ -71,7 +73,7 @@ A `policy` outcome is a state assertion, not a failed request, so it never reads
 | `process_name` | Optional exact process name, at most 15 bytes. Linux matches `/proc/PID/stat`'s `comm`; macOS matches the basename of `ps`'s `comm`, or the kernel process name when `ps` falls back to `(name)` because command information is unreadable. No substring, argument or shell matching. Processes can change their names. |
 | `min_processes`, `max_processes` | Bounds on matching non-zombie processes; each defaults to 0 (disabled). Require `process_name`; set `min_processes: 1` to detect a missing process. |
 
-Host checks require `timeout_seconds >= 3` (default 8), and reject `endpoint`, `target`, `path`, `link` and dial/TLS options. A `service`, if supplied, must belong to the observer's node. A failed resource assertion emits `policy`, which the engine displays as degraded and records as a policy incident once the same consecutive-sample threshold is reached; equality with a maximum passes. Collection without enabled assertions succeeds when all counters are readable. Changing resource options changes the measurement contract.
+Host checks require `timeout_seconds >= 3` (default 8), and reject `endpoint`, `target`, `path`, `link` and dial/TLS options. A `service`, if supplied, must belong to the observer's node. A failed resource assertion emits `policy`, which the engine displays as degraded and records as a policy incident immediately unless `policy_threshold` is explicitly configured; equality with a maximum passes. Collection without enabled assertions succeeds when all counters are readable. Changing resource options changes the measurement contract.
 
 Checks on the same worker share CPU, memory and process aggregates for up to 500 ms after collection finishes, preserving the original `sampled_at`. Only configured process names are retained as aggregates. Each check still queries its own filesystem and evaluates its own assertions. Reloading the topology starts a new runtime cache. Linux reads only the aggregate CPU line and tolerates processes exiting during both open and read.
 
@@ -126,7 +128,7 @@ difference inside that window remains a policy sample, with
 `provider_reference_settling: true`, code `provider_membership_mismatch`, and
 `provider_comparison` saying `=settling(`; the engine opens the incident only
 after the window's equivalent consecutive policy samples (and at least
-`failure_threshold`), so repeated publications cannot defer it forever.
+the effective `policy_threshold`), so repeated publications cannot defer it forever.
 Matching membership is never deferred. Facts record
 `provider_reference_published_at` (publisher), `provider_updated_at.<name>`
 (the controller's own load time for that provider, reference providers first,
