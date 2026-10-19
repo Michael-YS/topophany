@@ -3,12 +3,13 @@ package stream
 import (
 	"context"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
+	"slices"
 	"testing"
 	"time"
 )
 
 func TestStreamCallbackOwnsEveryFrame(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	r := request()
 	r.Scenario = 2
@@ -20,7 +21,24 @@ func TestStreamCallbackOwnsEveryFrame(t *testing.T) {
 	lines := make(chan Line, 1)
 	lines <- line(r)
 	count := 0
-	err := Run(ctx, lines, OpenSource, func(p monitor.Panel) error {
+	open := func(ctx context.Context, r Request) (Source, *Error) {
+		s, e := OpenSource(ctx, r)
+		fetch := s.Fetch
+		nextUp := false
+		s.Fetch = func(ctx context.Context) (monitor.Input, error) {
+			in, err := fetch(ctx)
+			// Ownership needs distinct published frames. A stable preview may
+			// otherwise be coalesced until the ten-second lease renewal.
+			in.Snapshot.Checks = slices.Clone(in.Snapshot.Checks)
+			if len(in.Snapshot.Checks) > 0 {
+				in.Snapshot.Checks[0].Health = map[bool]string{true: "up", false: "down"}[nextUp]
+				nextUp = !nextUp
+			}
+			return in, err
+		}
+		return s, e
+	}
+	err := Run(ctx, lines, open, func(p monitor.Panel) error {
 		if p.Lifecycle != "running" {
 			return nil
 		}

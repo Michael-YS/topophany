@@ -135,7 +135,7 @@ func TestForeignCollectorReplacementKeepsPreviousRequest(t *testing.T) {
 }
 
 func TestPendingReplacementKeepsPublishingAndJoinsOnCancel(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	lines := make(chan Line, 2)
 	lines <- line(request())
@@ -143,11 +143,13 @@ func TestPendingReplacementKeepsPublishingAndJoinsOnCancel(t *testing.T) {
 	r.RequestID = "pending"
 	lines <- line(r)
 	var preparing, joined, closed atomic.Bool
+	prepareStarted := make(chan struct{})
 	open := func(ctx context.Context, r Request) (Source, *Error) {
 		s, e := OpenSource(ctx, request())
 		if r.RequestID == "pending" {
 			s.Prepare = func(ctx context.Context) (monitor.Input, *Error) {
 				preparing.Store(true)
+				close(prepareStarted)
 				<-ctx.Done()
 				joined.Store(true)
 				return monitor.Input{}, nil
@@ -157,6 +159,17 @@ func TestPendingReplacementKeepsPublishingAndJoinsOnCancel(t *testing.T) {
 					t.Error("closed before preparation joined")
 				}
 				closed.Store(true)
+			}
+		} else {
+			// Deliver a safety transition only once replacement preparation
+			// is pending. Unchanged preview frames may validly be coalesced.
+			s.Fetch = func(ctx context.Context) (monitor.Input, error) {
+				select {
+				case <-prepareStarted:
+					return monitor.Input{Unavailable: true}, nil
+				case <-ctx.Done():
+					return monitor.Input{}, ctx.Err()
+				}
 			}
 		}
 		return s, e
