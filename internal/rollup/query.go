@@ -184,6 +184,9 @@ func ParseSpan(s string) (time.Duration, error) {
 	if unit == 0 || n < 1 {
 		return 0, errors.New("span must be a number of minutes, hours or days, such as 24h or 30d")
 	}
+	if n > int64(MaxSpan/unit) {
+		return 0, errors.New("span must be at most 800d")
+	}
 	return time.Duration(n) * unit, nil
 }
 

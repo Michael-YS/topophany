@@ -133,15 +133,16 @@ type Store struct {
 	// expired ones are found at the front rather than by visiting them all;
 	// and what the held rows add up to, in all and by observer. prune keeps
 	// these up to date; recount derives them afresh.
-	receiptQueue []string
-	receiptHead  int
-	rowBytes     int64
-	rowScope     map[string]int64
-	rowRefs      map[string]int // raw history plus state-tail ownership
-	rowsCapacity int            // includes prefixes released from the history slice
-	rowsOrdered  bool
-	historyDirty bool
-	strings      stringPool
+	receiptQueue  []string
+	receiptHead   int
+	rowBytes      int64
+	rowScope      map[string]int64
+	rowRefs       map[string]int // raw history plus state-tail ownership
+	rowsCapacity  int            // includes prefixes released from the history slice
+	rowsOrdered   bool
+	historyDirty  bool
+	historyCounts map[string]int
+	strings       stringPool
 }
 
 func Open(dir string, o Options) (s *Store, err error) {
@@ -225,7 +226,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 		if e = json.Unmarshal(payload, &batch); e != nil {
 			return nil, errors.New("invalid journal transaction")
 		}
-		if e = s.apply(batch, true); e != nil {
+		if e = s.apply(batch, nil); e != nil {
 			return nil, e
 		}
 		offset += int64(len(line))
@@ -265,8 +266,10 @@ func (s *Store) recount() {
 		s.rowScope[s.rowObservers[id]] += size
 	}
 	s.rowRefs = make(map[string]int, len(s.rowSizes))
+	s.historyCounts = make(map[string]int)
 	for _, v := range s.rows {
 		s.rowRefs[v.ID]++
+		s.historyCounts[v.Observer]++
 	}
 	for _, tail := range s.tails {
 		for _, v := range tail {
@@ -421,24 +424,47 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	}
 	s.prune()
 }
-func (s *Store) addRow(v model.Observation) {
+
+type rowEncoding struct {
+	Hash  digest
+	Bytes int64
+}
+
+func (s *Store) addRow(v model.Observation) { s.addEncodedRow(v, nil) }
+
+func (s *Store) addEncodedRow(v model.Observation, encoded *rowEncoding) {
 	v = s.compactStrings(v)
 	if len(s.rows) > 0 && before(v, s.rows[len(s.rows)-1]) {
 		s.rowsOrdered = false
 	}
 	s.rows = append(s.rows, v)
+	if s.historyCounts == nil {
+		s.historyDirty = true
+	} else {
+		s.historyCounts[v.Observer]++
+		limit := s.options.MaxHistory
+		if len(s.options.Observers) > 0 {
+			limit = int(s.options.share(int64(limit), v.Observer))
+		}
+		if len(s.options.Observers) == 0 && len(s.rows) > limit || len(s.options.Observers) > 0 && s.historyCounts[v.Observer] > limit {
+			s.historyDirty = true
+		}
+	}
 	s.rowsCapacity = max(s.rowsCapacity, cap(s.rows))
-	s.indexRow(v)
+	s.indexEncodedRow(v, encoded)
 }
 
 // indexRow rebuilds accounting and bounded state without copying raw history.
-func (s *Store) indexRow(v model.Observation) {
+func (s *Store) indexRow(v model.Observation) { s.indexEncodedRow(v, nil) }
+
+func (s *Store) indexEncodedRow(v model.Observation, encoded *rowEncoding) {
 	s.rowRefs[v.ID]++
-	s.historyDirty = true
 	if _, ok := s.rowSizes[v.ID]; !ok {
-		b, _ := json.Marshal(v)
-		s.rowSizes[v.ID] = int64(len(b)) + 1
-		s.rowHashes[v.ID] = observationHash(v)
+		if encoded == nil {
+			encoded = &rowEncoding{Hash: observationHash(v), Bytes: observationSize(v) + 1}
+		}
+		s.rowSizes[v.ID] = encoded.Bytes
+		s.rowHashes[v.ID] = encoded.Hash
 		s.rowObservers[v.ID] = v.Observer
 		s.rowBytes += s.rowSizes[v.ID]
 		s.rowScope[v.Observer] += s.rowSizes[v.ID]
@@ -492,9 +518,13 @@ func before(a, b model.Observation) bool {
 	}
 	return a.SampledAt.Before(b.SampledAt)
 }
-func (s *Store) apply(b model.Batch, recovery bool) error {
+func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding) error {
 	for _, v := range b.Observations {
-		h := observationHash(v)
+		encoded, ok := prepared[v.ID]
+		if !ok {
+			encoded = rowEncoding{Hash: observationHash(v), Bytes: observationSize(v) + 1}
+		}
+		h := encoded.Hash
 		if old, ok := s.seen[v.ID]; ok {
 			if old.Hash != h {
 				return ErrConflict
@@ -506,7 +536,7 @@ func (s *Store) apply(b model.Batch, recovery bool) error {
 			continue
 		}
 		s.receive(v.ID, receipt{Hash: h, At: v.ReceivedAt, Observer: v.Observer})
-		s.addRow(v)
+		s.addEncodedRow(v, &encoded)
 		s.roll(v)
 	}
 	if b.Heartbeat != nil && s.advances(*b.Heartbeat, b.Project, b.Revision) {
@@ -514,7 +544,6 @@ func (s *Store) apply(b model.Batch, recovery bool) error {
 		h.Project, h.Revision = b.Project, b.Revision
 		s.beats[h.Observer] = h
 	}
-	_ = recovery
 	return nil
 }
 
@@ -530,14 +559,6 @@ func (s *Store) advances(h model.Heartbeat, project, revision string) bool {
 // A returned success always follows fsync. An I/O error poisons the store until
 // restart, because the durability of that last transaction may be uncertain.
 func (s *Store) Put(b model.Batch) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return errors.New("store closed")
-	}
-	if s.poisoned != nil {
-		return s.poisoned
-	}
 	// JSON roundtrip transfers ownership of maps/slices away from the caller.
 	payload, e := json.Marshal(b)
 	if e != nil {
@@ -551,20 +572,35 @@ func (s *Store) Put(b model.Batch) error {
 		return e
 	}
 	b = copyBatch
+	// Detachment and content hashing depend only on the caller's batch; keep
+	// their encoding work out of the lock shared by readers and other writers.
+	hashes := make([]digest, len(b.Observations))
+	for i, v := range b.Observations {
+		hashes[i] = observationHash(v)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("store closed")
+	}
+	if s.poisoned != nil {
+		return s.poisoned
+	}
+
 	// A heartbeat that would change nothing, such as one sent again, is
 	// not written: it would cost a journal write and an fsync, under the
 	// lock every observer's ingestion waits on, for nothing apply keeps.
 	if b.Heartbeat != nil && !s.advances(*b.Heartbeat, b.Project, b.Revision) {
 		b.Heartbeat = nil
 	}
-	pending := map[string]digest{}
+	pending := map[string]rowEncoding{}
 	now := s.options.Now().UTC()
 	kept := make([]model.Observation, 0, len(b.Observations))
-	for _, v := range b.Observations {
+	for i, v := range b.Observations {
 		if v.ID == "" || v.Check == "" || v.SampledAt.IsZero() {
 			return errors.New("observation identity and timestamp required")
 		}
-		h := observationHash(v)
+		h := hashes[i]
 		if old, ok := s.seen[v.ID]; ok {
 			if old.Hash != h {
 				return ErrConflict
@@ -572,7 +608,7 @@ func (s *Store) Put(b model.Batch) error {
 			continue
 		}
 		if old, ok := pending[v.ID]; ok {
-			if old != h {
+			if old.Hash != h {
 				return ErrConflict
 			}
 			continue
@@ -588,7 +624,7 @@ func (s *Store) Put(b model.Batch) error {
 			// this is its ID reused for something else.
 			return ErrConflict
 		}
-		pending[v.ID] = h
+		pending[v.ID] = rowEncoding{Hash: h}
 		v.ReceivedAt = now
 		kept = append(kept, v)
 	}
@@ -600,9 +636,15 @@ func (s *Store) Put(b model.Batch) error {
 	// Bound bytes as well as row counts. Otherwise valid large facts can
 	// create a checkpoint larger than the restart decoder can ever read.
 	projected := s.stateBytes
+	sizes := make(map[string]int64)
 	for _, v := range kept {
-		raw, _ := json.Marshal(v)
-		projected += int64(len(raw)) + 1024
+		bytes := observationSize(v)
+		size := bytes + 1024
+		encoded := pending[v.ID]
+		encoded.Bytes = bytes + 1
+		pending[v.ID] = encoded
+		projected += size
+		sizes[v.Observer] += size
 	}
 	if b.Heartbeat != nil {
 		raw, _ := json.Marshal(b.Heartbeat)
@@ -612,7 +654,7 @@ func (s *Store) Put(b model.Batch) error {
 			projected -= int64(len(raw)) + 1024
 		}
 	}
-	if err := s.checkScopeCapacity(b); err != nil {
+	if err := s.checkScopeCapacity(b, sizes); err != nil {
 		return err
 	}
 	if len(s.seen)+len(pending) > s.options.MaxReceipts || projected > s.options.MaxStateBytes {
@@ -648,7 +690,7 @@ func (s *Store) Put(b model.Batch) error {
 		return s.poisoned
 	}
 	s.bytes += int64(n)
-	if e = s.apply(b, false); e != nil {
+	if e = s.apply(b, pending); e != nil {
 		s.poisoned = e
 		return e
 	}
@@ -668,38 +710,7 @@ func (s *Store) prune() {
 		s.rowsOrdered = true
 	}
 	if s.historyDirty || len(s.rows) > 0 && s.rows[0].SampledAt.Before(cutoff) {
-		// Select newest rows within each observer's allocation. Release only
-		// evicted owners; accounting no longer rebuilds a full live-ID set.
-		counts := map[string]int{}
-		start := len(s.rows)
-		for i := len(s.rows) - 1; i >= 0; i-- {
-			v := s.rows[i]
-			limit := s.options.MaxHistory
-			if len(s.options.Observers) > 0 {
-				limit = int(s.options.share(int64(limit), v.Observer))
-			}
-			count := len(s.rows) - start
-			if len(s.options.Observers) > 0 {
-				count = counts[v.Observer]
-			}
-			if !v.SampledAt.Before(cutoff) && count < limit {
-				start--
-				s.rows[start] = v
-				counts[v.Observer]++
-			} else {
-				s.releaseRow(v.ID)
-			}
-		}
-		clear(s.rows[:start])
-		s.rows = s.rows[start:]
-		if len(s.rows) == 0 {
-			s.rows = nil
-			s.rowsCapacity = 0
-		} else if s.rowsCapacity > 2*len(s.rows) {
-			s.rows = slices.Clone(s.rows)
-			s.rowsCapacity = cap(s.rows)
-		}
-		s.historyDirty = false
+		s.pruneHistory(cutoff)
 	}
 	// A receipt binds an ID to its content for as long as a sample with
 	// that ID could still be accepted: the ingestion window and an hour.
@@ -755,6 +766,57 @@ func (s *Store) prune() {
 		s.rollups.Settle(now)
 		s.settled = now
 	}
+}
+
+// pruneHistory removes only the expired/overflow prefix for a global quota.
+// Weighted allocations select their newest rows in one pass when over quota.
+func (s *Store) pruneHistory(cutoff time.Time) {
+	start := 0
+	if len(s.options.Observers) == 0 && s.historyCounts != nil {
+		start = max(0, len(s.rows)-s.options.MaxHistory)
+		start = max(start, sort.Search(len(s.rows), func(i int) bool { return !s.rows[i].SampledAt.Before(cutoff) }))
+		for _, v := range s.rows[:start] {
+			s.releaseRow(v.ID)
+			s.historyCounts[v.Observer]--
+			if s.historyCounts[v.Observer] == 0 {
+				delete(s.historyCounts, v.Observer)
+			}
+		}
+	} else {
+		// Select newest rows within each observer's allocation. Release only
+		// evicted owners; accounting no longer rebuilds a full live-ID set.
+		counts := map[string]int{}
+		start = len(s.rows)
+		for i := len(s.rows) - 1; i >= 0; i-- {
+			v := s.rows[i]
+			limit := s.options.MaxHistory
+			if len(s.options.Observers) > 0 {
+				limit = int(s.options.share(int64(limit), v.Observer))
+			}
+			count := len(s.rows) - start
+			if len(s.options.Observers) > 0 {
+				count = counts[v.Observer]
+			}
+			if !v.SampledAt.Before(cutoff) && count < limit {
+				start--
+				s.rows[start] = v
+				counts[v.Observer]++
+			} else {
+				s.releaseRow(v.ID)
+			}
+		}
+		s.historyCounts = counts
+	}
+	clear(s.rows[:start])
+	s.rows = s.rows[start:]
+	if len(s.rows) == 0 {
+		s.rows = nil
+		s.rowsCapacity = 0
+	} else if s.rowsCapacity > 2*len(s.rows) {
+		s.rows = slices.Clone(s.rows)
+		s.rowsCapacity = cap(s.rows)
+	}
+	s.historyDirty = false
 }
 
 func (s *Store) allRows() []model.Observation {

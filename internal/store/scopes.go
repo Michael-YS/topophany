@@ -43,7 +43,7 @@ func receiptObserver(id string) string {
 	return strings.Join(parts[:len(parts)-2], ".")
 }
 
-func (s *Store) checkScopeCapacity(b model.Batch) error {
+func (s *Store) checkScopeCapacity(b model.Batch, sizes map[string]int64) error {
 	n := len(s.options.Observers)
 	if n == 0 {
 		return nil
@@ -52,15 +52,12 @@ func (s *Store) checkScopeCapacity(b model.Batch) error {
 	for _, id := range s.options.Observers {
 		allowed[id] = true
 	}
-	counts, sizes := map[string]int{}, map[string]int64{}
+	counts := map[string]int{}
 	for _, v := range b.Observations {
 		if !allowed[v.Observer] {
 			return ErrScopeCapacity
 		}
 		counts[v.Observer]++
-		// The transaction has already been encoded and detached. Use the same
-		// conservative receipt/row reservation as global accounting.
-		sizes[v.Observer] += observationSize(v) + 1024
 	}
 	// Reserve a heartbeat slot for every configured observer, even when all
 	// observation allocations are full. Boot changes replace, not grow, a slot.

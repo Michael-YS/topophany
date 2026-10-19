@@ -3,6 +3,7 @@
 package secure
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -50,7 +51,7 @@ func Decode(r io.Reader, v any, limit int64) error {
 	if e := JSONBudget(b); e != nil {
 		return e
 	}
-	d := json.NewDecoder(strings.NewReader(string(b)))
+	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
 	if e = d.Decode(v); e != nil {
 		return e

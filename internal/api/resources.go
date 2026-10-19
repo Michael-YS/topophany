@@ -118,7 +118,9 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 	for i := range snap.Checks {
 		snap.Checks[i].Availability = s.snapshotAvailable[snap.Checks[i].ID]
 	}
-	raw, err := summaryJSON(snap)
+	// The engine plan has already detached and redacted this generation's
+	// topology and supplied its public revision and check contracts.
+	raw, err := summaryPublicJSON(snap)
 	if err != nil {
 		return nil, 503, "snapshot_budget_exceeded"
 	}
@@ -141,6 +143,10 @@ func summaryJSON(s model.Snapshot) ([]byte, error) {
 	// observations. Keep the execution snapshot and stored evidence unchanged.
 	s.Topology = config.Public(s.Topology)
 	s.Revision = config.Revision(s.Topology)
+	return summaryPublicJSON(s)
+}
+
+func summaryPublicJSON(s model.Snapshot) ([]byte, error) {
 	s.Checks = slices.Clone(s.Checks)
 	// History remains the source of full diagnostic evidence.
 	s.DetailsOmitted = true

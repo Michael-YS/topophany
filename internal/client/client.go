@@ -512,7 +512,7 @@ func PostBatch(ctx context.Context, h *http.Client, ep Endpoint, b model.Batch) 
 	if e != nil {
 		return e
 	}
-	req, e := http.NewRequestWithContext(ctx, "POST", endpointURL(ep, "/v1/observations", nil), strings.NewReader(string(body)))
+	req, e := http.NewRequestWithContext(ctx, "POST", endpointURL(ep, "/v1/observations", nil), bytes.NewReader(body))
 	if e != nil {
 		return errors.New("invalid collector request")
 	}

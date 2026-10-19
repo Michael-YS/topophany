@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"net/url"
 	"strings"
+	"unicode"
 )
 
 func command(o Options) []string {
@@ -36,8 +38,11 @@ func command(o Options) []string {
 	}
 	return args
 }
-func unitQuote(s string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`, `$`, `$$`).Replace(s) + `"`
+func unitQuote(s string) (string, error) {
+	if strings.IndexFunc(s, unicode.IsControl) >= 0 {
+		return "", errors.New("service arguments must not contain control characters")
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `%`, `%%`, `$`, `$$`).Replace(s) + `"`, nil
 }
 
 // unitPath writes a path for a setting that takes one path, such as
@@ -47,13 +52,26 @@ func unitQuote(s string) string {
 func unitPath(s string) string { return strings.ReplaceAll(s, "%", "%%") }
 func service(o Options) (name, file string, raw []byte, err error) {
 	args := command(o)
+	for _, a := range append(append([]string{}, args...), o.User, o.DataDir, o.InstallDir) {
+		if strings.IndexFunc(a, unicode.IsControl) >= 0 {
+			return "", "", nil, errors.New("service arguments must not contain control characters")
+		}
+	}
 	switch o.Platform {
 	case "linux":
 		name = "topophany-" + o.Role + ".service"
 		file = "/etc/systemd/system/" + name
 		quoted := []string{}
 		for _, a := range args {
-			quoted = append(quoted, unitQuote(a))
+			q, e := unitQuote(a)
+			if e != nil {
+				return "", "", nil, e
+			}
+			quoted = append(quoted, q)
+		}
+		data, e := unitQuote(o.DataDir)
+		if e != nil {
+			return "", "", nil, e
 		}
 		memoryMax := "128M"
 		if o.Role == "server" {
@@ -65,7 +83,7 @@ func service(o Options) (name, file string, raw []byte, err error) {
 				capability = "CAP_NET_RAW"
 			}
 		}
-		raw = []byte(fmt.Sprintf("[Unit]\nDescription=Topophany %s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=simple\nUser=%s\nGroup=%s\nWorkingDirectory=%s\nEnvironmentFile=-%s\nExecStart=%s\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nAmbientCapabilities=%s\nCapabilityBoundingSet=%s\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\nReadWritePaths=%s\nTimeoutStopSec=20\nMemoryAccounting=true\nMemoryMax=%s\nMemorySwapMax=0\n[Install]\nWantedBy=multi-user.target\n", o.Role, o.User, o.User, unitPath(o.DataDir), unitPath(targetPath(o.InstallDir, "worker.env")), strings.Join(quoted, " "), capability, capability, unitQuote(o.DataDir), memoryMax))
+		raw = []byte(fmt.Sprintf("[Unit]\nDescription=Topophany %s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=simple\nUser=%s\nGroup=%s\nWorkingDirectory=%s\nEnvironmentFile=-%s\nExecStart=%s\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nAmbientCapabilities=%s\nCapabilityBoundingSet=%s\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\nReadWritePaths=%s\nTimeoutStopSec=20\nMemoryAccounting=true\nMemoryMax=%s\nMemorySwapMax=0\n[Install]\nWantedBy=multi-user.target\n", o.Role, o.User, o.User, unitPath(o.DataDir), unitPath(targetPath(o.InstallDir, "worker.env")), strings.Join(quoted, " "), capability, capability, data, memoryMax))
 	case "darwin":
 		name = "com.topophany." + o.Role
 		file = "/Library/LaunchDaemons/" + name + ".plist"

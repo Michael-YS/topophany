@@ -90,6 +90,9 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 			if e != nil {
 				return nil, e
 			}
+			if !info.Mode().IsRegular() {
+				return nil, errors.New("invalid outbox entry")
+			}
 			q.used += info.Size()
 			if q.used-q.quarantineUsed > maxBytes && sub == "pending" {
 				return nil, ErrFull

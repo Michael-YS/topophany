@@ -8,11 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 func endpointRowsFixture(n int) View {
 	v := View{Now: time.Now()}
+	v.Snapshot.Topology.Schema = 1
+	v.Snapshot.Topology.Project = "benchmark"
 	for i := 0; i < n; i++ {
 		id, via := fmt.Sprint("node-", i), fmt.Sprint("node-", (i+1)%n)
 		v.Snapshot.Topology.Nodes = append(v.Snapshot.Topology.Nodes, model.Node{ID: id, Name: id, Kind: "server"})
@@ -28,7 +31,7 @@ func definitionRowsFixture(n int) View {
 		node := fmt.Sprint("node-", i)
 		v.Snapshot.Topology.Services = append(v.Snapshot.Topology.Services, model.Service{ID: id, Name: "service " + id, Node: node, Endpoints: []string{fmt.Sprint("ep-", i)}})
 		v.Snapshot.Topology.Paths = append(v.Snapshot.Topology.Paths, model.Path{ID: id, Name: "path " + id, Observer: id, Nodes: []string{node}})
-		v.Snapshot.Topology.Observers = append(v.Snapshot.Topology.Observers, model.Observer{ID: id, Name: "observer " + id, Node: node})
+		v.Snapshot.Topology.Observers = append(v.Snapshot.Topology.Observers, model.Observer{ID: id, Name: "observer " + id, Node: node, Context: "benchmark", StaleSeconds: 90})
 		health := "up"
 		if i%32 == 0 {
 			health = "down"
@@ -67,10 +70,13 @@ func TestIndexedDefinitionsAndOverviewMatchFullRows(t *testing.T) {
 }
 
 func BenchmarkDefinitionRows(b *testing.B) {
-	for _, n := range []int{256, 1024, 4096} {
+	for _, n := range []int{51, 204, 819} {
 		v := definitionRowsFixture(n)
+		if err := config.Validate(v.Snapshot.Topology); err != nil {
+			b.Fatal(err)
+		}
 		for _, tab := range []int{Services, Paths, Observers, Overview} {
-			b.Run(fmt.Sprintf("%d/%s", n, Tabs[tab]), func(b *testing.B) {
+			b.Run(fmt.Sprintf("%d/%s", n*5, Tabs[tab]), func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
 					v.Rows(tab)
@@ -102,9 +108,12 @@ func TestBulkScopeLookupPreservesServiceOverrides(t *testing.T) {
 }
 
 func BenchmarkServiceListAndGrouping(b *testing.B) {
-	for _, n := range []int{256, 1024, 4096} {
+	for _, n := range []int{51, 204, 819} {
 		v := definitionRowsFixture(n)
-		b.Run(fmt.Sprint(n), func(b *testing.B) {
+		if err := config.Validate(v.Snapshot.Topology); err != nil {
+			b.Fatal(err)
+		}
+		b.Run(fmt.Sprint(n*5), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				v.GroupedList(Services, GroupOptions{By: "flat"})
@@ -133,10 +142,13 @@ func TestEndpointIndexesPreserveOwnershipAndReverseVia(t *testing.T) {
 }
 
 func BenchmarkEndpointRows(b *testing.B) {
-	for _, n := range []int{256, 1024, 4096} {
+	for _, n := range []int{128, 512, 2048} {
 		v := endpointRowsFixture(n)
+		if err := config.Validate(v.Snapshot.Topology); err != nil {
+			b.Fatal(err)
+		}
 		for _, tab := range []int{Topology, Servers} {
-			b.Run(fmt.Sprintf("%d/%s", n, Tabs[tab]), func(b *testing.B) {
+			b.Run(fmt.Sprintf("%d/%s", n*2, Tabs[tab]), func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
 					v.Rows(tab)

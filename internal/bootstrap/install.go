@@ -148,6 +148,9 @@ func checkBundle(dir string, v *verified) (Manifest, error) {
 		if c.Project != m.Project {
 			return m, errors.New("topology project differs from manifest")
 		}
+		if err := validateObserver(m.Role, m.Observer, c); err != nil {
+			return m, err
+		}
 		name, file, expected, e := service(Options{Server: m.Server, Role: m.Role, Platform: m.Platform, User: m.User, InstallDir: m.InstallDir, DataDir: m.DataDir, Observer: m.Observer, Config: c})
 		if e != nil || file != m.ServiceFile || name != m.Service {
 			return m, errors.New("unexpected service destination")
@@ -194,9 +197,8 @@ func Install(ctx context.Context, dir string, dry bool, expected string) (Manife
 	}
 	if m.Role == "worker" {
 		pending := filepath.Join(m.DataDir, "pending")
-		entries, _ := os.ReadDir(pending)
-		if len(entries) > 0 {
-			return m, "", errors.New("drain or archive the existing worker outbox before installation")
+		if err := checkPendingOutbox(pending); err != nil {
+			return m, "", err
 		}
 	}
 	uid, gid := -1, -1
@@ -396,6 +398,17 @@ func Install(ctx context.Context, dir string, dry bool, expected string) (Manife
 		}
 	}
 	return m, backup, nil
+}
+
+func checkPendingOutbox(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read existing worker outbox: %w", err)
+	}
+	if len(entries) > 0 {
+		return errors.New("drain or archive the existing worker outbox before installation")
+	}
+	return nil
 }
 
 func prepareDataDirectory(ctx context.Context, path string, uid, gid int) error {

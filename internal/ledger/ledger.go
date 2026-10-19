@@ -48,6 +48,8 @@ type Change struct {
 // Ledger is safe for concurrent use. A ledger without a path keeps its
 // records in memory only.
 type Ledger struct {
+	writeMu   sync.Mutex                              // serialize judgments through their durable writes
+	writeFile func(string, []byte, os.FileMode) error // nil: secure.AtomicWrite
 	mu        sync.Mutex
 	path      string
 	records   []model.IncidentRecord // in the order they opened
@@ -129,6 +131,8 @@ func Valid(r model.IncidentRecord) error { return valid(r) }
 // at the next call, whether or not anything changes by then, so that no
 // error means they are on disk.
 func (l *Ledger) Observe(snap model.Snapshot, now time.Time, settled bool) ([]Change, error) {
+	l.writeMu.Lock()
+	defer l.writeMu.Unlock()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	changes := []Change{}
@@ -206,7 +210,16 @@ func (l *Ledger) Observe(snap model.Snapshot, now time.Time, settled bool) ([]Ch
 	if !dirty || l.path == "" {
 		return changes, nil
 	}
-	e := l.write()
+	raw, e := json.Marshal(disk{Schema: 1, Records: l.records})
+	if e == nil {
+		write := l.writeFile
+		if write == nil {
+			write = secure.AtomicWrite
+		}
+		l.mu.Unlock()
+		e = write(l.path, raw, 0600)
+		l.mu.Lock()
+	}
 	l.unwritten = e != nil
 	return changes, e
 }
@@ -257,14 +270,6 @@ func (l *Ledger) prune(now time.Time) bool {
 		return false
 	})
 	return len(l.records) != n
-}
-
-func (l *Ledger) write() error {
-	b, e := json.Marshal(disk{Schema: 1, Records: l.records})
-	if e != nil {
-		return e
-	}
-	return secure.AtomicWrite(l.path, b, 0600)
 }
 
 // Recent is what a snapshot of view carries at now: the records open and

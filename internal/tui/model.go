@@ -85,6 +85,7 @@ type Model struct {
 	absorbed                                time.Time         // when the snapshot last taken into trends was generated
 	hits                                    []hit
 	drawingModal                            bool
+	frameRows                               *[]Row  // shared only while drawing one frame
 	Device                                  *Device // non-nil when the TUI is laid out for a device's screen, simulated in the terminal (device.go)
 	stage                                   *rect   // where the TUI draws on the canvas, modals centred on it; nil for all of it
 	touch                                   touch   // gestures in flight and what the touch layouts keep between frames (touch.go)
@@ -133,10 +134,19 @@ func (m *Model) view() view.View {
 // Rows lists the current tab, filtered by the search and marked when the
 // view is cached or a local draft.
 func (m *Model) Rows() []Row {
-	if m.businessTab() {
-		return m.view().GroupedList(m.Tab, view.GroupOptions{Application: m.Application, Environment: m.Environment, Service: m.ServiceFilter, By: m.groupMode(), Search: m.Search, Attention: m.AttentionOnly, Expanded: m.Expanded, Collapsed: m.GroupsCollapsed})
+	if m.frameRows != nil && *m.frameRows != nil {
+		return *m.frameRows
 	}
-	return m.view().List(m.Tab, m.Search)
+	var rows []Row
+	if m.businessTab() {
+		rows = m.view().GroupedList(m.Tab, view.GroupOptions{Application: m.Application, Environment: m.Environment, Service: m.ServiceFilter, By: m.groupMode(), Search: m.Search, Attention: m.AttentionOnly, Expanded: m.Expanded, Collapsed: m.GroupsCollapsed})
+	} else {
+		rows = m.view().List(m.Tab, m.Search)
+	}
+	if m.frameRows != nil {
+		*m.frameRows = rows
+	}
+	return rows
 }
 
 // tabRows builds the unfiltered rows of a tab.

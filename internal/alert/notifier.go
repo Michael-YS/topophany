@@ -50,7 +50,9 @@ type Notifier struct {
 	MaxAge            time.Duration                   // how long an alert waits; zero: a day
 	Path              string                          // where waiting alerts are kept; empty: in memory only
 
-	configuring sync.Mutex // one Configure or Close at a time
+	writeMu     sync.Mutex                              // snapshots are captured and persisted in this order
+	writeFile   func(string, []byte, os.FileMode) error // nil: secure.AtomicWrite
+	configuring sync.Mutex                              // one Configure or Close at a time
 	mu          sync.Mutex
 	hooks       map[string]*hook
 	queues      map[string]*queue // by webhook ID
@@ -159,6 +161,7 @@ func (n *Notifier) Configure(a Config) {
 		<-h.done
 	}
 	n.mu.Lock()
+	defer n.save()
 	defer n.mu.Unlock()
 	if n.queues == nil {
 		n.queues = map[string]*queue{}
@@ -184,7 +187,6 @@ func (n *Notifier) Configure(a Config) {
 			delete(n.queues, id)
 		}
 	}
-	n.save()
 }
 
 // Close stops delivering and waits until it has. What waits stays at Path
@@ -219,7 +221,13 @@ func (n *Notifier) Observe(snap model.Snapshot, changes []ledger.Change, settled
 		}
 	}
 	n.mu.Lock()
-	defer n.mu.Unlock()
+	queuedAny := false
+	defer func() {
+		n.mu.Unlock()
+		if queuedAny {
+			n.save()
+		}
+	}()
 	if n.silent == nil {
 		n.silent = map[string]bool{}
 	}
@@ -240,7 +248,6 @@ func (n *Notifier) Observe(snap model.Snapshot, changes []ledger.Change, settled
 			delete(n.silent, id)
 		}
 	}
-	queuedAny := false
 	for _, e := range events {
 		e, budgetErr := e.bounded()
 		for _, h := range n.hooks {
@@ -270,9 +277,6 @@ func (n *Notifier) Observe(snap model.Snapshot, changes []ledger.Change, settled
 			default:
 			}
 		}
-	}
-	if queuedAny {
-		n.save()
 	}
 }
 
@@ -375,9 +379,9 @@ func (n *Notifier) deliver(ctx context.Context, h *hook) {
 // sent or, with why, as dropped.
 func (n *Notifier) finish(id string, sent bool, format string, args ...any) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	q := n.queues[id]
 	if q == nil || len(q.Waiting) == 0 {
+		n.mu.Unlock()
 		return
 	}
 	q.Waiting = q.Waiting[1:]
@@ -387,20 +391,23 @@ func (n *Notifier) finish(id string, sent bool, format string, args ...any) {
 		q.Dropped++
 		n.logf(format, args...)
 	}
+	n.mu.Unlock()
 	n.save()
 }
 
 // tried counts a failed try of the oldest alert waiting for webhook id.
 func (n *Notifier) tried(id string) int {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	q := n.queues[id]
 	if q == nil || len(q.Waiting) == 0 {
+		n.mu.Unlock()
 		return 0
 	}
 	q.Waiting[0].Tries++
+	tries := q.Waiting[0].Tries
+	n.mu.Unlock()
 	n.save()
-	return q.Waiting[0].Tries
+	return tries
 }
 
 func (n *Notifier) maxAge() time.Duration {
@@ -416,13 +423,23 @@ func (n *Notifier) save() {
 	if n.Path == "" {
 		return
 	}
+	n.writeMu.Lock()
+	defer n.writeMu.Unlock()
+	n.mu.Lock()
 	b, e := json.Marshal(saved{Schema: 1, Webhooks: n.queues})
+	n.mu.Unlock()
 	if e == nil && len(b) > maxBytes {
 		e = errors.New("encoded alert queue exceeds restart read budget")
 	}
 	if e == nil {
-		e = secure.AtomicWrite(n.Path, b, 0600)
+		write := n.writeFile
+		if write == nil {
+			write = secure.AtomicWrite
+		}
+		e = write(n.Path, b, 0600)
 	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	switch {
 	case e != nil && !n.unwritten:
 		n.logf("alert queue not written; keeping it in memory: %v", e)

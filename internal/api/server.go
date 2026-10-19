@@ -164,6 +164,7 @@ type generation struct {
 	engine          *engine.Plan
 	config          model.Config
 	auth            Auth
+	tokenHashes     [][]byte
 	revision        string
 	checks          map[string]model.Check
 	contracts       map[string]string // by check
@@ -176,6 +177,9 @@ func newGeneration(c model.Config, a Auth) *generation {
 	public := config.Public(c)
 	g := &generation{config: c, auth: a, revision: config.Revision(c), checks: make(map[string]model.Check, len(c.Checks)), contracts: config.Contracts(c), publicRevision: config.Revision(public), publicContracts: config.Contracts(public)}
 	g.engine = engine.NewPlan(c)
+	for _, token := range a.Tokens {
+		g.tokenHashes = append(g.tokenHashes, []byte(strings.ToLower(token.TokenSHA256)))
+	}
 	for _, x := range c.Checks {
 		g.checks[x.ID] = x
 	}
@@ -352,8 +356,8 @@ func (s *Server) admit(r *http.Request) (authority, bool) {
 	hash := secure.Hash(token)
 	found := authority{gen: s.generation()}
 	ok = false
-	for _, p := range found.gen.auth.Tokens {
-		if subtle.ConstantTimeCompare([]byte(strings.ToLower(p.TokenSHA256)), []byte(hash)) == 1 {
+	for i, p := range found.gen.auth.Tokens {
+		if subtle.ConstantTimeCompare(found.gen.tokenHashes[i], []byte(hash)) == 1 {
 			found.Principal = p
 			ok = true
 		}
@@ -645,9 +649,14 @@ func (g *generation) validateBatch(b model.Batch, observer string, now time.Time
 	return "", 0
 }
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		status = http.StatusInternalServerError
+		raw = []byte(`{"error":"json_encoding_failed"}`)
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(append(raw, '\n'))
 }
 func writeError(w http.ResponseWriter, status int, code string) {
 	writeJSON(w, status, map[string]string{"error": code})

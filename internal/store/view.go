@@ -13,7 +13,16 @@ import (
 // taken (see engine.BuildCarried).
 func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]model.Heartbeat) {
 	s.mu.Lock()
-	rows := make([]model.Observation, 0, len(s.tails)*tailLength)
+	count := 0
+	for _, v := range s.rows {
+		if v.Contract == "" || !s.current(v) {
+			count++
+		}
+	}
+	for _, tail := range s.tails {
+		count += len(tail)
+	}
+	rows := make([]model.Observation, 0, count)
 	// Schema 1 observations cannot be folded into a carry. Also retain
 	// history when the caller has not installed the contracts needed for
 	// tails (or judges it under a different generation).

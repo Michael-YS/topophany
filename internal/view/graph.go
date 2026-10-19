@@ -132,16 +132,25 @@ func (v View) Graph() ([]MapNode, []MapEdge) {
 		nodes = append(nodes, mn)
 	}
 	// Children without their own placement share the parent's declared site.
-	for range 8 {
-		for i, n := range s.Topology.Nodes {
-			if nodes[i].Located || n.Parent == "" {
-				continue
-			}
-			if p, ok := index[n.Parent]; ok && nodes[p].Located {
-				nodes[i].Lat, nodes[i].Lon, nodes[i].Place = nodes[p].Lat, nodes[p].Lon, nodes[p].Place
-				nodes[i].Located, nodes[i].Inherited = true, true
-			}
+	placement := make([]uint8, len(nodes))
+	var locate func(int) bool
+	locate = func(i int) bool {
+		if nodes[i].Located {
+			return true
 		}
+		if placement[i] != 0 { // drafts may contain a cycle or a missing site
+			return false
+		}
+		placement[i] = 1
+		if p, ok := index[nodes[i].Parent]; ok && locate(p) {
+			nodes[i].Lat, nodes[i].Lon, nodes[i].Place = nodes[p].Lat, nodes[p].Lon, nodes[p].Place
+			nodes[i].Located, nodes[i].Inherited = true, true
+		}
+		placement[i] = 2
+		return nodes[i].Located
+	}
+	for i := range nodes {
+		locate(i)
 	}
 	// A link no check measures is "carried" when a declared path over it
 	// succeeds end to end in this view.

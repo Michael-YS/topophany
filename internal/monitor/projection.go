@@ -3,6 +3,7 @@ package monitor
 import (
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
@@ -19,6 +20,20 @@ type projection struct {
 	serverList                     []ServerListEntry
 	serverListClock                evidenceClock
 	currentClocks, completeClocks  *evidenceIndex
+	aged                           *model.Snapshot
+	stale                          map[string]int
+}
+
+func (p *projection) scalarSnapshot() (model.Snapshot, map[string]int) {
+	if p.aged == nil {
+		s := ageSnapshot(p.v.Snapshot, p.v.Now)
+		p.aged = &s
+		p.stale = make(map[string]int, len(s.Topology.Checks))
+		for _, check := range s.Topology.Checks {
+			p.stale[check.ID] = check.StaleSeconds
+		}
+	}
+	return *p.aged, p.stale
 }
 
 type evidenceClock struct{ sampled, until time.Time }

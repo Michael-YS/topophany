@@ -86,14 +86,8 @@ func Generate(dir string, o Options) (Manifest, error) {
 		if err := config.Validate(o.Config); err != nil {
 			return m, err
 		}
-		if o.Role == "worker" || o.Observer != "" {
-			found := false
-			for _, ob := range o.Config.Observers {
-				found = found || ob.ID == o.Observer
-			}
-			if !found {
-				return m, errors.New("observer must be declared in reviewed topology")
-			}
+		if err := validateObserver(o.Role, o.Observer, o.Config); err != nil {
+			return m, err
 		}
 	}
 	if !config.ID(m.Project) {
@@ -279,6 +273,20 @@ func Generate(dir string, o Options) (Manifest, error) {
 	}
 	success = true
 	return m, nil
+}
+
+func validateObserver(role, id string, c model.Config) error {
+	if role != "worker" && id == "" {
+		return nil
+	}
+	if config.ID(id) {
+		for _, observer := range c.Observers {
+			if observer.ID == id {
+				return nil
+			}
+		}
+	}
+	return errors.New("observer must be declared in reviewed topology")
 }
 func credentials(p client.Profile) client.Credentials {
 	return client.Credentials{Schema: 1, Active: "primary", Profiles: map[string]client.Profile{"primary": p}}

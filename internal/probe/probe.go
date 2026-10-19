@@ -14,7 +14,6 @@ import (
 	"net/http/httptrace"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -332,7 +331,7 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		return &failure{Stage: "http_assert", Code: "body_mismatch"}
 	}
 	if x.HTTP.BodyRegex != "" {
-		re, e := regexp.Compile(x.HTTP.BodyRegex)
+		re, e := config.CompileBodyRegex(x.HTTP.BodyRegex)
 		if e != nil {
 			return local("setup", "invalid_regex")
 		}

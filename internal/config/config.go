@@ -27,6 +27,7 @@ import (
 )
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$`)
+var sshUser = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
 
 func ID(s string) bool { return identifier.MatchString(s) }
 func Decode(r io.Reader) (model.Config, error) {
@@ -257,7 +258,7 @@ func validateResolved(c model.Config) error {
 				if i != 0 || pv.SSHKnownHosts == "" || pv.SSHIdentityFile == "" || pv.SSHUser == "" {
 					return fmt.Errorf("path %s: SSH must be first, with identity, user and known_hosts", p.ID)
 				}
-				if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`).MatchString(pv.SSHUser) {
+				if !sshUser.MatchString(pv.SSHUser) {
 					return errors.New("unsafe SSH user")
 				}
 			default:
@@ -373,7 +374,7 @@ func validateResolved(c model.Config) error {
 			if x.HTTP.MaxBodyBytes < 1 || x.HTTP.MaxBodyBytes > 1<<20 {
 				return errors.New("HTTP body budget must be 1..1048576")
 			}
-			if _, e := regexp.Compile(x.HTTP.BodyRegex); e != nil {
+			if _, e := CompileBodyRegex(x.HTTP.BodyRegex); e != nil {
 				return fmt.Errorf("check %s: invalid response regex", x.ID)
 			}
 			if e := HTTPHeaders(x.HTTP.RequestHeaders); e != nil {

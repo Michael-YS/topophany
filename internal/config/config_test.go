@@ -158,7 +158,7 @@ func FuzzDecodeTopology(f *testing.F) {
 	f.Add([]byte(`{"schema":1}`))
 	f.Fuzz(func(t *testing.T, b []byte) {
 		if len(b) > 1<<16 {
-			t.Skip()
+			t.Skip("fuzz input exceeds the topology fuzz budget")
 		}
 		_, _ = config.Decode(strings.NewReader(string(b)))
 	})

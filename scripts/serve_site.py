@@ -135,7 +135,7 @@ class Collector:
                 raise ValueError("collector response exceeds the viewer body limit")
             if 300 <= response.status < 400:
                 raise ValueError("collector redirects are refused")
-            if response.status == 200 and urlsplit(path).path in ("/v1/config", "/v1/snapshot"):
+            if response.status == 200 and urlsplit(path).path in ("/v1/config", "/v1/snapshot", "/v1/history", "/v1/rollups"):
                 if json.loads(body).get("project") != self.project:
                     raise ValueError("collector project does not match the saved profile")
             return response.status, body

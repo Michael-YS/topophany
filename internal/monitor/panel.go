@@ -90,11 +90,7 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 	if m.Visual == "status" || m.Visual == "list" || m.Visual == "card" {
 		return projection.resolve(v)
 	}
-	s := ageSnapshot(in.Snapshot, now)
-	stale := map[string]int{}
-	for _, check := range s.Topology.Checks {
-		stale[check.ID] = check.StaleSeconds
-	}
+	s, stale := projection.scalarSnapshot()
 	if strings.HasPrefix(r.Metric, "delivery.") {
 		return deliveryValue(v, in.Delivery, now)
 	}

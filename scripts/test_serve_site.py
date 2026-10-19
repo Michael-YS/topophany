@@ -241,7 +241,9 @@ class LocalViewerTests(unittest.TestCase):
         self.assertEqual(status, 502)
         self.assertNotIn("Location", headers)
         self.upstream.response = 200, b'{"project":"different-network"}'
-        self.assertEqual(self.authorized()[0], 502)
+        for path in ("/v1/config", "/v1/snapshot", "/v1/history?check=local", "/v1/rollups?check=local"):
+            with self.subTest(path=path):
+                self.assertEqual(self.authorized(path)[0], 502)
         self.upstream.response = 200, b'x' * 2048
         with patch.object(site, "MAX_BODY", 1024):
             self.assertEqual(self.authorized()[0], 502)

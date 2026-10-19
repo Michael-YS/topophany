@@ -58,6 +58,9 @@ func (m *Model) Render() []string {
 
 // draw paints one frame, or returns nil when the terminal is too small.
 func (m *Model) draw() *Canvas {
+	var rows []Row
+	m.frameRows = &rows
+	defer func() { m.frameRows = nil }()
 	w, h := m.Width, m.Height
 	m.hits = m.hits[:0]
 	if w < 30 || h < 10 {

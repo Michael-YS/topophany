@@ -14,7 +14,12 @@ func trustedBundleSource(_ context.Context, dir string, m Manifest) error {
 	if os.Geteuid() != 0 {
 		return nil
 	}
-	trusted := installers()
+	return trustedBundleFiles(dir, m, installers())
+}
+
+// Keep the privileged policy independent of the caller's UID so ordinary tests
+// exercise the same filesystem checks an administrator's installation uses.
+func trustedBundleFiles(dir string, m Manifest, trusted []int) error {
 	names := []string{"manifest.json"}
 	for _, f := range m.Files {
 		names = append(names, f.Source)
