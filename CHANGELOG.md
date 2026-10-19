@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - macOS host checks read CPU, memory and process counters in process through
   libSystem, with a 200 ms CPU sample. They no longer run system commands;
   configured process names alone receive RSS reads.
+- The mark is drawn matte rather than glossy: its land is a halftone of
+  the light on it, its night side stays dark under a thin atmosphere, and
+  the arc tapers as light setting out from Shanghai to Honolulu, which
+  glows at dusk. The Apple touch icon shows it whole among a few stars;
+  the favicon keeps coarse dots and a broad arc, so it reads at 16 pixels.
 
 ### Fixed
 
