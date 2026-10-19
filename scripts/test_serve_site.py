@@ -6,9 +6,11 @@ import importlib.util
 import json
 from pathlib import Path
 import ssl
+import socket
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -128,6 +130,58 @@ class LocalViewerTests(unittest.TestCase):
         with site.serve(site.ROOT / "site/public", self.collector, fixed,
                         allow_fixed_port=True) as explicit:
             self.assertEqual(explicit.server_port, fixed)
+
+    def test_partial_headers_are_admitted_before_threads_are_created(self):
+        self.server.slots = threading.BoundedSemaphore(2)
+        sockets = []
+        original = self.server.process_request_thread
+        started = []
+
+        def tracked(*args):
+            started.append(threading.get_ident())
+            return original(*args)
+
+        def connect():
+            connection = socket.create_connection(("127.0.0.1", self.server.server_port), timeout=1)
+            sockets.append(connection)
+            connection.sendall(b"GET / HTTP/1.1\r\nX-Slow: ")
+            return connection
+
+        with patch.object(self.server, "process_request_thread", tracked):
+            try:
+                for _ in range(2):
+                    connect()
+                deadline = time.monotonic() + 1
+                while len(started) < 2 and time.monotonic() < deadline:
+                    time.sleep(.005)
+                self.assertEqual(len(started), 2)
+                for _ in range(5):
+                    connection = connect()
+                    try:
+                        self.assertEqual(connection.recv(1), b"")
+                    except ConnectionResetError:
+                        pass
+                self.assertEqual(len(started), 2)
+            finally:
+                for connection in sockets:
+                    connection.close()
+
+    def test_dripping_headers_cannot_extend_absolute_deadline(self):
+        with patch.object(site, "HEADER_TIMEOUT", .15):
+            with socket.create_connection(("127.0.0.1", self.server.server_port), timeout=1) as connection:
+                connection.sendall(b"GET / HTTP/1.1\r\nX-Slow: ")
+                start = time.monotonic()
+                for _ in range(20):
+                    time.sleep(.025)
+                    try:
+                        connection.sendall(b"x")
+                    except OSError:
+                        break
+                self.assertLess(time.monotonic() - start, .5)
+                try:
+                    self.assertEqual(connection.recv(1), b"")
+                except ConnectionResetError:
+                    pass
 
     def test_forged_browser_headers_cannot_acquire_a_capability(self):
         forged = {"Host": self.origin.removeprefix("http://"), "Origin": self.origin,

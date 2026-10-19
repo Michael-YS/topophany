@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 import re
 import secrets
+import socket
 import ssl
 import stat
 import sys
@@ -29,6 +30,62 @@ PREFIX = "/__topophany_local__"
 READS = {"/v1/config", "/v1/snapshot", "/v1/history", "/v1/rollups"}
 MAX_BODY = 4 << 20
 LAUNCH_TTL = 300
+MAX_CONNECTIONS = 16
+HEADER_TIMEOUT = 3
+
+
+class BoundedHTTPServer(ThreadingHTTPServer):
+    """Acquire admission before spawning; partial headers have a total deadline."""
+    request_queue_size = MAX_CONNECTIONS
+
+    def __init__(self, *args, **kwargs):
+        self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.header_timers = {}
+        self.timer_lock = threading.Lock()
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        timer = threading.Timer(HEADER_TIMEOUT, self.expire_headers, args=(request,))
+        timer.daemon = True
+        with self.timer_lock:
+            self.header_timers[request] = (timer, time.monotonic() + HEADER_TIMEOUT)
+        try:
+            request.settimeout(HEADER_TIMEOUT)
+            timer.start()
+            super().process_request(request, client_address)
+        except BaseException:
+            self.headers_complete(request)
+            self.slots.release()
+            raise
+
+    def expire_headers(self, request):
+        # An idle timeout alone lets a slow sender reset the clock forever.
+        with self.timer_lock:
+            if request not in self.header_timers:
+                return
+            try:
+                request.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def headers_complete(self, request):
+        with self.timer_lock:
+            entry = self.header_timers.pop(request, None)
+        if entry is not None:
+            timer, deadline = entry
+            timer.cancel()
+            return time.monotonic() < deadline
+        return False
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.headers_complete(request)
+            self.slots.release()
 
 
 class Collector:
@@ -107,6 +164,22 @@ def asset_headers(directory: Path, path: str) -> dict[str, str]:
 
 class SiteHandler(SimpleHTTPRequestHandler):
     server_version = "TopophanyLocal"
+
+    def parse_request(self):
+        try:
+            valid = super().parse_request()
+        finally:
+            timely = self.server.headers_complete(self.connection)
+            # Each accepted connection has one request and one admission slot.
+            self.close_connection = True
+        return valid and timely
+
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionError, TimeoutError):
+            # A deadline or disconnected local client needs no traceback.
+            pass
 
     @property
     def origin(self):
@@ -262,7 +335,7 @@ def serve(directory: Path, collector: Collector, port: int = 0, *,
           allow_fixed_port: bool = False) -> ThreadingHTTPServer:
     if port != 0 and not allow_fixed_port:
         raise ValueError("fixed ports require --allow-fixed-port (persistent browser origin risk)")
-    server = ThreadingHTTPServer(("127.0.0.1", port), partial(SiteHandler, directory=str(directory)))
+    server = BoundedHTTPServer(("127.0.0.1", port), partial(SiteHandler, directory=str(directory)))
     server.collector = collector
     return server
 
