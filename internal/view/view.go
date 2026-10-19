@@ -86,14 +86,22 @@ func Columns(tab int) []string {
 // over their ID, title, meta and columns, each marked when the view is
 // cached or a local draft.
 func (v View) List(tab int, search string) []Row {
+	var defs *scopeIndex
+	if tab == Services || tab == Checks {
+		defs = indexScopes(v.Snapshot.Topology)
+	}
+	return v.list(tab, search, defs)
+}
+
+func (v View) list(tab int, search string, defs *scopeIndex) []Row {
 	rows := v.Rows(tab)
 	filtered := rows[:0]
 	search = strings.ToLower(search)
 	for _, r := range rows {
 		if tab == Services || tab == Checks {
-			scope := EntityScope(v.Snapshot.Topology, r.Kind, r.ID)
+			scope := defs.scope(r.Kind, r.ID)
 			if scope.Application != "" || scope.Environment != "" {
-				app := ApplicationName(v.Snapshot.Topology, scope.Application)
+				app := defs.application(scope.Application)
 				r.Meta += " · " + ScopeLabel(app, scope.Environment)
 				r.Details = append(r.Details, "", "Application: "+app)
 				if scope.Environment != "" {

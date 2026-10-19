@@ -80,11 +80,69 @@ func EntityScope(c model.Config, kind, id string) Scope {
 	return scope
 }
 
+// Bulk list derivation shares these definitions across all rows. EntityScope
+// remains useful for a single selection; calling it per row rescans the config.
+type scopeIndex struct {
+	checks, services                     map[string]Scope
+	apps, nodes, observers, serviceNames map[string]string
+}
+
+func indexScopes(c model.Config) *scopeIndex {
+	x := &scopeIndex{checks: map[string]Scope{}, services: map[string]Scope{}, apps: map[string]string{}, nodes: map[string]string{}, observers: map[string]string{}, serviceNames: map[string]string{}}
+	for _, d := range c.Checks {
+		x.checks[d.ID] = Scope{Application: d.Application, Environment: d.Environment, Service: d.Service, Observer: d.Observer, Path: d.Path}
+	}
+	for _, d := range c.Services {
+		x.services[d.ID] = Scope{Application: d.Application, Environment: d.Environment, Service: d.ID, Node: d.Node}
+		x.serviceNames[d.ID] = d.Name
+	}
+	for _, d := range c.Applications {
+		x.apps[d.ID] = d.Name
+	}
+	for _, d := range c.Nodes {
+		x.nodes[d.ID] = d.Name
+	}
+	for _, d := range c.Observers {
+		x.observers[d.ID] = d.Name
+	}
+	return x
+}
+
+func (x *scopeIndex) scope(kind, id string) Scope {
+	var out Scope
+	if kind == "check" {
+		out = x.checks[id]
+		if out.Service == "" {
+			return out
+		}
+		id = out.Service
+	}
+	if s, ok := x.services[id]; ok {
+		out.Application, out.Environment, out.Service, out.Node = s.Application, s.Environment, s.Service, s.Node
+	}
+	return out
+}
+
+func indexedName(names map[string]string, id string) string {
+	if name := names[id]; name != "" {
+		return name
+	}
+	return id
+}
+
+func (x *scopeIndex) application(id string) string {
+	if id == "" {
+		return "Ungrouped"
+	}
+	return indexedName(x.apps, id)
+}
+
 // GroupedList uses the same evidence rows as CLI output. Group summaries describe
 // members, not business availability. Environments never share a summary.
 func (v View) GroupedList(tab int, o GroupOptions) []Row {
 	c := v.Snapshot.Topology
-	rows := v.List(tab, "")
+	defs := indexScopes(c)
+	rows := v.list(tab, "", defs)
 	staleChecks := map[string]bool{}
 	pausedChecks := map[string]bool{}
 	staleServices, pausedServices := map[string]bool{}, map[string]bool{}
@@ -111,11 +169,11 @@ func (v View) GroupedList(tab int, o GroupOptions) []Row {
 	flat := []Row{}
 	envs := DeclaresEnvironments(c)
 	for _, r := range rows {
-		s := EntityScope(c, r.Kind, r.ID)
+		s := defs.scope(r.Kind, r.ID)
 		if !scopeMatches(o.Application, s.Application) || !scopeMatches(o.Environment, s.Environment) || o.Service != "" && s.Service != o.Service {
 			continue
 		}
-		app := ApplicationName(c, s.Application)
+		app := defs.application(s.Application)
 		env := s.Environment
 		if env == "" {
 			env = "Unspecified"
@@ -124,34 +182,19 @@ func (v View) GroupedList(tab int, o GroupOptions) []Row {
 		switch o.By {
 		case "service":
 			key = s.Service
-			label = s.Service
-			for _, d := range c.Services {
-				if d.ID == key && d.Name != "" {
-					label = d.Name
-				}
-			}
+			label = indexedName(defs.serviceNames, key)
 			if key == "" {
 				label = "Infrastructure checks"
 			}
 		case "host":
 			key = s.Node
-			label = s.Node
-			for _, n := range c.Nodes {
-				if n.ID == key && n.Name != "" {
-					label = n.Name
-				}
-			}
+			label = indexedName(defs.nodes, key)
 			if key == "" {
 				label = "Unassigned"
 			}
 		case "observer":
 			key = s.Observer
-			label = s.Observer
-			for _, d := range c.Observers {
-				if d.ID == key && d.Name != "" {
-					label = d.Name
-				}
-			}
+			label = indexedName(defs.observers, key)
 			if key == "" {
 				label = "Unassigned"
 			}

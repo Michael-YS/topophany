@@ -82,6 +82,12 @@ func (v View) rows(tab int, attentionOnly bool) []Row {
 		}
 	}
 	observerDefs := map[string]model.Observer{}
+	storageByObserver := map[string][]int{}
+	if tab == Observers && s.Storage != nil {
+		for i, u := range s.Storage.Observers {
+			storageByObserver[u.Observer] = append(storageByObserver[u.Observer], i)
+		}
+	}
 	observerNames := map[string]string{}
 	for _, o := range s.Topology.Observers {
 		observerDefs[o.ID] = o
@@ -456,10 +462,8 @@ func (v View) rows(tab int, attentionOnly bool) []Row {
 				}
 			}
 			if s.Storage != nil {
-				for _, u := range s.Storage.Observers {
-					if u.Observer != e.ID {
-						continue
-					}
+				for _, i := range storageByObserver[e.ID] {
+					u := s.Storage.Observers[i]
 					r.Details = append(r.Details, "", fmt.Sprintf("Storage: %.1f / %.1f MiB", float64(u.Bytes)/(1<<20), float64(u.ByteLimit)/(1<<20)), fmt.Sprintf("Receipts: %d / %d; last hour: %d; projected: %d", u.Receipts, u.ReceiptLimit, u.LastHour, u.Settles))
 					if u.Fills {
 						r.Details = append(r.Details, "Projected quota exhaustion: "+u.FullIn.Round(time.Second).String())

@@ -80,6 +80,39 @@ func BenchmarkDefinitionRows(b *testing.B) {
 	}
 }
 
+func TestBulkScopeLookupPreservesServiceOverrides(t *testing.T) {
+	c := model.Config{
+		Applications: []model.Application{{ID: "app", Name: "Application"}},
+		Services:     []model.Service{{ID: "web", Application: "app", Environment: "production", Node: "host"}},
+		Checks: []model.Check{
+			{ID: "attached", Application: "check-app", Service: "web", Observer: "remote", Path: "route"},
+			{ID: "standalone", Application: "check-app", Environment: "test", Observer: "remote"},
+			{ID: "missing-service", Application: "check-app", Service: "missing"},
+		},
+	}
+	defs := indexScopes(c)
+	for _, pair := range [][2]string{{"service", "web"}, {"check", "attached"}, {"check", "standalone"}, {"check", "missing-service"}, {"check", "absent"}} {
+		if got, want := defs.scope(pair[0], pair[1]), EntityScope(c, pair[0], pair[1]); got != want {
+			t.Fatal(pair, got, want)
+		}
+	}
+	if defs.application("app") != "Application" || defs.application("") != "Ungrouped" || defs.application("unknown") != "unknown" {
+		t.Fatal("application name fallback changed")
+	}
+}
+
+func BenchmarkServiceListAndGrouping(b *testing.B) {
+	for _, n := range []int{256, 1024, 4096} {
+		v := definitionRowsFixture(n)
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				v.GroupedList(Services, GroupOptions{By: "flat"})
+			}
+		})
+	}
+}
+
 func TestEndpointIndexesPreserveOwnershipAndReverseVia(t *testing.T) {
 	v := endpointRowsFixture(32)
 	for _, tab := range []int{Topology, Servers, Overview} {
