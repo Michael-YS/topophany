@@ -14,6 +14,11 @@ Provider expectations compare names **and order**. They cannot verify proxy
 parameters. Unknown group shapes, cycles and ambiguous load balancing remain
 unresolved. Credential-bearing controller responses may display only names
 already declared by the topology; arbitrary returned names are withheld.
+Raw history delay/timestamps, provider load timestamps, numeric provider counts
+and exact unexpected HTTP statuses are also withheld when the controller receives
+a token or an unauthenticated HTTP response can be rewritten by a credentialed
+proxy. Policy matches, settlement decisions and closed status words remain;
+public controllers retain their detailed diagnostic telemetry.
 
 Default automated compatibility tests use synthetic API responses. Opt-in live
 acceptance is recorded separately with exact core versions and platforms; it
@@ -109,7 +114,7 @@ difference is not yet confirmed: a controller loads a new provider over a
 minute or two, and every publication would otherwise report a violation while
 it catches up. A difference inside the window is still a policy sample, but
 `provider_reference_settling: true` and `provider_comparison` saying
-`=settling(` mark it as not yet confirmed. The engine opens the incident only
+`=settling` mark it as not yet confirmed. The engine opens the incident only
 after the window has elapsed across as many consecutive policy samples as it
 represents at the check's interval (and at least `failure_threshold`), so a publisher that keeps
 republishing cannot defer it forever. Matching membership is never deferred;
@@ -137,6 +142,8 @@ collector's 32 facts and each complete key fits 128 bytes. Longer metadata
 keys are omitted; membership remains in `provider.<name>`, so a provider named
 `pool.updated_at` cannot be overwritten by `pool`'s load time. The independent
 load evidence remains available even when optional times are omitted.
+Credential-bearing controller responses omit these raw load times entirely;
+the publisher's independent time and fixed load-pending decision are retained.
 A difference that outlives the window is the drift this check
 exists to find; one that does not is the publication loading. A provider whose
 controller reports an `updatedAt` after the publication is not still loading
@@ -173,6 +180,7 @@ that OS routes or application traffic use TUN.
 (default) or `set`. Use ordered mode for priority-sensitive fallback groups.
 Set mode tolerates reordering but rejects duplicate members and still detects
 missing/extra names. It applies to static or reference-backed expectations.
-`provider_comparison` reports bounded counts and order changes without exporting
-undeclared names. A publication changing during sampling is labeled unverified.
+`provider_comparison` reports bounded counts and order changes for public
+controllers without exporting undeclared names. Credential-bearing controllers
+retain only closed comparison labels. A publication changing during sampling is labeled unverified.
 The summary is truncated at the usual fact budget for very large provider names.

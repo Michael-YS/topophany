@@ -52,7 +52,7 @@
         "reported_selection": "undeclared",
         "sampling_atomicity": "separate_API_reads_not_atomic",
         "tun_enabled": "true",
-        "provider_comparison": "pool=match(expected:1 loaded:1 missing:0 extra:0 order_changed:false present:true)"
+        "provider_comparison": "pool=match"
       }
     }
   },
@@ -70,8 +70,8 @@
       "outcome": "fail",
       "evidence": "reported",
       "stage": "adapter_api",
-      "code": "http_503",
-      "detail": "adapter_api: http_503",
+      "code": "unexpected_status",
+      "detail": "adapter_api: unexpected_status",
       "duration_ms": 0,
       "connectivity": false,
       "path_evidence": "requested_not_route_verified",
@@ -109,7 +109,7 @@
         "reported_selection": "node",
         "sampling_atomicity": "separate_API_reads_not_atomic",
         "tun_enabled": "true",
-        "provider_comparison": "pool=match(expected:1 loaded:1 missing:0 extra:0 order_changed:false present:true)"
+        "provider_comparison": "pool=match"
       }
     }
   },
@@ -141,7 +141,7 @@
         "reported_selection": "node",
         "sampling_atomicity": "separate_API_reads_not_atomic",
         "tun_enabled": "true",
-        "provider_comparison": "pool=match(expected:1 loaded:1 missing:0 extra:0 order_changed:false present:true)"
+        "provider_comparison": "pool=match"
       }
     }
   },
@@ -174,7 +174,7 @@
         "reported_selection": "node",
         "sampling_atomicity": "separate_API_reads_not_atomic",
         "tun_enabled": "true",
-        "provider_comparison": "pool=mismatch(expected:1 loaded:1 missing:1 extra:1 order_changed:false present:true)"
+        "provider_comparison": "pool=mismatch"
       }
     }
   },

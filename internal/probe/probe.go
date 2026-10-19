@@ -290,13 +290,16 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	}
 	defer resp.Body.Close()
 	o.Connectivity = true
-	o.Facts["http_status"] = strconv.Itoa(resp.StatusCode)
+	if !secret {
+		o.Facts["http_status"] = strconv.Itoa(resp.StatusCode)
+	}
 	o.Facts["response_proof"] = "http_response"
 	if resp.TLS != nil {
 		o.Facts["response_proof"] = "verified_https"
 	}
 	for k, v := range EdgeFacts(resp.Header) {
-		if secret && (k == "edge_pop" || k == "edge_region" || k == "vercel_edge_region" || k == "vercel_route_regions") {
+		// Only closed vocabularies may cross a credential boundary.
+		if secret && k != "edge_provider" && k != "edge_cache" {
 			continue
 		}
 		o.Facts[k] = v
@@ -375,7 +378,7 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 }
 
 // withheld says that what a peer answered is kept only as closed words,
-// numbers and comparisons with the topology, as the request carried a
+// comparisons with the topology, as the request carried a
 // secret. A peer sent a secret could otherwise hand it back, in a header
 // or a name, for its observation to carry to every viewer of the
 // collector, though viewers are never given the secret itself.

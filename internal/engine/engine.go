@@ -374,6 +374,7 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 	}
 	// Incidents aggregate only confirmed failures in the same observer/endpoint
 	// scope. They do not diagnose an IP-wide ban, GFW, or untested UDP behavior.
+	proofs := p.responseProofs(allStates)
 	incidents := map[string]*model.Incident{}
 	// An incident can hold several checks on one node. Remember every status
 	// each of them reported through the edge so one check's code cannot
@@ -414,13 +415,8 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 		}
 		if !policy && x.Endpoint != "" {
 			ep := endpoints[x.Endpoint]
-			for _, id := range p.nodeChecks[ep.Node] {
-				other := checks[id]
-				cs := allStates[other.ID]
-				oe, ok := endpoints[other.Endpoint]
-				if other.Observer != x.Observer && ok && (oe.Node == ep.Node || slices.Contains(oe.Via, ep.Node)) && cs.Freshness == "fresh" && cs.Last != nil && answered(oe, ep.Node, cs.Last) {
-					inc.CounterEvidence = boundedChecks(inc.CounterEvidence, []string{other.ID})
-				}
+			if len(inc.CounterEvidence) < counterEvidenceLimit {
+				inc.CounterEvidence = boundedChecks(inc.CounterEvidence, proofs.excluding(ep.Node, x.Observer))
 			}
 			if len(ep.Via) > 0 && s.Last.Connectivity {
 				edgeChecks[scope]++
@@ -645,12 +641,15 @@ func pathEvidenceStates(states []model.CheckState) []model.CheckState {
 // A shared candidate DAG must not expand the same descendant list repeatedly.
 // Summaries carry a bounded sample; the topology and check list retain all IDs.
 func boundedChecks(dst, src []string) []string {
+	if len(dst) >= counterEvidenceLimit {
+		return dst
+	}
 	seen := map[string]bool{}
 	for _, id := range dst {
 		seen[id] = true
 	}
 	for _, id := range src {
-		if len(dst) >= 32 {
+		if len(dst) >= counterEvidenceLimit {
 			break
 		}
 		if !seen[id] {

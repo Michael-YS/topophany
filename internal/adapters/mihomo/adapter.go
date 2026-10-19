@@ -22,7 +22,7 @@ type Dependencies struct {
 	ProxyCredentials bool
 }
 
-func Collect(ctx context.Context, deps Dependencies, x model.Check, target string, o *model.Observation) error {
+func Collect(ctx context.Context, deps Dependencies, x model.Check, target string, o *model.Observation) (err error) {
 	options := x.Adapter.Mihomo()
 	token, e := secure.SecretEnv(options.TokenEnv)
 	if e != nil {
@@ -35,6 +35,21 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 	// A controller sent a secret says its mode in a closed word and names
 	// only what the topology declares; see withheld.
 	secret := token != "" || u.Scheme != "https" && deps.ProxyCredentials
+	if secret {
+		defer func() {
+			for key := range o.Facts {
+				if key == "core_delay_ms" || key == "core_last_checked" || strings.HasPrefix(key, "provider_updated_at.") {
+					delete(o.Facts, key)
+				}
+			}
+			var failure *adapters.Failure
+			if errors.As(err, &failure) && strings.HasPrefix(failure.Code, "http_") {
+				copy := *failure
+				copy.Code = "unexpected_status"
+				err = &copy
+			}
+		}()
+	}
 	mode, name := adapters.SafeFact, func(s string) string { return s }
 	if secret {
 		known := declared(options)
@@ -124,7 +139,7 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 			if !secret {
 				o.Facts["test_url"] = adapters.PublicURL(p.TestURL)
 			}
-			if len(p.History) > 0 {
+			if !secret && len(p.History) > 0 {
 				last := p.History[len(p.History)-1]
 				o.Facts["core_last_checked"] = last.Time.UTC().Format(time.RFC3339)
 				o.Facts["core_delay_ms"] = strconv.Itoa(last.Delay)

@@ -227,3 +227,12 @@ also exercises the complete three-mode cycle in the WebAssembly viewer.
 `BenchmarkSteadyHistoryPruning` measures saturated history maintenance at 1,000
 and 20,000 rows, separately from journal I/O. `BenchmarkFleetCardsWithServices`
 uses validated topologies with services and endpoints, exercising actual cards.
+
+## Security scan regression coverage (2026-10-19)
+
+| Scenario | Regression |
+| --- | --- |
+| Force-tracked dist content is rejected; ignored local ZIPs cannot seed fresh archives; publication rejects unexpected files, traversal, links, extra members and checksum paths | `ReleaseArtifactIntegrity`, `ReleaseTagBindingTests` |
+| A 4,000-check topology retains every confirmed failure while cross-observer proof samples and lookups stay bounded; saturated summaries allocate nothing | `TestCounterEvidenceNearLimitKeepsCoreFailures`, `TestResponseProofIndexBoundsAndExclusion`, `BenchmarkCrossObserverCounterEvidence` |
+| Bearer, custom header, Host override, query and proxy credentials cannot be reflected through HTTP status or Mihomo numeric history, timestamps, counts and API error codes; public diagnostics remain | `TestPrivateHTTPStatusIsWithheld`, `TestPrivateMihomoNumericTelemetryIsWithheld` |
+| Repeating applications.list 127 times beside a scalar cannot retain or publish oversized rich values; external panels and stream frames share the 1 MiB limit | `TestPersistentPanelBudgetBeforeRetention`, `TestPanelAggregateBudgetAndCallerOwnership`, `TestFrameBoundWriteAndFlush` |

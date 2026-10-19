@@ -126,7 +126,7 @@ set) is how long after `published_at` a difference is treated as not yet
 confirmed: the controller loads a new provider over a minute or two. A
 difference inside that window remains a policy sample, with
 `provider_reference_settling: true`, code `provider_membership_mismatch`, and
-`provider_comparison` saying `=settling(`; the engine opens the incident only
+`provider_comparison` saying `=settling`; the engine opens the incident only
 after the window's equivalent consecutive policy samples (and at least
 the effective `policy_threshold`), so repeated publications cannot defer it forever.
 Matching membership is never deferred. Facts record
@@ -134,7 +134,10 @@ Matching membership is never deferred. Facts record
 (the controller's own load time for that provider, reference providers first,
 while the observation stays within the collector's 32 facts and each complete
 key fits 128 bytes) and the sample's own time. Optional load-time keys that do
-not fit are omitted; provider membership is preserved.
+not fit are omitted; provider membership is preserved. Credential-bearing
+controller responses omit raw load timestamps and numeric comparison counts;
+closed match/mismatch/settling labels and independent load-pending evidence
+remain available.
 `provider_reference_load_pending` records load evidence independently of the
 worker's wait. The collector applies its current window at the sample's time,
 including after a reload and for queued samples. Legacy samples lacking this
@@ -616,6 +619,14 @@ can still contain `running` after the lease has expired. Do not use mtime or
 validity because the publisher renewed its lease. Implausibly future timestamps
 are treated as unavailable. `monitor preview` applies this reader policy.
 
+File snapshots and stream frames share a 1 MiB serialized limit. Rich row
+values have a 64 KiB individual limit and share a 512 KiB aggregate budget,
+leaving room for template metadata and scalar rows. Repeated structured
+projections are computed once per panel. Oversized values become unavailable
+with `reason: "frame_budget_exceeded"` before retention or file serialization.
+Files use compact JSON; excessive envelope/template metadata is rejected
+without replacing the previous complete file.
+
 Each output has one cooperating writer, protected by a process-lifetime lock in
 a separate stable file. Locks release after process termination. Writes create
 a complete temporary file beside the destination and replace the destination;
@@ -639,7 +650,9 @@ Mihomo `adapter.expected_tun` accepts an explicit boolean; missing controller
 state stays unknown. `provider_match_modes` maps expected provider names to
 `ordered` (the default) or `set`. Set mode ignores ordering, while duplicate,
 missing and extra members still violate policy. Bounded `provider_comparison`
-counts explain mismatches without exposing undeclared names.
+counts explain mismatches without exposing undeclared names for public
+controllers. Credential-bearing responses retain closed comparison labels
+without raw counts or controller timestamps.
 
 WireGuard `adapter.expected_allowed_ips` optionally asserts a nonempty set of
 1..128 CIDRs. `expected_keepalive_seconds` asserts 0..65535 seconds (0 is off).

@@ -123,7 +123,7 @@ func TestMihomoFullReferenceEvidenceFitsFactBudget(t *testing.T) {
 			if err := mihomo.Collect(context.Background(), deps, x, server.URL, &o); err != nil {
 				t.Fatal(err)
 			}
-			if o.Outcome != "policy" || len(o.Facts) != model.MaxObservationFacts || config.ObservationBounds(o, config.MaxTook) != "" {
+			if o.Outcome != "policy" || len(o.Facts) > model.MaxObservationFacts || config.ObservationBounds(o, config.MaxTook) != "" {
 				t.Fatalf("full evidence cannot be admitted: %+v", o)
 			}
 			for _, name := range names {

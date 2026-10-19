@@ -66,10 +66,39 @@ func Build(c Config, in Input, now time.Time) Panel {
 		p.Project = c.Project
 	}
 	projection := newProjection(in, now)
-	for _, r := range c.Template.Rows {
-		p.Rows = append(p.Rows, resolve(r, in, now, projection))
+	type richKey struct {
+		metric   string
+		selectBy Selector
+		limit    int
 	}
-	return p
+	cache := map[richKey]Value{}
+	remaining := panelValueBudget
+	for _, r := range c.Template.Rows {
+		m, _ := metric(r.Metric)
+		var value Value
+		if m.Visual == "status" || m.Visual == "list" || m.Visual == "card" {
+			key := richKey{metric: r.Metric, selectBy: r.Select}
+			if r.Limit != nil {
+				key.limit = *r.Limit
+			}
+			var ok bool
+			value, ok = cache[key]
+			if !ok {
+				value = resolve(r, in, now, projection)
+				rowBudget := maxRowValueBytes
+				value = boundedValue(value, &rowBudget)
+			}
+			value.Row = r
+			value = boundedValue(value, &remaining)
+			// Cache only budgeted data, so repeats cannot retain or rebuild a
+			// large projection. Exhausted rich rows leave scalars available.
+			cache[key] = value
+		} else {
+			value = resolve(r, in, now, projection)
+		}
+		p.Rows = append(p.Rows, value)
+	}
+	return clone(p)
 }
 func missing(v Value, reason string) Value {
 	v.Value = nil

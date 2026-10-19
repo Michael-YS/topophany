@@ -66,8 +66,8 @@ func TestMihomoReadsOnlySafeEndpointsAndExpandsDialerProxy(t *testing.T) {
 			t.Fatal("adapter exported secret", secret)
 		}
 	}
-	if o.Facts["core_last_checked"] != "2025-01-01T00:00:00Z" {
-		t.Fatal("historical kernel timestamp replaced with sampling time")
+	if o.Facts["core_last_checked"] != "" || o.Facts["core_delay_ms"] != "" {
+		t.Fatal("credential-bearing controller exported history telemetry")
 	}
 	if !strings.Contains(o.PathEvidence, "not_request_verified") {
 		t.Fatal(o)
@@ -78,6 +78,9 @@ func TestMihomoReadsOnlySafeEndpointsAndExpandsDialerProxy(t *testing.T) {
 	mu.Unlock()
 	x.Adapter.TokenEnv = ""
 	o = (probe.Runner{}).Run(context.Background(), testkit.Config(), x)
+	if o.Facts["core_last_checked"] != "2025-01-01T00:00:00Z" || o.Facts["core_delay_ms"] != "123" {
+		t.Fatal("public controller lost historical telemetry")
+	}
 	if o.Outcome != "ok" || o.Facts["reported_chain"] != "s2 -> aaitr" || o.Facts["reported_selection"] != "aaitr" || o.Facts["test_url"] != "https://example.invalid/204?redacted" {
 		t.Fatal("reverse chain", o)
 	}

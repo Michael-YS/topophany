@@ -20,7 +20,7 @@ import (
 )
 
 const MaxRequestBytes = 256 << 10
-const MaxFrameBytes = 1 << 20
+const MaxFrameBytes = monitor.MaxPanelBytes
 
 type Request struct {
 	Schema      int              `json:"schema"`

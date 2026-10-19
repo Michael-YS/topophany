@@ -137,7 +137,7 @@ func content(p Panel) string {
 	return secure.Hash(string(b))
 }
 func (o *Output) Write(p Panel, every time.Duration, force bool) error {
-	p = clone(p)
+	p = clone(boundPanel(p))
 	if !force && !ShouldPublish(o.last, o.digest, p, every) {
 		return nil
 	}
@@ -146,11 +146,11 @@ func (o *Output) Write(p Panel, every time.Duration, force bool) error {
 	if p.Lifecycle != "running" {
 		p.PublisherExpiresAt = p.GeneratedAt
 	}
-	b, e := json.MarshalIndent(p, "", "  ")
+	b, e := MarshalPanel(p)
 	if e != nil {
 		return e
 	}
-	if e = secure.CacheWrite(o.path, append(b, '\n'), 0600); e != nil {
+	if e = secure.CacheWrite(o.path, b, 0600); e != nil {
 		return e
 	}
 	o.last = clone(p)

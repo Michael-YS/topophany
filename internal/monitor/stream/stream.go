@@ -2,7 +2,6 @@ package stream
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -207,41 +206,10 @@ func boundedText(s string, limit int) string {
 // WriteFrame makes exactly one write, then flushes sinks that support flushing.
 // Oversized display values are withheld, preserving the template and deadlines.
 func WriteFrame(w interface{ Write([]byte) (int, error) }, p monitor.Panel) error {
-	p.Rows = append([]monitor.Value{}, p.Rows...)
-	data, err := json.Marshal(p)
+	data, err := monitor.MarshalPanel(p)
 	if err != nil {
 		return err
 	}
-	for len(data)+1 > MaxFrameBytes {
-		largest := -1
-		size := 0
-		for i, r := range p.Rows {
-			if r.Value == nil {
-				continue
-			}
-			value, e := json.Marshal(r.Value)
-			if e != nil {
-				return e
-			}
-			if len(value) > size {
-				largest, size = i, len(value)
-			}
-		}
-		if largest < 0 {
-			return fmt.Errorf("frame exceeds 1 MiB")
-		}
-		r := &p.Rows[largest]
-		r.Value = nil
-		r.Text = "unknown"
-		r.Health = "unknown"
-		r.Freshness = "unavailable"
-		r.Reason = "frame_budget_exceeded"
-		data, err = json.Marshal(p)
-		if err != nil {
-			return err
-		}
-	}
-	data = append(data, '\n')
 	n, err := w.Write(data)
 	if err != nil {
 		return err

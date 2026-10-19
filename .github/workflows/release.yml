@@ -36,6 +36,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Build release archives from a fresh immutable checkout
+        id: archives
         env:
           VERSION: ${{ github.ref_name }}
           SOURCE_SHA: ${{ github.sha }}
@@ -43,12 +44,17 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
-          mkdir -p dist
+          # Ignore rules do not stop a contributor from force-tracking output.
+          [ -z "$(git ls-tree "$SOURCE_SHA" -- dist)" ] || { echo 'Tracked release output is forbidden' >&2; exit 1; }
+          dist=$(mktemp -d "$RUNNER_TEMP/release-dist.XXXXXXXX")
+          staging=$(mktemp -d "$RUNNER_TEMP/release-stage.XXXXXXXX")
+          printf 'directory=%s\n' "$dist" >> "$GITHUB_OUTPUT"
+          archives=()
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             os="${target%/*}"; arch="${target#*/}"
             name="topophany_${VERSION#v}_${os}_${arch}"
-            stage="$RUNNER_TEMP/$name"
-            mkdir -p "$stage"
+            stage="$staging/$name"
+            mkdir "$stage"
             bin=topo; [ "$os" = windows ] && bin=topo.exe
             # The checkout is one commit without tags, so the toolchain can
             # stamp only a pseudo-version; the tag names the release.
@@ -58,20 +64,24 @@ jobs:
             fi
             python3 scripts/release_metadata.py --revision "$SOURCE_SHA" --destination "$stage"
             if [ "$os" = windows ]; then
-              (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/dist/$name.zip" "$name")
+              [ ! -e "$dist/$name.zip" ]
+              (cd "$staging" && zip -qr "$dist/$name.zip" "$name")
+              archives+=("$name.zip")
             else
-              tar -C "$RUNNER_TEMP" -czf "dist/$name.tar.gz" "$name"
+              [ ! -e "$dist/$name.tar.gz" ]
+              tar -C "$staging" -czf "$dist/$name.tar.gz" "$name"
+              archives+=("$name.tar.gz")
             fi
           done
-          git show "$SOURCE_SHA:CHANGELOG.md" > dist/CHANGELOG.md
-          git show "$SOURCE_SHA:docs/releases/$VERSION.md" > dist/RELEASE_NOTES.md
-          printf '\nSource commit: %s\n' "$SOURCE_SHA" >> dist/RELEASE_NOTES.md
-          (cd dist && sha256sum * > SHA256SUMS.txt)
+          git show "$SOURCE_SHA:CHANGELOG.md" > "$dist/CHANGELOG.md"
+          git show "$SOURCE_SHA:docs/releases/$VERSION.md" > "$dist/RELEASE_NOTES.md"
+          printf '\nSource commit: %s\n' "$SOURCE_SHA" >> "$dist/RELEASE_NOTES.md"
+          (cd "$dist" && sha256sum "${archives[@]}" CHANGELOG.md RELEASE_NOTES.md > SHA256SUMS.txt)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: artifact
         with:
           name: release-${{ github.sha }}
-          path: dist/
+          path: ${{ steps.archives.outputs.directory }}
           if-no-files-found: error
           retention-days: 7
 
@@ -97,6 +107,52 @@ jobs:
           set -euo pipefail
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]
           cd dist
+          archives=()
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            suffix=tar.gz; [ "$os" = windows ] && suffix=zip
+            archives+=("topophany_${VERSION#v}_${os}_${arch}.$suffix")
+          done
+          # Validate inert data with the runner's standard library. Never
+          # execute or extract content downloaded from the build job.
+          python3 - "${archives[@]}" <<'PYVERIFY'
+          import os, re, stat, sys, tarfile, zipfile
+          from pathlib import Path
+          archives = sys.argv[1:]
+          expected = set(archives) | {"CHANGELOG.md", "RELEASE_NOTES.md"}
+          if set(os.listdir(".")) != expected | {"SHA256SUMS.txt"}:
+              raise SystemExit("Unexpected or missing release files")
+          if any(not stat.S_ISREG(Path(name).lstat().st_mode) for name in os.listdir(".")):
+              raise SystemExit("Release files must be regular")
+          lines = Path("SHA256SUMS.txt").read_text().splitlines()
+          entries = [re.fullmatch(r"[0-9a-f]{64}  ([A-Za-z0-9_.-]+)", line) for line in lines]
+          if any(entry is None for entry in entries) or len(entries) != len(expected) or {entry[1] for entry in entries} != expected:
+              raise SystemExit("Checksum manifest differs from release manifest")
+          metadata = {"LICENSE", "README.md", "README.zh.md", "README.ja.md", "CHANGELOG.md"}
+          for name in archives:
+              windows = name.endswith(".zip")
+              root = name[:-4] if windows else name[:-7]
+              members = {root + "/" + item for item in metadata | {"topo.exe" if windows else "topo"}}
+              seen = set()
+              directories = set()
+              if windows:
+                  with zipfile.ZipFile(name) as archive:
+                      rows = [(m.filename, m.is_dir(), stat.S_IFMT(m.external_attr >> 16), m.file_size) for m in archive.infolist()]
+              else:
+                  with tarfile.open(name, "r:gz") as archive:
+                      rows = [(m.name + ("/" if m.isdir() and not m.name.endswith("/") else ""), m.isdir(), stat.S_IFREG if m.isfile() else stat.S_IFDIR if m.isdir() else -1, m.size) for m in archive]
+              for path, directory, kind, size in rows:
+                  if directory:
+                      if path != root + "/" or kind not in (0, stat.S_IFDIR) or path in directories:
+                          raise SystemExit("Unexpected archive directory")
+                      directories.add(path)
+                  else:
+                      if path not in members or path in seen or kind not in (0, stat.S_IFREG) or not 0 <= size <= 128 << 20:
+                          raise SystemExit(f"Unexpected, duplicate or nonregular archive member: {path!r}")
+                      seen.add(path)
+              if seen != members:
+                  raise SystemExit("Missing archive member")
+          PYVERIFY
           sha256sum --check --strict SHA256SUMS.txt
           object=$(gh api "repos/$GH_REPO/git/ref/tags/$VERSION" --jq '.object | [.type, .sha] | @tsv')
           for depth in {1..16}; do
@@ -110,4 +166,4 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then
             release_flags+=(--prerelease --latest=false)
           fi
-          gh release create "$VERSION" ./*.tar.gz ./*.zip ./SHA256SUMS.txt ./CHANGELOG.md ./RELEASE_NOTES.md --title "Topophany $VERSION" --target "$SOURCE_SHA" --notes-file ./RELEASE_NOTES.md "${release_flags[@]}"
+          gh release create "$VERSION" "${archives[@]}" ./SHA256SUMS.txt ./CHANGELOG.md ./RELEASE_NOTES.md --title "Topophany $VERSION" --target "$SOURCE_SHA" --notes-file ./RELEASE_NOTES.md "${release_flags[@]}"

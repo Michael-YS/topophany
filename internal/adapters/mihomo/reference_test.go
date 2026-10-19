@@ -93,8 +93,8 @@ func TestMihomoDynamicProviderRotation(t *testing.T) {
 	if config.Contract(testkit.Config(), x) != contract {
 		t.Fatal("dynamic contents changed the configured contract")
 	}
-	if got := second.Facts["provider_updated_at.edge-local"]; got != testControllerUpdated.Format(time.RFC3339Nano) {
-		t.Fatalf("controller report time not recorded beside the publisher time: %q", got)
+	if got := second.Facts["provider_updated_at.edge-local"]; got != "" {
+		t.Fatalf("credential-bearing controller exported load time: %q", got)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestMihomoReferenceSettlesAfterPublication(t *testing.T) {
 	if o.Outcome != "policy" || o.Code != "provider_membership_mismatch" || o.Facts["provider_reference_settling"] != "true" {
 		t.Fatal(o)
 	}
-	if !strings.Contains(o.Facts["provider_comparison"], "=settling(") {
+	if !strings.Contains(o.Facts["provider_comparison"], "=settling") {
 		t.Fatalf("comparison does not say why it is unknown yet: %q", o.Facts["provider_comparison"])
 	}
 	if !strings.Contains(o.Detail, "not yet confirmed") {
@@ -334,8 +334,8 @@ func TestMihomoLoadedProviderTimesFitObservationBudget(t *testing.T) {
 	if code := config.ObservationBounds(o, time.Second); code != "" {
 		t.Fatalf("%s with %d facts: a full set of loaded providers would refuse the batch", code, len(o.Facts))
 	}
-	if o.Facts["provider_updated_at.edge-local"] == "" {
-		t.Fatal("the reference provider's load time, which settling turns on, gave way to a fixed provider's")
+	if o.Facts["provider_updated_at.edge-local"] != "" {
+		t.Fatal("credential-bearing controller exported load time")
 	}
 }
 

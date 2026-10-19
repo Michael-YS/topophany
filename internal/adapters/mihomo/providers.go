@@ -25,6 +25,7 @@ type coreProviders struct {
 
 func collectProviders(ctx context.Context, deps Dependencies, client *http.Client, x model.Check, target, token string, name func(string) string, o *model.Observation, out *coreProviders, needChain bool) error {
 	options := x.Adapter.Mihomo()
+	private := o.Facts["peer_text"] == adapters.Withheld
 	if len(options.ProviderMatchModes) > 0 && Validate(options) != nil {
 		return adapters.Local("setup", "invalid_provider_options")
 	}
@@ -139,7 +140,11 @@ func collectProviders(ctx context.Context, deps Dependencies, client *http.Clien
 		if providerSettling {
 			status = "settling"
 		}
-		summaries = append(summaries, fmt.Sprintf("%s=%s(expected:%d loaded:%d missing:%d extra:%d order_changed:%t present:%t)", k, status, len(expected[k]), len(actual), comparison.missing, comparison.extra, comparison.orderChanged, ok))
+		if private {
+			summaries = append(summaries, fmt.Sprintf("%s=%s", k, status))
+		} else {
+			summaries = append(summaries, fmt.Sprintf("%s=%s(expected:%d loaded:%d missing:%d extra:%d order_changed:%t present:%t)", k, status, len(expected[k]), len(actual), comparison.missing, comparison.extra, comparison.orderChanged, ok))
+		}
 		if !same && (!dynamic || stable) {
 			mismatched++
 			if loadPending {

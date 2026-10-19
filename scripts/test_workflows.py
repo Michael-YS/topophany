@@ -3,6 +3,8 @@ from pathlib import Path
 import re
 import unittest
 
+from test_release_workflow import archive_fixtures
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -26,8 +28,8 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertIn("contents: write", publish)
         self.assertIn("artifact-ids: ${{ needs.build.outputs.artifact-id }}", publish)
         self.assertIn("sha256sum --check --strict", publish)
-        self.assertIn('git show "$SOURCE_SHA:CHANGELOG.md" > dist/CHANGELOG.md', build)
-        self.assertIn('git show "$SOURCE_SHA:docs/releases/$VERSION.md" > dist/RELEASE_NOTES.md', build)
+        self.assertIn('git show "$SOURCE_SHA:CHANGELOG.md" > "$dist/CHANGELOG.md"', build)
+        self.assertIn('git show "$SOURCE_SHA:docs/releases/$VERSION.md" > "$dist/RELEASE_NOTES.md"', build)
         self.assertIn("--notes-file ./RELEASE_NOTES.md", publish)
         self.assertIn("./CHANGELOG.md ./RELEASE_NOTES.md", publish)
         for forbidden in ("actions/checkout", "go test", "go build", "scripts/", "tar -", "unzip"):
@@ -54,13 +56,7 @@ class ReleaseTagBindingTests(unittest.TestCase):
         for mode in ("matching", "moved", "annotated", "nested", "cycle", "missing"):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                (root / "dist").mkdir()
-                for name in ("fixture.tar.gz", "fixture.zip"):
-                    (root / "dist" / name).write_bytes(b"inert archive")
-                (root / "dist/CHANGELOG.md").write_text("fixture changelog\n")
-                (root / "dist/RELEASE_NOTES.md").write_text("fixture notes\n\nSource commit: expected\n")
-                checksums = subprocess.check_output(["sha256sum", "fixture.tar.gz", "fixture.zip", "CHANGELOG.md", "RELEASE_NOTES.md"], cwd=root / "dist")
-                (root / "dist/SHA256SUMS.txt").write_bytes(checksums)
+                archive_fixtures(root / "dist")
                 gh = root / "gh"
                 gh.write_text('''#!/bin/bash
 set -eu
