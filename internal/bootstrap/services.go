@@ -24,6 +24,13 @@ func command(o Options) []string {
 	} else {
 		args = append(args, "worker", "--config", targetPath(o.InstallDir, "topology.json"), "--credentials", targetPath(o.InstallDir, "worker-credentials.json"), "--data", o.DataDir, "--observer", o.Observer)
 	}
+	if o.Platform == "linux" {
+		soft, hard := "64MiB", "128MiB"
+		if o.Role == "server" {
+			soft, hard = "128MiB", "256MiB"
+		}
+		args = append(args, "--memory-limit", soft, "--memory-max", hard)
+	}
 	if o.Platform == "darwin" {
 		args = append(args, "--log-file", targetPath(o.DataDir, "topophany.log"), "--log-max-bytes", "5242880", "--log-backups", "3")
 	}
@@ -48,13 +55,17 @@ func service(o Options) (name, file string, raw []byte, err error) {
 		for _, a := range args {
 			quoted = append(quoted, unitQuote(a))
 		}
+		memoryMax := "128M"
+		if o.Role == "server" {
+			memoryMax = "256M"
+		}
 		capability := ""
 		for _, x := range o.Config.Checks {
 			if x.Observer == o.Observer && x.Kind == "icmp" && !x.Disabled && !x.Maintenance {
 				capability = "CAP_NET_RAW"
 			}
 		}
-		raw = []byte(fmt.Sprintf("[Unit]\nDescription=Topophany %s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=simple\nUser=%s\nGroup=%s\nWorkingDirectory=%s\nEnvironmentFile=-%s\nExecStart=%s\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nAmbientCapabilities=%s\nCapabilityBoundingSet=%s\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\nReadWritePaths=%s\nTimeoutStopSec=20\n[Install]\nWantedBy=multi-user.target\n", o.Role, o.User, o.User, unitPath(o.DataDir), unitPath(targetPath(o.InstallDir, "worker.env")), strings.Join(quoted, " "), capability, capability, unitQuote(o.DataDir)))
+		raw = []byte(fmt.Sprintf("[Unit]\nDescription=Topophany %s\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=simple\nUser=%s\nGroup=%s\nWorkingDirectory=%s\nEnvironmentFile=-%s\nExecStart=%s\nExecReload=/bin/kill -HUP $MAINPID\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nAmbientCapabilities=%s\nCapabilityBoundingSet=%s\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK\nReadWritePaths=%s\nTimeoutStopSec=20\nMemoryAccounting=true\nMemoryMax=%s\nMemorySwapMax=0\n[Install]\nWantedBy=multi-user.target\n", o.Role, o.User, o.User, unitPath(o.DataDir), unitPath(targetPath(o.InstallDir, "worker.env")), strings.Join(quoted, " "), capability, capability, unitQuote(o.DataDir), memoryMax))
 	case "darwin":
 		name = "com.topophany." + o.Role
 		file = "/Library/LaunchDaemons/" + name + ".plist"

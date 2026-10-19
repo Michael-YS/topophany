@@ -3,6 +3,8 @@ package rollup
 import (
 	"encoding/json"
 	"errors"
+	"io"
+	"maps"
 	"math"
 	"slices"
 )
@@ -35,6 +37,83 @@ type diskBucket struct {
 	N [len(outcomes)]int64 `json:"n"`
 	L []int64              `json:"l,omitempty"`
 	U int64                `json:"u,omitempty"`
+}
+
+// WriteJSON emits the same schema as MarshalJSON, with bounded temporary
+// storage even when a single series holds most of the rollup budget.
+func (r *Store) WriteJSON(w io.Writer) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var err error
+	text := func(s string) {
+		if err == nil {
+			_, err = io.WriteString(w, s)
+		}
+	}
+	enc := json.NewEncoder(w)
+	value := func(v any) {
+		if err == nil {
+			err = enc.Encode(v)
+		}
+	}
+	text(`{"schema":1,"series":[`)
+	for i, key := range slices.Sorted(maps.Keys(r.series)) {
+		if err != nil {
+			break
+		}
+		if i > 0 {
+			text(",")
+		}
+		s := r.series[key]
+		text(`{"k":`)
+		value(key)
+		text(`,"w":`)
+		value(s.owner)
+		text(`,"f":`)
+		value(s.first)
+		text(`,"u":`)
+		value(s.updated)
+		if s.open != nil {
+			text(`,"o":`)
+			value([3]int64{s.open.at, s.open.stale, int64(s.open.class)})
+		}
+		text(`,"b":[`)
+		for j, b := range s.buckets {
+			if err != nil {
+				break
+			}
+			if j > 0 {
+				text(",")
+			}
+			db := diskBucket{S: b.start / 1000, W: b.width / 1000, T: b.ms, N: b.n, U: b.unreconciled}
+			if b.lat.n > 0 {
+				db.L = []int64{b.lat.n, b.lat.sum, b.lat.max}
+				for _, x := range b.lat.bins {
+					db.L = append(db.L, int64(x.at), x.n)
+				}
+			}
+			value(db)
+		}
+		text(`]`)
+		if len(s.recent) > 0 {
+			text(`,"r":[`)
+			for j, p := range s.recent {
+				if err != nil {
+					break
+				}
+				if j > 0 {
+					text(",")
+				}
+				value([3]int64{p.at, p.stale, int64(p.class)})
+			}
+			text(`]`)
+		}
+		text(`,"c":`)
+		value(s.correctionFrom)
+		text("}")
+	}
+	text("]}")
+	return err
 }
 
 // MarshalJSON writes the store as it is kept on disk, series by key.
@@ -93,7 +172,7 @@ func (r *Store) UnmarshalJSON(raw []byte) error {
 		if ds.Key == "" || len(ds.Key) > 512 || len(ds.Owner) > 512 || held[ds.Key] != nil || ds.First < 0 || ds.Updated < 0 {
 			return errInvalid
 		}
-		s := &series{owner: ds.Owner, first: ds.First, updated: ds.Updated, size: seriesSize(ds.Key, ds.Owner)}
+		s := &series{owner: ds.Owner, first: ds.First, updated: ds.Updated, size: seriesSize(ds.Key, ds.Owner), buckets: make([]bucket, 0, len(ds.Buckets)), recent: make([]open, 0, len(ds.Recent))}
 		if ds.Open != nil {
 			if len(ds.Open) != 3 || ds.Open[0] <= 0 || ds.Open[1] <= 0 || ds.Open[2] < 0 || ds.Open[2] >= classes {
 				return errInvalid
@@ -144,6 +223,7 @@ func (r *Store) UnmarshalJSON(raw []byte) error {
 					return errInvalid
 				}
 				b.lat = histogram{n: db.L[0], sum: db.L[1], max: db.L[2]}
+				b.lat.bins = make([]bin, 0, (len(db.L)-3)/2)
 				count := int64(0)
 				for i := 3; i < len(db.L); i += 2 {
 					at, n := db.L[i], db.L[i+1]

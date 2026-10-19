@@ -7,6 +7,7 @@ import (
 )
 
 func (a *App) logIO() {
+	a.logMemory()
 	b, _ := json.Marshal(ioaccount.Read())
 	fmt.Fprintf(a.Err, "storage_io_since_start %s\n", b)
 }

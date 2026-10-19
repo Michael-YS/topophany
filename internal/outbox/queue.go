@@ -243,6 +243,13 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 // it finds them rather than sorting the whole backlog, which a long outage
 // can make tens of thousands of items, every round.
 func (q *Queue) Pending(recipient string, limit int) []Item {
+	return q.PendingBytes(recipient, limit, 0)
+}
+
+// PendingBytes bounds a delivery's detached copy by encoded record bytes as
+// well as count. Always include the first item so a large record can progress.
+// Zero maxBytes preserves Pending's unrestricted diagnostic behavior.
+func (q *Queue) PendingBytes(recipient string, limit int, maxBytes int64) []Item {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	out := []Item{}
@@ -259,6 +266,17 @@ func (q *Queue) Pending(recipient string, limit int) []Item {
 	}
 	if limit <= 0 {
 		slices.SortFunc(out, pendingOrder)
+	}
+	if maxBytes > 0 {
+		var size int64
+		for i, item := range out {
+			n := q.itemSizes[item.ID]
+			if i > 0 && size+n > maxBytes {
+				out = out[:i]
+				break
+			}
+			size += n
+		}
 	}
 	b, _ := json.Marshal(out)
 	var detached []Item

@@ -169,7 +169,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	if dest.isolating {
 		itemLimit = 1
 	}
-	items := q.Pending(rid, itemLimit)
+	items := q.PendingBytes(rid, itemLimit, 1<<20)
 	if len(items) == 0 {
 		dest.isolating = false
 		dest.separateBeat = false
@@ -182,18 +182,25 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		batch.Schema = items[0].Batch.Schema
 		batch.Project = items[0].Batch.Project
 		batch.Revision = items[0].Batch.Revision
+		header, _ := json.Marshal(batch)
+		wireBytes := len(header)
 		for _, v := range items {
 			if v.Batch.Schema != batch.Schema || v.Batch.Project != batch.Project || v.Batch.Revision != batch.Revision || len(batch.Observations)+len(v.Batch.Observations) > 100 {
 				continue
 			}
-			previous := len(batch.Observations)
-			batch.Observations = append(batch.Observations, v.Batch.Observations...)
-			wire, _ := json.Marshal(batch)
+			// Encode each item once, rather than re-encoding the growing
+			// batch up to a hundred times while draining a backlog.
+			wire, _ := json.Marshal(v.Batch.Observations)
+			added := len(wire) - 2 // strip this item's array brackets
+			if len(batch.Observations) > 0 {
+				added++ // comma between the existing and appended observations
+			}
 			// Leave room for the optional heartbeat and HTTP decoder budget.
-			if len(wire) > (1<<20)-4096 {
-				batch.Observations = batch.Observations[:previous]
+			if wireBytes+added > (1<<20)-4096 {
 				continue
 			}
+			wireBytes += added
+			batch.Observations = append(batch.Observations, v.Batch.Observations...)
 			ids = append(ids, v.ID)
 		}
 	}

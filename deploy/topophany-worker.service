@@ -11,7 +11,10 @@ StateDirectory=topophany-worker
 WorkingDirectory=/var/lib/topophany-worker
 EnvironmentFile=-/etc/topophany/worker.env
 # Change observer-node-01 to this machine's separately reviewed observer ID.
-ExecStart=/usr/local/bin/topo worker --config /etc/topophany/topology.json --credentials /etc/topophany/worker-credentials.json --data /var/lib/topophany-worker/outbox --observer observer-node-01
+ExecStart=/usr/local/bin/topo worker --memory-limit 64MiB --memory-max 128MiB --config /etc/topophany/topology.json --credentials /etc/topophany/worker-credentials.json --data /var/lib/topophany-worker/outbox --observer observer-node-01
+MemoryAccounting=true
+MemoryMax=128M
+MemorySwapMax=0
 # SIGHUP reloads the reviewed topology; an invalid file is refused and logged.
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure

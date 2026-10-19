@@ -23,6 +23,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	f := a.flags("worker")
 	panelFlags := addMonitorFlags(f)
 	logs := addLogFlags(f)
+	memory := addMemoryFlags(f)
 	path := f.String("config", "topology.json", "reviewed LOCAL topology; never downloaded as executable work")
 	observer := f.String("observer", "", "this executor's observer identity")
 	credPath := f.String("credentials", "worker-credentials.json", "0600 worker credential file")
@@ -33,6 +34,11 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	if e := parsed(f, args); e != nil {
 		return e
 	}
+	stopMemory, e := memory.apply()
+	if e != nil {
+		return e
+	}
+	defer stopMemory()
 	finishLog, logErr := a.serviceLog(logs)
 	if logErr != nil {
 		return logErr
@@ -130,6 +136,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 		return nil
 	}
 	fmt.Fprintf(a.Err, "Topophany worker observer=%s project=%s revision=%s; %d collectors\n", *observer, c.Project, config.Revision(c)[:12], len(p.Servers))
+	a.logMemory()
 	// Each collector is delivered to from a loop of its own, so one that is
 	// slow to answer delays no other. The heartbeat they send is the one
 	// this loop last made, of the topology it runs now.

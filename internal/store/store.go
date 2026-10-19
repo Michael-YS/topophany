@@ -9,6 +9,8 @@ package store
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,7 +80,7 @@ const carryBytes = 512
 
 type receipt struct {
 	Observer string    `json:"observer,omitempty"`
-	Hash     string    `json:"hash"`
+	Hash     digest    `json:"hash"`
 	At       time.Time `json:"at"`
 }
 
@@ -117,7 +119,7 @@ type Store struct {
 	poisoned      error
 	rowSizes      map[string]int64
 	stateBytes    int64
-	rowHashes     map[string]string
+	rowHashes     map[string]digest
 	rowObservers  map[string]string
 	scopeBytes    map[string]int64
 	scopeReceipts map[string]int
@@ -136,6 +138,7 @@ type Store struct {
 	rowBytes     int64
 	rowScope     map[string]int64
 	rowsDropped  bool // a tail let rows go since the last prune
+	strings      stringPool
 }
 
 func Open(dir string, o Options) (s *Store, err error) {
@@ -153,7 +156,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]string{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
 	s.rollups.SetCurrent(s.currentKey)
 	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
@@ -165,41 +168,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 			unlock()
 		}
 	}()
-	if b, e := secure.ReadBounded(filepath.Join(dir, "checkpoint.json"), 256<<20); e == nil {
-		if len(b) > 256<<20 {
-			return nil, errors.New("checkpoint limit exceeded")
-		}
-		payload, e := unwrap(b)
-		if e != nil {
-			return nil, fmt.Errorf("checkpoint corruption: %w", e)
-		}
-		state := diskState{Rollups: s.rollups}
-		if e = json.Unmarshal(payload, &state); e != nil || state.Schema != 1 || state.Seen == nil || state.Beats == nil {
-			return nil, errors.New("invalid checkpoint")
-		}
-		s.seen = state.Seen
-		s.beats = state.Beats
-		if state.Floors != nil {
-			s.floors = state.Floors
-		}
-		if state.FloorsAt != nil {
-			s.floorAt = state.FloorsAt
-		}
-		s.queueFloors()
-		// Carries first, so the rows they already hold are not folded again
-		// as the tails are rebuilt.
-		if state.Carries != nil {
-			s.carries = state.Carries
-		}
-		for _, v := range state.Rows {
-			s.addRow(v)
-			// State tails outlive receipts. Restore their receipts during replay
-			// so a crash after checkpoint replacement cannot add them twice.
-			if _, ok := s.seen[v.ID]; !ok && !s.expired(v.ID) {
-				s.seen[v.ID] = receipt{Hash: observationHash(v), At: v.ReceivedAt, Observer: v.Observer}
-			}
-		}
-	} else if !errors.Is(e, os.ErrNotExist) {
+	if e := s.readCheckpoint(filepath.Join(dir, "checkpoint.json")); e != nil && !errors.Is(e, os.ErrNotExist) {
 		return nil, e
 	}
 	path := filepath.Join(dir, "journal.jsonl")
@@ -297,6 +266,7 @@ func (s *Store) recount() {
 
 // receive records the receipt of a sample.
 func (s *Store) receive(id string, r receipt) {
+	r.Observer = s.strings.intern(r.Observer)
 	s.seen[id] = r
 	s.scopeReceipts[r.Observer]++
 	s.receiptQueue = append(s.receiptQueue, id)
@@ -306,22 +276,37 @@ func wrap(v any) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	return json.Marshal(envelope{SHA256: secure.Hash(string(p)), Payload: p})
+	return json.Marshal(envelope{SHA256: hashBytes(p), Payload: p})
 }
+
+// UnmarshalJSON borrows only while unwrap's input is alive. Avoid copying an
+// entire checkpoint into json.RawMessage before decoding its state.
+type borrowedJSON []byte
+
+func (p *borrowedJSON) UnmarshalJSON(raw []byte) error { *p = raw; return nil }
+
+func hashBytes(p []byte) string {
+	h := sha256.Sum256(p)
+	return hex.EncodeToString(h[:])
+}
+
 func unwrap(b []byte) (json.RawMessage, error) {
-	var e envelope
+	var e struct {
+		SHA256  string       `json:"sha256"`
+		Payload borrowedJSON `json:"payload"`
+	}
 	if err := json.Unmarshal(b, &e); err != nil {
 		return nil, err
 	}
-	if e.SHA256 != secure.Hash(string(e.Payload)) {
+	if e.SHA256 != hashBytes(e.Payload) {
 		return nil, errors.New("checksum mismatch")
 	}
-	return e.Payload, nil
+	return json.RawMessage(e.Payload), nil
 }
-func observationHash(v model.Observation) string {
+func observationHash(v model.Observation) digest {
 	v.ReceivedAt = time.Time{}
 	b, _ := json.Marshal(v)
-	return secure.Hash(string(b))
+	return sha256.Sum256(b)
 }
 
 // tailKey is a check's series: its samples under one contract, or for
@@ -418,6 +403,13 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	s.prune()
 }
 func (s *Store) addRow(v model.Observation) {
+	v = s.compactStrings(v)
+	s.rows = append(s.rows, v)
+	s.indexRow(v)
+}
+
+// indexRow rebuilds accounting and bounded state without copying raw history.
+func (s *Store) indexRow(v model.Observation) {
 	if _, ok := s.rowSizes[v.ID]; !ok {
 		b, _ := json.Marshal(v)
 		s.rowSizes[v.ID] = int64(len(b)) + 1
@@ -426,7 +418,6 @@ func (s *Store) addRow(v model.Observation) {
 		s.rowBytes += s.rowSizes[v.ID]
 		s.rowScope[v.Observer] += s.rowSizes[v.ID]
 	}
-	s.rows = append(s.rows, v)
 	if !s.current(v) {
 		return
 	}
@@ -532,7 +523,7 @@ func (s *Store) Put(b model.Batch) error {
 	if b.Heartbeat != nil && !s.advances(*b.Heartbeat, b.Project, b.Revision) {
 		b.Heartbeat = nil
 	}
-	pending := map[string]string{}
+	pending := map[string]digest{}
 	now := s.options.Now().UTC()
 	kept := make([]model.Observation, 0, len(b.Observations))
 	for _, v := range b.Observations {
@@ -652,19 +643,22 @@ func (s *Store) prune() {
 			allowed[id] = true
 		}
 
-		kept := make([]model.Observation, 0, min(len(rows), s.options.MaxHistory))
+		// Select backwards into the same allocation, then slide the retained
+		// suffix down. Allocating a new history on every sample costs several
+		// MiB per ingestion even when only one row changes.
+		start := len(rows)
 		for i := len(rows) - 1; i >= 0; i-- {
 			if allowed[rows[i].Observer] && counts[rows[i].Observer] < int(s.options.share(int64(s.options.MaxHistory), rows[i].Observer)) {
-				kept = append(kept, rows[i])
+				start--
+				rows[start] = rows[i]
 				counts[rows[i].Observer]++
 			}
 		}
-		for i, j := 0, len(kept)-1; i < j; i, j = i+1, j-1 {
-			kept[i], kept[j] = kept[j], kept[i]
-		}
-		rows = kept
+		n := copy(rows, rows[start:])
+		rows = rows[:n]
 	} else if len(rows) > s.options.MaxHistory {
-		rows = rows[len(rows)-s.options.MaxHistory:]
+		copy(rows, rows[len(rows)-s.options.MaxHistory:])
+		rows = rows[:s.options.MaxHistory]
 	}
 	// Rows nothing holds any more give up their accounting, looked for only
 	// when the history or a tail let some go.
@@ -692,6 +686,9 @@ func (s *Store) prune() {
 		}
 		s.rowsDropped = false
 	}
+	// Hidden slice elements are GC roots too: expired diagnostics must not
+	// stay reachable through the unused end of the history allocation.
+	clear(s.rows[len(rows):])
 	s.rows = rows
 	// A receipt binds an ID to its content for as long as a sample with
 	// that ID could still be accepted: the ingestion window and an hour.
@@ -708,6 +705,7 @@ func (s *Store) prune() {
 			break
 		}
 		s.receiptHead++
+		s.receiptQueue[s.receiptHead-1] = ""
 		// One whose ID names no boot has no floor to bind it, so it stays.
 		if boot, seq, parsed := bootOf(id); ok && parsed {
 			s.raiseFloor(boot, seq, r.At)
@@ -749,18 +747,19 @@ func (s *Store) prune() {
 }
 
 func (s *Store) allRows() []model.Observation {
-	m := map[string]model.Observation{}
+	seen := make(map[string]bool, len(s.rows))
+	out := make([]model.Observation, 0, len(s.rows)+len(s.tails)*tailLength)
 	for _, v := range s.rows {
-		m[v.ID] = v
+		seen[v.ID] = true
+		out = append(out, v)
 	}
 	for _, tail := range s.tails {
 		for _, v := range tail {
-			m[v.ID] = v
+			if !seen[v.ID] {
+				seen[v.ID] = true
+				out = append(out, v)
+			}
 		}
-	}
-	out := make([]model.Observation, 0, len(m))
-	for _, v := range m {
-		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return before(out[i], out[j]) })
 	return out
@@ -768,15 +767,7 @@ func (s *Store) allRows() []model.Observation {
 func (s *Store) checkpoint() error {
 	s.settled = s.options.Now()
 	s.rollups.Settle(s.settled)
-	state := diskState{Schema: 1, Rows: s.allRows(), Seen: s.seen, Beats: s.beats, Floors: s.floors, FloorsAt: s.floorAt, Rollups: s.rollups, Carries: s.carries}
-	b, e := wrap(state)
-	if e != nil {
-		return e
-	}
-	if len(b) > 256<<20 {
-		return ErrCapacity
-	}
-	e = secure.AtomicWriteMeasured(filepath.Join(s.dir, "checkpoint.json"), b, 0600, &ioaccount.Checkpoint)
+	e := s.writeCheckpoint(filepath.Join(s.dir, "checkpoint.json"))
 	if e != nil {
 		return e
 	}

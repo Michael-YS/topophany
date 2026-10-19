@@ -31,6 +31,7 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	f := a.flags("serve")
 	panelFlags := addMonitorFlags(f)
 	logs := addLogFlags(f)
+	memory := addMemoryFlags(f)
 	path := f.String("config", "topology.json", "reviewed local topology JSON")
 	authPath := f.String("auth", "auth.json", "0600 collector token-hash configuration")
 	alertsPath := f.String("alerts", "", "0600 webhook configuration; no alerts when empty")
@@ -52,6 +53,11 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	if e := parsed(f, args); e != nil {
 		return e
 	}
+	stopMemory, e := memory.apply()
+	if e != nil {
+		return e
+	}
+	defer stopMemory()
 	if e := api.ValidateWebOrigin(*webOrigin); e != nil {
 		return e
 	}
@@ -212,6 +218,7 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	hup, stopHup := a.hangups()
 	defer stopHup()
 	fmt.Fprintf(a.Err, "Topophany %s collector %s listening on %s; project=%s revision=%s\n", model.Version, *instance, ln.Addr(), c.Project, config.Revision(c)[:12])
+	a.logMemory()
 	if *insecure && *cert == "" {
 		fmt.Fprintln(a.Err, "WARNING: plaintext HTTP explicitly enabled; use only inside a trusted encrypted tunnel")
 	}

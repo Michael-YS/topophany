@@ -276,7 +276,7 @@ func BenchmarkExpiredTailConflict(b *testing.B) {
 			v := testkit.Observation(c, "home-http", 1, now, "ok")
 			s.rowHashes[v.ID] = observationHash(v)
 			for i := 1; i < count; i++ {
-				s.rowHashes[fmt.Sprintf("other.%d", i)] = "hash"
+				s.rowHashes[fmt.Sprintf("other.%d", i)] = digest{1}
 			}
 			v.Outcome = "fail"
 			txn := batch(c, v)

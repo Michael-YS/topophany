@@ -7,14 +7,21 @@ import (
 
 // StateView copies evaluation scalars under lock, then detaches only the latest
 // diagnostics outside the writer lock. It neither sorts nor serializes global
-// history, and never visits receipts. The union of history and tails, with
-// what samples trimmed from the tails left in their carries, preserves
+// history, and never visits receipts. Bounded tails, with
+// what samples trimmed from the tails left in their carries, preserve
 // hysteresis however long ago the samples that confirmed a failure were
 // taken (see engine.BuildCarried).
 func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]model.Heartbeat) {
 	s.mu.Lock()
-	rows := make([]model.Observation, 0, len(s.rows)+len(s.tails)*tailLength)
-	rows = append(rows, s.rows...)
+	rows := make([]model.Observation, 0, len(s.tails)*tailLength)
+	// Schema 1 observations cannot be folded into a carry. Also retain
+	// history when the caller has not installed the contracts needed for
+	// tails (or judges it under a different generation).
+	for _, v := range s.rows {
+		if v.Contract == "" || !s.current(v) {
+			rows = append(rows, v)
+		}
+	}
 	for _, tail := range s.tails {
 		rows = append(rows, tail...)
 	}

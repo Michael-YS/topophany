@@ -1,6 +1,8 @@
 package secure
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,6 +38,35 @@ func TestMeasuredDurableWriteAndUnsyncedCache(t *testing.T) {
 		t.Fatal("directory overwrite accepted")
 	}
 	if v := counter.Read(); v.Count != 2 || v.Bytes != uint64(len(payload)) || v.Errors != 1 {
+		t.Fatal(v)
+	}
+}
+
+func TestStreamingFailureNeverPublishesPartialFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "checkpoint.json")
+	if err := AtomicWrite(path, []byte("old state"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var counter ioaccount.Counter
+	err := AtomicWriteStreamMeasured(path, 0600, &counter, func(w io.WriteSeeker) error {
+		if _, err := io.WriteString(w, "partial state"); err != nil {
+			return err
+		}
+		return errors.New("injected encoding failure")
+	})
+	if err == nil {
+		t.Fatal("failed producer accepted")
+	}
+	raw, _ := os.ReadFile(path)
+	if string(raw) != "old state" {
+		t.Fatal("partial state replaced durable checkpoint")
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatal("temporary file left behind")
+	}
+	if v := counter.Read(); v.Errors != 1 || v.Bytes != uint64(len("partial state")) {
 		t.Fatal(v)
 	}
 }

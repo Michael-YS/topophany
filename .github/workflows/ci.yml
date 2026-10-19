@@ -60,6 +60,11 @@ jobs:
         run: go test -count=1 ./...
       - name: Build
         run: go build -trimpath -o ${{ runner.temp }}/topo ./cmd/topo
+      - name: Kernel memory cap acceptance
+        if: runner.os == 'Linux'
+        run: |
+          go test -c -o "${{ runner.temp }}/memlimit.test" ./internal/memlimit
+          sudo env TOPO_TEST_CGROUP=/sys/fs/cgroup "${{ runner.temp }}/memlimit.test" -test.run '^TestKernelMemoryMax$' -test.v
 
   acceptance:
     runs-on: ubuntu-latest

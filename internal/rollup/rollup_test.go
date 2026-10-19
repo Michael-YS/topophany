@@ -1,6 +1,7 @@
 package rollup
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -345,5 +346,32 @@ func TestLatencyPercentilesFromBins(t *testing.T) {
 	one.add(250)
 	if one.quantile(.5) > 250 {
 		t.Fatal("past the slowest sample", one.quantile(.5))
+	}
+}
+
+func TestStreamingPersistenceMatchesBufferedSchema(t *testing.T) {
+	r := New(1 << 20)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 100; i++ {
+		r.Add("contract/check", "home", now.Add(time.Duration(i)*time.Minute), "ok", int64(i), 2*time.Minute, now.Add(2*time.Hour))
+	}
+	var streamed bytes.Buffer
+	if err := r.WriteJSON(&streamed); err != nil {
+		t.Fatal(err)
+	}
+	restored := New(1 << 20)
+	if err := json.Unmarshal(streamed.Bytes(), restored); err != nil {
+		t.Fatal(err)
+	}
+	want, err := r.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := restored.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(want, got) {
+		t.Fatal("streamed rollup persistence changed state")
 	}
 }

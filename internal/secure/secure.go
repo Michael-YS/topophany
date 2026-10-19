@@ -95,7 +95,36 @@ func CacheWrite(path string, b []byte, mode os.FileMode) error {
 func AtomicWriteMeasured(path string, b []byte, mode os.FileMode, counter *ioaccount.Counter) error {
 	return atomicWrite(path, b, mode, true, counter)
 }
+
+// AtomicWriteStreamMeasured publishes a streamed file only after write succeeds
+// and the temporary file is synced. Seek permits patching a checksum without
+// buffering the whole file; all written bytes, including patches, are counted.
+func AtomicWriteStreamMeasured(path string, mode os.FileMode, counter *ioaccount.Counter, write func(io.WriteSeeker) error) error {
+	return atomicWriteFunc(path, mode, true, counter, write)
+}
+
+type measuredStream struct {
+	io.WriteSeeker
+	written *int
+}
+
+func (w measuredStream) Write(p []byte) (int, error) {
+	n, err := w.WriteSeeker.Write(p)
+	*w.written += n
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	return n, err
+}
+
 func atomicWrite(path string, b []byte, mode os.FileMode, durable bool, counter *ioaccount.Counter) (result error) {
+	return atomicWriteFunc(path, mode, durable, counter, func(w io.WriteSeeker) error {
+		_, err := w.Write(b)
+		return err
+	})
+}
+
+func atomicWriteFunc(path string, mode os.FileMode, durable bool, counter *ioaccount.Counter, write func(io.WriteSeeker) error) (result error) {
 	started := time.Now()
 	written := 0
 	if counter != nil {
@@ -119,10 +148,7 @@ func atomicWrite(path string, b []byte, mode os.FileMode, durable bool, counter 
 	tmp := f.Name()
 	defer os.Remove(tmp)
 	if e = f.Chmod(mode); e == nil {
-		written, e = f.Write(b)
-		if e == nil && written != len(b) {
-			e = io.ErrShortWrite
-		}
+		e = write(measuredStream{f, &written})
 	}
 	if e == nil && durable {
 		e = ioaccount.Sync(f)
@@ -308,12 +334,23 @@ func ReadBounded(path string, limit int64) ([]byte, error) {
 		return nil, e
 	}
 	defer f.Close()
-	b, e := io.ReadAll(io.LimitReader(f, limit+1))
+	// Checkpoints can be tens of MiB. Use the known size instead of
+	// geometrically growing ReadAll's buffer and briefly retaining both copies.
+	b := make([]byte, st.Size())
+	n, e := io.ReadFull(f, b)
+	if e == io.EOF || e == io.ErrUnexpectedEOF {
+		return b[:n], nil
+	}
 	if e != nil {
 		return nil, e
 	}
-	if int64(len(b)) > limit {
+	extra, e := io.ReadAll(io.LimitReader(f, limit-int64(len(b))+1))
+	if e != nil {
+		return nil, e
+	}
+	if int64(len(b))+int64(len(extra)) > limit {
 		return nil, errors.New("file limit exceeded")
 	}
+	b = append(b, extra...)
 	return b, nil
 }

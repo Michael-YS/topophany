@@ -9,7 +9,10 @@ User=topophany
 Group=topophany
 StateDirectory=topophany
 WorkingDirectory=/var/lib/topophany
-ExecStart=/usr/local/bin/topo serve --config /etc/topophany/topology.json --auth /etc/topophany/auth.json --data /var/lib/topophany/collector --instance collector-a --listen 0.0.0.0:7447 --tls-cert /etc/topophany/server.pem --tls-key /etc/topophany/server-key.pem
+ExecStart=/usr/local/bin/topo serve --memory-limit 128MiB --memory-max 256MiB --config /etc/topophany/topology.json --auth /etc/topophany/auth.json --data /var/lib/topophany/collector --instance collector-a --listen 0.0.0.0:7447 --tls-cert /etc/topophany/server.pem --tls-key /etc/topophany/server-key.pem
+MemoryAccounting=true
+MemoryMax=256M
+MemorySwapMax=0
 # SIGHUP reloads the reviewed topology and auth.json; an invalid file is refused and logged.
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
