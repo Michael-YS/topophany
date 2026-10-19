@@ -2,7 +2,6 @@ package view
 
 import (
 	"fmt"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +19,22 @@ func (v View) Rows(tab int) []Row {
 		nodeNames[n.ID] = n.Name
 		if n.Name == "" {
 			nodeNames[n.ID] = n.ID
+		}
+	}
+	// Traverse ownership and Via references once. Each node then visits only
+	// its own endpoints and the endpoints that actually name it as a front.
+	endpointsByNode := map[string][]model.Endpoint{}
+	frontsByNode := map[string][]string{}
+	if tab == Topology || tab == Servers {
+		for _, ep := range s.Topology.Endpoints {
+			endpointsByNode[ep.Node] = append(endpointsByNode[ep.Node], ep)
+			seen := map[string]bool{}
+			for _, id := range ep.Via {
+				if !seen[id] {
+					frontsByNode[id] = append(frontsByNode[id], ep.ID+" → "+nodeNames[ep.Node])
+					seen[id] = true
+				}
+			}
 		}
 	}
 	checkDefs := map[string]model.Check{}
@@ -74,15 +89,10 @@ func (v View) Rows(tab int) []Row {
 			}
 		}
 		details = append(details, "", "Access endpoints:")
-		fronts := []string{}
-		for _, ep := range s.Topology.Endpoints {
-			if ep.Node == n.ID {
-				details = append(details, ep.ID+" ["+ep.Network+"] "+ep.Address+via(ep))
-			}
-			if slices.Contains(ep.Via, n.ID) {
-				fronts = append(fronts, ep.ID+" → "+nodeNames[ep.Node])
-			}
+		for _, ep := range endpointsByNode[n.ID] {
+			details = append(details, ep.ID+" ["+ep.Network+"] "+ep.Address+via(ep))
 		}
+		fronts := frontsByNode[n.ID]
 		if len(fronts) > 0 {
 			details = append(details, "", "Answers first for:")
 			details = append(details, fronts...)
@@ -189,12 +199,7 @@ func (v View) Rows(tab int) []Row {
 				return
 			}
 			seen[n.ID] = true
-			eps := []model.Endpoint{}
-			for _, ep := range s.Topology.Endpoints {
-				if ep.Node == n.ID {
-					eps = append(eps, ep)
-				}
-			}
+			eps := endpointsByNode[n.ID]
 			r := node(n)
 			r.Tree = guide + branch
 			r.Cols = []string{n.Group, KindLabel(n)}
