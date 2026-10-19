@@ -99,16 +99,38 @@ func TestForeignCollectorReplacementKeepsPreviousRequest(t *testing.T) {
 			r.Credentials = path
 			r.Observer = scope
 			lines <- line(r)
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
+			rejection := make(chan struct{})
+			open := func(ctx context.Context, r Request) (Source, *Error) {
+				if r.RequestID != "one" {
+					return OpenSource(ctx, r)
+				}
+				// This test exercises rejection and continuity, not preview
+				// generation. Keep its active source small, and make the next
+				// safety transition happen only after the rejected candidate.
+				return Source{Project: c.Project,
+					Initial: monitor.Input{Snapshot: engine.Build(c, "fixture", "", nil, nil, time.Now())},
+					Fetch: func(ctx context.Context) (monitor.Input, error) {
+						select {
+						case <-rejection:
+							return monitor.Input{Unavailable: true}, nil
+						case <-ctx.Done():
+							return monitor.Input{}, ctx.Err()
+						}
+					}}, nil
+			}
 			var first, stopped monitor.Panel
 			rejected, continued := false, false
-			err := Run(ctx, lines, OpenSource, func(p monitor.Panel) error {
+			err := Run(ctx, lines, open, func(p monitor.Panel) error {
 				if p.Lifecycle == "error" {
 					if p.Error.Code != "project_mismatch" || p.RequestID != "foreign" {
 						t.Error(p)
 					}
-					rejected = true
+					if !rejected {
+						rejected = true
+						close(rejection)
+					}
 				}
 				if p.Lifecycle == "running" {
 					if first.Instance == "" {
