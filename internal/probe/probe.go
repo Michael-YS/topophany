@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters"
+	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflare"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -299,10 +300,19 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	}
 	for k, v := range EdgeFacts(resp.Header) {
 		// Only closed vocabularies may cross a credential boundary: the
-		// provider, the cache status and the mitigation word.
+		// provider, the cache status and the mitigation word here, and the
+		// Access constant merged just below.
 		if secret && k != "edge_provider" && k != "edge_cache" && k != "edge_mitigation" {
 			continue
 		}
+		o.Facts[k] = v
+	}
+	// A login redirect is evidence by itself, not a provider label: a browser
+	// request without an Access session is answered with a redirect to the
+	// team's cloudflareaccess.com host. login_redirect is a closed word read
+	// from the status and that host; the location's key ID and redirect
+	// target are never kept, so it can cross the secret boundary.
+	for k, v := range cloudflare.AccessFacts(resp.StatusCode, resp.Header.Get("Location")) {
 		o.Facts[k] = v
 	}
 	if secret {

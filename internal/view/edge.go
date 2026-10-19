@@ -109,8 +109,10 @@ func viaNames(t model.Config, endpoints []string, names map[string]string) []str
 }
 
 // edgeAnswer summarizes the edge evidence of an HTTP observation, e.g.
-// "Cloudflare NRT · cache DYNAMIC · challenge"; "" when no edge said it
-// answered.
+// "Cloudflare NRT · cache DYNAMIC · challenge" or "Cloudflare NRT · cache
+// DYNAMIC · Access login". The Access suffix appears only when a provider
+// named the edge; edge_access remains a raw fact otherwise. "" when no edge
+// said it answered.
 func edgeAnswer(facts map[string]string) string {
 	p := facts["edge_provider"]
 	if p == "" {
@@ -142,6 +144,9 @@ func edgeAnswer(facts map[string]string) string {
 	}
 	if facts["edge_mitigation"] == "challenge" {
 		s += " · challenge"
+	}
+	if facts["edge_access"] == "login_redirect" {
+		s += " · Access login"
 	}
 	return s
 }

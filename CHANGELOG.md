@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   challenge*, and an incident on that request says the origin was not asked.
   Incidents for `520`, `525`, `526` and `530` now name what the edge reports
   and keep the origin's own state unestablished.
+- Cloudflare Access login redirects are recorded as `edge_access: login_redirect`
+  from a `302`, `303` or `307` redirect whose `Location` host ends in
+  `.cloudflareaccess.com`, a closed word that survives a secret request. The
+  redirect's URL, key ID and target are not kept. When the response names
+  Cloudflare, the check's evidence line reads, for example, *Cloudflare NRT ·
+  cache DYNAMIC · Access login*, and an incident on that request says Access
+  asked for a login and the origin was not asked.
 
 ## [1.3.0] - 2026-10-19
 

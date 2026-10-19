@@ -439,10 +439,102 @@ func TestHTTPRecordsTheEdgeThatAnswered(t *testing.T) {
 	}
 }
 
+// An Access login redirect is the edge's own answer to the request, and the
+// redirect host is evidence without a provider header. A peer sent a secret
+// can mirror it into the location's key ID and redirect target; only the
+// closed word may reach the observation, from the public request or the
+// secret one.
+func TestHTTPRecordsCloudflareAccessLogin(t *testing.T) {
+	const (
+		publicKey = "public-kid-4c1d"
+		secretKey = "nrt1sin1-a1b2c3d4e5f6a7b8c9d0e1f2"
+		base      = "https://team.cloudflareaccess.com/cdn-cgi/access/login/host"
+	)
+	location := func(key string) string {
+		return base + "?kid=" + key + "&redirect_url=/" + key
+	}
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/access":
+			w.Header().Set("Location", location(publicKey))
+		case "/secret-plain":
+			w.Header().Set("Cf-Ray", "8f2c1b2a3d4e5f60-NRT")
+		case "/secret-access":
+			w.Header().Set("Cf-Ray", "8f2c1b2a3d4e5f60-NRT")
+			w.Header().Set("Location", location(r.Header.Get("X-Key")))
+		}
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer s.Close()
+	run := func(path string, header map[string]string) model.Observation {
+		x := httpCheck(s.URL + path)
+		x.HTTP.RequestHeaders = header
+		return (Runner{}).Run(context.Background(), testkit.Config(), x)
+	}
+	assertOnlyAccessAdded := func(t *testing.T, before, after map[string]string) {
+		t.Helper()
+		if len(after) != len(before)+1 || after["edge_access"] != "login_redirect" {
+			t.Fatalf("facts beyond edge_access changed: before %#v after %#v", before, after)
+		}
+		for k, v := range before {
+			if after[k] != v {
+				t.Fatalf("fact %q changed: before %#v after %#v", k, before, after)
+			}
+		}
+	}
+	assertNoLocation := func(t *testing.T, o model.Observation, key string) {
+		t.Helper()
+		b, err := json.Marshal(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := []string{
+			base,
+			"team.cloudflareaccess.com",
+			"cdn-cgi/access/login",
+			"kid=",
+			"redirect_url=",
+			key,
+			"/" + key,
+		}
+		// Short values would match unrelated text, including a contract hash.
+		if len(key) > 16 {
+			parts = append(parts, key[:12], key[12:])
+		}
+		for _, part := range parts {
+			if strings.Contains(string(b), part) {
+				t.Fatalf("observation carries %q: %s", part, b)
+			}
+		}
+	}
+
+	plain := run("/plain", nil)
+	public := run("/access", nil)
+	if public.Outcome != "fail" || public.Code != "unexpected_status" || !public.Connectivity || public.Facts["http_status"] != "302" || public.Facts["edge_access"] != "login_redirect" {
+		t.Fatalf("access login redirect: %+v", public)
+	}
+	if public.Facts["edge_provider"] != "" || public.Facts["edge_pop"] != "" {
+		t.Fatal("access was gated on a provider label", public.Facts)
+	}
+	assertOnlyAccessAdded(t, plain.Facts, public.Facts)
+	assertNoLocation(t, public, publicKey)
+
+	secretPlain := run("/secret-plain", map[string]string{"X-Key": secretKey})
+	secret := run("/secret-access", map[string]string{"X-Key": secretKey})
+	if secret.Facts["edge_access"] != "login_redirect" || secret.Facts["edge_provider"] != "cloudflare" || secret.Facts["peer_text"] != withheld {
+		t.Fatal("closed access fact withheld from a secret request", secret.Facts)
+	}
+	if secret.Facts["edge_pop"] != "" || secret.Facts["http_status"] != "" {
+		t.Fatal("free labels survived a secret request", secret.Facts)
+	}
+	assertOnlyAccessAdded(t, secretPlain.Facts, secret.Facts)
+	assertNoLocation(t, secret, secretKey)
+}
+
 // An HTTP peer can echo a bearer, private header or query through edge
 // labels or an exit address. Every collector viewer reads the observation,
-// so private requests retain only the edge name, a closed cache status and
-// the closed mitigation word, and compare exit addresses without retaining
+// so private requests retain only the edge name and the closed cache,
+// mitigation and Access words, and compare exit addresses without retaining
 // them. Public requests keep both their edge labels and exit addresses.
 func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 	const token = "nrt1sin1-a1b2c3d4e5f6a7b8c9d0e1f2"

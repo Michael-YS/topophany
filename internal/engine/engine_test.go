@@ -521,24 +521,34 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	// supports a candidate cause, and the origin is never declared at fault
 	// from the response alone. A challenge word removes the doubt: the edge
 	// says it answered instead of the origin.
-	for _, tt := range []struct{ status, mitigation, want string }{
-		{"403", "", "edge policy or a challenge page"},
-		{"429", "", "edge policy or a challenge page"},
-		{"403", "guardrails", "edge policy or a challenge page"},
-		{"403", "challenge", "the edge served a challenge page"},
-		{"520", "", "empty, unknown or malformed response"},
-		{"525", "", "TLS to the origin failed"},
-		{"526", "", "TLS to the origin failed"},
-		{"530", "", "could not resolve or reach the origin"},
-		{"503", "", "edge itself or from the origin"},
-		{"524", "", "read or write timeout after connecting to the origin"},
-		{"200", "", "failing layer is not located"},
+	for _, tt := range []struct{ status, mitigation, access, want string }{
+		{"403", "", "", "edge policy or a challenge page"},
+		{"429", "", "", "edge policy or a challenge page"},
+		{"403", "guardrails", "", "edge policy or a challenge page"},
+		{"403", "challenge", "", "the edge served a challenge page"},
+		{"520", "", "", "empty, unknown or malformed response"},
+		{"525", "", "", "TLS to the origin failed"},
+		{"526", "", "", "TLS to the origin failed"},
+		{"530", "", "", "could not resolve or reach the origin"},
+		{"503", "", "", "edge itself or from the origin"},
+		{"524", "", "", "read or write timeout after connecting to the origin"},
+		{"200", "", "", "failing layer is not located"},
+		{"302", "", "login_redirect", "Cloudflare Access asked for a login"},
+		{"303", "", "login_redirect", "Cloudflare Access asked for a login"},
+		{"307", "", "login_redirect", "Cloudflare Access asked for a login"},
+		// AccessFacts returns login_redirect only for 302/303/307, so this
+		// 403 row is synthetic: it pins the precedence above the status
+		// doubt, not a shape the probe emits.
+		{"403", "", "login_redirect", "Cloudflare Access asked for a login"},
 	} {
 		var statusRows []model.Observation
 		for i := 0; i < 3; i++ {
 			v := through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", tt.status, "", true)
 			if tt.mitigation != "" {
 				v.Facts["edge_mitigation"] = tt.mitigation
+			}
+			if tt.access != "" {
+				v.Facts["edge_access"] = tt.access
 			}
 			statusRows = append(statusRows, v)
 		}
@@ -556,6 +566,13 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		if tt.mitigation == "challenge" {
 			if !strings.Contains(got, "origin was not asked") || !strings.Contains(got, "origin's own state is not established") || !strings.Contains(got, "with HTTP "+tt.status) || strings.Contains(got, "may be edge policy") {
 				t.Fatalf("challenge kept the status doubt or lost its limits: %q", got)
+			}
+		}
+		if tt.access != "" {
+			// Access is producer-validated for 302/303/307; the 403 row is
+			// synthetic and pins only the precedence above the status doubt.
+			if !strings.Contains(got, "with HTTP "+tt.status) || !strings.Contains(got, "Cloudflare Access asked for a login; the origin was not asked; the origin's own state is not established") || strings.Contains(got, "may be edge policy") {
+				t.Fatalf("HTTP %s with access lost its access sentence: %q", tt.status, got)
 			}
 		}
 		if tt.status == "520" || tt.status == "525" || tt.status == "526" {
@@ -612,6 +629,23 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	}
 	if strings.Contains(got, "with HTTP") {
 		t.Fatalf("a withheld status was invented: %q", got)
+	}
+
+	// A secret request drops http_status but keeps the closed Access word;
+	// the incident must still say that Access asked for a login.
+	var accessSecret []model.Observation
+	for i := 0; i < 3; i++ {
+		v := through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", "", "", true)
+		v.Facts["edge_access"] = "login_redirect"
+		accessSecret = append(accessSecret, v)
+	}
+	accessState := Build(c, "a", "home", accessSecret, nil, now)
+	if len(accessState.Incidents) != 1 {
+		t.Fatalf("access without a status: no incident: %+v", accessState.Incidents)
+	}
+	got = accessState.Incidents[0].Hypothesis
+	if !strings.Contains(got, "Cloudflare Access asked for a login; the origin was not asked; the origin's own state is not established") || strings.Contains(got, "with HTTP") {
+		t.Fatalf("access without a status lost its scoped sentence: %q", got)
 	}
 
 	// One incident can aggregate several checks on the same node. It must
@@ -719,6 +753,53 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		t.Fatalf("a statusless challenge spoke for the whole incident: %q", got)
 	}
 
+	// Two checks that saw the same status are still two answers: one
+	// Access word must not say the origin was not asked for the other check.
+	accessSame := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		at := now.Add(time.Duration(i-3) * time.Second)
+		accessSame = append(accessSame, through(mixedConfig, "home-http", uint64(i+1), at, "fail", "302", "", true))
+		v := through(mixedConfig, "home-ssh", uint64(i+10), at, "fail", "302", "", true)
+		v.Facts["edge_access"] = "login_redirect"
+		accessSame = append(accessSame, v)
+	}
+	st = Build(mixedConfig, "a", "home", accessSame, nil, now)
+	if len(st.Incidents) != 1 || len(st.Incidents[0].Checks) != 2 {
+		t.Fatalf("same-status access checks did not aggregate: %+v", st.Incidents)
+	}
+	got = st.Incidents[0].Hypothesis
+	if !strings.Contains(got, "with HTTP 302") || !strings.Contains(got, "for at least one request") || !strings.Contains(got, "origin was not asked by that request") || !strings.Contains(got, "another request did not satisfy its assertions") || !strings.Contains(got, "origin's own state is not established") {
+		t.Fatalf("a partly access incident lost the unchallenged uncertainty: %q", got)
+	}
+	if strings.Contains(got, "different HTTP statuses") || strings.Contains(got, "Cloudflare Access asked for a login; the origin was not asked;") {
+		t.Fatalf("one access check spoke for both: %q", got)
+	}
+
+	// An Access word among several statuses is named first and scoped to
+	// the request that saw it, while no status stands for the other check.
+	accessMixed := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		at := now.Add(time.Duration(i-3) * time.Second)
+		accessMixed = append(accessMixed, through(mixedConfig, "home-http", uint64(i+1), at, "fail", "521", "", true))
+		v := through(mixedConfig, "home-ssh", uint64(i+10), at, "fail", "307", "", true)
+		v.Facts["edge_access"] = "login_redirect"
+		accessMixed = append(accessMixed, v)
+	}
+	st = Build(mixedConfig, "a", "home", accessMixed, nil, now)
+	if len(st.Incidents) != 1 || len(st.Incidents[0].Checks) != 2 {
+		t.Fatalf("mixed access checks did not aggregate: %+v", st.Incidents)
+	}
+	got = st.Incidents[0].Hypothesis
+	if !strings.Contains(got, "different HTTP statuses") || !strings.Contains(got, "for at least one request") || !strings.Contains(got, "origin was not asked by that request") || !strings.Contains(got, "origin's own state is not established") {
+		t.Fatalf("mixed access was not described honestly: %q", got)
+	}
+	if !strings.HasPrefix(got, "Cloudflare Access asked for a login for at least one request;") {
+		t.Fatalf("the access word was not named first: %q", got)
+	}
+	if strings.Contains(got, "with HTTP 307") || strings.Contains(got, "with HTTP 521") {
+		t.Fatalf("one access check's status spoke for the other: %q", got)
+	}
+
 	// Where the edge says its answer came from is its own word, which the
 	// edge, or the origin behind it, can send whatever happened: no cache
 	// status proves the origin, not even one that says the edge fetched it.
@@ -763,6 +844,22 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	}
 	if strings.Contains(s.Incidents[0].Hypothesis, "edge in front answered") {
 		t.Fatal("claimed an answer that never came", s.Incidents[0])
+	}
+}
+
+// Access sits below challenge in the precedence table: one answer carrying
+// both words names the challenge and not Access.
+func TestChallengeOutranksAccess(t *testing.T) {
+	s := edgeStatus{status: "403", mitigation: "challenge", access: "login_redirect"}
+	got := edgeHypothesisStatus(s)
+	if !strings.Contains(got, "the edge served a challenge page; the origin was not asked;") {
+		t.Fatalf("challenge not named: %q", got)
+	}
+	if strings.Contains(got, "Cloudflare Access asked for a login") {
+		t.Fatalf("Access outranked challenge: %q", got)
+	}
+	if aggregate := edgeHypothesisStatuses([]edgeStatus{s}); aggregate != got {
+		t.Fatalf("aggregate and single answer disagree: %q vs %q", aggregate, got)
 	}
 }
 

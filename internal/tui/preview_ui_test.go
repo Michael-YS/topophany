@@ -294,6 +294,28 @@ func TestCheckEvidenceNamesAChallenge(t *testing.T) {
 	t.Fatal("no j-blog row")
 }
 
+// The check's evidence line carries the closed Access word the adapter kept;
+// the incident sentence, not this line, says the origin was not asked.
+func TestCheckEvidenceNamesAnAccessLogin(t *testing.T) {
+	m := previewModel(t)
+	for i := range m.Snapshot.Checks {
+		if c := &m.Snapshot.Checks[i]; c.ID == "j-blog" && c.Last != nil {
+			c.Last.Facts["edge_access"] = "login_redirect"
+		}
+	}
+	m.setTab(tabChecks)
+	for _, r := range m.Rows() {
+		if r.ID != "j-blog" {
+			continue
+		}
+		if !strings.Contains(strings.Join(r.Details, "\n"), "Answered by: Cloudflare FRA · cache DYNAMIC · Access login") {
+			t.Fatal("check evidence does not name the Access login", r.Details)
+		}
+		return
+	}
+	t.Fatal("no j-blog row")
+}
+
 // The Servers tab is a card per server: containers sit on their host's
 // card and external parties have none. A card carries the services and the
 // edge in front of them, what it hosts and the notes as a memo, and leads

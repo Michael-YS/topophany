@@ -376,9 +376,9 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 	// scope. They do not diagnose an IP-wide ban, GFW, or untested UDP behavior.
 	proofs := p.responseProofs(allStates)
 	incidents := map[string]*model.Incident{}
-	// An incident can hold several checks on one node. Remember every status
-	// and mitigation word each of them reported through the edge so one
-	// check's answer cannot stand for another's.
+	// An incident can hold several checks on one node. Remember every status,
+	// mitigation word and Access word each of them reported through the edge
+	// so one check's answer cannot stand for another's.
 	edgeStatuses := map[string][]edgeStatus{}
 	edgeChecks, incidentChecks := map[string]int{}, map[string]int{}
 	for _, x := range c.Checks {
@@ -420,7 +420,11 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 			}
 			if len(ep.Via) > 0 && s.Last.Connectivity {
 				edgeChecks[scope]++
-				edgeStatuses[scope] = append(edgeStatuses[scope], edgeStatus{status: s.Last.Facts["http_status"], mitigation: s.Last.Facts["edge_mitigation"]})
+				edgeStatuses[scope] = append(edgeStatuses[scope], edgeStatus{
+					status:     s.Last.Facts["http_status"],
+					mitigation: s.Last.Facts["edge_mitigation"],
+					access:     s.Last.Facts["edge_access"],
+				})
 			}
 		}
 	}
@@ -472,16 +476,17 @@ func implicated(ep model.Endpoint, node string, v *model.Observation) bool {
 	return len(ep.Via) == 0 || ep.Via[0] != node || !v.Connectivity
 }
 
-// edgeStatus is one answer through an edge: its status word and the closed
-// mitigation word the edge put beside it.
+// edgeStatus is one answer through an edge: its status word, the closed
+// mitigation word the edge put beside it, and the closed Access word.
 type edgeStatus struct {
-	status, mitigation string
+	status, mitigation, access string
 }
 
 const (
 	edgeUnlocated     = "the request did not satisfy its assertions and the failing layer is not located"
 	edgeOriginUnknown = "the origin's own state is not established"
 	edgeSomeChallenge = "the edge served a challenge page for at least one request; the origin was not asked by that request; "
+	edgeSomeAccess    = "Cloudflare Access asked for a login for at least one request; the origin was not asked by that request; "
 )
 
 // edgeHypothesisStatuses explains a failed request whose response came back
@@ -491,22 +496,31 @@ const (
 // candidate cause only where the status class supports one. An HTTP 403 is
 // not proof of a WAF, and 521 is the platform's own account of an origin it
 // could not reach, not an independent observation of that origin. A
-// challenge word is the edge's own statement that the origin was not asked:
-// it explains the whole incident only when every aggregated answer carries
-// it, and is otherwise scoped to the request that saw it.
+// challenge word is the edge's own statement that the origin was not asked;
+// so is an Access login redirect, which is named above the status doubt it
+// explains. Either word explains the whole incident only when every
+// aggregated answer carries it, and is otherwise scoped to the request that
+// saw it.
 //
 // An incident may aggregate checks that saw different statuses. One check's
 // code must not be presented as another's, so mixed statuses get a sentence
-// without a single code; a challenge among them is named first.
+// without a single code; a challenge or an Access redirect among them is
+// named first.
 func edgeHypothesisStatuses(statuses []edgeStatus) string {
 	seen := map[string]bool{}
 	unique := make([]string, 0, len(statuses))
-	challenged, missing, allChallenged := false, false, len(statuses) > 0
+	challenged, accessed, missing := false, false, false
+	allChallenged, allAccessed := len(statuses) > 0, len(statuses) > 0
 	for _, s := range statuses {
 		if s.mitigation == "challenge" {
 			challenged = true
 		} else {
 			allChallenged = false
+		}
+		if s.access == "login_redirect" {
+			accessed = true
+		} else {
+			allAccessed = false
 		}
 		if s.status == "" {
 			missing = true
@@ -521,8 +535,11 @@ func edgeHypothesisStatuses(statuses []edgeStatus) string {
 	if len(unique) > 1 {
 		slices.Sort(unique)
 		mixed := "the edge in front answered with different HTTP statuses (" + strings.Join(unique, ", ") + "); the requests did not satisfy their assertions and the failing layer is not located; " + edgeOriginUnknown
-		if challenged {
+		switch {
+		case challenged:
 			return edgeSomeChallenge + mixed
+		case accessed:
+			return edgeSomeAccess + mixed
 		}
 		return mixed
 	}
@@ -538,6 +555,16 @@ func edgeHypothesisStatuses(statuses []edgeStatus) string {
 			head += " with HTTP " + unique[0]
 		}
 		return head + "; " + edgeSomeChallenge + "another request did not satisfy its assertions and the failing layer is not located; " + edgeOriginUnknown
+	case allAccessed && single:
+		return edgeHypothesisStatus(edgeStatus{status: unique[0], access: "login_redirect"})
+	case allAccessed:
+		return edgeHypothesisStatus(edgeStatus{access: "login_redirect"})
+	case accessed:
+		head := "the edge in front answered"
+		if single {
+			head += " with HTTP " + unique[0]
+		}
+		return head + "; " + edgeSomeAccess + "another request did not satisfy its assertions and the failing layer is not located; " + edgeOriginUnknown
 	case single:
 		return edgeHypothesisStatus(edgeStatus{status: unique[0]})
 	}
@@ -555,6 +582,8 @@ func edgeHypothesisStatus(s edgeStatus) string {
 	switch {
 	case s.mitigation == "challenge":
 		return head + "the edge served a challenge page; the origin was not asked; the request did not satisfy its assertions, and " + edgeOriginUnknown
+	case s.access == "login_redirect":
+		return head + "Cloudflare Access asked for a login; the origin was not asked; " + edgeOriginUnknown
 	case s.status == "403" || s.status == "429":
 		return head + edgeUnlocated + "; the response may be edge policy or a challenge page rather than the origin's answer, and " + edgeOriginUnknown
 	case s.status == "520":
