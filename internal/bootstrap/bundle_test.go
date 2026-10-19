@@ -92,10 +92,55 @@ func clientBundle(t *testing.T) (string, Options) {
 	}
 	return dir, o
 }
+
+func reviewReceipt(t *testing.T, dir string) string {
+	t.Helper()
+	_, digest, err := Review(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return digest
+}
+
+func TestInstallRequiresUnchangedReviewReceipt(t *testing.T) {
+	for _, change := range []string{"missing receipt", "payload and checksum", "destination"} {
+		t.Run(change, func(t *testing.T) {
+			dir, o := clientBundle(t)
+			receipt := reviewReceipt(t, dir)
+			m, err := loadManifest(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "missing receipt":
+				receipt = ""
+			case "payload and checksum":
+				f := &m.Files[0]
+				data := []byte("attacker replacement")
+				if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(f.Source)), data, 0600); err != nil {
+					t.Fatal(err)
+				}
+				f.SHA256 = secure.Hash(string(data))
+			case "destination":
+				m.InstallDir = filepath.Join(t.TempDir(), "other")
+			}
+			raw, _ := json.Marshal(m)
+			if err := os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := Install(context.Background(), dir, false, receipt); err == nil {
+				t.Fatal("unreviewed installation accepted")
+			}
+			if _, err := os.Stat(o.InstallDir); !os.IsNotExist(err) {
+				t.Fatal("rejected installation mutated destination", err)
+			}
+		})
+	}
+}
 func TestClientInstallDryRunAndRollback(t *testing.T) {
 	dir, o := clientBundle(t)
 	ctx := context.Background()
-	if _, _, e := Install(ctx, dir, true); e != nil {
+	if _, _, e := Install(ctx, dir, true, ""); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := os.Stat(o.InstallDir); !os.IsNotExist(e) {
@@ -105,7 +150,7 @@ func TestClientInstallDryRunAndRollback(t *testing.T) {
 	old := []byte("previous credentials")
 	target := filepath.Join(o.InstallDir, "credentials.json")
 	os.WriteFile(target, old, 0600)
-	_, backup, e := Install(ctx, dir, false)
+	_, backup, e := Install(ctx, dir, false, reviewReceipt(t, dir))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -125,7 +170,7 @@ func TestBundleTamperingRefused(t *testing.T) {
 	dir, _ := clientBundle(t)
 	payload := filepath.Join(dir, "payload/credentials.json")
 	os.WriteFile(payload, []byte("tampered"), 0600)
-	if _, _, e := Install(context.Background(), dir, true); e == nil {
+	if _, _, e := Install(context.Background(), dir, true, ""); e == nil {
 		t.Fatal("tampered enrollment accepted")
 	}
 }
@@ -164,7 +209,7 @@ func TestNativeServiceArtifacts(t *testing.T) {
 
 func TestInvalidRollbackCannotTouchUnrelatedFiles(t *testing.T) {
 	dir, o := clientBundle(t)
-	_, backup, e := Install(context.Background(), dir, false)
+	_, backup, e := Install(context.Background(), dir, false, reviewReceipt(t, dir))
 	if e != nil {
 		t.Fatal(e)
 	}

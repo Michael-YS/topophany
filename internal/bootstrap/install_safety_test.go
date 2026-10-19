@@ -68,7 +68,7 @@ func TestInstallWritesTheBytesItVerified(t *testing.T) {
 	}
 	checked = func(string) { os.WriteFile(payload, []byte("swapped"), 0o600) }
 	defer func() { checked = nil }()
-	if _, _, e := Install(context.Background(), dir, false); e != nil {
+	if _, _, e := Install(context.Background(), dir, false, reviewReceipt(t, dir)); e != nil {
 		t.Fatal(e)
 	}
 	if b, _ := os.ReadFile(filepath.Join(o.InstallDir, "credentials.json")); string(b) != string(reviewed) {

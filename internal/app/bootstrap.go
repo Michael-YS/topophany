@@ -201,12 +201,13 @@ func (a *App) install(ctx context.Context, args []string) error {
 	dir := f.String("bundle", "", "reviewed local installation bundle")
 	rollback := f.String("rollback", "", "restore a private installer backup")
 	dry := f.Bool("dry-run", false, "verify payloads and print installation paths without writing")
+	digest := f.String("bundle-sha256", "", "bundle receipt retained from --dry-run review")
 	verify := f.Bool("verify", false, "verify TLS, project and role credentials before installing worker/client")
 	if e := parsed(f, args); e != nil {
 		return e
 	}
 	if *rollback != "" {
-		if *dir != "" || *dry || *verify {
+		if *dir != "" || *dry || *verify || *digest != "" {
 			return errors.New("rollback cannot be combined with bundle, dry-run or verify")
 		}
 		return bootstrap.Rollback(ctx, *rollback)
@@ -219,7 +220,14 @@ func (a *App) install(ctx context.Context, args []string) error {
 			return e
 		}
 	}
-	m, backup, e := bootstrap.Install(ctx, *dir, *dry)
+	var m bootstrap.Manifest
+	var backup, receipt string
+	var e error
+	if *dry {
+		m, receipt, e = bootstrap.Review(*dir)
+	} else {
+		m, backup, e = bootstrap.Install(ctx, *dir, false, *digest)
+	}
 	if e != nil {
 		if backup != "" {
 			return fmt.Errorf("%w (backup: %s)", e, backup)
@@ -230,5 +238,6 @@ func (a *App) install(ctx context.Context, args []string) error {
 		Manifest bootstrap.Manifest `json:"manifest"`
 		Backup   string             `json:"backup,omitempty"`
 		Dry      bool               `json:"dry_run"`
-	}{m, backup, *dry})
+		Receipt  string             `json:"bundle_sha256,omitempty"`
+	}{m, backup, *dry, receipt})
 }

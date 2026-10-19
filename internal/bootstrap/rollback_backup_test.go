@@ -20,7 +20,7 @@ func installedBackup(t *testing.T) (string, string, string) {
 	if err := os.WriteFile(target, []byte("old credentials"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, backup, err := Install(context.Background(), bundle, false)
+	_, backup, err := Install(context.Background(), bundle, false, reviewReceipt(t, bundle))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestRollbackRestoresLargeAuthenticatedExecutable(t *testing.T) {
 	if err := os.WriteFile(path, old, 0755); err != nil {
 		t.Fatal(err)
 	}
-	_, backup, err := Install(context.Background(), bundle, false)
+	_, backup, err := Install(context.Background(), bundle, false, reviewReceipt(t, bundle))
 	if err != nil {
 		t.Fatal(err)
 	}

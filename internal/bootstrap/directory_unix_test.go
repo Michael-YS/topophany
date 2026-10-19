@@ -69,7 +69,7 @@ func TestPrivilegedInstallRejectsIntermediateLinksBeforeMutation(t *testing.T) {
 			if _, err := Generate(bundle, opts); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := Install(context.Background(), bundle, false); err == nil {
+			if _, _, err := Install(context.Background(), bundle, false, reviewReceipt(t, bundle)); err == nil {
 				t.Fatal("root installation accepted intermediate symlink")
 			}
 			after, err := os.Stat(target)

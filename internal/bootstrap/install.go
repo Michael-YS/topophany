@@ -13,7 +13,9 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -53,6 +55,27 @@ func loadBundle(dir string) (Manifest, verified, error) {
 	v := verified{files: map[string][]byte{}}
 	m, e := checkBundle(dir, &v)
 	return m, v, e
+}
+
+// Review returns a receipt to keep outside the bundle until installation. The
+// canonical manifest covers every payload hash and installation option; the
+// generated service bytes are bound too. Colocated checksums alone are mutable.
+func Review(dir string) (Manifest, string, error) {
+	m, bundle, err := loadBundle(dir)
+	if err != nil {
+		return m, "", err
+	}
+	return m, bundleDigest(m, bundle), nil
+}
+
+func bundleDigest(m Manifest, bundle verified) string {
+	m.Files = slices.Clone(m.Files)
+	slices.SortFunc(m.Files, func(a, b File) int { return strings.Compare(a.Name, b.Name) })
+	raw, _ := json.Marshal(struct {
+		Manifest      Manifest `json:"manifest"`
+		ServiceSHA256 string   `json:"service_sha256"`
+	}{m, secure.Hash(string(bundle.service))})
+	return secure.Hash(string(raw))
 }
 
 func checkBundle(dir string, v *verified) (Manifest, error) {
@@ -144,13 +167,19 @@ func checkBundle(dir string, v *verified) (Manifest, error) {
 // before anything is installed from it; tests change the bundle there.
 var checked func(dir string)
 
-func Install(ctx context.Context, dir string, dry bool) (Manifest, string, error) {
+func Install(ctx context.Context, dir string, dry bool, expected string) (Manifest, string, error) {
 	m, bundle, e := loadBundle(dir)
 	if e != nil {
 		return m, "", e
 	}
 	if dry {
 		return m, "", nil
+	}
+	if expected == "" || expected != bundleDigest(m, bundle) {
+		return m, "", errors.New("bundle review receipt missing or changed; review with --dry-run and supply --bundle-sha256 from that review")
+	}
+	if e = trustedBundleSource(ctx, dir, m); e != nil {
+		return m, "", e
 	}
 	if checked != nil {
 		checked(dir)

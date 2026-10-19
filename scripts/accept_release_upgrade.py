@@ -75,9 +75,9 @@ def main() -> int:
             backups = target / '.backups'
             existing = {p.name for p in backups.iterdir() if p.is_dir()} if backups.exists() else set()
             new_bundle = bundle(candidate, 'candidate-bundle')
-            run(candidate, 'install', '--bundle', new_bundle, '--dry-run')
+            receipt = json.loads(run(candidate, 'install', '--bundle', new_bundle, '--dry-run'))['bundle_sha256']
             check_preferences()
-            run(candidate, 'install', '--bundle', new_bundle)
+            run(candidate, 'install', '--bundle', new_bundle, '--bundle-sha256', receipt)
             assert digest(installed) == report['candidate_sha256']
             assert run(installed, 'version') == candidate_version
             assert json.loads((target / 'credentials.json').read_text()) == credentials
@@ -92,7 +92,7 @@ def main() -> int:
             assert json.loads((target / 'credentials.json').read_text()) == credentials
             check_preferences()
             report['checks'].append({'name': 'authenticated rollback restores exact previous executable and credentials', 'pass': True})
-            run(candidate, 'install', '--bundle', new_bundle)
+            run(candidate, 'install', '--bundle', new_bundle, '--bundle-sha256', receipt)
             assert digest(installed) == report['candidate_sha256']
             assert run(installed, 'version') == candidate_version
             check_preferences()
