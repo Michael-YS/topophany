@@ -24,6 +24,10 @@ func safetyState(p Panel) string {
 	for _, r := range p.Rows {
 		state := []any{r.ID, r.Health, r.Freshness, r.Reason}
 		switch v := r.Value.(type) {
+		case []ServerListEntry:
+			for _, server := range v {
+				state = append(state, []any{server.ID, server.Health, server.Note})
+			}
 		case SummaryVerdict:
 			state = append(state, v.State, v.Counts, v.Observers)
 		case []ObserverVerdict:

@@ -16,6 +16,8 @@ type projection struct {
 	serviceChecks                  map[string][]string
 	dependencies, dependencyChecks map[string][]string
 	observers                      []ObserverVerdict
+	serverList                     []ServerListEntry
+	serverListClock                evidenceClock
 	currentClocks, completeClocks  *evidenceIndex
 }
 

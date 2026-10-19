@@ -52,6 +52,7 @@ func Catalog() []Metric {
 		{Name: "attention.list", Type: "object", Sources: []string{"client", "collector"}, Visual: "list"},
 		{Name: "applications.list", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
 		{Name: "server.card", Type: "object", Sources: []string{"client", "collector"}, Selector: "node", Visual: "card"},
+		{Name: "servers.list", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
 		{Name: "summary.status", Type: "text", Sources: []string{"client", "collector"}},
 		{Name: "local.status", Type: "text", Sources: []string{"worker"}},
 		{Name: "check.status", Type: "text", Sources: all, Selector: "check"},

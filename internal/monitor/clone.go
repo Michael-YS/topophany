@@ -27,6 +27,8 @@ func clone(p Panel) Panel {
 		r := &p.Rows[i]
 		r.Limit = copyPointer(r.Limit)
 		switch v := r.Value.(type) {
+		case []ServerListEntry:
+			r.Value = slices.Clone(v)
 		case []ObserverVerdict:
 			r.Value = cloneObservers(v)
 		case AttentionList:

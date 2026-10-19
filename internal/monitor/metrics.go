@@ -103,6 +103,16 @@ type ProcessValue struct {
 	Name     string  `json:"name"`
 	Matching *uint64 `json:"matching"`
 }
+type ServerListEntry struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	Provider string `json:"provider"`
+	Group    string `json:"group"`
+	Where    string `json:"where"`
+	Health   string `json:"health"`
+	Note     string `json:"note"`
+}
 type ServerCard struct {
 	ID        string            `json:"id"`
 	Name      string            `json:"name"`
@@ -372,16 +382,52 @@ func minTime(a, b time.Time) time.Time {
 	}
 	return b
 }
+
+func serverEntry(fleet *view.Fleet, id string, card view.Card) ServerListEntry {
+	n := fleet.Nodes[id]
+	out := ServerListEntry{ID: id, Name: fleet.Names[id], Kind: n.Kind, Provider: view.ProviderName(n.Provider), Group: card.Group, Where: card.Where}
+	out.Health, out.Note = fleet.NodeState(id)
+	return out
+}
+
+func (p *projection) servers() ([]ServerListEntry, time.Time, time.Time) {
+	if p.serverList == nil {
+		fleet := p.serverFleet()
+		known := make(map[string]bool, len(fleet.Nodes))
+		for id := range fleet.Nodes {
+			known[id] = true
+		}
+		p.serverList = []ServerListEntry{}
+		ids := map[string]bool{}
+		// The Servers tab preserves topology order and folds owned containers
+		// into their host. Only listed node judgments bound this row's lease.
+		for _, n := range p.v.Snapshot.Topology.Nodes {
+			if !view.ServerNode(n, known) {
+				continue
+			}
+			p.serverList = append(p.serverList, serverEntry(fleet, n.ID, fleet.Card(n.ID)))
+			for _, id := range p.nodeChecks[n.ID] {
+				ids[id] = true
+			}
+			if len(p.serverList) == 256 {
+				break
+			}
+		}
+		p.serverListClock.sampled, p.serverListClock.until = p.evidence().times(ids, false)
+	}
+	return p.serverList, p.serverListClock.sampled, p.serverListClock.until
+}
+
 func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) {
 	v := p.v
 	fleet := p.serverFleet()
-	n, ok := fleet.Nodes[id]
+	_, ok := fleet.Nodes[id]
 	if !ok {
 		return ServerCard{}, time.Time{}, time.Time{}, false
 	}
 	card := fleet.Card(id)
-	out := ServerCard{ID: id, Name: fleet.Names[id], Kind: n.Kind, Provider: view.ProviderName(n.Provider), Group: card.Group, Where: card.Where, Health: "unknown", Resources: []ResourceValue{}, Services: []ServiceValue{}, Observes: []ObserverVerdict{}}
-	out.Health, out.Note = fleet.NodeState(id)
+	entry := serverEntry(fleet, id, card)
+	out := ServerCard{ID: entry.ID, Name: entry.Name, Kind: entry.Kind, Provider: entry.Provider, Group: entry.Group, Where: entry.Where, Health: entry.Health, Note: entry.Note, Resources: []ResourceValue{}, Services: []ServiceValue{}, Observes: []ObserverVerdict{}}
 	ids := map[string]bool{}
 	for _, c := range p.nodeChecks[id] {
 		ids[c] = true
@@ -488,6 +534,14 @@ func (p *projection) richValue(value Value) Value {
 		value.Health = card.Health
 		value.SampledAt = sampled
 		value.ValidUntil = until
+	case "servers.list":
+		servers, sampled, until := p.servers()
+		value.Value = servers
+		value.Text = fmt.Sprintf("%d servers", len(servers))
+		value.SampledAt, value.ValidUntil = sampled, until
+		for _, server := range servers {
+			value.Health = worse(value.Health, server.Health)
+		}
 	}
 	return value
 }

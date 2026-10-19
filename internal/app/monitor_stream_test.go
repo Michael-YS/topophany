@@ -129,6 +129,31 @@ func TestMonitorStreamProtocol(t *testing.T) {
 			t.Fatal(p.stderr.String())
 		}
 	}
+	t.Run("server choices from a real preview stream", func(t *testing.T) {
+		p := start(t)
+		request := strings.Replace(previewStreamRequest, `"rows":[`, `"rows":[{"id":"choices","metric":"servers.list","visual":"list"},`, 1)
+		send(t, p, request)
+		frame := next(t, p)
+		if frame.Lifecycle != "running" || len(frame.Rows) != 6 || frame.Rows[0].Metric != "servers.list" {
+			t.Fatal(frame)
+		}
+		raw, err := json.Marshal(frame.Rows[0].Value)
+		var servers []monitor.ServerListEntry
+		if err != nil || json.Unmarshal(raw, &servers) != nil || len(servers) == 0 || len(servers) > 256 {
+			t.Fatal(string(raw), err)
+		}
+		found := false
+		for _, server := range servers {
+			found = found || server.ID == "app"
+		}
+		if !found {
+			t.Fatal("existing card missing from choices", servers)
+		}
+		p.in.Close()
+		for frame := next(t, p); frame.Lifecycle != "stopped"; frame = next(t, p) {
+		}
+		finish(t, p)
+	})
 	t.Run("first replacement rejected request and EOF", func(t *testing.T) {
 		p := start(t)
 		select {
