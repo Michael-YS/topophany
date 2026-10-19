@@ -21,6 +21,7 @@ func (s *Store) SetObservers(ids []string) {
 func (s *Store) SetAllocation(ids []string, weights map[string]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.historyDirty = true
 	s.options.Observers = append([]string(nil), ids...)
 	s.options.ObserverWeights = maps.Clone(weights)
 	if s.options.ObserverWeights == nil {

@@ -213,3 +213,17 @@ monochrome selection; `TestGeoLocationsClickAndModeControl` covers clickable
 labels and label/zoom independence. `TestGeoControlsStayInsideNarrowMap` checks
 that controls and click targets stay inside their panel. Browser regression
 also exercises the complete three-mode cycle in the WebAssembly viewer.
+
+## Storage ownership, retention and delivery regressions
+
+| Scenario | Regression |
+| --- | --- |
+| Concurrent history readers own their Facts and Timings; mutations never reach stored evidence | `TestHistoryDetachesEvidence`, `TestConcurrentHistoryReaders` |
+| Reloaded state tails release discarded backing arrays; expired history stays released across checkpoints and restart | `TestTailReleasesDiscardedBacking`, `TestReloadAndRestartReleaseExpiredHistory` |
+| Incremental row ownership and accounting match retained evidence through late samples, allocation changes, contract changes, expiry and restart | `TestRowOwnershipThroughAllocationAndContractChanges`, `TestAccountingKeptAsItGoesIsWhatIsHeld` |
+| Service cards preserve topology-ordered, deduplicated Via references through shared indexes | `TestFleetServiceViaPreservesTopologyOrder`, `BenchmarkFleetCardsWithServices` |
+| Expired alerts are dropped before sending after restart or retry backoff | `TestExpiredAlertIsNotSentAfterRestart`, `TestAlertExpiresDuringBackoff` |
+
+`BenchmarkSteadyHistoryPruning` measures saturated history maintenance at 1,000
+and 20,000 rows, separately from journal I/O. `BenchmarkFleetCardsWithServices`
+uses validated topologies with services and endpoints, exercising actual cards.

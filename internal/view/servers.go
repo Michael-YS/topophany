@@ -96,29 +96,29 @@ type CardLink struct {
 
 // Fleet is what the cards are built from, indexed once.
 type Fleet struct {
-	resources map[string][]CardResource
-	Names     map[string]string // node names; the ID of a node without one
-	Nodes     map[string]model.Node
-	topology  model.Config
-	cached    bool
-	nodeState map[string]model.EntityState
-	services  map[string][]model.Service // by node
-	svcState  map[string]model.EntityState
-	endpoints map[string][]model.Endpoint // by node
-	fronted   map[string][]model.Endpoint // by the edge or proxy in front
-	epHealth  map[string]string
-	children  map[string][]model.Node
-	observers map[string][]model.Observer // by node
-	obsState  map[string]model.ObserverState
-	links     map[string][]model.Link // by either end
-	regions   map[string][]string
-	pops      map[string][]string // where each edge answered
+	resources  map[string][]CardResource
+	Names      map[string]string // node names; the ID of a node without one
+	Nodes      map[string]model.Node
+	serviceVia map[string][]string
+	cached     bool
+	nodeState  map[string]model.EntityState
+	services   map[string][]model.Service // by node
+	svcState   map[string]model.EntityState
+	endpoints  map[string][]model.Endpoint // by node
+	fronted    map[string][]model.Endpoint // by the edge or proxy in front
+	epHealth   map[string]string
+	children   map[string][]model.Node
+	observers  map[string][]model.Observer // by node
+	obsState   map[string]model.ObserverState
+	links      map[string][]model.Link // by either end
+	regions    map[string][]string
+	pops       map[string][]string // where each edge answered
 }
 
 func (v View) Fleet() *Fleet {
 	s := v.Snapshot
 	t := s.Topology
-	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, topology: t, cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}}
+	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}}
 	for _, n := range t.Nodes {
 		f.Nodes[n.ID] = n
 		f.Names[n.ID] = n.Name
@@ -249,7 +249,7 @@ func (f *Fleet) Card(id string) Card {
 	// What runs here, healthiest last so trouble reads first.
 	for _, sv := range f.services[n.ID] {
 		e := f.svcState[sv.ID]
-		c.Services = append(c.Services, CardService{ID: sv.ID, Name: sv.Name, Health: state(e.Health), Affected: e.Affected && !f.cached, Via: refs(ViaNodes(f.topology, sv.Endpoints)), Runtime: sv.Runtime, Monitored: len(e.Checks) > 0})
+		c.Services = append(c.Services, CardService{ID: sv.ID, Name: sv.Name, Health: state(e.Health), Affected: e.Affected && !f.cached, Via: refs(f.serviceVia[sv.ID]), Runtime: sv.Runtime, Monitored: len(e.Checks) > 0})
 	}
 	rank := func(sv CardService) int {
 		note := ""

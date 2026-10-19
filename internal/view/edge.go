@@ -2,6 +2,7 @@ package view
 
 import (
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -139,4 +140,34 @@ func edgeAnswer(facts map[string]string) string {
 		s += " · cache " + c
 	}
 	return s
+}
+
+// indexServiceVia resolves each service's endpoint references once per fleet.
+// Preserve ViaNodes' topology order even when the service lists endpoints in a
+// different order or repeats a reference.
+func indexServiceVia(t model.Config) map[string][]string {
+	positions := make(map[string]int, len(t.Endpoints))
+	for i, ep := range t.Endpoints {
+		positions[ep.ID] = i
+	}
+	out := make(map[string][]string, len(t.Services))
+	for _, service := range t.Services {
+		indices := make([]int, 0, len(service.Endpoints))
+		for _, id := range service.Endpoints {
+			if i, ok := positions[id]; ok {
+				indices = append(indices, i)
+			}
+		}
+		sort.Ints(indices)
+		seen := map[string]bool{}
+		for _, i := range slices.Compact(indices) {
+			for _, id := range t.Endpoints[i].Via {
+				if !seen[id] {
+					out[service.ID] = append(out[service.ID], id)
+					seen[id] = true
+				}
+			}
+		}
+	}
+	return out
 }

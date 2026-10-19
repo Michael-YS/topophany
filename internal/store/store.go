@@ -137,7 +137,10 @@ type Store struct {
 	receiptHead  int
 	rowBytes     int64
 	rowScope     map[string]int64
-	rowsDropped  bool // a tail let rows go since the last prune
+	rowRefs      map[string]int // raw history plus state-tail ownership
+	rowsCapacity int            // includes prefixes released from the history slice
+	rowsOrdered  bool
+	historyDirty bool
 	strings      stringPool
 }
 
@@ -156,7 +159,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
 	s.rollups.SetCurrent(s.currentKey)
 	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
@@ -261,7 +264,16 @@ func (s *Store) recount() {
 		s.rowBytes += size
 		s.rowScope[s.rowObservers[id]] += size
 	}
-	s.rowsDropped = true
+	s.rowRefs = make(map[string]int, len(s.rowSizes))
+	for _, v := range s.rows {
+		s.rowRefs[v.ID]++
+	}
+	for _, tail := range s.tails {
+		for _, v := range tail {
+			s.rowRefs[v.ID]++
+		}
+	}
+	s.historyDirty = true
 }
 
 // receive records the receipt of a sample.
@@ -385,11 +397,18 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	s.options.Contracts = maps.Clone(contracts)
 	s.options.Stale = maps.Clone(stale)
 	rows := s.allRows()
+	oldTails := s.tails
 	s.tails = map[string][]model.Observation{}
 	for _, v := range rows {
 		if s.current(v) {
 			key := tailKey(v)
 			s.tails[key] = append(s.tails[key], v)
+			s.rowRefs[v.ID]++
+		}
+	}
+	for _, tail := range oldTails {
+		for _, v := range tail {
+			s.releaseRow(v.ID)
 		}
 	}
 	for key, tail := range s.tails {
@@ -404,12 +423,18 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 }
 func (s *Store) addRow(v model.Observation) {
 	v = s.compactStrings(v)
+	if len(s.rows) > 0 && before(v, s.rows[len(s.rows)-1]) {
+		s.rowsOrdered = false
+	}
 	s.rows = append(s.rows, v)
+	s.rowsCapacity = max(s.rowsCapacity, cap(s.rows))
 	s.indexRow(v)
 }
 
 // indexRow rebuilds accounting and bounded state without copying raw history.
 func (s *Store) indexRow(v model.Observation) {
+	s.rowRefs[v.ID]++
+	s.historyDirty = true
 	if _, ok := s.rowSizes[v.ID]; !ok {
 		b, _ := json.Marshal(v)
 		s.rowSizes[v.ID] = int64(len(b)) + 1
@@ -422,6 +447,7 @@ func (s *Store) indexRow(v model.Observation) {
 		return
 	}
 	key := tailKey(v)
+	s.rowRefs[v.ID]++
 	tail := append(s.tails[key], v)
 	sort.Slice(tail, func(i, j int) bool { return before(tail[i], tail[j]) })
 	s.tails[key] = s.trim(key, tail)
@@ -437,9 +463,9 @@ func (s *Store) trim(key string, tail []model.Observation) []model.Observation {
 	if len(tail) <= tailLength {
 		return tail
 	}
-	s.rowsDropped = true
 	k := s.carries[key]
 	for _, v := range tail[:len(tail)-tailLength] {
+		s.releaseRow(v.ID)
 		if v.Contract != "" && !k.Holds(v) {
 			k.Fold(v, s.options.Stale[v.Check])
 		}
@@ -447,7 +473,15 @@ func (s *Store) trim(key string, tail []model.Observation) []model.Observation {
 	if !k.At.IsZero() {
 		s.carries[key] = k
 	}
-	return tail[len(tail)-tailLength:]
+	kept := tail[len(tail)-tailLength:]
+	if cap(tail) > 2*tailLength {
+		out := make([]model.Observation, tailLength, 2*tailLength)
+		copy(out, kept)
+		return out
+	}
+	copy(tail, kept)
+	clear(tail[tailLength:])
+	return tail[:tailLength]
 }
 func before(a, b model.Observation) bool {
 	if a.SampledAt.Equal(b.SampledAt) {
@@ -629,67 +663,44 @@ func (s *Store) Put(b model.Batch) error {
 }
 func (s *Store) prune() {
 	cutoff := s.options.Now().Add(-s.options.Retention)
-	rows := s.rows[:0]
-	for _, v := range s.rows {
-		if !v.SampledAt.Before(cutoff) {
-			rows = append(rows, v)
-		}
+	if !s.rowsOrdered {
+		sort.Slice(s.rows, func(i, j int) bool { return before(s.rows[i], s.rows[j]) })
+		s.rowsOrdered = true
 	}
-	sort.Slice(rows, func(i, j int) bool { return before(rows[i], rows[j]) })
-	if len(s.options.Observers) > 0 {
+	if s.historyDirty || len(s.rows) > 0 && s.rows[0].SampledAt.Before(cutoff) {
+		// Select newest rows within each observer's allocation. Release only
+		// evicted owners; accounting no longer rebuilds a full live-ID set.
 		counts := map[string]int{}
-		allowed := map[string]bool{}
-		for _, id := range s.options.Observers {
-			allowed[id] = true
-		}
-
-		// Select backwards into the same allocation, then slide the retained
-		// suffix down. Allocating a new history on every sample costs several
-		// MiB per ingestion even when only one row changes.
-		start := len(rows)
-		for i := len(rows) - 1; i >= 0; i-- {
-			if allowed[rows[i].Observer] && counts[rows[i].Observer] < int(s.options.share(int64(s.options.MaxHistory), rows[i].Observer)) {
+		start := len(s.rows)
+		for i := len(s.rows) - 1; i >= 0; i-- {
+			v := s.rows[i]
+			limit := s.options.MaxHistory
+			if len(s.options.Observers) > 0 {
+				limit = int(s.options.share(int64(limit), v.Observer))
+			}
+			count := len(s.rows) - start
+			if len(s.options.Observers) > 0 {
+				count = counts[v.Observer]
+			}
+			if !v.SampledAt.Before(cutoff) && count < limit {
 				start--
-				rows[start] = rows[i]
-				counts[rows[i].Observer]++
+				s.rows[start] = v
+				counts[v.Observer]++
+			} else {
+				s.releaseRow(v.ID)
 			}
 		}
-		n := copy(rows, rows[start:])
-		rows = rows[:n]
-	} else if len(rows) > s.options.MaxHistory {
-		copy(rows, rows[len(rows)-s.options.MaxHistory:])
-		rows = rows[:s.options.MaxHistory]
+		clear(s.rows[:start])
+		s.rows = s.rows[start:]
+		if len(s.rows) == 0 {
+			s.rows = nil
+			s.rowsCapacity = 0
+		} else if s.rowsCapacity > 2*len(s.rows) {
+			s.rows = slices.Clone(s.rows)
+			s.rowsCapacity = cap(s.rows)
+		}
+		s.historyDirty = false
 	}
-	// Rows nothing holds any more give up their accounting, looked for only
-	// when the history or a tail let some go.
-	if len(rows) < len(s.rows) || s.rowsDropped {
-		keep := make(map[string]bool, len(s.rowSizes))
-		for _, v := range rows {
-			keep[v.ID] = true
-		}
-		for _, tail := range s.tails {
-			for _, v := range tail {
-				keep[v.ID] = true
-			}
-		}
-		for id, size := range s.rowSizes {
-			if !keep[id] {
-				s.rowBytes -= size
-				s.rowScope[s.rowObservers[id]] -= size
-				if s.rowScope[s.rowObservers[id]] == 0 {
-					delete(s.rowScope, s.rowObservers[id])
-				}
-				delete(s.rowSizes, id)
-				delete(s.rowHashes, id)
-				delete(s.rowObservers, id)
-			}
-		}
-		s.rowsDropped = false
-	}
-	// Hidden slice elements are GC roots too: expired diagnostics must not
-	// stay reachable through the unused end of the history allocation.
-	clear(s.rows[len(rows):])
-	s.rows = rows
 	// A receipt binds an ID to its content for as long as a sample with
 	// that ID could still be accepted: the ingestion window and an hour.
 	// Then it goes, and its boot's floor keeps the ID bound, so ageing out
@@ -837,8 +848,10 @@ func (s *Store) History(check string, contracts map[string]string, revision stri
 		}
 	}
 	s.mu.Unlock()
-	b, _ := json.Marshal(out)
-	_ = json.Unmarshal(b, &out)
+	for i := range out {
+		out[i].Facts = maps.Clone(out[i].Facts)
+		out[i].Timings = maps.Clone(out[i].Timings)
+	}
 	return out
 }
 
@@ -871,4 +884,23 @@ func (s *Store) Close() error {
 		return e
 	}
 	return ue
+}
+
+// releaseRow drops accounting only after neither raw history nor a state tail
+// owns the observation. Receipts have their own independent retention window.
+func (s *Store) releaseRow(id string) {
+	if s.rowRefs[id] > 1 {
+		s.rowRefs[id]--
+		return
+	}
+	delete(s.rowRefs, id)
+	size, observer := s.rowSizes[id], s.rowObservers[id]
+	s.rowBytes -= size
+	s.rowScope[observer] -= size
+	if s.rowScope[observer] == 0 {
+		delete(s.rowScope, observer)
+	}
+	delete(s.rowSizes, id)
+	delete(s.rowHashes, id)
+	delete(s.rowObservers, id)
 }

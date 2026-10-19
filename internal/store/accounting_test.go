@@ -1,12 +1,14 @@
 package store
 
 import (
+	"encoding/json"
 	"maps"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
@@ -30,6 +32,27 @@ func checkAccounting(t *testing.T, s *Store) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prune()
+	refs := map[string]int{}
+	rows := map[string]model.Observation{}
+	for _, v := range s.rows {
+		refs[v.ID]++
+		rows[v.ID] = v
+	}
+	for _, tail := range s.tails {
+		for _, v := range tail {
+			refs[v.ID]++
+			rows[v.ID] = v
+		}
+	}
+	if !maps.Equal(refs, s.rowRefs) || len(rows) != len(s.rowSizes) || len(rows) != len(s.rowHashes) || len(rows) != len(s.rowObservers) {
+		t.Fatal("incremental indexes differ from retained rows")
+	}
+	for id, v := range rows {
+		raw, err := json.Marshal(v)
+		if err != nil || s.rowSizes[id] != int64(len(raw))+1 || s.rowHashes[id] != observationHash(v) || s.rowObservers[id] != v.Observer {
+			t.Fatal("retained row accounting mismatch", id, err)
+		}
+	}
 	kept := s.accounting()
 	expiry := s.options.Now().Add(-s.options.Retention - receiptGrace)
 	for id, r := range s.seen {
@@ -139,4 +162,54 @@ func TestUsageSaysWhereReceiptsSettle(t *testing.T) {
 	if u := s.Usage(); u.Observers[1].LastHour != 0 || u.Observers[1].Fills {
 		t.Fatalf("%+v", u.Observers[1])
 	}
+}
+
+func TestRowOwnershipThroughAllocationAndContractChanges(t *testing.T) {
+	c := testkit.Config()
+	now := time.Now().UTC()
+	dir := t.TempDir()
+	options := Options{MaxHistory: 12, Observers: []string{"home", "cloud"}, Contracts: config.Contracts(c), Revision: config.Revision(c), Stale: config.Stale(c), Now: func() time.Time { return now }}
+	s := openTest(t, dir, options)
+	for i := 1; i <= 90; i++ {
+		// Mix late samples with newer ones; pruning must preserve the newest per owner.
+		at := now.Add(-time.Duration((i*17)%90) * time.Second)
+		if err := s.Put(batch(c, testkit.Observation(c, "home-http", uint64(i), at, "ok"), testkit.Observation(c, "cloud-http", uint64(i), at, "ok"))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkAccounting(t, s)
+	s.SetAllocation([]string{"home", "cloud"}, map[string]int{"home": 3, "cloud": 1})
+	s.SetCurrent(config.Revision(c), config.Contracts(c), config.Stale(c))
+	checkAccounting(t, s)
+	counts := map[string]int{}
+	for _, v := range s.rows {
+		counts[v.Observer]++
+	}
+	// A larger reservation cannot recreate raw rows already evicted.
+	if counts["home"] != 6 || counts["cloud"] != 3 {
+		t.Fatal(counts)
+	}
+	next := config.Contracts(c)
+	next["home-http"] = "changed"
+	s.SetCurrent("changed", next, config.Stale(c))
+	checkAccounting(t, s)
+	s.SetAllocation([]string{"cloud"}, nil)
+	s.prune()
+	checkAccounting(t, s)
+	for _, v := range s.rows {
+		if v.Observer != "cloud" {
+			t.Fatal("removed observer history retained")
+		}
+	}
+	now = now.Add(48 * time.Hour)
+	checkAccounting(t, s)
+	if err := s.Checkpoint(); err != nil {
+		t.Fatal(err)
+	}
+	options = s.options
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = openTest(t, dir, options)
+	checkAccounting(t, s)
 }

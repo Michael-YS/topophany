@@ -304,6 +304,7 @@ func (q *queue) room(observer string) (queued, bool) {
 // deliver sends what waits for h, oldest first, until ctx ends.
 func (n *Notifier) deliver(ctx context.Context, h *hook) {
 	defer close(h.done)
+	lastFailure := ""
 	for {
 		n.mu.Lock()
 		q := n.queues[h.ID]
@@ -314,6 +315,7 @@ func (n *Notifier) deliver(ctx context.Context, h *hook) {
 		}
 		n.mu.Unlock()
 		if next == nil {
+			lastFailure = ""
 			select {
 			case <-ctx.Done():
 				return
@@ -323,6 +325,16 @@ func (n *Notifier) deliver(ctx context.Context, h *hook) {
 		}
 		if !h.wants(next.Event.group(), next.Observer) {
 			n.finish(h.ID, false, "alert %s to webhook %s dropped: it no longer takes it", next.Event.Kind, h.ID)
+			lastFailure = ""
+			continue
+		}
+		if waited := time.Since(next.Queued); waited >= n.maxAge() {
+			if lastFailure == "" {
+				n.finish(h.ID, false, "alert %s to webhook %s dropped after waiting %s, tried %d times", next.Event.Kind, h.ID, waited.Round(time.Second), next.Tries)
+			} else {
+				n.finish(h.ID, false, "alert %s to webhook %s dropped after waiting %s, tried %d times, last %s", next.Event.Kind, h.ID, waited.Round(time.Second), next.Tries, lastFailure)
+			}
+			lastFailure = ""
 			continue
 		}
 		status, failure := n.post(ctx, h.Webhook, next.Event)
@@ -331,16 +343,20 @@ func (n *Notifier) deliver(ctx context.Context, h *hook) {
 			return
 		case failure == "" && status/100 == 2:
 			n.finish(h.ID, true, "")
+			lastFailure = ""
 			continue
 		case failure == "" && (status/100 == 3 || status/100 == 4 && status != 408 && status != 429):
 			n.finish(h.ID, false, "alert %s to webhook %s refused with HTTP %d; dropped", next.Event.Kind, h.ID, status)
+			lastFailure = ""
 			continue
 		case failure == "":
 			failure = "HTTP " + strconv.Itoa(status)
 		}
+		lastFailure = failure
 		tries := n.tried(h.ID)
 		if waited := time.Since(next.Queued); waited >= n.maxAge() {
 			n.finish(h.ID, false, "alert %s to webhook %s dropped after waiting %s, tried %d times, last %s", next.Event.Kind, h.ID, waited.Round(time.Second), tries, failure)
+			lastFailure = ""
 			continue
 		}
 		pause := min(time.Duration(1)<<min(tries, 30)*time.Second, maxPause)
