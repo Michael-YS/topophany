@@ -394,7 +394,32 @@ formats fail validation.
 `topo monitor stream` reads one JSON request per line on stdin and writes one
 JSON frame per line on stdout. It creates no panel configuration, output file or
 lock. `topo monitor stream --capabilities` prints one line with protocol 1, the
-binary version, sources, visuals and the metric catalog, then exits.
+binary version, sources, visuals and the metric catalog, then exits. The catalog
+includes `servers.list`; `profiles: true` advertises saved-profile discovery.
+These additions retain protocol 1. Consumers of older binaries treat an absent
+`profiles` field as false and check the catalog before requesting `servers.list`.
+
+`topo monitor stream --profiles` lists saved client profiles in one JSON line,
+then exits 0:
+
+```json
+{"profiles":[{"name":"home","project":"homelab","active":true},{"name":"work","project":"","active":false}]}
+```
+
+The active profile comes first, followed by other names in lexical order, at most
+64 entries. `active` identifies the profile an empty request `profile` selects.
+Only names, projects and the active flag are exposed; tokens, collector URLs and
+file paths are omitted. An unset project is `""`. Listing does not validate a
+profile's connection or contact a collector; normal client connections still
+require valid credentials and a project.
+
+`--profiles --credentials PATH` reads that file instead of the normal credential
+path, retaining the private-file permission and 1 MiB size checks. No credential
+file, or no saved profiles, produces `{"profiles":[]}`. An unreadable, unsafe or
+invalid file also produces an empty list and exit 0, with one fixed diagnostic on
+stderr. The command reads no stdin and writes no files. `--capabilities` and
+`--profiles` are mutually exclusive; the command-line `--credentials` option is
+for `--profiles`, while a running stream takes credentials in each request.
 
 A request has `schema: 1`, an optional `request_id` (at most 64 bytes), `source`
 (`client` by default), `interval` (5s by default, 1s–1h), and a schema-1
@@ -405,11 +430,16 @@ only for the client source. Preview requests accept `scenario` (0 by default)
 and `lang` (`en`, `ja` or `zh`, default `en`); they read synthetic evidence
 from the same simulator as `topo preview`, without credentials or host probes.
 
-For example, this request displays all five evidence metrics:
+For example, [monitor-stream-preview.json](../examples/monitor-stream-preview.json)
+requests all six structured evidence metrics, including the server chooser and
+one selected server card:
 
 ```sh
-printf '%s\n' '{"schema":1,"request_id":"preview","source":"preview","template":{"schema":1,"title":"Topophany","bar":{"row":"status"},"rows":[{"id":"status","metric":"summary.verdict","visual":"status"},{"id":"observers","metric":"observers.verdicts","visual":"list"},{"id":"attention","metric":"attention.list","visual":"list","limit":5},{"id":"applications","metric":"applications.list","visual":"list"},{"id":"server","metric":"server.card","visual":"card","select":{"node":"app"}}]}}' | topo monitor stream
+topo monitor stream < examples/monitor-stream-preview.json
 ```
+
+The example is one NDJSON request line. After its first frame, file EOF produces
+a final stopped frame; an interactive consumer keeps stdin open for updates.
 
 No frame precedes the first request. A valid request replaces the current one
 and publishes immediately, with a new `config_revision` and the echoed
@@ -507,6 +537,18 @@ The metric catalog includes:
   up to 32 services in trouble-first order, and observers with their verdicts.
   Stale, cached and unreadable resource numbers are null; original sample
   timestamps remain. An unknown node yields `entity_missing`.
+- `servers.list` (`list`): up to 256 nodes with cards in the Servers tab, in that
+  tab's topology order. External nodes and containers belonging to a declared
+  parent are omitted; edges, platforms and unowned containers remain eligible.
+  Each entry has `id`, `name` (ID when unnamed), `kind`, `provider`, `group`,
+  `where`, `health` and `note`, matching its `server.card`. Use its ID as that
+  card's `select.node`. Cached entries have unknown health. The row health is
+  the worst listed health, and its text is, for example, `14 servers`. Its
+  deadline is the earliest source-envelope or listed-node judgment deadline;
+  unrelated service, resource and observer evidence does not expire the list.
+  Per-node health and note changes publish immediately, even if the row's worst
+  health stays the same. A readable empty topology produces `[]`; an unavailable
+  source produces null with `source_unavailable`, as for other metrics.
 - `summary.status`: complete source-view verdict, independent of which other
   rows the template displays; available to client/collector sources.
 - `local.status`: the worker's local view verdict.
@@ -526,7 +568,7 @@ The metric catalog includes:
   `storage.sync.count`, `storage.sync.duration_ms` for both local service roles.
   These are counters since process start, not remote client metrics.
 
-The five structured metrics above support client and collector sources; preview
+The six structured metrics above support client and collector sources; preview
 uses the client capabilities. Each requires its listed visual. Existing metrics
 keep `text` and percent metrics also accept `bar`. `limit` belongs only to
 `attention.list`; `select.node` belongs only to `server.card`. Validation errors

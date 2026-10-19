@@ -72,6 +72,7 @@ Deploy
 Settings
   topo monitor                      configure and run persistent display panels
   topo monitor stream               stream requested panels as NDJSON; --capabilities lists support
+  topo monitor stream --profiles     list saved client profiles
   topo preferences show|set|reset   the TUI's saved startup defaults
   topo version                      print the version
 
