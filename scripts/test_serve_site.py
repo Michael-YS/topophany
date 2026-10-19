@@ -117,6 +117,18 @@ class LocalViewerTests(unittest.TestCase):
         self.assertNotIn("Cookie", sent)
         self.assertNotIn("Origin", sent)
 
+    def test_default_origin_varies_and_fixed_ports_require_opt_in(self):
+        with site.serve(site.ROOT / "site/public", self.collector) as another:
+            self.assertGreater(another.server_port, 0)
+            self.assertNotEqual(another.server_port, self.server.server_port)
+        with self.assertRaisesRegex(ValueError, "allow-fixed-port"):
+            site.serve(site.ROOT / "site/public", self.collector, 8001)
+        with site.serve(site.ROOT / "site/public", self.collector) as available:
+            fixed = available.server_port
+        with site.serve(site.ROOT / "site/public", self.collector, fixed,
+                        allow_fixed_port=True) as explicit:
+            self.assertEqual(explicit.server_port, fixed)
+
     def test_forged_browser_headers_cannot_acquire_a_capability(self):
         forged = {"Host": self.origin.removeprefix("http://"), "Origin": self.origin,
                   "Sec-Fetch-Site": "same-origin", "Referer": self.origin + "/zh/app/"}

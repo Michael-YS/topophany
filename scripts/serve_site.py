@@ -258,7 +258,10 @@ form.requestSubmit();
 """).encode()
 
 
-def serve(directory: Path, collector: Collector, port: int) -> ThreadingHTTPServer:
+def serve(directory: Path, collector: Collector, port: int = 0, *,
+          allow_fixed_port: bool = False) -> ThreadingHTTPServer:
+    if port != 0 and not allow_fixed_port:
+        raise ValueError("fixed ports require --allow-fixed-port (persistent browser origin risk)")
     server = ThreadingHTTPServer(("127.0.0.1", port), partial(SiteHandler, directory=str(directory)))
     server.collector = collector
     return server
@@ -269,15 +272,21 @@ def main() -> int:
     parser.add_argument("--credentials", type=Path,
                         default=Path.home() / ".config/topophany/credentials.json")
     parser.add_argument("--profile")
-    parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--port", type=int, default=0,
+                        help="random per-launch port by default")
+    parser.add_argument("--allow-fixed-port", action="store_true",
+                        help="allow a reusable browser origin with reduced isolation")
     parser.add_argument("--directory", type=Path, default=ROOT / "site/public")
     args = parser.parse_args()
+    if args.port and not args.allow_fixed_port:
+        parser.error("--port requires --allow-fixed-port; prefer the random default origin")
     try:
         collector = Collector(args.credentials, args.profile)
         status, _ = collector.read("/v1/snapshot")
         if status != 200:
             raise ValueError(f"collector rejected the viewer profile (HTTP {status})")
-        with serve(args.directory, collector, args.port) as server:
+        with serve(args.directory, collector, args.port,
+                   allow_fixed_port=args.allow_fixed_port) as server:
             print(f"Viewer (one use, expires in 5 minutes): http://127.0.0.1:{server.server_port}/zh/app/#launch={collector.launch}", flush=True)
             print(f"Collector: {collector.url} · project {collector.project}", flush=True)
             server.serve_forever()
