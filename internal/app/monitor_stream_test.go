@@ -278,6 +278,8 @@ func TestMonitorStreamProtocol(t *testing.T) {
 			{[]string{"unexpected"}, "", 2},
 			{nil, "not JSON\n", 0},
 			{[]string{"--capabilities"}, "", 0},
+			{[]string{"--profiles", "--credentials", filepath.Join(t.TempDir(), "missing")}, "", 0},
+			{[]string{"--profiles", "--capabilities"}, "", 2},
 		} {
 			cmd := exec.Command(binary, append([]string{"monitor", "stream"}, tc.args...)...)
 			cmd.Stdin = strings.NewReader(tc.input)
@@ -292,13 +294,17 @@ func TestMonitorStreamProtocol(t *testing.T) {
 			if code != tc.exit {
 				t.Fatal(tc.args, err)
 			}
+			if tc.exit == 0 && len(tc.args) > 0 && tc.args[0] == "--profiles" && string(output) != "{\"profiles\":[]}\n" {
+				t.Fatal(string(output))
+			}
 			if len(tc.args) > 0 && tc.args[0] == "--capabilities" {
 				var caps struct {
 					Protocol         int
 					Sources, Visuals []string
 					Metrics          []monitor.Metric
+					Profiles         bool
 				}
-				if bytes.Count(output, []byte{'\n'}) != 1 || json.Unmarshal(output, &caps) != nil || caps.Protocol != 1 || len(caps.Metrics) != len(monitor.Catalog()) || len(caps.Visuals) != 5 {
+				if bytes.Count(output, []byte{'\n'}) != 1 || json.Unmarshal(output, &caps) != nil || caps.Protocol != 1 || len(caps.Metrics) != len(monitor.Catalog()) || len(caps.Visuals) != 5 || !caps.Profiles {
 					t.Fatal(string(output))
 				}
 			}

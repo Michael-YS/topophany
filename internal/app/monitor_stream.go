@@ -7,10 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 
+	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/monitor/stream"
@@ -19,11 +21,19 @@ import (
 func (a *App) monitorStream(ctx context.Context, args []string) error {
 	f := a.flags("monitor stream")
 	capabilities := f.Bool("capabilities", false, "print protocol, version, sources, visuals and metrics; then exit")
+	profiles := f.Bool("profiles", false, "list saved client profile names, projects and active selection; then exit")
+	credentials := f.String("credentials", "", "credential file for --profiles (default normal discovery)")
 	if err := parsed(f, args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return &ExitError{Code: 2, Err: err}
+	}
+	if *capabilities && *profiles {
+		return &ExitError{Code: 2, Err: errors.New("--capabilities and --profiles are mutually exclusive")}
+	}
+	if *credentials != "" && !*profiles {
+		return &ExitError{Code: 2, Err: errors.New("--credentials requires --profiles; stream requests carry their own credentials")}
 	}
 	// stdout is a pipe contract: a closed reader is an ordinary orderly exit.
 	signal.Ignore(syscall.SIGPIPE)
@@ -31,6 +41,8 @@ func (a *App) monitorStream(ctx context.Context, args []string) error {
 	var err error
 	if *capabilities {
 		err = writeCapabilities(a.Out)
+	} else if *profiles {
+		err = a.writeProfiles(*credentials)
 	} else {
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -71,10 +83,33 @@ func writeCapabilities(w io.Writer) error {
 		Sources  []string         `json:"sources"`
 		Visuals  []string         `json:"visuals"`
 		Metrics  []monitor.Metric `json:"metrics"`
-	}{1, model.Version, []string{"client", "preview"}, []string{"text", "bar", "status", "list", "card"}, monitor.Catalog()})
+		Profiles bool             `json:"profiles"`
+	}{1, model.Version, []string{"client", "preview"}, []string{"text", "bar", "status", "list", "card"}, monitor.Catalog(), true})
 }
 
-// Keep capabilities on the same one-write, one-flush NDJSON sink contract.
+func (a *App) writeProfiles(path string) error {
+	var err error
+	if path == "" {
+		path, err = client.DefaultPath()
+	}
+	profiles := []client.ProfileSummary{}
+	if err == nil {
+		profiles, err = client.ListProfiles(path)
+	}
+	if err != nil {
+		profiles = []client.ProfileSummary{}
+		if !errors.Is(err, os.ErrNotExist) {
+			// File paths, parser errors and endpoint validation errors can all
+			// contain private input. The diagnostic is deliberately fixed.
+			fmt.Fprintln(a.Err, "monitor stream profiles unavailable")
+		}
+	}
+	return writeJSONLine(a.Out, struct {
+		Profiles []client.ProfileSummary `json:"profiles"`
+	}{profiles})
+}
+
+// Keep discovery on the same one-write, one-flush NDJSON sink contract.
 func writeJSONLine(w io.Writer, v any) error {
 	b, e := json.Marshal(v)
 	if e != nil {

@@ -46,12 +46,8 @@ func DefaultPath() (string, error) {
 	return filepath.Join(d, "topophany", "credentials.json"), nil
 }
 func Load(path string) (Credentials, error) {
-	var c Credentials
-	b, e := secure.PrivateRead(path)
+	c, e := readCredentials(path)
 	if e != nil {
-		return c, e
-	}
-	if e = secure.Decode(strings.NewReader(string(b)), &c, 1<<20); e != nil {
 		return c, e
 	}
 	if c.Schema != 1 || len(c.Profiles) == 0 || !config.ID(c.Active) {
@@ -67,6 +63,18 @@ func Load(path string) (Credentials, error) {
 		if e = p.Validate(); e != nil {
 			return c, e
 		}
+	}
+	return c, nil
+}
+
+func readCredentials(path string) (Credentials, error) {
+	var c Credentials
+	b, e := secure.PrivateRead(path)
+	if e != nil {
+		return c, e
+	}
+	if e = secure.Decode(strings.NewReader(string(b)), &c, 1<<20); e != nil {
+		return c, e
 	}
 	return c, nil
 }
