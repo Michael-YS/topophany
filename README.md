@@ -45,19 +45,19 @@
 
 ## Try it in a minute
 
-Install from the [releases page](https://github.com/WhitenWhiten/topophany/releases) (Linux, macOS, Windows · amd64, arm64), or with Go 1.26.9 or newer:
+Download a build from the [releases page](https://github.com/WhitenWhiten/topophany/releases) (Linux, macOS, Windows · amd64, arm64), or install it with Go 1.26.9 or newer:
 
 ```sh
 go install github.com/WhitenWhiten/topophany/cmd/topo@latest
 ```
 
-See the whole UI on synthetic evidence, with nothing to set up, and press `x` to break something. The built-in network and its scenarios are written in English, Japanese and Chinese and follow your locale; `--lang ja` picks one:
+To see the whole UI with nothing to set up, run it on synthetic evidence and press `x` to break something. The built-in network and its scenarios come in English, Japanese and Chinese and follow your locale; `--lang ja` picks one:
 
 ```sh
 topo preview
 ```
 
-Run a real collector on this machine, with a demo topology and fresh credentials:
+Or run a real collector on this machine, with a demo topology and fresh credentials:
 
 ```sh
 topo init --dir ./demo
@@ -70,7 +70,7 @@ topo --credentials ./demo/credentials.json
 
 ## Let your agent write it
 
-The slow part of any monitor is describing what to monitor, and that is work a coding agent does well. Ask the one you already use (Claude Code, Codex, Gemini CLI, Cursor or any other that can run commands) to read what your machines already say about themselves and write the topology. It checks its own work with `topo validate`, and you look the result over in `topo preview` before anything runs. A prompt to start from:
+The slow part of any monitor is describing what to monitor, and that is work a coding agent does well. Ask the one you use (Claude Code, Codex, Gemini CLI, Cursor or any other that can run commands) to read what your machines already say about themselves and write the topology. It checks its own work with `topo validate`, and you look the result over in `topo preview` before anything runs. A prompt to start from:
 
 > Write a Topophany topology of my network to `topology.json`. Learn the format from `topo preview --print-topology` and docs/REFERENCE.md in github.com/WhitenWhiten/topophany. Read my SSH config, `tailscale status`, and the Compose files and reverse-proxy configs you can find. Declare each machine with where it is, the services on it, the applications they belong to and the addresses they answer on, add checks from the machines I will run workers on, and write what you learn about each machine into its notes. Never put a secret in the file. Run `topo validate --config topology.json` until it passes, then tell me what you found and what you guessed.
 
@@ -102,6 +102,7 @@ Once it is written, it keeps working for both of you:
 | `topo worker` | Run checks from this machine and report them |
 | `topo edit` / `topo validate` | Edit a topology file in a TUI / check it and print its revision and contracts |
 | `topo preview` | Open the TUI on synthetic evidence |
+| `topo monitor` | Feed the status to desktop widgets and menu bars, as a file or an NDJSON stream |
 | `topo init` | Create a local demo with fresh credentials |
 
 Run `topo help` for the full list.
@@ -113,27 +114,27 @@ Run `topo help` for the full list.
 3. **Run a worker** on every machine you want to measure from: `topo worker --config topology.json --observer <id> --credentials worker-credentials.json --data worker-data`
 4. **Look at it** from anywhere: `topo login --server https://your-collector:7447 --project <name>`, then just `topo`.
 
-The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units and limits, and the [security model](docs/SECURITY.md) covers tokens and transport.
+The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units and limits, [memory budgets](docs/MEMORY.md) cover sizing a small machine, and the [security model](docs/SECURITY.md) covers tokens and transport.
 
 ### Upgrading
 
-- The `--credential TOKEN` option has been removed to keep tokens out of process arguments. Prefer saved credentials through `topo login`; for a temporary override, use stdin or a private token file as below. `--token-stdin` and `--credential-file` are mutually exclusive, and a multi-server profile requires an explicit `--server` for either override.
-- On POSIX, managed logs and their existing numbered backups must have permissions `0600` or stricter. If `serve` or `worker` refuses a file selected by `--log-file`, correct those permissions before restarting.
-- A snapshot request admitted before a configuration reload may return `503 topology_reloaded` with `Retry-After: 1`. Send a new request; it will authenticate against the current tokens.
+- **Installing a bundle takes its review receipt.** `topo install --bundle DIR --dry-run` prints a `bundle_sha256`. Keep it outside the bundle and install with `--bundle-sha256` set to it; any change to the bundle after you reviewed it is refused.
+- **Collectors and workers have a memory target.** It defaults to 128 MiB for `serve` and 64 MiB for `worker`. Change it with `--memory-limit` (`0` keeps `GOMEMLIMIT`); on Linux, `--memory-max` adds a hard cap. See [memory budgets](docs/MEMORY.md).
+- **Tokens stay off the command line.** `--credential TOKEN` is gone. Save credentials with `topo login`; for a one-off, read the token from stdin or from a private file (`0600` on POSIX, a restricted ACL on Windows). Use one or the other, and add `--server` when the profile has several servers:
 
-Keep `token.txt` private (`0600` on POSIX; restrict its ACL on Windows):
+  ```sh
+  topo --json --token-stdin < token.txt
+  topo --credential-file token.txt
+  ```
 
-```sh
-topo --json --token-stdin < token.txt
-topo --credential-file token.txt
-```
+- **Logs must be private.** On POSIX, a `--log-file` and its numbered backups must be `0600` or stricter, or `serve` and `worker` refuse to start.
 
-The [changelog](CHANGELOG.md) also covers the webhook response-header limit and release-packaging protections.
+The [changelog](CHANGELOG.md) has the notes for every earlier release.
 
 ## What it checks
 
 - **Native probes:** HTTP (status, body, headers, egress IP), TCP, TLS with certificate validation, SSH banner, DNS A/AAAA, UDP echo, ICMP (IPv4).
-- **Host resources (Linux / macOS):** CPU, memory, filesystem capacity and inodes, process counts and selected-process RSS, with optional resource and process-count assertions. See [`examples/host-resources.json`](examples/host-resources.json).
+- **Host resources (Linux, macOS, Windows):** CPU, memory, filesystem capacity and inodes, process counts and selected-process RSS, with optional resource and process-count assertions. See [`examples/host-resources.json`](examples/host-resources.json).
 - **Proxy chains:** HTTP CONNECT, HTTPS CONNECT, SOCKS5 and OpenSSH `-W`, chained over several hops.
 - **Read-only adapters:** Mihomo, Tailscale, WireGuard.
 - **Edges and platforms:** Cloudflare (including Workers and Pages), Vercel, Supabase. An answer from the edge proves the edge, not the origin behind it.
@@ -154,7 +155,7 @@ Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and net
 | `Enter` | show the evidence for the selected row |
 | `/` | filter |
 | `v` | switch the observer you view from |
-| `m` / `z` / `f` / `p` | cycle the map / zoom it / show it alone / geo markers and dashed arcs |
+| `m` / `z` / `f` / `p` | cycle the maps / zoom / show the map alone / cycle the geo map's place cards, place names and points |
 | `s` | line the server cards up at one size |
 | `b` | browse services and checks by application, environment or host |
 | `q` | quit |
@@ -167,7 +168,7 @@ The mouse works too. Colors adapt to truecolor, 256-color and `NO_COLOR` termina
 |---|---|
 | [User guide](docs/GUIDE.md) | The TUI, editing, preview mode, semantics, probes, multi-location deployment |
 | [Configuration and API reference](docs/REFERENCE.md) | Every entity, probe parameter and API endpoint |
-| [Operations](docs/OPERATIONS.md) | Dual collectors, storage, recovery and resource limits |
+| [Operations](docs/OPERATIONS.md) · [Memory](docs/MEMORY.md) | Dual collectors, storage, recovery, resource limits and memory budgets |
 | [Security model](docs/SECURITY.md) | Credentials, transport and capability boundaries ([review](docs/SECURITY-REVIEW-2026-10-14.md)) |
 | [Scenarios](docs/SCENARIOS.md) · [Acceptance](docs/ACCEPTANCE.md) | What the tests prove, and what needs checking on real hardware |
 | [Changelog](CHANGELOG.md) | Release history |
