@@ -12,6 +12,10 @@ import (
 
 // Rows are a tab's entries, unfiltered and unmarked.
 func (v View) Rows(tab int) []Row {
+	return v.rows(tab, false)
+}
+
+func (v View) rows(tab int, attentionOnly bool) []Row {
 	s := v.Snapshot
 	rows := []Row{}
 	nodeNames := map[string]string{}
@@ -38,15 +42,57 @@ func (v View) Rows(tab int) []Row {
 		}
 	}
 	checkDefs := map[string]model.Check{}
-	for _, c := range s.Topology.Checks {
-		checkDefs[c.ID] = c
+	if tab == Checks {
+		for _, c := range s.Topology.Checks {
+			checkDefs[c.ID] = c
+		}
 	}
+	serviceDefs := map[string]model.Service{}
+	if tab == Services {
+		for _, d := range s.Topology.Services {
+			serviceDefs[d.ID] = d
+		}
+	}
+	endpointDefs := map[string]model.Endpoint{}
+	endpointOrder := map[string]int{}
+	if tab == Services {
+		for i, ep := range s.Topology.Endpoints {
+			endpointDefs[ep.ID], endpointOrder[ep.ID] = ep, i
+		}
+	}
+	serviceFronts := func(ids []string) []string {
+		// Preserve topology order without rescanning all endpoints per service.
+		ordered := append([]string{}, ids...)
+		sort.Slice(ordered, func(i, j int) bool { return endpointOrder[ordered[i]] < endpointOrder[ordered[j]] })
+		out, seen := []string{}, map[string]bool{}
+		for _, id := range ordered {
+			for _, via := range endpointDefs[id].Via {
+				if !seen[via] {
+					out = append(out, nodeNames[via])
+					seen[via] = true
+				}
+			}
+		}
+		return out
+	}
+	pathDefs := map[string]model.Path{}
+	if tab == Paths {
+		for _, d := range s.Topology.Paths {
+			pathDefs[d.ID] = d
+		}
+	}
+	observerDefs := map[string]model.Observer{}
 	observerNames := map[string]string{}
 	for _, o := range s.Topology.Observers {
+		observerDefs[o.ID] = o
 		observerNames[o.ID] = o.Name
 		if o.Name == "" {
 			observerNames[o.ID] = o.ID
 		}
+	}
+	attention := func(kind string, e model.EntityState) bool {
+		health, note := entityPresentation(e)
+		return NeedsAttention(Row{Kind: kind, Health: health, Note: note})
 	}
 	entity := func(kind string, e model.EntityState, title, meta string, details []string) Row {
 		r := Row{Kind: kind, ID: e.ID, Health: e.Health, Title: title, Meta: meta, Details: append([]string{"ID: " + e.ID, "State: " + e.Health, "Evidence: " + e.Evidence, "Affected dependency: " + fmt.Sprint(e.Affected), "", e.Reason, "Checks: " + strings.Join(e.Checks, ", ")}, details...)}
@@ -157,7 +203,7 @@ func (v View) Rows(tab int) []Row {
 		}
 		// A monitor error or missing evidence can have no service or path
 		// to draw attention to it. Keep the check itself visible.
-		for _, r := range v.Rows(Checks) {
+		for _, r := range v.rows(Checks, true) {
 			if r.Health == "unknown" && NeedsAttention(r) {
 				r.Cols = []string{"check"}
 				rows = append(rows, r)
@@ -168,7 +214,7 @@ func (v View) Rows(tab int) []Row {
 			if t == Observers && v.Draft {
 				continue
 			}
-			for _, r := range v.Rows(t) {
+			for _, r := range v.rows(t, true) {
 				if r.Kind == kinds[t] && NeedsAttention(r) {
 					r.Tree = ""
 					r.Cols = []string{r.Kind}
@@ -200,10 +246,12 @@ func (v View) Rows(tab int) []Row {
 			}
 			seen[n.ID] = true
 			eps := endpointsByNode[n.ID]
-			r := node(n)
-			r.Tree = guide + branch
-			r.Cols = []string{n.Group, KindLabel(n)}
-			rows = append(rows, r)
+			if !attentionOnly || attention("node", find(nodeStates, n.ID)) {
+				r := node(n)
+				r.Tree = guide + branch
+				r.Cols = []string{n.Group, KindLabel(n)}
+				rows = append(rows, r)
+			}
 			next := guide
 			switch branch {
 			case "├ ":
@@ -213,6 +261,9 @@ func (v View) Rows(tab int) []Row {
 			}
 			kids := children[n.ID]
 			for i, ep := range eps {
+				if attentionOnly {
+					break
+				}
 				b := "├ "
 				if i == len(eps)-1 && len(kids) == 0 {
 					b = "└ "
@@ -245,6 +296,9 @@ func (v View) Rows(tab int) []Row {
 			walk(n, "", "") // nodes caught in a parent cycle still get a row
 		}
 		for _, def := range s.Topology.Links {
+			if attentionOnly {
+				break
+			}
 			l := find(linkStates, def.ID)
 			r := entity("link", l, nodeNames[def.From]+" → "+nodeNames[def.To], def.Transport, []string{def.Notes, "Directed initiation, not proven packet-loss direction."})
 			r.Tree = "⇢ "
@@ -271,28 +325,28 @@ func (v View) Rows(tab int) []Row {
 		}
 	case Services:
 		for _, e := range s.Services {
+			if attentionOnly && !attention("service", e) {
+				continue
+			}
 			title := e.ID
 			meta := ""
 			details := []string{}
 			cols := []string{"", ""}
-			for _, d := range s.Topology.Services {
-				if d.ID == e.ID {
-					title = d.Name
-					meta = nodeNames[d.Node]
-					// The host column reads as the way in: the edges in
-					// front, then the host and how the service runs there.
-					host := nodeNames[d.Node]
-					if d.Runtime != "" {
-						host += " · " + d.Runtime
-					}
-					front := viaNames(s.Topology, d.Endpoints, nodeNames)
-					if len(front) > 0 {
-						host = strings.Join(front, " ⇢ ") + " ⇢ " + host
-					}
-					cols = []string{host, strings.Join(d.Endpoints, ", ")}
-					details = []string{"", "Hosted on: " + d.Node, "Runtime: " + d.Runtime, "Endpoints: " + strings.Join(d.Endpoints, ", "), "Reached via: " + strings.Join(front, " → "), "Depends on: " + strings.Join(d.DependsOn, ", "), "Runbook (not auto-executed): " + d.Runbook, "", d.Notes}
-					break
+			if d, ok := serviceDefs[e.ID]; ok {
+				title = d.Name
+				meta = nodeNames[d.Node]
+				// The host column reads as the way in: the edges in
+				// front, then the host and how the service runs there.
+				host := nodeNames[d.Node]
+				if d.Runtime != "" {
+					host += " · " + d.Runtime
 				}
+				front := serviceFronts(d.Endpoints)
+				if len(front) > 0 {
+					host = strings.Join(front, " ⇢ ") + " ⇢ " + host
+				}
+				cols = []string{host, strings.Join(d.Endpoints, ", ")}
+				details = []string{"", "Hosted on: " + d.Node, "Runtime: " + d.Runtime, "Endpoints: " + strings.Join(d.Endpoints, ", "), "Reached via: " + strings.Join(front, " → "), "Depends on: " + strings.Join(d.DependsOn, ", "), "Runbook (not auto-executed): " + d.Runbook, "", d.Notes}
 			}
 			r := entity("service", e, title, meta, details)
 			r.Cols = cols
@@ -300,32 +354,32 @@ func (v View) Rows(tab int) []Row {
 		}
 	case Paths:
 		for _, e := range s.Paths {
+			if attentionOnly && !attention("path", e) {
+				continue
+			}
 			title := e.ID
 			meta := ""
 			details := []string{}
 			cols := []string{"", ""}
-			for _, d := range s.Topology.Paths {
-				if d.ID == e.ID {
-					title = d.Name
-					meta = d.Observer
-					route := []string{}
-					for _, n := range d.Nodes {
-						route = append(route, nodeNames[n])
-					}
-					if len(route) == 0 && len(d.Candidates) > 0 {
-						route = []string{"candidates: " + strings.Join(d.Candidates, " | ")}
-					}
-					cols = []string{observerNames[d.Observer], strings.Join(route, " → ")}
-					details = []string{"", "Observer: " + d.Observer, "Declared topology:", strings.Join(d.Nodes, " → "), "Segments: " + strings.Join(d.Links, ", "), "", "Proxy transport (wire order):"}
-					for j, p := range d.Proxies {
-						details = append(details, fmt.Sprintf("%d. %s %s (%s)", j+1, p.Kind, p.Address, p.Node))
-					}
-					if len(d.Candidates) > 0 {
-						details = append(details, "Alternative candidates (NOT serial hops):", strings.Join(d.Candidates, " | "))
-					}
-					details = append(details, "Opaque provider segment: "+fmt.Sprint(d.Opaque), "Depends on: "+strings.Join(d.DependsOn, ", "), "", d.Notes, "", "A declared path is not request-level path proof.")
-					break
+			if d, ok := pathDefs[e.ID]; ok {
+				title = d.Name
+				meta = d.Observer
+				route := []string{}
+				for _, n := range d.Nodes {
+					route = append(route, nodeNames[n])
 				}
+				if len(route) == 0 && len(d.Candidates) > 0 {
+					route = []string{"candidates: " + strings.Join(d.Candidates, " | ")}
+				}
+				cols = []string{observerNames[d.Observer], strings.Join(route, " → ")}
+				details = []string{"", "Observer: " + d.Observer, "Declared topology:", strings.Join(d.Nodes, " → "), "Segments: " + strings.Join(d.Links, ", "), "", "Proxy transport (wire order):"}
+				for j, p := range d.Proxies {
+					details = append(details, fmt.Sprintf("%d. %s %s (%s)", j+1, p.Kind, p.Address, p.Node))
+				}
+				if len(d.Candidates) > 0 {
+					details = append(details, "Alternative candidates (NOT serial hops):", strings.Join(d.Candidates, " | "))
+				}
+				details = append(details, "Opaque provider segment: "+fmt.Sprint(d.Opaque), "Depends on: "+strings.Join(d.DependsOn, ", "), "", d.Notes, "", "A declared path is not request-level path proof.")
 			}
 			r := entity("path", e, title, meta, details)
 			r.Cols = cols
@@ -333,6 +387,9 @@ func (v View) Rows(tab int) []Row {
 		}
 	case Checks:
 		for _, e := range s.Checks {
+			if attentionOnly && (e.Health != "unknown" || e.Freshness == "paused" || e.Freshness == "maintenance") {
+				continue
+			}
 			d := checkDefs[e.ID]
 			title := d.Name
 			if title == "" {
@@ -379,17 +436,17 @@ func (v View) Rows(tab int) []Row {
 		rows = append(rows, remembered(false)...)
 	case Observers:
 		for _, e := range s.Observers {
+			if attentionOnly && e.Health == "up" && e.Contracts != "outdated" {
+				continue
+			}
 			title := e.ID
 			host := ""
 			topology := map[string]string{"current": "current — it measures what the collector counts", "outdated": "outdated — samples of checks that changed are refused until it reloads", "": "not reported"}[e.Contracts]
 			details := []string{"Observer: " + e.ID, "State: " + e.Health, "Last evidence: " + Age(v.Now, e.LastSeen), "Topology: " + topology, "", e.Reason}
-			for _, d := range s.Topology.Observers {
-				if d.ID == e.ID {
-					title = d.Name
-					host = nodeNames[d.Node]
-					details = append(details, "", "Host: "+d.Node, "Context: "+d.Context, "Expected route (not verified): "+d.RouteExpectation)
-					break
-				}
+			if d, ok := observerDefs[e.ID]; ok {
+				title = d.Name
+				host = nodeNames[d.Node]
+				details = append(details, "", "Host: "+d.Node, "Context: "+d.Context, "Expected route (not verified): "+d.RouteExpectation)
 			}
 			r := Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: Age(v.Now, e.LastSeen), Cols: []string{host, Age(v.Now, e.LastSeen)}, Details: details}
 			for _, d := range e.Delivery {
