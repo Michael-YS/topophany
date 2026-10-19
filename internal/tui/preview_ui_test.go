@@ -316,6 +316,29 @@ func TestCheckEvidenceNamesAnAccessLogin(t *testing.T) {
 	t.Fatal("no j-blog row")
 }
 
+// The check's evidence line carries Cloudflare's own RTT reading last, after
+// the cache and any challenge or Access word; it is a number the adapter
+// kept, not a measurement of the origin.
+func TestCheckEvidenceNamesEdgeRTT(t *testing.T) {
+	m := previewModel(t)
+	for i := range m.Snapshot.Checks {
+		if c := &m.Snapshot.Checks[i]; c.ID == "j-blog" && c.Last != nil {
+			c.Last.Facts["edge_rtt_ms"] = "38"
+		}
+	}
+	m.setTab(tabChecks)
+	for _, r := range m.Rows() {
+		if r.ID != "j-blog" {
+			continue
+		}
+		if !strings.Contains(strings.Join(r.Details, "\n"), "Answered by: Cloudflare FRA · cache DYNAMIC · edge rtt 38 ms") {
+			t.Fatal("check evidence does not name the edge RTT", r.Details)
+		}
+		return
+	}
+	t.Fatal("no j-blog row")
+}
+
 // The Servers tab is a card per server: containers sit on their host's
 // card and external parties have none. A card carries the services and the
 // edge in front of them, what it hosts and the notes as a memo, and leads

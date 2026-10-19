@@ -110,9 +110,11 @@ func viaNames(t model.Config, endpoints []string, names map[string]string) []str
 
 // edgeAnswer summarizes the edge evidence of an HTTP observation, e.g.
 // "Cloudflare NRT · cache DYNAMIC · challenge" or "Cloudflare NRT · cache
-// DYNAMIC · Access login". The Access suffix appears only when a provider
-// named the edge; edge_access remains a raw fact otherwise. "" when no edge
-// said it answered.
+// DYNAMIC · Access login · edge rtt 1 ms". The Access suffix appears only
+// when a provider named the edge; edge_access remains a raw fact otherwise.
+// Cloudflare's own RTT reading comes last, after the cache, challenge and
+// Access words, and only when a Cloudflare response carried a bounded
+// edge_rtt_ms number. "" when no edge said it answered.
 func edgeAnswer(facts map[string]string) string {
 	p := facts["edge_provider"]
 	if p == "" {
@@ -148,7 +150,33 @@ func edgeAnswer(facts map[string]string) string {
 	if facts["edge_access"] == "login_redirect" {
 		s += " · Access login"
 	}
+	if p == "cloudflare" {
+		if rtt, ok := edgeRTT(facts["edge_rtt_ms"]); ok {
+			s += " · edge rtt " + rtt
+		}
+	}
 	return s
+}
+
+// edgeRTT renders Cloudflare's own RTT fact only when it is the bounded
+// number the adapter emits: one to twelve ASCII digits. A measured 0 is a
+// reading that rounded below one millisecond, shown as "<1 ms" so it does not
+// read as an instantaneous path; any other value is already whole
+// milliseconds. A forged observation cannot put free text in the evidence
+// line.
+func edgeRTT(v string) (string, bool) {
+	if len(v) == 0 || len(v) > 12 {
+		return "", false
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] < '0' || v[i] > '9' {
+			return "", false
+		}
+	}
+	if v == "0" {
+		return "<1 ms", true
+	}
+	return v + " ms", true
 }
 
 // indexServiceVia resolves each service's endpoint references once per fleet.

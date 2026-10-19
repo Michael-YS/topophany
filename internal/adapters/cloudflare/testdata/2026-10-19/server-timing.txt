@@ -1,0 +1,1 @@
+cfL4;desc="?proto=TCP&rtt=1014&min_rtt=1012&rtt_var=290&sent=5&recv=7&lost=0&retrans=0&sent_bytes=2839&recv_bytes=496&delivery_rate=3933852&cwnd=53&unsent_bytes=0&cid=0000000000000000&ts=204&x=0"

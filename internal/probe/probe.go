@@ -298,14 +298,16 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if resp.TLS != nil {
 		o.Facts["response_proof"] = "verified_https"
 	}
-	for k, v := range EdgeFacts(resp.Header) {
-		// Only closed vocabularies may cross a credential boundary: the
-		// provider, the cache status and the mitigation word here, and the
-		// Access constant merged just below.
-		if secret && k != "edge_provider" && k != "edge_cache" && k != "edge_mitigation" {
-			continue
-		}
-		o.Facts[k] = v
+	mergeEdgeFacts(o.Facts, EdgeFacts(resp.Header), secret)
+	if o.Facts["edge_provider"] == "cloudflare" {
+		// The cfL4 Server-Timing entry is the colo's own reading of the
+		// connection (TCP or QUIC) that carried the response:
+		// edge_rtt_ms, edge_min_rtt_ms, edge_retrans and edge_lost are
+		// numbers, and edge_proto is a closed word, so all five cross the
+		// secret boundary. They add at most five facts, and only when the
+		// entry carries them. The parser returns no header text and never
+		// cid.
+		mergeEdgeFacts(o.Facts, cloudflare.ServerTimingFacts(resp.Header), secret)
 	}
 	// A login redirect is evidence by itself, not a provider label: a browser
 	// request without an Access session is answered with a redirect to the
@@ -389,11 +391,42 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 }
 
 // withheld says that what a peer answered is kept only as closed words,
-// comparisons with the topology, as the request carried a
-// secret. A peer sent a secret could otherwise hand it back, in a header
-// or a name, for its observation to carry to every viewer of the
-// collector, though viewers are never given the secret itself.
+// bounded numbers and comparisons with the topology, as the request carried a
+// secret. A peer sent a secret could otherwise hand it back, in a header or a
+// name, for its observation to carry to every viewer of the collector, though
+// viewers are never given the secret itself. Numbers cross by design: a
+// purely numeric secret can appear verbatim in edge_retrans or edge_lost and
+// rounded in the RTT readings, the documented numeric exception.
 const withheld = adapters.Withheld
+
+// edgeFactSurvivesSecret says whether an edge label may be kept after a
+// request that carried a secret. Closed words (the provider, cache status,
+// mitigation and protocol) and bounded numbers (Cloudflare's cfL4
+// round-trip readings and counts) survive; free tokens such as the POP and
+// the Vercel region do not. Access is a closed word merged unconditionally
+// below.
+func edgeFactSurvivesSecret(k string) bool {
+	switch k {
+	case "edge_provider", "edge_cache", "edge_mitigation",
+		"edge_rtt_ms", "edge_min_rtt_ms", "edge_retrans", "edge_lost", "edge_proto":
+		return true
+	}
+	return false
+}
+
+// mergeEdgeFacts copies edge labels into dst under the secret boundary. The
+// allowlist is name-only; the adapters own the value contract, so every key
+// admitted here is already a closed word or a bounded number, and a new key
+// must be classified there and here alike. The Access constant is merged
+// separately, because its fact is evidence even without a provider label.
+func mergeEdgeFacts(dst, src map[string]string, secret bool) {
+	for k, v := range src {
+		if secret && !edgeFactSurvivesSecret(k) {
+			continue
+		}
+		dst[k] = v
+	}
+}
 
 // proxyCredentials reports whether any hop receives a private login or secret.
 // Such a hop can rewrite downstream plain HTTP responses to reflect those values.

@@ -37,14 +37,19 @@ HTTP/Mihomo bearer credentials, custom request headers (including API keys), and
 
 A peer that receives a probe or proxy credential can reflect it in a response.
 Secret-bearing HTTP observations therefore retain closed provider, cache,
-mitigation and Access-redirect words and assertion outcomes, but omit raw HTTP
-status codes and other unrestricted response labels. An Access redirect is
-kept only as `edge_access: login_redirect`; its URL, with the key ID and
-redirect target, is never kept. Mihomo also withholds history delay/time,
-provider load times, numeric counts and exact unexpected API statuses under the
-same credential boundary. Success, failure, fixed policy comparisons and locally
-measured timing remain availability signals; this policy does not eliminate
-covert channels in a peer's choice of availability or timing.
+mitigation, protocol and Access-redirect words, bounded numbers (Cloudflare's
+`edge_rtt_ms`, `edge_min_rtt_ms`, `edge_retrans` and `edge_lost`), and
+assertion outcomes, but omit raw HTTP status codes and other unrestricted
+response labels. Numbers cross this boundary by design: a purely numeric
+credential can therefore appear verbatim in a count and rounded in an RTT
+reading. That is the documented numeric exception, not a free label that
+escaped withholding. An Access redirect is kept only as
+`edge_access: login_redirect`; its URL, with the key ID and redirect target, is
+never kept. Mihomo also withholds history delay/time, provider load times,
+numeric counts and exact unexpected API statuses under the same credential
+boundary. Success, failure, fixed policy comparisons and locally measured
+timing remain availability signals; this policy does not eliminate covert
+channels in a peer's choice of availability or timing.
 
 Temporary overrides use `--token-stdin` or `--credential-file` (private, regular files only); raw `--credential TOKEN` arguments are rejected. An override requires `--server` when the saved profile contains multiple endpoints. It never replaces credentials across an implicit failover set. Terminal output removes every Unicode `Bidi_Control` character as well as terminal control characters, and so does everything `topo` writes to stderr, its errors and logs, but for newlines and tabs. `--json` output writes each of them, C0, DEL and the C1 controls a terminal may read as escape sequences alike, as a `\u` escape, so it reads back as the collector sent it with none of them literal. A topology value an error refuses is quoted, its controls escaped, so the error shows what is wrong with it.
 

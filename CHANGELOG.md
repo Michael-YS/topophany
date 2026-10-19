@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cloudflare, the check's evidence line reads, for example, *Cloudflare NRT ·
   cache DYNAMIC · Access login*, and an incident on that request says Access
   asked for a login and the origin was not asked.
+- Cloudflare's `Server-Timing` `cfL4` entry is recorded as the edge's own
+  reading of the connection (TCP or QUIC) that carried the response:
+  `edge_rtt_ms` and `edge_min_rtt_ms`, read as microseconds from the live
+  capture and recorded in whole milliseconds rounded to the nearest,
+  `edge_retrans` and `edge_lost` counts, and the closed word `edge_proto`
+  (`TCP` or `QUIC`). These are numbers and one closed word, so they survive a
+  secret request; the entry's connection identifier and byte counters are
+  never kept. When the entry carries an rtt, the check's evidence line reads,
+  for example, *Cloudflare NRT · cache DYNAMIC · edge rtt 2 ms*, with a
+  reading below a millisecond shown as `<1 ms`. The entry is optional; the
+  spot checks behind the capture found no `cfL4` on several Cloudflare hosts,
+  so it appears not to be on every zone.
 
 ## [1.3.0] - 2026-10-19
 
