@@ -7,58 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-19
+
 ### Added
 
-- `topo monitor stream` accepts replaceable NDJSON requests and publishes
-  bounded frames without configuration files or locks, with capability
-  discovery, saved client profiles and credential-free preview scenarios.
-  A cancellable function API accepts request lines and a frame callback for
-  embedding.
-- Monitor metrics `summary.verdict`, `observers.verdicts`, `attention.list`,
-  `applications.list` and `server.card` reuse the terminal's views. Templates
-  accept `status`, `list` and `card` visuals, attention limits and node
-  selectors; resource numbers remain withheld when evidence is not current.
+- `topo monitor stream` feeds desktop widgets and menu-bar apps without
+  configuration files or locks. It reads one NDJSON request per line on stdin
+  and writes a bounded frame per line on stdout; a new request replaces the
+  running one. `--capabilities` describes the protocol, sources and metric
+  catalog, `--profiles` lists saved client profiles (names, projects and the
+  active flag only, never tokens or URLs), and `source: "preview"` streams the
+  synthetic scenarios without credentials. Programs embedding Topophany can
+  drive the same stream through a cancellable function that takes request
+  lines and a frame callback.
+- Structured monitor metrics reuse the terminal's views: `summary.verdict`,
+  `observers.verdicts`, `attention.list`, `applications.list`, `servers.list`
+  and `server.card`. Templates add `status`, `list` and `card` visuals,
+  attention limits and node selectors. `servers.list` returns up to 256 nodes
+  in the Servers tab's order, ready to pick a `server.card` from.
+  [`examples/monitor-stream-preview.json`](examples/monitor-stream-preview.json)
+  requests all six.
+- Memory budgets for `serve` and `worker`. `--memory-limit` sets the Go
+  runtime's soft target, which now defaults to 128 MiB for a collector and
+  64 MiB for a worker; an existing `GOMEMLIMIT` still takes precedence.
+  `--memory-max` enforces a Linux cgroup v2 hard cap and fails startup rather
+  than run without one. The supplied and generated systemd units set
+  `MemoryMax` (256M for a collector, 128M for a worker) with swap disabled.
+  Both roles log `memory_since_start` at startup and with their minute-level
+  I/O reports. [Memory budgets](docs/MEMORY.md) explains the controls, the
+  measurements behind the defaults and how to tell retained data from a leak.
 
 ### Changed
 
-- Monitor cards share topology and evidence indexes within each frame,
-  avoiding full topology rendering for every selected server.
-- macOS host checks read CPU, memory and process counters in process through
-  libSystem, with a 200 ms CPU sample. They no longer run system commands;
-  configured process names alone receive RSS reads.
-- The mark is drawn matte rather than glossy: its land is a halftone of
-  the light on it, its night side stays dark under a thin atmosphere, and
-  the arc tapers as light setting out from Shanghai to Honolulu, which
-  glows at dusk. The Apple touch icon shows it whole among a few stars;
-  the favicon keeps coarse dots and a broad arc, so it reads at 16 pixels.
+- Collectors use much less memory. Checkpoints are read and written as
+  streams instead of whole-file buffers, fingerprints are stored compactly,
+  repeated strings are shared, worker delivery copies are bounded and rollups
+  release their arrays after eviction. Retention and the checkpoint format
+  are unchanged.
+- Views index topology, ownership and evidence once per frame and share the
+  indexes across rows and tabs, so large fleets no longer rebuild the
+  topology for every server card or list row.
+- macOS host checks read CPU, memory and process counters through libSystem
+  inside the process, sampling CPU over 200 ms. They no longer run system
+  commands, and only configured process names have their RSS read.
+- `topo install` installs only the bundle that was reviewed. `--dry-run`
+  prints a `bundle_sha256` receipt; installing requires it back as
+  `--bundle-sha256`, and any change to the payloads, checksums, service
+  definition or options invalidates it. Privileged installations also refuse
+  bundle paths that other accounts can write to.
+- The mark is drawn matte instead of glossy: its land is a halftone of the
+  light falling on it, its night side stays dark under a thin atmosphere,
+  and the arc tapers like light leaving Shanghai for Honolulu, where it glows
+  at dusk. The Apple touch icon shows the whole globe among a few stars; the
+  favicon keeps coarse dots and a broad arc so it still reads at 16 pixels.
 
 ### Fixed
 
-- Server cards retain their identity and other evidence when host readings
-  expire. Resource numbers and nested observer verdicts use independent
-  deadlines; readers retain original sample times and apply those deadlines
-  after decoding JSON too. Service judgments include transitive dependencies.
-- Scoped file and attached panels preserve the selected observer's verdict
-  and global heartbeat liveness without inventing other observers' judgments.
-- Stream callbacks own every frame, including the first frame's mutable row
-  limits and nested evidence, without changing the active request.
+- Server cards keep their identity and other evidence when host readings
+  expire. Resource numbers and nested observer verdicts have independent
+  deadlines, readers keep the original sample times and apply those
+  deadlines after decoding JSON too, and service judgments include
+  transitive dependencies.
+- Structured monitor rows keep each piece of evidence's own deadline and hide
+  expired values until the collector judges again. Nested health and
+  freshness changes publish at once instead of waiting for the display
+  cadence, and application services keep topology order.
+- Scoped file and attached panels keep the selected observer's verdict and
+  global heartbeat liveness without inventing other observers' judgments.
+  Summary and delivery rows use the documented health vocabulary, and panel
+  readers apply the five-minute future-clock bound.
+- A stream replaces its request only after the new one's first read
+  succeeds, and keeps the old source running when the answer comes from a
+  different project. Each snapshot scope is pinned to one collector
+  generation. Stream callbacks own every frame they receive, and oversized
+  error identifiers or messages can no longer end the stream.
+- Incident evaluation and webhook hand-off are serialized with configuration
+  reloads, so a reload cannot swap the topology or notification settings
+  between an incident being recorded and its alert being queued. Alerts that
+  have expired are dropped instead of sent after a restart or retry backoff.
+- Location inheritance follows the full parent chain regardless of
+  declaration order.
+- Collectors reject rollup spans that overflow, and workers refuse an outbox
+  path that is not a directory (Windows lists a regular file as empty) or a
+  queue record that is not a regular file. Response encoding failures are
+  reported instead of ignored.
+- When macOS returns cached CPU ticks, host checks wait a second and sample
+  a fresh 200 ms window, up to three times within the check deadline,
+  instead of reporting zero CPU use.
+- TUI fuzz tests no longer write the user's saved preferences: a random
+  input could reach Settings' Save action and overwrite real startup defaults
+  during local verification. Upgrade acceptance now checks that preferences
+  survive installation and rollback unchanged.
 
-- Structured monitor rows retain their original evidence deadlines and hide
-  expired values until a new collector judgment arrives. Server judgments
-  include their displayed services and observer verdicts; summary liveness
-  changes publish without waiting for display cadence.
-- Client stream replacements validate their first read before releasing the
-  active request. Foreign-project responses keep the old source running.
-  Oversized error identifiers and messages cannot terminate the stream.
-- Structured monitor rows publish nested health and freshness transitions
-  immediately, and application services retain topology order.
-- Monitor summary and delivery rows use the documented health vocabulary;
-  verdict words remain in their values. Panel readers apply the five-minute
-  future-clock bound and withhold implausibly future row evidence.
-- Isolate TUI fuzz tests from the user's saved preferences. Random input
-  could select Settings' Save action and overwrite real startup defaults
-  while running local verification before an upgrade. Upgrade acceptance
-  now also checks that preferences survive installation and rollback unchanged.
+### Security
+
+- Bundle installation is bound to the reviewed receipt (see Changed), and
+  a bundle whose observer its topology does not declare is rejected.
+- Monitor output paths that reach a protected configuration or data
+  directory through a symlinked parent are refused even before the file
+  exists, as with macOS's `/var` → `/private/var`.
+- A Windows service data directory outside the install directory gets the
+  same private ACL, verified before the service starts; it previously
+  inherited its parent's permissions.
+- The site development bridge picks a random origin, needs an explicit
+  opt-in for a fixed port, and bounds connections and header deadlines.
 
 ## [1.2.0] - 2026-10-18
 
@@ -1225,7 +1277,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/WhitenWhiten/topophany/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/WhitenWhiten/topophany/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/WhitenWhiten/topophany/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/WhitenWhiten/topophany/compare/v1.0.0...v1.1.0
