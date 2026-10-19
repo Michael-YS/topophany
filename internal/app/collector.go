@@ -235,10 +235,11 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 			return e
 		}
 		running.stop()
-		backend.Reload(next, auth)
-		if notifier != nil {
-			notifier.Configure(alerts)
-		}
+		backend.ReloadWith(next, auth, func() {
+			if notifier != nil {
+				notifier.Configure(alerts)
+			}
+		})
 		if scheduler != nil {
 			running = background(ctx, &wg, scheduler, failures)
 		}
@@ -353,13 +354,14 @@ func (a *App) watch(ctx context.Context, backend *api.Server, settle time.Durati
 			return
 		case now := <-tick.C:
 			settled := now.Sub(started) >= settle
-			snap, changes, e := backend.Observe(now.UTC(), settled)
-			for _, ch := range changes {
-				fmt.Fprintln(a.Err, ch.Line())
-			}
-			if notifier != nil {
-				notifier.Observe(snap, changes, settled)
-			}
+			_, _, e := backend.ObserveWith(now.UTC(), settled, func(snap model.Snapshot, changes []ledger.Change) {
+				for _, ch := range changes {
+					fmt.Fprintln(a.Err, ch.Line())
+				}
+				if notifier != nil {
+					notifier.Observe(snap, changes, settled)
+				}
+			})
 			code := ""
 			if e != nil {
 				code = "persist_failed"

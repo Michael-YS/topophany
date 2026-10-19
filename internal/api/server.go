@@ -211,6 +211,12 @@ func (s *Server) generation() *generation {
 // its state capture or storage completed before the reload. The store counts
 // samples under c from now on, and no snapshot built before is served again.
 func (s *Server) Reload(c model.Config, a Auth) {
+	s.ReloadWith(c, a, nil)
+}
+
+// ReloadWith binds dependent reconfiguration to the same generation boundary
+// as incident evaluation and its notification handoff.
+func (s *Server) ReloadWith(c model.Config, a Auth, configure func()) {
 	g := newGeneration(c, a)
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
@@ -228,6 +234,9 @@ func (s *Server) Reload(c model.Config, a Auth) {
 	s.snapshotMu.Lock()
 	s.snapshotCache = nil
 	s.snapshotMu.Unlock()
+	if configure != nil {
+		configure()
+	}
 }
 
 // buildSnapshot is the one place every reader adds the collector-wide
@@ -245,13 +254,28 @@ func (s *Server) buildSnapshot(g *generation, view string, rows []model.Observat
 // them would, and records in the ledger the incidents that open, recover
 // and close (see ledger.Observe). It returns that snapshot too.
 func (s *Server) Observe(now time.Time, settled bool) (model.Snapshot, []ledger.Change, error) {
+	return s.ObserveWith(now, settled, nil)
+}
+
+// ObserveWith commits ledger changes and hands them to a consumer before a
+// reload can replace either their topology or the notification configuration.
+// The consumer must not call Reload or another method that takes reloadMu.
+func (s *Server) ObserveWith(now time.Time, settled bool, consume func(model.Snapshot, []ledger.Change)) (model.Snapshot, []ledger.Change, error) {
+	s.reloadMu.RLock()
+	defer s.reloadMu.RUnlock()
 	g := s.generation()
 	rows, carries, beats := s.Store.StateView()
 	snap := s.buildSnapshot(g, "", rows, carries, beats, now)
 	if s.Ledger == nil {
+		if consume != nil {
+			consume(snap, nil)
+		}
 		return snap, nil, nil
 	}
 	changes, e := s.Ledger.Observe(snap, now, settled)
+	if consume != nil {
+		consume(snap, changes)
+	}
 	return snap, changes, e
 }
 
