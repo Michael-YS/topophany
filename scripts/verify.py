@@ -110,7 +110,10 @@ def main() -> int:
         # on shared CI runners. Let Go report stacks for a hung package before
         # the outer deadline, which also allows time for compilation.
         run("race", ["go", "test", "-race", "-count=1", "-timeout=15m", "./..."], timeout=1200)
-        run("repeat", ["go", "test", "-count=3", "./..."], timeout=300)
+        # Three full passes can exceed five minutes on shared CI runners.
+        # Keep a bounded package deadline and leave the wrapper time to collect
+        # Go's timeout stacks and finish other packages before terminating it.
+        run("repeat", ["go", "test", "-count=3", "-timeout=10m", "./..."], timeout=900)
         run("coverage-summary", ["go", "tool", "cover", "-func=" + cov_path])
         fuzz = [
             ("tui", "FuzzDecoderAndRendering"),
