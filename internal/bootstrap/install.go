@@ -358,7 +358,7 @@ func Install(ctx context.Context, dir string, dry bool, expected string) (Manife
 		case err != nil && !os.IsNotExist(err):
 			return fail(err)
 		}
-		if e = makeInstallDirectory(m.DataDir, 0700, uid, gid); e != nil {
+		if e = prepareDataDirectory(ctx, m.DataDir, uid, gid); e != nil {
 			return fail(e)
 		}
 		// The service makes its own lock file; here it is only looked at.
@@ -370,6 +370,11 @@ func Install(ctx context.Context, dir string, dry bool, expected string) (Manife
 		}
 		if m.ServiceFile != "" {
 			if e = secure.AtomicWrite(m.ServiceFile, bundle.service, 0644); e != nil {
+				return fail(e)
+			}
+		}
+		if runtime.GOOS == "windows" {
+			if e = windowsDirectoryACL(ctx, m.DataDir, "verify"); e != nil {
 				return fail(e)
 			}
 		}
@@ -391,6 +396,17 @@ func Install(ctx context.Context, dir string, dry bool, expected string) (Manife
 		}
 	}
 	return m, backup, nil
+}
+
+func prepareDataDirectory(ctx context.Context, path string, uid, gid int) error {
+	if err := makeInstallDirectory(path, 0700, uid, gid); err != nil {
+		return err
+	}
+	if runtime.GOOS == "windows" {
+		// An external DataDir does not inherit InstallDir's private ACL.
+		return restrictWindowsDirectory(ctx, path)
+	}
+	return nil
 }
 func Rollback(ctx context.Context, dir string) error { return rollback(ctx, dir, false) }
 func rollback(ctx context.Context, dir string, alreadyLocked bool) error {
