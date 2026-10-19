@@ -9,6 +9,31 @@ import (
 	"time"
 )
 
+func TestBoundaryEvictionReleasesDiscardedAllocations(t *testing.T) {
+	r := New(MaxLimit)
+	for seriesID := 0; seriesID < 32; seriesID++ {
+		points := make([]open, 4096)
+		for i := range points {
+			points[i] = open{at: int64(i + 1), stale: 60000}
+		}
+		s := &series{recent: points}
+		// Repeated small removals must also release the invisible prefix.
+		for before := int64(2); before <= 4096; before++ {
+			r.discardBoundaries(s, before)
+			if s.recentCapacity > 2*len(s.recent) {
+				t.Fatalf("retained %d boundary slots for %d points", s.recentCapacity, len(s.recent))
+			}
+		}
+		if &s.recent[0] == &points[len(points)-2] || len(s.recent) != 2 {
+			t.Fatal("discarded allocation still pinned or predecessor lost")
+		}
+	}
+	bs := make([]bucket, 4096)
+	if got := compact(bs, t0.UnixMilli()); cap(got) > 2*len(got) {
+		t.Fatal("compacted buckets retain discarded capacity")
+	}
+}
+
 func TestLateSampleWorkLimitPreservesCountsAcrossRestart(t *testing.T) {
 	r := New(MaxLimit)
 	n := 10 * maxBoundaryShift

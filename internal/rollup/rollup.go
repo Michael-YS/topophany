@@ -118,6 +118,7 @@ type series struct {
 	open           *open
 	buckets        []bucket // ascending, never overlapping
 	recent         []open   // ordered sample boundaries still available for correction
+	recentCapacity int      // full backing allocation, including discarded prefixes
 	correctionFrom int64    // older boundaries were compacted or predate an upgrade
 }
 
@@ -305,7 +306,19 @@ func compact(bs []bucket, now int64) []bucket {
 		out = append(out, b)
 	}
 	clear(bs[len(out):])
-	return out
+	return trimCapacity(out)
+}
+
+// Eviction must release backing allocations as well as logical entries. Keep
+// at most a constant factor of spare capacity, amortizing copies over removals.
+func trimCapacity[T any](items []T) []T {
+	if len(items) == 0 {
+		return nil
+	}
+	if cap(items) > 2*len(items) {
+		return slices.Clone(items)
+	}
+	return items
 }
 
 // shed drops what the cap cannot hold: series no longer counted, those
@@ -359,7 +372,7 @@ func (r *Store) shed() {
 		s := r.series[key]
 		end := s.buckets[0].end()
 		r.grow(s, -s.buckets[0].size())
-		s.buckets = slices.Delete(s.buckets, 0, 1)
+		s.buckets = trimCapacity(slices.Delete(s.buckets, 0, 1))
 		r.discardBoundaries(s, end)
 		switch {
 		case len(s.buckets) > 0:

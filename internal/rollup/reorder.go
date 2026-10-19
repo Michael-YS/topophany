@@ -21,12 +21,19 @@ func (r *Store) SetReorderWindow(window time.Duration) {
 }
 
 func (r *Store) discardBoundaries(s *series, before int64) {
+	s.recentCapacity = max(s.recentCapacity, cap(s.recent))
 	s.correctionFrom = max(s.correctionFrom, before)
 	// Keep the predecessor: its outcome can still cover a late sample's time.
 	i := sort.Search(len(s.recent), func(i int) bool { return s.recent[i].at >= before })
 	i = max(0, i-1)
 	if i > 0 {
 		s.recent = s.recent[i:]
+		// cap(recent) alone cannot see the prefix still pinned by this
+		// interior slice. Track the original allocation until it is copied.
+		if s.recentCapacity > 2*len(s.recent) {
+			s.recent = slices.Clone(s.recent)
+			s.recentCapacity = cap(s.recent)
+		}
 		r.grow(s, -int64(i)*boundaryBytes)
 	}
 }
@@ -42,6 +49,7 @@ func (r *Store) insert(s *series, point open, now int64) bool {
 		}
 		s.open = &point
 		s.recent = append(s.recent, point)
+		s.recentCapacity = max(s.recentCapacity, cap(s.recent))
 		r.grow(s, boundaryBytes)
 		return true
 	}
@@ -68,6 +76,7 @@ func (r *Store) insert(s *series, point open, now int64) bool {
 	}
 	r.spend(s, point.at, min(next.at, point.at+point.stale), point.class, now)
 	s.recent = slices.Insert(s.recent, i, point)
+	s.recentCapacity = max(s.recentCapacity, cap(s.recent))
 	r.grow(s, boundaryBytes)
 	return true
 }
