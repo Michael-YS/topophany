@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/client"
-	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/preview"
 )
@@ -90,11 +89,7 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 	sourceErrors := make(chan *Error, 1)
 	previous := monitor.Input{Unavailable: true}
 	fetch := func(ctx context.Context) (monitor.Input, error) {
-		get := func(observer string) (model.Snapshot, error) {
-			s, _, err := cl.Snapshot(ctx, observer)
-			return s, err
-		}
-		s, err := get(r.Observer)
+		s, all, err := cl.SnapshotViews(ctx, r.Observer)
 		if errors.Is(err, client.ErrProjectMismatch) {
 			select {
 			case sourceErrors <- failure("project_mismatch", "snapshot project does not match request"):
@@ -105,24 +100,7 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 		if err != nil {
 			return monitor.Input{}, err
 		}
-		in := monitor.Input{Snapshot: s}
-		if r.Observer != "" {
-			all, e := get("")
-			if errors.Is(e, client.ErrProjectMismatch) {
-				select {
-				case sourceErrors <- failure("project_mismatch", "snapshot project does not match request"):
-				default:
-				}
-				return previous, nil
-			}
-			if e != nil {
-				return monitor.Input{}, e
-			}
-			if all.Revision != s.Revision {
-				return monitor.Input{}, errors.New("source changed during snapshot read")
-			}
-			in.AllSnapshot = &all
-		}
+		in := monitor.Input{Snapshot: s, AllSnapshot: all}
 		previous = in
 		return in, nil
 	}
