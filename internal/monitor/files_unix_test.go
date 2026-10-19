@@ -35,10 +35,14 @@ func TestOutputRejectsNonRegularFilesAndParentAliases(t *testing.T) {
 	if err := os.Symlink(protected, alias); err != nil {
 		t.Fatal(err)
 	}
+	parentAlias := filepath.Join(t.TempDir(), "parent-alias")
+	if err := os.Symlink(filepath.Dir(protected), parentAlias); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(alias, "metrics.json")
-	for _, p := range []string{protected, filepath.Join(protected, "metrics.json")} {
+	for _, p := range []string{protected, filepath.Join(protected, "metrics.json"), filepath.Join(parentAlias, filepath.Base(protected), "metrics.json")} {
 		if _, err := PrepareOutput(path, "desktop", p); err == nil {
-			t.Fatal("aliased protected output accepted")
+			t.Fatalf("aliased protected output accepted: %s", p)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(protected, "metrics.json")); !os.IsNotExist(err) {

@@ -50,10 +50,13 @@ func PrepareOutput(path, name string, protected ...string) (string, error) {
 		if p == "" {
 			continue
 		}
-		abs, _ := filepath.Abs(p)
-		real, err := filepath.EvalSymlinks(abs)
-		if err == nil {
-			abs = real
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return "", err
+		}
+		abs, err = resolveExistingParents(abs)
+		if err != nil {
+			return "", err
 		}
 		rel, err := filepath.Rel(abs, path)
 		if strings.EqualFold(path, abs) || err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -76,6 +79,23 @@ func PrepareOutput(path, name string, protected ...string) (string, error) {
 		return "", statErr
 	}
 	return path, nil
+}
+
+// Resolve aliases even when the protected file or directory is not created yet.
+func resolveExistingParents(path string) (string, error) {
+	var suffix string
+	for {
+		real, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			return filepath.Join(real, suffix), nil
+		}
+		parent := filepath.Dir(path)
+		if !errors.Is(err, os.ErrNotExist) || parent == path {
+			return "", err
+		}
+		suffix = filepath.Join(filepath.Base(path), suffix)
+		path = parent
+	}
 }
 
 type Output struct {

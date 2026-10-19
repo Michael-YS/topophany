@@ -401,8 +401,18 @@ func Install(ctx context.Context, dir string, dry bool, expected string) (Manife
 }
 
 func checkPendingOutbox(path string) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat existing worker outbox: %w", err)
+	}
+	if !info.IsDir() {
+		return errors.New("existing worker outbox must be a directory")
+	}
 	entries, err := os.ReadDir(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err != nil {
 		return fmt.Errorf("read existing worker outbox: %w", err)
 	}
 	if len(entries) > 0 {

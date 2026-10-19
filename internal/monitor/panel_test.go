@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,7 +10,7 @@ import (
 )
 
 func testConfig() Config {
-	c := Config{Schema: 1, Name: "desktop", Enabled: true, Source: "collector", Interval: "5s", Output: filepath.Join(string(filepath.Separator), "tmp", "metrics.json"), Template: Template{Schema: 1, Title: "Topophany", Rows: []Row{{ID: "cpu", Metric: "host.cpu.used_percent", Visual: "bar", Format: "percent", Select: Selector{Check: "host"}}}}}
+	c := Config{Schema: 1, Name: "desktop", Enabled: true, Source: "collector", Interval: "5s", Output: filepath.Join(os.TempDir(), "metrics.json"), Template: Template{Schema: 1, Title: "Topophany", Rows: []Row{{ID: "cpu", Metric: "host.cpu.used_percent", Visual: "bar", Format: "percent", Select: Selector{Check: "host"}}}}}
 	c.Template.Bar.Row = "cpu"
 	return c
 }
