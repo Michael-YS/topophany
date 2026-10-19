@@ -52,7 +52,9 @@ jobs:
           cache: false
       - name: Test (race)
         if: runner.os != 'Windows'
-        run: go test -race -count=1 ./...
+        # Match verify.py: race-instrumented tour/render tests can exceed the
+        # default ten-minute package timeout on shared macOS runners.
+        run: go test -race -count=1 -timeout=15m ./...
       - name: Test
         if: runner.os == 'Windows'
         run: go test -count=1 ./...
