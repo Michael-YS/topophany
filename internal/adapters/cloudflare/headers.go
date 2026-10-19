@@ -19,5 +19,12 @@ func HeaderFacts(h http.Header) (map[string]string, bool) {
 		edgeheaders.SetFact(out, "edge_pop", ray[strings.LastIndexByte(ray, '-')+1:])
 	}
 	edgeheaders.SetFact(out, "edge_cache", strings.ToUpper(h.Get("Cf-Cache-Status")))
+	// Cloudflare sets "challenge" on challenge pages; other Cloudflare
+	// products set other values, such as "guardrails", which this adapter
+	// drops. Keep the closed challenge word so it can cross the secret
+	// boundary.
+	if strings.EqualFold(strings.TrimSpace(h.Get("Cf-Mitigated")), "challenge") {
+		edgeheaders.SetFact(out, "edge_mitigation", "challenge")
+	}
 	return out, true
 }

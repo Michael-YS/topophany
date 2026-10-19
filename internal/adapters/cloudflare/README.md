@@ -1,7 +1,7 @@
 # Cloudflare
 
-Pure response-header interpretation for `Cf-Ray` and `Cf-Cache-Status`.
-A nonempty ray header selects the provider, even when its labels cannot be retained. The POP is the suffix after the last hyphen.
+Pure response-header interpretation for `Cf-Ray`, `Cf-Cache-Status` and `Cf-Mitigated`.
+A nonempty ray header selects the provider, even when its labels cannot be retained. The POP is the suffix after the last hyphen. `Cf-Mitigated` is kept only as the closed value `challenge`, which Cloudflare sets on challenge pages; other Cloudflare products set other values, such as `guardrails`, and this adapter drops them. It crosses the secret boundary while the POP does not.
 
 `HeaderFacts` returns a newly owned fact map and `true` when recognized, or
 `nil, false` otherwise. It does not mutate the input. `probe.EdgeFacts` owns

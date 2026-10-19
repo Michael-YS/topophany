@@ -10,20 +10,20 @@ import (
 )
 
 var edgeCompatibilityKeys = []string{
-	"Cf-Ray", "Cf-Cache-Status", "X-Vercel-Id", "X-Vercel-Cache",
+	"Cf-Ray", "Cf-Cache-Status", "Cf-Mitigated", "X-Vercel-Id", "X-Vercel-Cache",
 	"X-Amz-Cf-Pop", "X-Served-By", "X-Cache", "Server",
 	"X-Nf-Request-Id", "Cache-Status",
 }
 
 func edgeCompatibilityHeaders() []http.Header {
 	platforms := []http.Header{
-		{"Cf-Ray": {"ray-NRT"}, "Cf-Cache-Status": {"dynamic"}},
+		{"Cf-Ray": {"ray-NRT"}, "Cf-Cache-Status": {"dynamic"}, "Cf-Mitigated": {"challenge"}},
 		{"X-Vercel-Id": {"hnd1::iad1::request"}, "X-Vercel-Cache": {"miss"}},
 		{"X-Amz-Cf-Pop": {"NRT57-P1"}, "X-Cache": {"Hit from cloudfront"}},
 		{"X-Served-By": {"cache-iad-IAD, cache-nrt-NRT"}, "X-Cache": {"MISS, HIT"}},
 		{"Server": {"Netlify"}, "Cache-Status": {`"Netlify Durable"; fwd=bypass, "Netlify Edge"; hit`}},
 	}
-	out := []http.Header{nil, {}, {"Server": {"nginx"}}, {"cf-ray": {"lowercase-map-key"}}, {"X-Nf-Request-Id": {"request"}}}
+	out := []http.Header{nil, {}, {"Server": {"nginx"}}, {"cf-ray": {"lowercase-map-key"}}, {"X-Nf-Request-Id": {"request"}}, {"X-Vercel-Id": {"hnd1::iad1::request"}, "Cf-Mitigated": {"challenge"}}}
 	// Freeze all combinations, including each pair and all five providers.
 	for mask := 1; mask < 1<<len(platforms); mask++ {
 		h := http.Header{}
@@ -40,7 +40,7 @@ func edgeCompatibilityHeaders() []http.Header {
 		"", " ", "-", ",", "::", "a::b::c::d", "cache-", "CACHE-nrt-NRT",
 		"HIT", "MISS, HIT", "LambdaGeneratedResponse from cloudfront",
 		"FunctionGeneratedResponse from cloudfront", `"Netlify Edge"; hit; fwd=miss`,
-		`"Netlify Edge"; fwd=miss; hit`, "private-token", "MiXeD",
+		`"Netlify Edge"; fwd=miss; hit`, "private-token", "MiXeD", "challenge",
 		"x-NRT\x1b[2J\r\n", "x-东京-é-POP", "x-\xff\xfe", "x-" + strings.Repeat("A", 64),
 	}
 	for _, key := range edgeCompatibilityKeys {
@@ -64,8 +64,15 @@ func assertEdgeCompatibility(t *testing.T, headers http.Header) {
 	t.Helper()
 	before := headers.Clone()
 	got, want := EdgeFacts(headers), edgeFactsBeforeSplit(headers)
+	// The frozen oracle never read Cf-Mitigated. Exempt the new fact only
+	// where Cloudflare's own header carried its closed challenge word; any
+	// other stray fact must fail the comparison.
+	exempt := want["edge_provider"] == "cloudflare" && strings.EqualFold(strings.TrimSpace(headers.Get("Cf-Mitigated")), "challenge")
 	compare := func(facts map[string]string) map[string]string {
 		out := maps.Clone(facts)
+		if exempt {
+			delete(out, "edge_mitigation")
+		}
 		if want["edge_provider"] == "vercel" {
 			// 1.2 intentionally corrects only Vercel location semantics.
 			// Keep the frozen oracle untouched and compare every other fact.
@@ -78,6 +85,11 @@ func assertEdgeCompatibility(t *testing.T, headers http.Header) {
 	}
 	if !reflect.DeepEqual(compare(got), compare(want)) {
 		t.Fatalf("headers %q: got %#v, pre-split %#v", headers, got, want)
+	}
+	if want["edge_provider"] != "cloudflare" {
+		if _, ok := got["edge_mitigation"]; ok {
+			t.Fatalf("a non-Cloudflare provider took Cf-Mitigated: %#v", got)
+		}
 	}
 	if want["edge_provider"] == "vercel" {
 		if _, ok := got["edge_pop"]; ok {

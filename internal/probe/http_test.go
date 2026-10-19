@@ -409,11 +409,14 @@ func TestCompressedNothingRunsOutTheBudget(t *testing.T) {
 }
 
 // An edge in front of an origin answers for it, even when the origin is
-// gone: the probe keeps which edge, where and whether from its cache.
+// gone: the probe keeps which edge, where and whether from its cache. A
+// challenge page is a closed word, so it also survives a secret request,
+// unlike the free labels around it.
 func TestHTTPRecordsTheEdgeThatAnswered(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cf-Ray", "8f2c1b2a3d4e5f60-NRT")
 		w.Header().Set("Cf-Cache-Status", "dynamic")
+		w.Header().Set("Cf-Mitigated", "Challenge")
 		w.WriteHeader(521)
 		_, _ = io.WriteString(w, "web server is down")
 	}))
@@ -422,16 +425,25 @@ func TestHTTPRecordsTheEdgeThatAnswered(t *testing.T) {
 	if o.Outcome != "fail" || o.Code != "unexpected_status" || !o.Connectivity || o.Facts["http_status"] != "521" {
 		t.Fatalf("edge error page: %+v", o)
 	}
-	if o.Facts["edge_provider"] != "cloudflare" || o.Facts["edge_pop"] != "NRT" || o.Facts["edge_cache"] != "DYNAMIC" {
+	if o.Facts["edge_provider"] != "cloudflare" || o.Facts["edge_pop"] != "NRT" || o.Facts["edge_cache"] != "DYNAMIC" || o.Facts["edge_mitigation"] != "challenge" {
 		t.Fatal("edge facts", o.Facts)
+	}
+	secret := httpCheck(s.URL)
+	secret.HTTP.RequestHeaders = map[string]string{"X-Key": "test-key"}
+	o = (Runner{}).Run(context.Background(), testkit.Config(), secret)
+	if o.Facts["edge_provider"] != "cloudflare" || o.Facts["edge_cache"] != "DYNAMIC" || o.Facts["edge_mitigation"] != "challenge" {
+		t.Fatal("closed edge facts withheld from a secret request", o.Facts)
+	}
+	if o.Facts["edge_pop"] != "" || o.Facts["http_status"] != "" || o.Facts["peer_text"] != withheld {
+		t.Fatal("free labels survived a secret request", o.Facts)
 	}
 }
 
 // An HTTP peer can echo a bearer, private header or query through edge
 // labels or an exit address. Every collector viewer reads the observation,
-// so private requests retain only the edge name and a closed cache status,
-// and compare exit addresses without retaining them. Public requests keep
-// both their edge labels and exit addresses.
+// so private requests retain only the edge name, a closed cache status and
+// the closed mitigation word, and compare exit addresses without retaining
+// them. Public requests keep both their edge labels and exit addresses.
 func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 	const token = "nrt1sin1-a1b2c3d4e5f6a7b8c9d0e1f2"
 	t.Setenv("TOPH_HTTP_TOKEN", token)
@@ -474,6 +486,34 @@ func TestHTTPSentASecretCannotEchoIt(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A peer sent a secret can reflect it through cf-mitigated too. The closed
+// vocabulary keeps nothing that is not the challenge word, and no fragment
+// of the secret reaches the observation.
+func TestHTTPSentASecretCannotEchoItThroughCfMitigated(t *testing.T) {
+	const token = "nrt1sin1-a1b2c3d4e5f6a7b8c9d0e1f2"
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cf-Ray", "8f2c1b2a3d4e5f60-NRT")
+		w.Header().Set("Cf-Mitigated", "challenge"+token)
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer s.Close()
+	x := httpCheck(s.URL)
+	x.HTTP.RequestHeaders = map[string]string{"X-Key": token}
+	o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+	if o.Outcome != "ok" || o.Facts["edge_provider"] != "cloudflare" || o.Facts["peer_text"] != withheld {
+		t.Fatal(o.Outcome, o.Facts)
+	}
+	if o.Facts["edge_mitigation"] != "" {
+		t.Fatal("a reflected value became a mitigation word", o.Facts)
+	}
+	b, _ := json.Marshal(o)
+	for _, part := range []string{token[:12], token[12:]} {
+		if strings.Contains(string(b), part) {
+			t.Fatalf("observation carries %q: %s", part, b)
+		}
 	}
 }
 

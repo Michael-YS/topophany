@@ -25,3 +25,20 @@ func TestReportedLabelBoundsAndCacheVocabulary(t *testing.T) {
 		t.Fatal("last-hop interpretation changed")
 	}
 }
+
+// Only the closed challenge word leaves the shared helper; a token, another
+// Cloudflare product's mitigation value or a control sequence is not a label.
+func TestMitigationVocabulary(t *testing.T) {
+	out := map[string]string{}
+	edgeheaders.SetFact(out, "edge_mitigation", "  ChAlLeNgE\t")
+	if out["edge_mitigation"] != "challenge" {
+		t.Fatal("challenge was not kept", out)
+	}
+	for _, value := range []string{"guardrails", "private-token", "challengeSECRET", "challenge\x1b[2J", ""} {
+		out := map[string]string{}
+		edgeheaders.SetFact(out, "edge_mitigation", value)
+		if _, exists := out["edge_mitigation"]; exists {
+			t.Fatalf("%q was kept as a closed mitigation word", value)
+		}
+	}
+}

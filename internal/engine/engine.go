@@ -377,9 +377,9 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 	proofs := p.responseProofs(allStates)
 	incidents := map[string]*model.Incident{}
 	// An incident can hold several checks on one node. Remember every status
-	// each of them reported through the edge so one check's code cannot
-	// stand for another's.
-	edgeStatuses := map[string][]string{}
+	// and mitigation word each of them reported through the edge so one
+	// check's answer cannot stand for another's.
+	edgeStatuses := map[string][]edgeStatus{}
 	edgeChecks, incidentChecks := map[string]int{}, map[string]int{}
 	for _, x := range c.Checks {
 		if !relevant(x) {
@@ -420,7 +420,7 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 			}
 			if len(ep.Via) > 0 && s.Last.Connectivity {
 				edgeChecks[scope]++
-				edgeStatuses[scope] = append(edgeStatuses[scope], s.Last.Facts["http_status"])
+				edgeStatuses[scope] = append(edgeStatuses[scope], edgeStatus{status: s.Last.Facts["http_status"], mitigation: s.Last.Facts["edge_mitigation"]})
 			}
 		}
 	}
@@ -472,58 +472,105 @@ func implicated(ep model.Endpoint, node string, v *model.Observation) bool {
 	return len(ep.Via) == 0 || ep.Via[0] != node || !v.Connectivity
 }
 
+// edgeStatus is one answer through an edge: its status word and the closed
+// mitigation word the edge put beside it.
+type edgeStatus struct {
+	status, mitigation string
+}
+
+const (
+	edgeUnlocated     = "the request did not satisfy its assertions and the failing layer is not located"
+	edgeOriginUnknown = "the origin's own state is not established"
+	edgeSomeChallenge = "the edge served a challenge page for at least one request; the origin was not asked by that request; "
+)
+
 // edgeHypothesisStatuses explains a failed request whose response came back
 // through an edge in front. Any response proves that hop and nothing behind
 // it, and an error status is a word the edge or the origin can send whatever
 // happened, so the hypothesis says only what is established and names a
 // candidate cause only where the status class supports one. An HTTP 403 is
 // not proof of a WAF, and 521 is the platform's own account of an origin it
-// could not reach, not an independent observation of that origin.
+// could not reach, not an independent observation of that origin. A
+// challenge word is the edge's own statement that the origin was not asked:
+// it explains the whole incident only when every aggregated answer carries
+// it, and is otherwise scoped to the request that saw it.
 //
 // An incident may aggregate checks that saw different statuses. One check's
 // code must not be presented as another's, so mixed statuses get a sentence
-// without a single code.
-func edgeHypothesisStatuses(statuses []string) string {
+// without a single code; a challenge among them is named first.
+func edgeHypothesisStatuses(statuses []edgeStatus) string {
 	seen := map[string]bool{}
 	unique := make([]string, 0, len(statuses))
-	for _, status := range statuses {
-		if status == "" || seen[status] {
+	challenged, missing, allChallenged := false, false, len(statuses) > 0
+	for _, s := range statuses {
+		if s.mitigation == "challenge" {
+			challenged = true
+		} else {
+			allChallenged = false
+		}
+		if s.status == "" {
+			missing = true
 			continue
 		}
-		seen[status] = true
-		unique = append(unique, status)
-	}
-	if len(unique) == 1 && !slices.Contains(statuses, "") {
-		return edgeHypothesisStatus(unique[0])
+		if seen[s.status] {
+			continue
+		}
+		seen[s.status] = true
+		unique = append(unique, s.status)
 	}
 	if len(unique) > 1 {
 		slices.Sort(unique)
-		return "the edge in front answered with different HTTP statuses (" + strings.Join(unique, ", ") + "); the requests did not satisfy their assertions and the failing layer is not located; the origin's own state is not established"
+		mixed := "the edge in front answered with different HTTP statuses (" + strings.Join(unique, ", ") + "); the requests did not satisfy their assertions and the failing layer is not located; " + edgeOriginUnknown
+		if challenged {
+			return edgeSomeChallenge + mixed
+		}
+		return mixed
+	}
+	single := len(unique) == 1 && !missing
+	switch {
+	case allChallenged && single:
+		return edgeHypothesisStatus(edgeStatus{status: unique[0], mitigation: "challenge"})
+	case allChallenged:
+		return edgeHypothesisStatus(edgeStatus{mitigation: "challenge"})
+	case challenged:
+		head := "the edge in front answered"
+		if single {
+			head += " with HTTP " + unique[0]
+		}
+		return head + "; " + edgeSomeChallenge + "another request did not satisfy its assertions and the failing layer is not located; " + edgeOriginUnknown
+	case single:
+		return edgeHypothesisStatus(edgeStatus{status: unique[0]})
 	}
 	// One check without a status, or several checks that agree but do not
 	// all carry one: no single code can explain the whole incident.
-	return edgeHypothesisStatus("")
+	return edgeHypothesisStatus(edgeStatus{})
 }
 
-func edgeHypothesisStatus(status string) string {
+func edgeHypothesisStatus(s edgeStatus) string {
 	head := "the edge in front answered"
-	if status != "" {
-		head += " with HTTP " + status
+	if s.status != "" {
+		head += " with HTTP " + s.status
 	}
 	head += "; "
-	const unlocated = "the request did not satisfy its assertions and the failing layer is not located"
-	const originUnknown = "the origin's own state is not established"
 	switch {
-	case status == "403" || status == "429":
-		return head + unlocated + "; the response may be edge policy or a challenge page rather than the origin's answer, and " + originUnknown
-	case status == "521" || status == "522" || status == "523":
-		return head + "the request did not satisfy its assertions; the edge reports that it could not reach the origin, which is the platform's own account, and " + originUnknown
-	case status == "524":
-		return head + "the request did not satisfy its assertions; the edge reports a read or write timeout after connecting to the origin, which is the platform's own account, and " + originUnknown
-	case strings.HasPrefix(status, "5"):
-		return head + unlocated + "; the response may come from the edge itself or from the origin, whose own state is not established"
+	case s.mitigation == "challenge":
+		return head + "the edge served a challenge page; the origin was not asked; the request did not satisfy its assertions, and " + edgeOriginUnknown
+	case s.status == "403" || s.status == "429":
+		return head + edgeUnlocated + "; the response may be edge policy or a challenge page rather than the origin's answer, and " + edgeOriginUnknown
+	case s.status == "520":
+		return head + "the request did not satisfy its assertions; the edge reports an empty, unknown or malformed response from the origin, which is the platform's own account, and " + edgeOriginUnknown
+	case s.status == "521" || s.status == "522" || s.status == "523":
+		return head + "the request did not satisfy its assertions; the edge reports that it could not reach the origin, which is the platform's own account, and " + edgeOriginUnknown
+	case s.status == "524":
+		return head + "the request did not satisfy its assertions; the edge reports a read or write timeout after connecting to the origin, which is the platform's own account, and " + edgeOriginUnknown
+	case s.status == "525" || s.status == "526":
+		return head + "the request did not satisfy its assertions; the edge reports that TLS to the origin failed (handshake, or a certificate it does not accept), which is the platform's own account; " + edgeOriginUnknown
+	case s.status == "530":
+		return head + "the request did not satisfy its assertions; the edge reports that it could not resolve or reach the origin, including a Tunnel with no live connector; " + edgeOriginUnknown
+	case strings.HasPrefix(s.status, "5"):
+		return head + edgeUnlocated + "; the response may come from the edge itself or from the origin, whose own state is not established"
 	}
-	return head + unlocated + "; " + originUnknown
+	return head + edgeUnlocated + "; " + edgeOriginUnknown
 }
 
 // digest is the SHA-256 of a set of strings, in hex.

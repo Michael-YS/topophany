@@ -519,17 +519,28 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	// An error status is a word the edge or the origin can send whatever
 	// happened: the failure layer stays unlocated unless the status class
 	// supports a candidate cause, and the origin is never declared at fault
-	// from the response alone.
-	for _, tt := range []struct{ status, want string }{
-		{"403", "edge policy or a challenge page"},
-		{"429", "edge policy or a challenge page"},
-		{"503", "edge itself or from the origin"},
-		{"524", "read or write timeout after connecting to the origin"},
-		{"200", "failing layer is not located"},
+	// from the response alone. A challenge word removes the doubt: the edge
+	// says it answered instead of the origin.
+	for _, tt := range []struct{ status, mitigation, want string }{
+		{"403", "", "edge policy or a challenge page"},
+		{"429", "", "edge policy or a challenge page"},
+		{"403", "guardrails", "edge policy or a challenge page"},
+		{"403", "challenge", "the edge served a challenge page"},
+		{"520", "", "empty, unknown or malformed response"},
+		{"525", "", "TLS to the origin failed"},
+		{"526", "", "TLS to the origin failed"},
+		{"530", "", "could not resolve or reach the origin"},
+		{"503", "", "edge itself or from the origin"},
+		{"524", "", "read or write timeout after connecting to the origin"},
+		{"200", "", "failing layer is not located"},
 	} {
 		var statusRows []model.Observation
 		for i := 0; i < 3; i++ {
-			statusRows = append(statusRows, through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", tt.status, "", true))
+			v := through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", tt.status, "", true)
+			if tt.mitigation != "" {
+				v.Facts["edge_mitigation"] = tt.mitigation
+			}
+			statusRows = append(statusRows, v)
 		}
 		st := Build(c, "a", "home", statusRows, nil, now)
 		if len(st.Incidents) != 1 {
@@ -542,9 +553,65 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 		if strings.Contains(got, "behind it") {
 			t.Fatalf("HTTP %s: claimed the fault lies behind the edge: %q", tt.status, got)
 		}
+		if tt.mitigation == "challenge" {
+			if !strings.Contains(got, "origin was not asked") || !strings.Contains(got, "origin's own state is not established") || !strings.Contains(got, "with HTTP "+tt.status) || strings.Contains(got, "may be edge policy") {
+				t.Fatalf("challenge kept the status doubt or lost its limits: %q", got)
+			}
+		}
+		if tt.status == "520" || tt.status == "525" || tt.status == "526" {
+			if !strings.Contains(got, "platform's own account") || !strings.Contains(got, "origin's own state is not established") {
+				t.Fatalf("HTTP %s lost its evidence limits: %q", tt.status, got)
+			}
+		}
+		if tt.status == "520" && !strings.Contains(got, "from the origin") {
+			t.Fatalf("520 did not locate the reported response at the origin: %q", got)
+		}
+		if (tt.status == "525" || tt.status == "526") && !strings.Contains(got, "(handshake, or a certificate it does not accept)") {
+			t.Fatalf("HTTP %s lost its TLS causes: %q", tt.status, got)
+		}
+		if tt.status == "530" && (!strings.Contains(got, "edge reports") || !strings.Contains(got, "including a Tunnel with no live connector") || !strings.Contains(got, "origin's own state is not established")) {
+			t.Fatalf("530 lost its evidence limits: %q", got)
+		}
 		if tt.status == "524" && (strings.Contains(got, "could not reach") || !strings.Contains(got, "platform's own account") || !strings.Contains(got, "origin's own state is not established")) {
 			t.Fatalf("524 lost its connection/timeout evidence limits: %q", got)
 		}
+	}
+
+	// A mitigation value that is not the closed challenge word changes
+	// nothing: guardrails is another product's answer, not ours to explain.
+	withMitigation := func(mitigation string) string {
+		var statusRows []model.Observation
+		for i := 0; i < 3; i++ {
+			v := through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", "403", "", true)
+			if mitigation != "" {
+				v.Facts["edge_mitigation"] = mitigation
+			}
+			statusRows = append(statusRows, v)
+		}
+		return Build(c, "a", "home", statusRows, nil, now).Incidents[0].Hypothesis
+	}
+	if withMitigation("guardrails") != withMitigation("") {
+		t.Fatalf("a non-challenge mitigation changed the hypothesis: %q", withMitigation("guardrails"))
+	}
+
+	// A secret request drops http_status but keeps the closed challenge
+	// word; the incident must still say the origin was not asked.
+	var secretRows []model.Observation
+	for i := 0; i < 3; i++ {
+		v := through(c, "home-http", uint64(i+1), now.Add(time.Duration(i-3)*time.Second), "fail", "", "", true)
+		v.Facts["edge_mitigation"] = "challenge"
+		secretRows = append(secretRows, v)
+	}
+	secretState := Build(c, "a", "home", secretRows, nil, now)
+	if len(secretState.Incidents) != 1 {
+		t.Fatalf("challenge without a status: no incident: %+v", secretState.Incidents)
+	}
+	got := secretState.Incidents[0].Hypothesis
+	if !strings.Contains(got, "the edge served a challenge page; the origin was not asked;") || !strings.Contains(got, "origin's own state is not established") {
+		t.Fatalf("challenge without a status lost its scoped sentence: %q", got)
+	}
+	if strings.Contains(got, "with HTTP") {
+		t.Fatalf("a withheld status was invented: %q", got)
 	}
 
 	// One incident can aggregate several checks on the same node. It must
@@ -565,7 +632,7 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	if len(st.Incidents) != 1 || len(st.Incidents[0].Checks) != 2 {
 		t.Fatalf("mixed-status checks did not aggregate: %+v", st.Incidents)
 	}
-	got := st.Incidents[0].Hypothesis
+	got = st.Incidents[0].Hypothesis
 	if strings.Contains(got, "with HTTP 403") || strings.Contains(got, "with HTTP 521") {
 		t.Fatalf("one check's status spoke for the other: %q", got)
 	}
@@ -581,6 +648,75 @@ func TestEdgeAnswersDoNotProveTheOrigin(t *testing.T) {
 	st = Build(mixedConfig, "a", "home", same, nil, now)
 	if len(st.Incidents) != 1 || !strings.Contains(st.Incidents[0].Hypothesis, "with HTTP 521") {
 		t.Fatalf("one shared status was not described: %+v", st.Incidents)
+	}
+
+	// A challenge among several statuses is named first, while the mixed
+	// sentence still refuses to let one status speak for the other check.
+	challenged := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		at := now.Add(time.Duration(i-3) * time.Second)
+		challenged = append(challenged, through(mixedConfig, "home-http", uint64(i+1), at, "fail", "521", "", true))
+		v := through(mixedConfig, "home-ssh", uint64(i+10), at, "fail", "403", "", true)
+		v.Facts["edge_mitigation"] = "challenge"
+		challenged = append(challenged, v)
+	}
+	st = Build(mixedConfig, "a", "home", challenged, nil, now)
+	if len(st.Incidents) != 1 || len(st.Incidents[0].Checks) != 2 {
+		t.Fatalf("mixed challenged checks did not aggregate: %+v", st.Incidents)
+	}
+	got = st.Incidents[0].Hypothesis
+	if !strings.Contains(got, "different HTTP statuses") || !strings.Contains(got, "origin was not asked") {
+		t.Fatalf("mixed challenge was not described honestly: %q", got)
+	}
+	if strings.Index(got, "challenge") > strings.Index(got, "different HTTP statuses") {
+		t.Fatalf("the challenge was not named first: %q", got)
+	}
+	if !strings.Contains(got, "by that request") {
+		t.Fatalf("the mixed challenge was not scoped to its request: %q", got)
+	}
+
+	// Two checks that saw the same status are still two answers: one
+	// challenge must not say the origin was not asked for the other check.
+	sameStatus := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		at := now.Add(time.Duration(i-3) * time.Second)
+		sameStatus = append(sameStatus, through(mixedConfig, "home-http", uint64(i+1), at, "fail", "403", "", true))
+		v := through(mixedConfig, "home-ssh", uint64(i+10), at, "fail", "403", "", true)
+		v.Facts["edge_mitigation"] = "challenge"
+		sameStatus = append(sameStatus, v)
+	}
+	st = Build(mixedConfig, "a", "home", sameStatus, nil, now)
+	if len(st.Incidents) != 1 || len(st.Incidents[0].Checks) != 2 {
+		t.Fatalf("same-status checks did not aggregate: %+v", st.Incidents)
+	}
+	got = st.Incidents[0].Hypothesis
+	if !strings.Contains(got, "with HTTP 403") || !strings.Contains(got, "for at least one request") || !strings.Contains(got, "origin was not asked by that request") || !strings.Contains(got, "another request did not satisfy its assertions") || !strings.Contains(got, "origin's own state is not established") {
+		t.Fatalf("a partly challenged incident lost the unchallenged uncertainty: %q", got)
+	}
+	if strings.Contains(got, "different HTTP statuses") || strings.Contains(got, "a challenge page; the origin was not asked;") {
+		t.Fatalf("one challenged check spoke for both: %q", got)
+	}
+
+	// A challenge with no status, beside a status the other check did see,
+	// is scoped to its request and invents no shared status.
+	partial := []model.Observation{}
+	for i := 0; i < 3; i++ {
+		at := now.Add(time.Duration(i-3) * time.Second)
+		partial = append(partial, through(mixedConfig, "home-http", uint64(i+1), at, "fail", "403", "", true))
+		v := through(mixedConfig, "home-ssh", uint64(i+10), at, "fail", "", "", true)
+		v.Facts["edge_mitigation"] = "challenge"
+		partial = append(partial, v)
+	}
+	st = Build(mixedConfig, "a", "home", partial, nil, now)
+	if len(st.Incidents) != 1 || len(st.Incidents[0].Checks) != 2 {
+		t.Fatalf("statusless challenged checks did not aggregate: %+v", st.Incidents)
+	}
+	got = st.Incidents[0].Hypothesis
+	if !strings.Contains(got, "for at least one request") || !strings.Contains(got, "origin was not asked by that request") || !strings.Contains(got, "another request did not satisfy its assertions") || !strings.Contains(got, "origin's own state is not established") {
+		t.Fatalf("a statusless challenge lost the unchallenged uncertainty: %q", got)
+	}
+	if strings.Contains(got, "different HTTP statuses") || strings.Contains(got, "with HTTP 403") || strings.Contains(got, "a challenge page; the origin was not asked;") {
+		t.Fatalf("a statusless challenge spoke for the whole incident: %q", got)
 	}
 
 	// Where the edge says its answer came from is its own word, which the

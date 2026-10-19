@@ -298,8 +298,9 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		o.Facts["response_proof"] = "verified_https"
 	}
 	for k, v := range EdgeFacts(resp.Header) {
-		// Only closed vocabularies may cross a credential boundary.
-		if secret && k != "edge_provider" && k != "edge_cache" {
+		// Only closed vocabularies may cross a credential boundary: the
+		// provider, the cache status and the mitigation word.
+		if secret && k != "edge_provider" && k != "edge_cache" && k != "edge_mitigation" {
 			continue
 		}
 		o.Facts[k] = v

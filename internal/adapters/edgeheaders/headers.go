@@ -4,12 +4,20 @@ package edgeheaders
 
 import "strings"
 
-// SetFact keeps the existing short-label and closed cache-status policy.
+// SetFact keeps the short-label policy and the closed cache and mitigation
+// vocabularies.
 func SetFact(out map[string]string, key, value string) {
-	if key == "edge_cache" {
+	switch key {
+	case "edge_cache":
 		if value = strings.ToUpper(token(value)); !cacheStatuses[value] {
 			return
 		}
+	case "edge_mitigation":
+		if value = strings.ToLower(strings.TrimSpace(value)); value != "challenge" {
+			return
+		}
+		out[key] = value
+		return
 	}
 	if value = token(value); value != "" {
 		out[key] = value

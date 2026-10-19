@@ -109,7 +109,8 @@ func viaNames(t model.Config, endpoints []string, names map[string]string) []str
 }
 
 // edgeAnswer summarizes the edge evidence of an HTTP observation, e.g.
-// "Cloudflare NRT · cache DYNAMIC"; "" when no edge said it answered.
+// "Cloudflare NRT · cache DYNAMIC · challenge"; "" when no edge said it
+// answered.
 func edgeAnswer(facts map[string]string) string {
 	p := facts["edge_provider"]
 	if p == "" {
@@ -128,16 +129,19 @@ func edgeAnswer(facts map[string]string) string {
 		if c := facts["edge_cache"]; c != "" {
 			s += " · cache " + c
 		}
-		return s
+	} else {
+		if pop := facts["edge_pop"]; pop != "" {
+			s += " " + pop
+		}
+		if r := facts["edge_region"]; r != "" {
+			s += " → " + r
+		}
+		if c := facts["edge_cache"]; c != "" {
+			s += " · cache " + c
+		}
 	}
-	if pop := facts["edge_pop"]; pop != "" {
-		s += " " + pop
-	}
-	if r := facts["edge_region"]; r != "" {
-		s += " → " + r
-	}
-	if c := facts["edge_cache"]; c != "" {
-		s += " · cache " + c
+	if facts["edge_mitigation"] == "challenge" {
+		s += " · challenge"
 	}
 	return s
 }

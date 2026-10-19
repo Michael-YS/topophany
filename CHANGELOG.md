@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cloudflare challenge pages are recorded as `edge_mitigation: challenge`
+  from `cf-mitigated`, a closed word that survives a secret request. The
+  check's evidence line reads, for example, *Cloudflare NRT · cache DYNAMIC ·
+  challenge*, and an incident on that request says the origin was not asked.
+  Incidents for `520`, `525`, `526` and `530` now name what the edge reports
+  and keep the origin's own state unestablished.
+
 ## [1.3.0] - 2026-10-19
 
 ### Added
