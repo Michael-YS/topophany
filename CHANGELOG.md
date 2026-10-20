@@ -34,6 +34,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reading below a millisecond shown as `<1 ms`. The entry is optional; the
   spot checks behind the capture found no `cfL4` on several Cloudflare hosts,
   so it appears not to be on every zone.
+- Cloudflare `/cdn-cgi/trace` bodies are read by HTTP checks with
+  `exit_format: "trace"`: `trace_warp`, `trace_gateway`, `trace_http` and
+  `trace_tls` only in their closed vocabularies, `trace_colo` and `trace_loc`
+  only by their three- and two-letter shapes, and `exit_ip` from the `ip=`
+  line even without `expected_exit`. A body is a trace only when both `fl` and
+  `colo` are present, and a body over 4 KiB is not read as one, neither its
+  facts nor that `exit_ip`. `expected_trace` requires `exit_format: "trace"`,
+  must declare warp, gateway or colos, and reports `warp_mismatch`,
+  `gateway_mismatch` or `colo_mismatch` as `policy` stage `trace_assert`; a
+  line the trace did not report is not a violation, and a body that is not a
+  trace says so in the passing detail. On a request that carries a secret the
+  closed words survive while the colo, the client country and the address are
+  withheld, and a declared colo list still compares. The Observers tab shows an
+  observer's newest fresh trace sample as `Trace: WARP on · Gateway off
+  (reported, not verified)`. `expected_trace` is part of the measurement
+  contract: older collectors and viewers reject it, so upgrade them before
+  enabling it.
 
 ## [1.3.0] - 2026-10-19
 

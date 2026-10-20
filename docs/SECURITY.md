@@ -37,10 +37,14 @@ HTTP/Mihomo bearer credentials, custom request headers (including API keys), and
 
 A peer that receives a probe or proxy credential can reflect it in a response.
 Secret-bearing HTTP observations therefore retain closed provider, cache,
-mitigation, protocol and Access-redirect words, bounded numbers (Cloudflare's
-`edge_rtt_ms`, `edge_min_rtt_ms`, `edge_retrans` and `edge_lost`), and
-assertion outcomes, but omit raw HTTP status codes and other unrestricted
-response labels. Numbers cross this boundary by design: a purely numeric
+mitigation, protocol, Access-redirect and the four closed trace words, bounded
+numbers (Cloudflare's `edge_rtt_ms`, `edge_min_rtt_ms`, `edge_retrans` and
+`edge_lost`), and assertion outcomes, but omit raw HTTP status codes and other
+unrestricted response labels. A trace check keeps the closed `trace_warp`,
+`trace_gateway`, `trace_http` and `trace_tls` words, and withholds the colo
+and client country it reports in `trace_colo` and `trace_loc`, as it does
+`exit_ip`; a declared colo list is still compared without the colo being
+stored. Numbers cross this boundary by design: a purely numeric
 credential can therefore appear verbatim in a count and rounded in an RTT
 reading. That is the documented numeric exception, not a free label that
 escaped withholding. An Access redirect is kept only as

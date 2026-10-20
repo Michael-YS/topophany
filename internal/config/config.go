@@ -390,6 +390,40 @@ func validateResolved(c model.Config) error {
 			if x.HTTP.ExitFormat != "" && x.HTTP.ExitFormat != "plain" && x.HTTP.ExitFormat != "trace" && x.HTTP.ExitFormat != "json" {
 				return errors.New("invalid exit_format")
 			}
+			if trace := x.HTTP.ExpectedTrace; trace != nil {
+				// The probe parses a trace body only for exit_format trace, so
+				// an expectation under any other format could never be
+				// evaluated.
+				if x.HTTP.ExitFormat != "trace" {
+					return errors.New("expected_trace requires exit_format trace")
+				}
+				// An empty expectation would assert nothing while still being a
+				// distinct topology value, so the editor could silently change
+				// a contract the user did not edit by dropping it.
+				if trace.Warp == "" && trace.Gateway == "" && len(trace.Colos) == 0 {
+					return errors.New("expected_trace must declare warp, gateway or colos")
+				}
+				switch trace.Warp {
+				case "", "off", "on", "plus":
+				default:
+					return errors.New("invalid trace warp")
+				}
+				switch trace.Gateway {
+				case "", "on", "off":
+				default:
+					return errors.New("invalid trace gateway")
+				}
+				if len(trace.Colos) > 16 {
+					return errors.New("at most 16 expected trace colos")
+				}
+				seen := make(map[string]bool, len(trace.Colos))
+				for _, colo := range trace.Colos {
+					if !traceColo(colo) || seen[colo] {
+						return errors.New("trace colos must be three uppercase letters, without duplicates")
+					}
+					seen[colo] = true
+				}
+			}
 			if x.Kind == "mihomo" {
 				if err := mihomo.Validate(x.Adapter.Mihomo()); err != nil {
 					return err
@@ -454,6 +488,21 @@ func validateResolved(c model.Config) error {
 		}
 	}
 	return nil
+}
+
+// traceColo reports whether s is exactly three ASCII uppercase letters, the
+// shape Cloudflare codes a colo in and the only shape a declared colo may
+// take. Case is part of the shape, so a lowercase code is not normalized.
+func traceColo(s string) bool {
+	if len(s) != 3 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < 'A' || s[i] > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 func acyclic(g map[string][]string) error {
 	remaining := map[string]int{}

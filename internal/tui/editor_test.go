@@ -52,6 +52,69 @@ func TestEditorPolicyThresholdIsExplicit(t *testing.T) {
 	}
 }
 
+func TestEditorTraceFieldsRoundTrip(t *testing.T) {
+	m, _ := editorModel(t)
+	id := m.Edit.Config.Checks[0].ID
+	m.Edit.Config.Checks[0].HTTP.Contains = "READY"
+	m.openForm("check", id)
+	f := m.modal.form
+	if f.get("Exit format").kind != fChoice || f.get("Exit JSON key").kind != fText || f.get("Trace warp").kind != fChoice || f.get("Trace gateway").kind != fChoice || f.get("Trace colos").kind != fList {
+		t.Fatal("trace fields are not choices, a key and a list")
+	}
+	for label, want := range map[string]string{
+		"Exit format":   ",plain,trace,json",
+		"Trace warp":    ",off,on,plus",
+		"Trace gateway": ",on,off",
+	} {
+		if got := strings.Join(f.get(label).choices, ","); got != want {
+			t.Fatalf("%s choices are %q; want %q", label, got, want)
+		}
+	}
+	f.get("Exit format").value = "trace"
+	f.get("Exit JSON key").value = "address"
+	f.get("Trace warp").value = "on"
+	f.get("Trace gateway").value = "off"
+	f.get("Trace colos").value = "HKG, NRT"
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("valid trace form not applied", m.modal.form.err)
+	}
+	x := m.Edit.Config.Checks[0]
+	if x.HTTP.ExitFormat != "trace" || x.HTTP.ExitJSONKey != "address" || x.HTTP.ExpectedTrace == nil || x.HTTP.ExpectedTrace.Warp != "on" || x.HTTP.ExpectedTrace.Gateway != "off" || len(x.HTTP.ExpectedTrace.Colos) != 2 || x.HTTP.Contains != "READY" {
+		t.Fatalf("trace fields not saved or unlisted field lost: %+v", x.HTTP)
+	}
+	m.openForm("check", id)
+	f = m.modal.form
+	if f.val("Exit format") != "trace" || f.val("Exit JSON key") != "address" || f.val("Trace warp") != "on" || f.val("Trace gateway") != "off" || f.val("Trace colos") != "HKG, NRT" {
+		t.Fatal("trace fields did not round-trip", f.val("Exit format"), f.val("Exit JSON key"), f.val("Trace warp"), f.val("Trace gateway"), f.val("Trace colos"))
+	}
+	// Clearing every trace field removes the expectation; the exit format is
+	// its own option and stays as chosen.
+	f.get("Trace warp").value = ""
+	f.get("Trace gateway").value = ""
+	f.get("Trace colos").value = ""
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("cleared trace fields not applied", m.modal.form.err)
+	}
+	if x := m.Edit.Config.Checks[0]; x.HTTP.ExpectedTrace != nil || x.HTTP.ExitFormat != "trace" || x.HTTP.ExitJSONKey != "address" {
+		t.Fatalf("empty trace fields kept an expectation or lost the exit options: %+v", x.HTTP)
+	}
+	// A trace field without the format that parses a trace is refused by the
+	// same validation the save runs, and the draft is left alone.
+	m.openForm("check", id)
+	f = m.modal.form
+	f.get("Exit format").value = ""
+	f.get("Trace warp").value = "on"
+	m.Key("ctrl-s")
+	if m.modal == nil || !strings.Contains(m.modal.form.err, "expected_trace requires exit_format trace") {
+		t.Fatal("trace expectation without exit_format trace was accepted")
+	}
+	if x := m.Edit.Config.Checks[0]; x.HTTP.ExpectedTrace != nil || x.HTTP.ExitFormat != "trace" {
+		t.Fatalf("refused form changed the draft: %+v", x.HTTP)
+	}
+}
+
 func TestEditorAddNodeWithPlaceLookupAndSave(t *testing.T) {
 	m, path := editorModel(t)
 	m.Key("2")

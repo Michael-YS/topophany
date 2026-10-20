@@ -46,6 +46,11 @@ func Clone(c model.Config) model.Config {
 		x.HTTP.Status = slices.Clone(x.HTTP.Status)
 		x.HTTP.ExpectedExit = slices.Clone(x.HTTP.ExpectedExit)
 		x.HTTP.Headers, x.HTTP.RequestHeaders = maps.Clone(x.HTTP.Headers), maps.Clone(x.HTTP.RequestHeaders)
+		if trace := x.HTTP.ExpectedTrace; trace != nil {
+			copy := *trace
+			copy.Colos = slices.Clone(trace.Colos)
+			x.HTTP.ExpectedTrace = &copy
+		}
 		x.DNS.ExpectedIPs = slices.Clone(x.DNS.ExpectedIPs)
 		if ref := x.Adapter.ProviderReference; ref != nil {
 			v := *ref

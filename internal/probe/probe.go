@@ -14,6 +14,7 @@ import (
 	"net/http/httptrace"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -331,6 +332,31 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if int64(len(body)) > limit {
 		return local("http_body", "body_budget_exceeded")
 	}
+	// A trace body is the edge's own account of this request's vantage
+	// point: the colo it reached, whether WARP and Gateway were on, the
+	// HTTP and TLS versions it negotiated and the client country it saw.
+	// TraceFacts keeps only closed words and two shape-checked letter pairs;
+	// the raw map stays here because a declared colo list must still compare
+	// on a secret request, whose observation withholds the colo.
+	var traceReport map[string]string
+	var exitAddr netip.Addr
+	var exitErr error
+	parsedExit := false
+	if x.HTTP.ExitFormat == "trace" {
+		if facts, ok := cloudflare.TraceFacts(body); ok {
+			traceReport = facts
+			mergeEdgeFacts(o.Facts, facts, secret)
+			// Parse the address once for both this fact and expected_exit. Only
+			// a recognized trace body yields an unconditional exit_ip: the same
+			// 4 KiB cap governs every trace reading. The assertion below keeps
+			// its own parser when the body was not recognized.
+			exitAddr, exitErr = exitIP(body, x.HTTP)
+			parsedExit = true
+			if !secret && exitErr == nil {
+				o.Facts["exit_ip"] = exitAddr.String()
+			}
+		}
+	}
 	accepted := resp.StatusCode >= 200 && resp.StatusCode < 300
 	if len(x.HTTP.Status) > 0 {
 		accepted = false
@@ -361,7 +387,10 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		}
 	}
 	if len(x.HTTP.ExpectedExit) > 0 {
-		ip, e := exitIP(body, x.HTTP)
+		ip, e := exitAddr, exitErr
+		if !parsedExit {
+			ip, e = exitIP(body, x.HTTP)
+		}
 		if e != nil {
 			return &failure{Stage: "exit_assert", Code: "exit_not_observed"}
 		}
@@ -387,6 +416,69 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	o.Outcome = "ok"
 	o.Stage = "http_assert"
 	o.Detail = "HTTP assertions passed; result applies only to this request"
+	if t := x.HTTP.ExpectedTrace; t != nil {
+		// A body TraceFacts did not recognize is not a trace at all. Every
+		// declared field would read as unreported, which is true but misleading;
+		// the request still passed, as a missing line never violates the policy.
+		if traceReport == nil {
+			o.Detail = "HTTP assertions passed; the body was not a trace"
+			return nil
+		}
+		var missing []string
+		// tracePolicy records a policy sample when a declared value was
+		// reported differently. Absent says the trace did not report the line,
+		// which is never a violation.
+		tracePolicy := func(fact string, declared func(string) bool, code, detail string) (caught, absent bool) {
+			got, ok := traceReport[fact]
+			if !ok {
+				return false, true
+			}
+			if declared(got) {
+				return false, false
+			}
+			o.Outcome, o.Stage, o.Code, o.Detail = "policy", "trace_assert", code, detail
+			return true, false
+		}
+		if want := t.Warp; want != "" {
+			caught, absent := tracePolicy("trace_warp", func(got string) bool { return got == want }, "warp_mismatch",
+				"request succeeded but the trace reports WARP outside the declared policy")
+			if caught {
+				return nil
+			}
+			if absent {
+				missing = append(missing, "warp")
+			}
+		}
+		if want := t.Gateway; want != "" {
+			caught, absent := tracePolicy("trace_gateway", func(got string) bool { return got == want }, "gateway_mismatch",
+				"request succeeded but the trace reports Gateway outside the declared policy")
+			if caught {
+				return nil
+			}
+			if absent {
+				missing = append(missing, "gateway")
+			}
+		}
+		if len(t.Colos) > 0 {
+			// Compare the raw parse, never the observation's facts: a secret
+			// request withholds trace_colo but its declared list still decides
+			// the sample, without the observed colo being stored.
+			caught, absent := tracePolicy("trace_colo", func(got string) bool { return slices.Contains(t.Colos, got) }, "colo_mismatch",
+				"request succeeded but the edge answered from a colo outside the declared list")
+			if caught {
+				return nil
+			}
+			if absent {
+				missing = append(missing, "colo")
+			}
+		}
+		// A line the trace did not report is not a violation: the request
+		// passed, and the detail names what could not be compared, at most
+		// the three declared fields.
+		if len(missing) > 0 {
+			o.Detail = "HTTP assertions passed; the trace did not report " + strings.Join(missing, ", ")
+		}
+	}
 	return nil
 }
 
@@ -401,14 +493,16 @@ const withheld = adapters.Withheld
 
 // edgeFactSurvivesSecret says whether an edge label may be kept after a
 // request that carried a secret. Closed words (the provider, cache status,
-// mitigation and protocol) and bounded numbers (Cloudflare's cfL4
-// round-trip readings and counts) survive; free tokens such as the POP and
-// the Vercel region do not. Access is a closed word merged unconditionally
-// below.
+// mitigation, protocol and the trace's WARP, Gateway, HTTP and TLS words)
+// and bounded numbers (Cloudflare's cfL4 round-trip readings and counts)
+// survive; free tokens such as the POP, the Vercel region and the trace's
+// colo and client country do not. Access is a closed word merged
+// unconditionally below.
 func edgeFactSurvivesSecret(k string) bool {
 	switch k {
 	case "edge_provider", "edge_cache", "edge_mitigation",
-		"edge_rtt_ms", "edge_min_rtt_ms", "edge_retrans", "edge_lost", "edge_proto":
+		"edge_rtt_ms", "edge_min_rtt_ms", "edge_retrans", "edge_lost", "edge_proto",
+		"trace_warp", "trace_gateway", "trace_http", "trace_tls":
 		return true
 	}
 	return false
@@ -416,9 +510,10 @@ func edgeFactSurvivesSecret(k string) bool {
 
 // mergeEdgeFacts copies edge labels into dst under the secret boundary. The
 // allowlist is name-only; the adapters own the value contract, so every key
-// admitted here is already a closed word or a bounded number, and a new key
-// must be classified there and here alike. The Access constant is merged
-// separately, because its fact is evidence even without a provider label.
+// admitted here is a closed word, a bounded number, or a free label the
+// allowlist withholds on a secret request, and a new key must be classified
+// there and here alike. The Access constant is merged separately, because its
+// fact is evidence even without a provider label.
 func mergeEdgeFacts(dst, src map[string]string, secret bool) {
 	for k, v := range src {
 		if secret && !edgeFactSurvivesSecret(k) {

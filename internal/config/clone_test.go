@@ -22,6 +22,8 @@ func TestConfigCloneDetachesEveryMutableField(t *testing.T) {
 	x.HTTP.Headers = map[string]string{"Response": "yes"}
 	x.HTTP.RequestHeaders = map[string]string{"X-Key": "private"}
 	x.HTTP.ExpectedExit = []string{"192.0.2.1"}
+	x.HTTP.ExitFormat = "trace"
+	x.HTTP.ExpectedTrace = &model.TraceExpectations{Warp: "on", Gateway: "off", Colos: []string{"HKG", "NRT"}}
 	x.DNS.ExpectedIPs = []string{"192.0.2.2"}
 	settle := 120
 	x.Adapter.ProviderReference = &model.MihomoProviderReference{URL: "https://publisher.invalid/members.json", Providers: []string{"dynamic"}, MaxAgeSeconds: 3600, SettleSeconds: &settle}

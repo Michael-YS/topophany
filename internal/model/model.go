@@ -245,6 +245,19 @@ type HTTPOptions struct {
 	ExitFormat     string            `json:"exit_format,omitempty"`   // plain, trace, json
 	ExitJSONKey    string            `json:"exit_json_key,omitempty"`
 	MaxBodyBytes   int64             `json:"max_body_bytes,omitempty"`
+	// ExpectedTrace requires exit_format trace, the only format whose body
+	// this probe parses as a trace.
+	ExpectedTrace *TraceExpectations `json:"expected_trace,omitempty"`
+}
+
+// TraceExpectations declares what a /cdn-cgi/trace body must report for its
+// request to pass. An empty field asserts nothing, and a line the trace did
+// not report is not a violation. The vocabularies are Cloudflare's trace
+// words, so each value is closed and a colo is three uppercase letters.
+type TraceExpectations struct {
+	Warp    string   `json:"warp,omitempty"`    // off, on, plus
+	Gateway string   `json:"gateway,omitempty"` // on, off
+	Colos   []string `json:"colos,omitempty"`   // at most 16 distinct three-letter codes
 }
 type DNSOptions struct {
 	Name        string   `json:"name,omitempty"`

@@ -340,6 +340,9 @@ func (rb *rowBuilder) observersRows(attentionOnly bool) []Row {
 			details = append(details, "", "Host: "+d.Node, "Context: "+d.Context, "Expected route (not verified): "+d.RouteExpectation)
 		}
 		r := Row{Kind: "observer", ID: e.ID, Title: title, Health: e.Health, Meta: Age(v.Now, e.LastSeen), Cols: []string{host, Age(v.Now, e.LastSeen)}, Details: details}
+		if line := rb.observerTrace(e.ID); line != "" {
+			r.Details = append(r.Details, "", line)
+		}
 		for _, d := range e.Delivery {
 			r.Details = append(r.Details, "", "Worker-reported delivery: "+d.Collector, "Reported: "+Age(v.Now, d.ReportedAt), fmt.Sprintf("Pending: %d records / %d bytes; worker quarantine: %d bytes", d.PendingRecords, d.PendingBytes, d.QuarantineBytes), "Last sample ACK: "+Age(v.Now, d.LastAck), "Last contact: "+Age(v.Now, d.LastContact), "Retry: "+Stamp(v.Now, d.RetryAt), "Reason: "+d.Code)
 			if (d.Code != "" || d.QuarantineBytes > 0) && !v.Cached && e.Health == "up" {
@@ -364,6 +367,42 @@ func (rb *rowBuilder) observersRows(attentionOnly bool) []Row {
 		rows = append(rows, r)
 	}
 	return rows
+}
+
+// observerTrace is the single reported line from an observer's newest fresh
+// trace check: what the edge says of that vantage point's WARP and Gateway
+// state, not verified routing. A stale or absent trace sample leaves the row
+// unchanged, and neither declared field is shown when the trace did not report
+// it.
+func (rb *rowBuilder) observerTrace(observer string) string {
+	var newest time.Time
+	var last *model.Observation
+	for i := range rb.view.Snapshot.Checks {
+		x := &rb.view.Snapshot.Checks[i]
+		if x.Observer != observer || x.Freshness != "fresh" || x.Last == nil {
+			continue
+		}
+		if rb.checkDefs[x.ID].HTTP.ExitFormat != "trace" {
+			continue
+		}
+		if last == nil || x.Last.SampledAt.After(newest) {
+			newest, last = x.Last.SampledAt, x.Last
+		}
+	}
+	if last == nil {
+		return ""
+	}
+	words := []string{}
+	if v := last.Facts["trace_warp"]; v != "" {
+		words = append(words, "WARP "+v)
+	}
+	if v := last.Facts["trace_gateway"]; v != "" {
+		words = append(words, "Gateway "+v)
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	return "Trace: " + strings.Join(words, " · ") + " (reported, not verified)"
 }
 
 // IncidentTitle names an incident by who saw it and what failed, e.g.

@@ -56,7 +56,7 @@ func newRowBuilder(v View, tab int) *rowBuilder {
 		}
 	}
 	checkDefs := map[string]model.Check{}
-	if tab == Checks || tab == Overview {
+	if tab == Checks || tab == Overview || tab == Observers {
 		for _, c := range s.Topology.Checks {
 			checkDefs[c.ID] = c
 		}

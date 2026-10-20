@@ -862,6 +862,15 @@ func (m *Model) openForm(kind, id string) {
 		kindIs := func(k string) func(*Form) bool { return func(f *Form) bool { return f.val("Kind") == k } }
 		f.add("HTTP status", strings.Join(status, ", "), fList, "http: accepted status codes, e.g. 200, 204").when = kindIs("http")
 		f.add("HTTP contains", x.HTTP.Contains, fText, "http: required body substring").when = kindIs("http")
+		f.add("Exit format", x.HTTP.ExitFormat, fChoice, "http: how to read the exit address", "", "plain", "trace", "json").when = kindIs("http")
+		f.add("Exit JSON key", x.HTTP.ExitJSONKey, fText, "json: key holding the address, default ip").when = kindIs("http")
+		trace := model.TraceExpectations{}
+		if x.HTTP.ExpectedTrace != nil {
+			trace = *x.HTTP.ExpectedTrace
+		}
+		f.add("Trace warp", trace.Warp, fChoice, "trace: expected WARP state", "", "off", "on", "plus").when = kindIs("http")
+		f.add("Trace gateway", trace.Gateway, fChoice, "trace: expected Gateway state", "", "on", "off").when = kindIs("http")
+		f.add("Trace colos", strings.Join(trace.Colos, ", "), fList, "trace: expected colos, e.g. HKG, NRT").when = kindIs("http")
 		f.add("DNS name", x.DNS.Name, fText, "dns: name to resolve").when = kindIs("dns")
 		f.add("DNS type", x.DNS.Type, fChoice, "dns: record type", "", "A", "AAAA").when = kindIs("dns")
 		addHostFields(f, x.Host, kindIs("host"))
@@ -887,6 +896,14 @@ func (m *Model) openForm(kind, id string) {
 				x.HTTP.Status = append(x.HTTP.Status, n)
 			}
 			x.HTTP.Contains, x.DNS.Name, x.DNS.Type = f.val("HTTP contains"), f.val("DNS name"), f.val("DNS type")
+			x.HTTP.ExitFormat = f.val("Exit format")
+			x.HTTP.ExitJSONKey = f.val("Exit JSON key")
+			warp, gateway, colos := f.val("Trace warp"), f.val("Trace gateway"), f.list("Trace colos")
+			if warp != "" || gateway != "" || len(colos) > 0 {
+				x.HTTP.ExpectedTrace = &model.TraceExpectations{Warp: warp, Gateway: gateway, Colos: colos}
+			} else {
+				x.HTTP.ExpectedTrace = nil
+			}
 			host, err := hostFields(f, x.Kind)
 			if err != nil {
 				return err

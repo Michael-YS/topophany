@@ -1,7 +1,8 @@
 # Cloudflare
 
-Pure interpretation of Cloudflare response headers and redirects: `Cf-Ray`,
-`Cf-Cache-Status`, `Cf-Mitigated`, `Server-Timing` and Access login redirects.
+Pure interpretation of Cloudflare response headers, redirects and the
+`/cdn-cgi/trace` body: `Cf-Ray`, `Cf-Cache-Status`, `Cf-Mitigated`,
+`Server-Timing`, Access login redirects and trace lines.
 A nonempty ray header selects the provider, even when its labels cannot be
 retained. The POP is the suffix after the last hyphen. `Cf-Mitigated` is kept
 only as the closed value `challenge`, which Cloudflare sets on challenge
@@ -55,20 +56,51 @@ not a customer proxied zone, and spot checks of `www.cloudflare.com`,
 an ordinary proxied zone is unverified; the spot checks suggest the entry is
 not on every zone, but that is inferred rather than documented.
 
+`TraceFacts` reads the body of `/cdn-cgi/trace`, which Cloudflare documents as
+the way to identify the data center serving a request
+([CDN-CGI endpoint](https://developers.cloudflare.com/fundamentals/reference/cdn-cgi-endpoint/));
+that page does not specify the line vocabularies. The live capture is in
+[`testdata/2026-10-19/`](testdata/2026-10-19/README.md): over HTTP/1.1 it read
+`colo=LAX`, `http=http/1.1`, `tls=TLSv1.3`, `warp=off`, `gateway=off` and
+`loc=US` beside `fl`, `h`, `ip`, `ts`, `visit_scheme`, `uag`, `sliver`, `sni`,
+`rbi` and `kex`. Forced HTTP/2 and TLS 1.2 requests the same day read
+`http=http/2` and `tls=TLSv1.2`; `http/3`, `warp=on`, `warp=plus` and
+`gateway=on` were not observed live, and the parser accepts them as the closed
+vocabulary rather than reporting any other value.
+
+A body is recognized only when both the `fl` and `colo` keys are present, the
+first occurrence of a repeated key is read, and a body over 4 KiB is not read
+as a trace: neither the facts nor the unconditional `exit_ip` come from it,
+while an `expected_exit` assertion keeps its own exit parser. Kept:
+`trace_warp` (`off`, `on`, `plus`), `trace_gateway` (`on`, `off`),
+`trace_http` (`http/1.1`, `http/2` or `http/3` mapped to `http1.1`, `http2`,
+`http3`) and `trace_tls` (`TLSv1.2`, `TLSv1.3`) as closed words, and
+`trace_colo` (exactly three uppercase letters) and `trace_loc` (two uppercase
+letters) as free tokens checked only for their shape. The probe calls it only
+when the check's `exit_format` is `trace`, reads the `ip=` line as `exit_ip`,
+and merges the map under the same secret classification as the other labels;
+`uag`, `h`, `sni`, `ts`, `fl`, `visit_scheme`, `sliver`, `kex`, `rbi` and
+every unknown line are never kept. The colo and country are free labels and are
+withheld from a secret observation while the four closed words survive; a
+declared colo list is compared from the raw parse without storing the colo. No
+line or body text is ever returned.
+
 `HeaderFacts` returns a newly owned fact map and `true` when recognized, or
-`nil, false` otherwise; `AccessFacts` returns a one-word map or `nil`, and
+`nil, false` otherwise; `AccessFacts` returns a one-word map or `nil`,
 `ServerTimingFacts` returns nil when there is no exact `cfL4` entry or no
-usable field, never any header text. None mutates its input.
-`probe.EdgeFacts` owns the cross-provider first-match order; adapters do not
-call one another. Shared short-label/cache-vocabulary rules live in
-`edgeheaders`.
+usable field, and `TraceFacts` returns a newly owned map and true when both
+keys are present, or nil and false otherwise, never any line text. None mutates
+its input. `probe.EdgeFacts` owns the cross-provider first-match order;
+adapters do not call one another. Shared short-label/cache-vocabulary rules
+live in `edgeheaders`.
 
 These labels are peer-reported metadata. They do not authenticate the provider,
 verify routing, or establish the health of an origin or application. The HTTP
 probe owns transport, response evidence and withholding labels after a private
 request. This package makes no API calls and requires no new configuration.
 
-Run `go test ./internal/adapters/cloudflare`. Tests use synthetic headers;
+Run `go test ./internal/adapters/cloudflare`. Tests use synthetic headers and
+trace bodies;
 `probe.TestEdgeFactsCompatibilityBeforePackageSplit` and
 `probe.FuzzEdgeFactsCompatibility` compare with the frozen parser from commit
 `599c890`. This baseline identifies the Topophany behavior being preserved,
