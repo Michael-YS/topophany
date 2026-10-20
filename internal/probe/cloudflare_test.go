@@ -1,0 +1,104 @@
+package probe
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflare"
+	"github.com/WhitenWhiten/topophany/internal/model"
+)
+
+func cloudflareCheck(target string) model.Check {
+	return model.Check{
+		ID: "cf-api", Name: "Cloudflare API", Observer: "home", Kind: "cloudflare",
+		Target: target, TimeoutSeconds: 5,
+		Adapter: model.AdapterOptions{
+			TokenEnv: "TOPH_CLOUDFLARE_PROBE_TOKEN",
+			Cloudflare: &model.CloudflareOptions{
+				Read:      "tunnel",
+				AccountID: "11111111111111111111111111111111",
+				TunnelID:  "22222222222222222222222222222222",
+			},
+		},
+	}
+}
+
+// Run must mark an API read as reported evidence, drop the request-stream fact
+// and keep the monitor source separate from target reachability.
+func TestRunCloudflareReportedRead(t *testing.T) {
+	t.Setenv("TOPH_CLOUDFLARE_PROBE_TOKEN", "test-token")
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		io.WriteString(w, `{"success":true,"result":{"status":"healthy","connections":[{"client_version":"2026.10.0","colo_name":"HKG","is_pending_reconnect":false,"opened_at":"2026-10-19T08:00:00Z","origin_ip":"192.0.2.10"}]}}`)
+	}))
+	defer srv.Close()
+	c := model.Config{Schema: 1, Project: "lab"}
+	o := Runner{}.Run(context.Background(), c, cloudflareCheck(srv.URL))
+	if o.Outcome != "ok" || o.Evidence != "reported" || o.Stage != "adapter_api" {
+		t.Fatalf("observation %+v", o)
+	}
+	if o.PathEvidence != cloudflare.PathEvidence || o.Connectivity {
+		t.Fatalf("envelope %+v", o)
+	}
+	if o.Facts["tunnel_status"] != "healthy" || o.Facts["tunnel_colos"] != "HKG" || o.Facts["peer_text"] != "withheld_secret_request" {
+		t.Fatalf("facts %+v", o.Facts)
+	}
+	if _, ok := o.Facts["connection_semantics"]; ok {
+		t.Fatal("cloudflare keeps the request-stream fact")
+	}
+	if hits != 1 {
+		t.Fatalf("requests=%d", hits)
+	}
+}
+
+// A 401 is a monitor error: no downtime, no target failure.
+func TestRunCloudflareAuthenticationFailure(t *testing.T) {
+	t.Setenv("TOPH_CLOUDFLARE_PROBE_TOKEN", "test-token")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	o := Runner{}.Run(context.Background(), model.Config{Schema: 1, Project: "lab"}, cloudflareCheck(srv.URL))
+	if o.Outcome != "error" || o.Stage != "adapter_api" || o.Code != "authentication_failed" || o.Connectivity {
+		t.Fatalf("observation %+v", o)
+	}
+}
+
+func TestRunCloudflareMissingTokenIsSetupError(t *testing.T) {
+	t.Setenv("TOPH_CLOUDFLARE_PROBE_TOKEN", "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("request sent without a token")
+	}))
+	defer srv.Close()
+	o := Runner{}.Run(context.Background(), model.Config{Schema: 1, Project: "lab"}, cloudflareCheck(srv.URL))
+	if o.Outcome != "error" || o.Stage != "setup" || o.Code != "cloudflare_token_missing" {
+		t.Fatalf("observation %+v", o)
+	}
+}
+
+// The production client must not follow a redirect: the bearer token may not
+// be forwarded to whatever Location names. The 3xx becomes a monitor error.
+func TestRunCloudflareRefusesRedirect(t *testing.T) {
+	t.Setenv("TOPH_CLOUDFLARE_PROBE_TOKEN", "test-token")
+	var redirected bool
+	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirected = true
+		io.WriteString(w, `{"success":true,"result":{"status":"healthy","connections":[]}}`)
+	}))
+	defer targetSrv.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, targetSrv.URL, http.StatusFound)
+	}))
+	defer srv.Close()
+	o := Runner{}.Run(context.Background(), model.Config{Schema: 1, Project: "lab"}, cloudflareCheck(srv.URL))
+	if o.Outcome != "error" || o.Stage != "adapter_api" || o.Code != "http_302" {
+		t.Fatalf("observation %+v", o)
+	}
+	if redirected {
+		t.Fatal("the bearer token followed a redirect")
+	}
+}

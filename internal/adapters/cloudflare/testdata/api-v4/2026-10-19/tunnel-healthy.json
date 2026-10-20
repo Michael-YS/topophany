@@ -1,0 +1,47 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": {
+    "account_tag": "11111111111111111111111111111111",
+    "connections": [
+      {
+        "client_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "client_version": "2026.10.0",
+        "colo_name": "HKG",
+        "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "is_pending_reconnect": false,
+        "opened_at": "2026-10-19T08:00:00.123456Z",
+        "origin_ip": "192.0.2.10",
+        "uuid": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+      },
+      {
+        "client_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "client_version": "2026.10.0",
+        "colo_name": "SIN",
+        "id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        "is_pending_reconnect": false,
+        "opened_at": "2026-10-19T08:05:00Z",
+        "origin_ip": "192.0.2.10",
+        "uuid": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+      },
+      {
+        "client_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "client_version": "2026.9.1",
+        "colo_name": "LAX",
+        "id": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "is_pending_reconnect": true,
+        "opened_at": "2026-10-19T07:59:00Z",
+        "origin_ip": "192.0.2.10",
+        "uuid": "99999999-9999-4999-8999-999999999999"
+      }
+    ],
+    "created_at": "2026-01-01T00:00:00Z",
+    "deleted_at": null,
+    "id": "22222222222222222222222222222222",
+    "name": "synthetic-tunnel",
+    "remote_config": false,
+    "status": "healthy",
+    "tun_type": "cfd_tunnel"
+  },
+  "success": true
+}

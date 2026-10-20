@@ -1,0 +1,105 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": {
+    "pool_id": "44444444444444444444444444444444",
+    "pop_health": {
+      "HKG": {
+        "healthy": true,
+        "origins": [
+          {
+            "192.0.2.10": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "12.5ms"
+            }
+          },
+          {
+            "192.0.2.11": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "30.0ms"
+            }
+          },
+          {
+            "2001:db8::10": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "18.0ms"
+            }
+          }
+        ]
+      },
+      "LAX": {
+        "healthy": true,
+        "origins": [
+          {
+            "192.0.2.10": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "160.0ms"
+            }
+          },
+          {
+            "192.0.2.11": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "170.0ms"
+            }
+          },
+          {
+            "2001:db8::10": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "165.0ms"
+            }
+          },
+          {
+            "198.51.100.99": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "171.0ms"
+            }
+          }
+        ]
+      },
+      "SJC": {
+        "healthy": false,
+        "origins": [
+          {
+            "192.0.2.10": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "40.0ms"
+            }
+          },
+          {
+            "192.0.2.11": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": false,
+              "response_code": 503,
+              "rtt": "0ms"
+            }
+          },
+          {
+            "2001:db8::10": {
+              "failure_reason": "synthetic placeholder",
+              "healthy": true,
+              "response_code": 200,
+              "rtt": "42.0ms"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "success": true
+}

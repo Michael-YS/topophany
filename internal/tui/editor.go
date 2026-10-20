@@ -609,7 +609,7 @@ func remove(c *model.Config, kind, id string) error {
 	return nil
 }
 
-var checkKinds = []string{"http", "tcp", "tls", "ssh-banner", "dns", "udp-echo", "icmp", "mihomo", "tailscale", "wireguard", "host", "cloudflared"}
+var checkKinds = []string{"http", "tcp", "tls", "ssh-banner", "dns", "udp-echo", "icmp", "mihomo", "tailscale", "wireguard", "host", "cloudflared", "cloudflare"}
 
 func (m *Model) openForm(kind, id string) {
 	// Browser viewers never author topology; omit forms and their builders.
@@ -885,6 +885,7 @@ func (m *Model) openForm(kind, id string) {
 		f.add("Secret request headers", strings.Join(envEntries, ", "), fList, "http: Name=ENV_VAR, comma separated").when = kindIs("http")
 		f.add("DNS name", x.DNS.Name, fText, "dns: name to resolve").when = kindIs("dns")
 		f.add("DNS type", x.DNS.Type, fChoice, "dns: record type", "", "A", "AAAA").when = kindIs("dns")
+		cloudflareFields(f, x, kindIs("cloudflare"))
 		addHostFields(f, x.Host, kindIs("host"))
 		f.add("Notes", x.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
@@ -953,6 +954,11 @@ func (m *Model) openForm(kind, id string) {
 			} else {
 				x.HTTP.RequestHeaderEnvs = envs
 			}
+			if x.Kind == "cloudflare" {
+				if err := cloudflareFieldsCommit(f, &x); err != nil {
+					return err
+				}
+			}
 			host, err := hostFields(f, x.Kind)
 			if err != nil {
 				return err
@@ -1018,4 +1024,79 @@ func lookupPlace(s string) (city, bool) {
 		}
 	}
 	return city{}, false
+}
+
+// cloudflareFields adds the API adapter's authoring fields. Every field is
+// kept on the form whatever the read is; commit writes only the fields the
+// chosen read owns, so switching reads cannot leave another read's identifiers
+// in the contract and the save-time validation sees a clean declaration.
+func cloudflareFields(f *Form, x model.Check, when func(*Form) bool) {
+	cf := model.CloudflareOptions{}
+	if x.Adapter.Cloudflare != nil {
+		cf = *x.Adapter.Cloudflare
+	}
+	connections := ""
+	if cf.ExpectedConnections != nil {
+		connections = strconv.Itoa(*cf.ExpectedConnections)
+	}
+	proxied := ""
+	if cf.ExpectedProxied != nil {
+		proxied = strconv.FormatBool(*cf.ExpectedProxied)
+	}
+	f.add("Cloudflare token env", x.Adapter.TokenEnv, fText, "cloudflare: worker variable holding the API token").when = when
+	f.add("Cloudflare read", cf.Read, fChoice, "cloudflare: one read per check", "", "tunnel", "dns_record", "pool").when = when
+	f.add("Cloudflare account id", cf.AccountID, fText, "cloudflare tunnel/pool: 32 hex characters").when = when
+	f.add("Cloudflare zone id", cf.ZoneID, fText, "cloudflare dns_record: 32 hex characters").when = when
+	f.add("Cloudflare tunnel id", cf.TunnelID, fText, "cloudflare tunnel: 32 hex characters").when = when
+	f.add("Cloudflare pool id", cf.PoolID, fText, "cloudflare pool: 32 hex characters").when = when
+	f.add("Cloudflare record name", cf.RecordName, fText, "cloudflare dns_record: DNS record name").when = when
+	f.add("Cloudflare record type", cf.RecordType, fChoice, "cloudflare dns_record: record type", "", "A", "AAAA", "CNAME").when = when
+	f.add("Cloudflare expected connections", connections, fText, "cloudflare tunnel: 1…64").when = when
+	f.add("Cloudflare expected colos", strings.Join(cf.ExpectedColos, ", "), fList, "cloudflare tunnel: e.g. HKG, NRT").when = when
+	f.add("Cloudflare expected proxied", proxied, fChoice, "cloudflare dns_record: true or false", "", "true", "false").when = when
+	f.add("Cloudflare expected content", cf.ExpectedContent, fText, "cloudflare dns_record: compared in memory only").when = when
+	f.add("Cloudflare expected origins", strings.Join(cf.ExpectedOrigins, ", "), fList, "cloudflare pool: declared origin addresses").when = when
+}
+
+// cloudflareFieldsCommit writes the selected read's options from the form.
+// Fields of other reads are cleared rather than carried, because validation
+// refuses a field that belongs to a different read. No API token itself is
+// ever on the form, only the name of the variable that holds it.
+func cloudflareFieldsCommit(f *Form, x *model.Check) error {
+	read := f.val("Cloudflare read")
+	if read == "" {
+		return errors.New("Cloudflare read must be tunnel, dns_record or pool")
+	}
+	x.Adapter.TokenEnv = f.val("Cloudflare token env")
+	cf := &model.CloudflareOptions{Read: read}
+	switch read {
+	case "tunnel":
+		cf.AccountID, cf.TunnelID = f.val("Cloudflare account id"), f.val("Cloudflare tunnel id")
+		if value := f.val("Cloudflare expected connections"); value != "" {
+			n, err := f.num("Cloudflare expected connections")
+			if err != nil {
+				return err
+			}
+			cf.ExpectedConnections = &n
+		}
+		cf.ExpectedColos = f.list("Cloudflare expected colos")
+	case "dns_record":
+		cf.ZoneID, cf.RecordName, cf.RecordType = f.val("Cloudflare zone id"), f.val("Cloudflare record name"), f.val("Cloudflare record type")
+		switch f.val("Cloudflare expected proxied") {
+		case "true":
+			value := true
+			cf.ExpectedProxied = &value
+		case "false":
+			value := false
+			cf.ExpectedProxied = &value
+		}
+		cf.ExpectedContent = f.val("Cloudflare expected content")
+	case "pool":
+		cf.AccountID, cf.PoolID = f.val("Cloudflare account id"), f.val("Cloudflare pool id")
+		cf.ExpectedOrigins = f.list("Cloudflare expected origins")
+	default:
+		return errors.New("Cloudflare read must be tunnel, dns_record or pool")
+	}
+	x.Adapter.Cloudflare = cf
+	return nil
 }

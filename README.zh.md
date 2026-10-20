@@ -136,7 +136,7 @@ topo --credentials ./demo/credentials.json
 - **原生探针：** HTTP（状态码、正文、响应头、出口 IP）、TCP、带证书校验的 TLS、SSH banner、DNS A/AAAA、UDP echo、ICMP（IPv4）。
 - **主机资源（Linux、macOS、Windows）：** CPU、内存、文件系统容量与 inode、进程数以及指定进程的内存占用，可以设置资源阈值和进程数检查。参见 [`examples/host-resources.json`](examples/host-resources.json)。
 - **代理链：** HTTP CONNECT、HTTPS CONNECT、SOCKS5 和 OpenSSH `-W`，可以多跳串联。
-- **只读适配器：** Mihomo、Tailscale、WireGuard、cloudflared。
+- **只读适配器：** Mihomo、Tailscale、WireGuard、cloudflared、Cloudflare API。
 - **边缘与平台：** Cloudflare（包括 Workers 和 Pages）、Vercel、Supabase。边缘有应答，只能证明边缘本身没问题，证明不了它背后的源站。
 
 ## 终端界面

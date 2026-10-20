@@ -2,7 +2,8 @@
 
 Pure interpretation of Cloudflare response headers, redirects and the
 `/cdn-cgi/trace` body: `Cf-Ray`, `Cf-Cache-Status`, `Cf-Mitigated`,
-`Server-Timing`, Access login redirects and trace lines.
+`Server-Timing`, Access login redirects and trace lines; plus a read-only
+Cloudflare API adapter (`kind: "cloudflare"`) for three documented resources.
 A nonempty ray header selects the provider, even when its labels cannot be
 retained. The POP is the suffix after the last hyphen. `Cf-Mitigated` is kept
 only as the closed value `challenge`, which Cloudflare sets on challenge
@@ -102,7 +103,8 @@ live in `edgeheaders`.
 These labels are peer-reported metadata. They do not authenticate the provider,
 verify routing, or establish the health of an origin or application. The HTTP
 probe owns transport, response evidence and withholding labels after a private
-request. This package makes no API calls and requires no new configuration.
+request. The header, redirect, `Server-Timing` and trace functions make no API
+calls and need no new configuration; the separate API adapter below does.
 
 Run `go test ./internal/adapters/cloudflare`. Tests use synthetic headers and
 trace bodies;
@@ -111,3 +113,173 @@ trace bodies;
 `599c890`. This baseline identifies the Topophany behavior being preserved,
 not execution against a particular vendor release. Add new response shapes
 and their evidence limits here when extending this platform.
+
+## Cloudflare API adapter (`kind: "cloudflare"`)
+
+Reads three things only Cloudflare knows, with a least-privilege token. Each
+check performs **one** allowlisted `GET`; nothing else is requested. The token
+is named by `adapter.token_env` and read from the worker's environment; it is
+never written in the topology, never sent to the zone, and cleared from the
+public topology by `config.Public`. Documented scopes are exactly Account ›
+Cloudflare Tunnel › Read, Zone › DNS › Read and Account › Load Balancing:
+Monitors and Pools Read; a read that needs another permission is out of scope.
+
+| Read | Request (exact path) | Facts | Policy codes |
+|---|---|---|---|
+| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status` (closed `healthy`/`degraded`/`down`/`inactive`), `tunnel_connections`, `tunnel_pending_reconnect`, `tunnel_colos` (≤ 8 sorted tokens), `connector_versions` (≤ 4 sorted tokens), `oldest_connection_at` (RFC 3339) | `connections_below_expected`, `colo_outside_expected` (compares every distinct colo, not only the eight the fact shows) |
+| `dns_record` | `GET /zones/{zone_id}/dns_records?name={record_name}&type={record_type}` | `record_count`, `record_proxied` (`true`/`false` when every record agrees), `record_ttl` (when every record agrees), `record_content_matches` (`true`/`false`/`not_declared`) | `record_missing`, `record_not_proxied`, `record_proxied_unexpectedly`, `record_content_mismatch` |
+| `pool` | `GET /accounts/{account_id}/load_balancers/pools/{pool_id}/health` | `pool_healthy` (when a region reports it), `origins_healthy`, `origins_total`, `regions_reporting`, `origin.<declared>` (`healthy`/`unhealthy`, declared origins only) | `origins_below_expected` |
+
+Side-effect review: all three are documented `GET` reads — Get a Cloudflare
+Tunnel, List DNS Records and Pool Health Details — and none creates, updates
+or deletes a tunnel, record, pool, monitor or load balancer. Paths added later
+need their own review, because a `GET` alone is not proof of no side effects.
+
+The DNS query is the only query this adapter builds, and it carries exactly one
+`name` and one `type` (`A`, `AAAA` or `CNAME`). A path outside the three forms,
+an extra query parameter, a dot segment and a lookalike suffix are refused in
+the client before a request exists, with code `api_path_not_allowed`. The
+bearer token is attached only after the allowlist check.
+
+### Options
+
+`adapter.cloudflare` is nested inside `adapter`: `read` is required and names
+one of the three reads. `account_id`, `zone_id`, `tunnel_id` and `pool_id` are
+32 hex characters; `record_name` is a DNS name (a whole `*` label is allowed for
+a wildcard record); `record_type` is `A`, `AAAA` or `CNAME`. `expected_proxied`
+and `expected_content` belong to the DNS read; `expected_connections` (1..64)
+and `expected_colos` (≤ 8 three-uppercase-letter codes) to the tunnel read;
+`expected_origins` (≤ 16 IP addresses or host names) to the pool read. A field
+belonging to another read is refused rather than ignored, so a check cannot
+silently change the contract of a different read. `expected_content` is
+compared in memory and never stored; the facts keep only
+`record_content_matches`. The options are part of the measurement contract:
+setting or changing them starts a new contract and history for that check, and
+an unset field leaves every existing contract unchanged.
+
+`token_env` is required for this kind and is a credential: `HTTPCredentials`
+therefore requires an `https` target, or a direct literal loopback target with
+no proxy and no remote `resolve_ip`. The target defaults to
+`https://api.cloudflare.com/client/v4`. Outside a literal loopback test
+address, the target must be exactly that host and `/client/v4` base path (a
+trailing slash and `:443` are accepted), because the token is sent to it; a
+different host, a different path or an invalid port is refused. The base
+carries no userinfo, query, fragment or dot segments. Plain `http` is accepted
+only for a literal loopback test address. `path`,
+`bind_ip`, `resolve_ip`, `server_name` and `ca_file` are honoured as for the
+other API adapter: the API is legitimately reachable through the check's
+proxies, so `cloudflare` is in the proxy-traversal kind list. The client uses
+the path's explicit proxies, never an environment proxy, disables keep-alive
+and compression, bounds response headers at 32 KiB and follows no redirect: a
+3xx is a monitor error, so the bearer token cannot be forwarded to another
+location. There is no direct-transport fallback. An endpoint is refused; the
+API base is `target`.
+
+`interval_seconds` must be at least 60 for this kind. Cloudflare documents a
+limit of about 1,200 requests per five minutes per user (the limit is shared by
+the user's tokens); one request per
+minute is well inside it, and the validation refuses a topology that would
+poll faster.
+
+### Errors and outcomes
+
+Every API response is credential-bearing, so every failure is a **monitor**
+error (`error`, local), never a target failure. The missing-token and invalid-
+configuration rows are stage `setup`, with nothing sent; every other row is
+stage `adapter_api`:
+
+| Situation | Code |
+|---|---|
+| `token_env` unset or the variable missing/empty | `cloudflare_token_missing` (stage `setup`, nothing sent) |
+| a path outside the three exact forms, a dot segment or an extra DNS filter | `api_path_not_allowed` |
+| invalid options or target in a hand-built check | `invalid_cloudflare_options` / `invalid_adapter_url` (stage `setup`) |
+| connect error, timeout, TLS failure, context deadline | `api_unavailable` |
+| `401` or `403` | `authentication_failed` |
+| `429`, `5xx`, or any other non-200 (including a refused redirect) | `http_<status>` (for example `http_429`) |
+| body over its budget (64 KiB tunnel/pool, 128 KiB DNS) | `response_too_large` |
+| invalid JSON, exceeded JSON complexity, missing `success`, or a response missing the documented result shape | `unsupported_response_shape` |
+| HTTP 200 with `success: false` | `api_unavailable`; `errors[].message` is never read |
+
+A passing read is `ok`, stage `adapter_api`, evidence `reported`, path evidence
+`cloudflare_api_reported`, with `peer_text: withheld_secret_request`. It proves
+that Cloudflare's API returned the reported state; it makes no request to the
+zone and says nothing about an origin or a public hostname answering. Policy
+assertions are state comparisons, not request failures: the tunnel check reads
+`ok` with `tunnel_status: down` unless a declared count or colo list makes it
+`policy`, and a missing DNS record is `record_missing` policy.
+
+`tunnel_connections` is the length of the `result.connections` array,
+including any entry marked `is_pending_reconnect`; `tunnel_pending_reconnect`
+is the subset that carries that flag. The current reference marks
+`is_pending_reconnect` deprecated and says it is always false, so the pending
+fact may read 0 on a live response; the array is still counted as returned.
+A `down` or `degraded` `tunnel_status` is a reported fact and does not by
+itself fail the check: it
+is the platform's word, and `expected_connections` and `expected_colos` are the
+declared state assertions. Use an application check and the link modelling
+from `cloudflared` for reachability.
+
+The tunnel read counts the `result.connections` array. Cloudflare documents
+that array as deprecated and says it will start returning an empty array in
+favour of the dedicated connections endpoint; a later zero count can therefore
+mean the field moved rather than that no connector is live. `tunnel_status`
+carries the API's own word either way. The read does not call the dedicated
+endpoint: one GET per check is the rule, and that endpoint is outside the
+three allowlisted paths. The connection's `origin_ip`, its `id`, `client_id`
+and `uuid`, and the tunnel's name and account tag are never read into a fact.
+`connector_versions` keeps only tokens of at most 24 characters; `tunnel_colos`
+keeps only three uppercase letters, sorts them and keeps the first eight. The
+colo policy compares the same eight the fact shows.
+
+The DNS `result` must be present: an absent or null result is a monitor error,
+not an empty record list, while an explicit `[]` yields `record_missing`
+policy. When the response carries `result_info.total_count` and it differs
+from the page length, the page is partial and the read is a monitor error
+rather than a count or policy based on a subset. A DNS list can return more than
+one record for one name and type. The adapter reports `record_proxied` and
+`record_ttl` only when every record agrees; a mixed list leaves those facts
+absent and `record_count` says how many were returned. `record_missing` is policy with `record_content_matches: false` when
+a content expectation was declared and the list is empty. Content is compared
+with `expected_content` in memory; the record's content, id, zone name and
+comment are never stored.
+
+The pool reference renders `pop_health` both as a single object
+`{healthy, origins}` and as "a list of regions and associated health status",
+collapsing the region map in its generated model; the adapter accepts both
+renderings. The region-keyed form is the speculative reading; the single-object
+form matches the generated model. `regions_reporting` counts the region objects it parsed,
+`origins_total` and `origins_healthy` count distinct origins, and an origin
+reported in several regions is healthy only when every report calls it
+healthy. A region that omits `healthy` for an origin does not establish it
+healthy, and `pool_healthy` is omitted when no region reports a verdict rather
+than invented. Origin entries are keyed by origin address in the documented
+example; only addresses declared in `expected_origins` appear as fact keys, and
+an undeclared origin contributes to the counts only. A declared origin that is
+missing or unhealthy is `origins_below_expected` policy; a missing one gets no
+`origin.<name>` fact, because no region gave a verdict.
+
+### Boundary and provenance
+
+The bearer token is echoed into every string field of every read by the
+reflection tests (`TestBearerTokenCannotEchoIntoObservation`,
+`TestShapedTokenCannotEchoAsVersion`): nothing of the token reaches the
+observation, its fact keys or values, its detail or its error. A value exactly
+equal to the token is dropped even when it has a reportable shape (a 24-character
+version token, a three-letter colo); shape-validated tokens from the platform
+are otherwise indistinguishable from evidence.
+Only closed words, numbers, shape-validated tokens (three uppercase letters for
+a colo, at most 24 token characters for a connector version) and comparisons
+with the topology leave the adapter. Numeric counts are an explicit exception,
+as for every credential-bearing exchange.
+
+No live account or token was used. The fixtures under
+[`testdata/api-v4/2026-10-19/`](testdata/api-v4/2026-10-19/README.md) are
+synthetic, written from Cloudflare's API reference on 2026-10-19, and contain
+no real account, token, record content, origin address or undeclared origin
+name. They pin field names and vocabularies only; the acceptance record
+([`docs/acceptance/CLOUDFLARE_API_2026-10-19.md`](../../../docs/acceptance/CLOUDFLARE_API_2026-10-19.md))
+lists what a real account still has to confirm.
+
+Run `go test ./internal/adapters/cloudflare` from the repository root. The
+three response parsers have bounded fuzz targets; loopback servers cover the
+allowlist, budgets, status mapping, every policy code and the reflection test.

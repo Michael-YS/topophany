@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters"
+	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflare"
 	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflared"
 	"github.com/WhitenWhiten/topophany/internal/adapters/mihomo"
 	"github.com/WhitenWhiten/topophany/internal/adapters/tailscale"
@@ -35,6 +36,32 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 		}}
 		return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
 	}, Proxied: len(d.Proxies) > 0, ProxyCredentials: proxyCredentials(d.Proxies)}, x, target, o)
+}
+
+// cloudflare reads Cloudflare's API through the check's explicit route, like
+// the Mihomo controller read: the path's proxies are used if declared, but no
+// environment proxy, no compression, no keep-alive and no redirect. A
+// redirect would forward the bearer token to another location, so the client
+// returns the 3xx to the adapter, which maps it to a local monitor error.
+func (r Runner) cloudflare(ctx context.Context, d Dialer, x model.Check, target string, o *model.Observation) error {
+	return cloudflare.Collect(ctx, cloudflare.Dependencies{Client: func(x model.Check, target string) (*http.Client, func(), error) {
+		u, err := url.Parse(target)
+		if err != nil {
+			return nil, nil, local("setup", "invalid_adapter_url")
+		}
+		name := u.Hostname()
+		if x.ServerName != "" {
+			name = x.ServerName
+		}
+		tc, err := TLSConfig(name, x.CAFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, MaxResponseHeaderBytes: 32768, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
+			return d.DialContext(ctx, n, pinned(a, x.ResolveIP))
+		}}
+		return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
+	}}, x, target, o)
 }
 
 // cloudflared reads the connector's own listener on this host. The target is

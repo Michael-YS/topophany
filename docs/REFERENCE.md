@@ -32,7 +32,7 @@ The edge answers first, so evidence is attributed along `via`. Any response (an 
 
 HTTP probes record which edge answered from the headers edges add to their responses: `edge_provider` (`cloudflare`, `vercel`, `cloudfront`, `fastly`, `netlify`), `edge_pop` (the point of presence, e.g. `NRT` from `CF-Ray`), `vercel_edge_region` (the receiving Vercel edge region), `vercel_route_regions` (up to eight reported Vercel routing regions, colon separated; no inferred function role), `edge_mitigation` (`challenge` when Cloudflare marks a challenge page; other Cloudflare products' values, such as `guardrails`, are not kept), `edge_access` (`login_redirect` when a `302`, `303` or `307` redirect's `Location` host ends in `.cloudflareaccess.com`; the URL's key ID and redirect target are not kept, and an evidence line names it only when the response names the edge's provider), `edge_cache` (one of the statuses edges report, such as `HIT`, `MISS` or `DYNAMIC`; any other is not kept), and, when Cloudflare adds its `cfL4` `Server-Timing` entry, `edge_rtt_ms` and `edge_min_rtt_ms` (the colo's own round-trip and minimum round-trip readings for the connection (TCP or QUIC) that carried the response, read as microseconds from the live capture and recorded as whole milliseconds rounded to the nearest), `edge_retrans` and `edge_lost` (decimal counts), and `edge_proto` (`TCP` or `QUIC`; any other word is dropped). The entry's connection identifier, byte counters, window, delivery rate and timestamp are not kept; no official field-layout or unit specification for the entry was found, and spot checks of several Cloudflare hosts sent no `cfL4`. A trace check whose `exit_format` is `trace` adds the edge's account of the request from its `/cdn-cgi/trace` body: `trace_colo` (the colo it reached, exactly three uppercase letters), `trace_warp` (`off`, `on` or `plus`), `trace_gateway` (`on` or `off`), `trace_http` (`http1.1`, `http2` or `http3`, mapped from the body's slash form), `trace_tls` (`TLSv1.2` or `TLSv1.3`) and `trace_loc` (the client country the edge saw, two uppercase letters). The four words `trace_warp`, `trace_gateway`, `trace_http` and `trace_tls` are kept only in their closed vocabularies; `trace_colo` and `trace_loc` are free tokens checked only for their letter shape and length, and a value outside either form is dropped. `exit_ip` is read from the `ip=` line, with or without `expected_exit`; a body over 4 KiB is not read as a trace, so neither the trace facts nor that unconditional `exit_ip` are recorded, while an `expected_exit` assertion keeps its own exit parser. The `uag`, `h`, `sni`, `ts`, `fl`, `visit_scheme`, `sliver`, `kex` and `rbi` lines are not kept, and a body without both `fl` and `colo` is not a trace. These are what the response says, not verified routing: an origin can send the same headers. Values are reduced to short label characters.
 
-A peer that is sent a secret could hand it back in what it answers, and observations reach every viewer of a collector, who is never given the secret. So when a request carries one (`bearer_env`, any `request_headers` entry, any `request_header_envs` entry, or a query in its URL, which the public topology hides, or a proxy `password_env` for a plain `http://` target, as such a hop can write the answer), its observation keeps what the peer said only as closed words, numbers and comparisons with the topology: an HTTP check keeps `edge_provider`, `edge_cache`, the closed `edge_mitigation` and `edge_access` words, Cloudflare's numeric `edge_rtt_ms`, `edge_min_rtt_ms`, `edge_retrans` and `edge_lost`, the closed `edge_proto` word, and the trace check's closed `trace_warp`, `trace_gateway`, `trace_http` and `trace_tls` words, but not `edge_pop`, legacy `edge_region`, `vercel_edge_region` or `vercel_route_regions`; on such a request every trace check withholds `trace_colo`, `trace_loc` and `exit_ip`, and a check that asserts `expected_exit` keeps no `exit_ip`; a `mihomo` check sent a `token_env` keeps its `mode` as `rule`, `global`, `direct`, `script` or `other`, names in `reported_chain`, `reported_selection` and `provider.*` only the proxies its `root_proxy` and `expected_providers` declare (any other reads `undeclared`), and leaves out `test_url`. Such observations carry `peer_text: withheld_secret_request`. The values of `request_header_envs` are variable names, not secrets: each is 1..128 bytes with no whitespace, `=`, comma, control or bidi characters, the same rule `bearer_env` now follows. Use an `https://` exit endpoint to keep `exit_ip` through an authenticated proxy.
+A peer that is sent a secret could hand it back in what it answers, and observations reach every viewer of a collector, who is never given the secret. So when a request carries one (`bearer_env`, any `request_headers` entry, any `request_header_envs` entry, or a query in its URL, which the public topology hides, or a proxy `password_env` for a plain `http://` target, as such a hop can write the answer), its observation keeps what the peer said only as closed words, numbers and comparisons with the topology: an HTTP check keeps `edge_provider`, `edge_cache`, the closed `edge_mitigation` and `edge_access` words, Cloudflare's numeric `edge_rtt_ms`, `edge_min_rtt_ms`, `edge_retrans` and `edge_lost`, the closed `edge_proto` word, and the trace check's closed `trace_warp`, `trace_gateway`, `trace_http` and `trace_tls` words, but not `edge_pop`, legacy `edge_region`, `vercel_edge_region` or `vercel_route_regions`; on such a request every trace check withholds `trace_colo`, `trace_loc` and `exit_ip`, and a check that asserts `expected_exit` keeps no `exit_ip`; a `mihomo` check sent a `token_env` keeps its `mode` as `rule`, `global`, `direct`, `script` or `other`, names in `reported_chain`, `reported_selection` and `provider.*` only the proxies its `root_proxy` and `expected_providers` declare (any other reads `undeclared`), and leaves out `test_url`. Such observations carry `peer_text: withheld_secret_request`. The values of `request_header_envs` are variable names, not secrets: each is 1..128 bytes with no whitespace, `=`, comma, control or bidi characters, the same rule `bearer_env` now follows. Use an `https://` exit endpoint to keep `exit_ip` through an authenticated proxy. A `cloudflare` API check sends a token on every read, so its observations keep only closed words, numbers, shaped tokens (three uppercase letters for a colo, at most 24 token characters for a connector version) and comparisons with the declared topology; `origin_ip`, connection and client identifiers, the DNS record's content, undeclared origin names and every `errors[].message` are never kept, and `peer_text: withheld_secret_request` marks the sample.
 
 ## Probe Parameters
 
@@ -59,6 +59,7 @@ Older collectors/viewers reject the new `policy_threshold` field. Upgrade collec
 | `tailscale` | `adapter.peer` matching peer DNS, IP, or ID | Local Tailscale client reported peer status; idle or relay indicators do not directly prove application service status |
 | `wireguard` | `adapter.interface`, `adapter.peer` (public key) | Local WireGuard status queried; older handshakes do not imply broken connectivity; private keys and PSKs are stripped |
 | `cloudflared` | Connector metrics listener at a literal loopback `http://127.0.0.1:PORT` or `http://[::1]:PORT`; `adapter` object | Read the connector's own `/ready` and `/metrics`; reports an edge session and its counters, not the reachability of the service behind it |
+| `cloudflare` | Cloudflare API base URL, default `https://api.cloudflare.com/client/v4`; `adapter.token_env` and one `adapter.cloudflare` read | Read one of Cloudflare's own records (tunnel, DNS record, pool health) with one GET; reports the platform's state, never a request the edge answered or the origin's reachability |
 | `host` | Optional `host` object; Linux, macOS and Windows | Local CPU, memory, filesystem and process counters collected; configured resource assertions pass |
 
 ### Host Resources
@@ -773,3 +774,94 @@ it, so upgrade collectors and all viewers to 1.4.0 or newer before enabling it;
 default configurations omit the field and remain readable by older clients.
 The nested options are part of the measurement contract, so setting or changing
 them starts a new contract and history for that check.
+
+### Cloudflare API adapter
+
+`kind: "cloudflare"` reads one Cloudflare API resource per check with one
+allowlisted `GET`, using a token from `adapter.token_env` in the worker's
+environment. The public target is `https://api.cloudflare.com/client/v4`; any
+target must be exactly `https://api.cloudflare.com/client/v4` (a trailing
+slash and an explicit `:443` are accepted) or a literal loopback test address,
+which may use `http`; another host, another path, or a port outside 1..65535 is
+refused, and the base carries no userinfo, query, fragment or dot segments.
+`path`, `bind_ip`, `resolve_ip`, `server_name` and `ca_file` work as they do for
+the Mihomo controller read, and this kind may traverse its path's proxies
+because the API is legitimately reachable through them; there is no environment
+proxy, no redirect following and no direct fallback. An endpoint is refused:
+the API base is `target`. `interval_seconds` must be at least 60, well inside
+Cloudflare's documented limit of about 1,200 requests per five minutes per user
+(the limit is shared by that user's tokens).
+
+`adapter.cloudflare.read` selects exactly one of `tunnel`, `dns_record` or
+`pool`. `account_id`, `zone_id`, `tunnel_id` and `pool_id` are 32 hex
+characters; `record_name` is a DNS name and `record_type` is `A`, `AAAA` or
+`CNAME`. `expected_proxied` and `expected_content` belong to the DNS read,
+`expected_connections` (1..64) and `expected_colos` (at most eight three-letter
+uppercase codes) to the tunnel read, and `expected_origins` (at most sixteen IP
+addresses or host names) to the pool read. A field belonging to another read is
+refused rather than ignored.
+
+| Read | Request | Facts | Policy |
+|---|---|---|---|
+| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status` (`healthy`, `degraded`, `down` or `inactive`), `tunnel_connections`, `tunnel_pending_reconnect`, `tunnel_colos` (sorted, at most eight), `connector_versions` (sorted, at most four), `oldest_connection_at` (RFC 3339) | `connections_below_expected`, `colo_outside_expected` |
+| `dns_record` | `GET /zones/{zone_id}/dns_records?name={record_name}&type={record_type}` | `record_count`, `record_proxied` (`true`/`false` when every record agrees), `record_ttl` (same), `record_content_matches` (`true`, `false` or `not_declared`) | `record_missing`, `record_not_proxied`, `record_proxied_unexpectedly`, `record_content_mismatch` |
+| `pool` | `GET /accounts/{account_id}/load_balancers/pools/{pool_id}/health` | `pool_healthy` (when a region reports it), `origins_healthy`, `origins_total`, `regions_reporting`, `origin.<declared>` (`healthy`/`unhealthy`) | `origins_below_expected` |
+
+The DNS query is the only query and carries exactly one `name` and one closed
+`type`. A path outside the three exact forms, a dot segment and an extra query
+parameter are refused with `api_path_not_allowed` before a request exists. The
+DNS record's `content` is compared with `expected_content` in memory and never
+stored; the observation keeps only whether it matched, so a record that still
+points at the old origin is reported as a mismatch without republishing the
+address. The record id, zone name and comment are never kept. The `result`
+must be present: absent or null is a monitor error, while an explicit `[]` is
+`record_missing` policy; when `result_info.total_count` is present and differs
+from the page length the response is a partial page and is refused rather than
+counted. More than one record for one name and type leaves `record_proxied`
+and `record_ttl` absent when they disagree, with `record_count` saying how many
+were returned.
+
+The tunnel read counts the documented `result.connections` array (pending
+reconnections included; the current reference marks `is_pending_reconnect`
+deprecated and says it is always false) and records the API's closed `status`. `origin_ip`,
+connection and client identifiers and the tunnel name never become facts.
+Cloudflare documents that the connections array is deprecated in favour of the
+dedicated connections endpoint and will start returning empty; a zero count can
+therefore mean the field moved rather than that no connector is live, while
+`tunnel_status` still carries the API's own word. A `down` or `degraded` status
+is a reported fact and does not by itself fail the check: it is the platform's
+statement, and `expected_connections` and `expected_colos` are the declared
+assertions. The pool reference renders `pop_health` both as one
+`{healthy, origins}` object and as a list of regions, and the generated model
+collapses the region map; the adapter accepts both. `regions_reporting` counts
+parsed regions, the two origin counts cover distinct origins, and an origin
+reported in several regions is healthy only when every report says so. Only
+declared origins appear as `origin.<declared>` keys; an undeclared origin
+contributes to the counts only, and a declared one that is missing or unhealthy
+is `origins_below_expected` policy.
+
+Every read is credential-bearing, so every failure is a local monitor `error`,
+never a target failure. A missing token is `cloudflare_token_missing` at stage
+`setup`, with nothing sent; every other failure is stage `adapter_api`: a
+connect error or timeout (`api_unavailable`), `401`/`403`
+(`authentication_failed`), any other non-200 including a refused redirect
+(`http_<status>`, such as `http_429`), an oversized body
+(`response_too_large`) and an invalid, over-complex or unexpected body
+(`unsupported_response_shape`). HTTP 200 with `success: false`
+is `api_unavailable`, and `errors[].message` is never read. A passing sample is
+`ok`, evidence `reported`, path evidence `cloudflare_api_reported`, with
+`peer_text: withheld_secret_request`. Only closed words, numbers,
+shape-validated tokens and comparisons with the topology leave the adapter;
+the reflection tests echo the bearer token into every string field and check
+that nothing of the token reaches the observation; a value exactly equal to the
+token is dropped even when it has a reportable shape (a connector version, a
+colo). The platform's statement says nothing about the origin or the public
+hostname answering, so keep a separate application check and the edge check.
+
+`adapter.cloudflare` is new. Older binaries refuse a topology that contains it,
+so upgrade collectors and all viewers to 1.4.0 or newer before enabling it;
+default configurations omit the field and remain readable by older clients.
+The nested options are part of the measurement contract, so setting or changing
+them starts a new contract and history for that check. The fixtures under
+`internal/adapters/cloudflare/testdata/api-v4/2026-10-19/` are synthetic and
+document-based; no live account or token was used.

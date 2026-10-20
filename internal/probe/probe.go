@@ -63,7 +63,7 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 		o.Outcome, o.Code, o.Detail = "error", "invalid_http_headers", "invalid local HTTP header configuration"
 		return o
 	}
-	if (x.Kind == "http" || x.Kind == "mihomo") && config.HTTPCredentials(c, x) != nil {
+	if (x.Kind == "http" || x.Kind == "mihomo" || x.Kind == "cloudflare") && config.HTTPCredentials(c, x) != nil {
 		o.Outcome, o.Code, o.Detail = "error", "insecure_http_credentials", "credentials require encrypted transport"
 		return o
 	}
@@ -100,6 +100,14 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 	case "wireguard":
 		o.Evidence = "reported"
 		e = r.wireguard(ctx, x, &o)
+	case "cloudflare":
+		o.Evidence = "reported"
+		o.PathEvidence = cloudflare.PathEvidence
+		o.Stage = "adapter_api"
+		// The API read is an HTTP client request, not a core stream against a
+		// target; the generic request-stream fact does not describe it.
+		delete(o.Facts, "connection_semantics")
+		e = r.cloudflare(ctx, d, x, target, &o)
 	case "cloudflared":
 		o.Evidence = "reported"
 		o.PathEvidence = cloudflared.PathEvidence

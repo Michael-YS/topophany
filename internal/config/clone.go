@@ -82,6 +82,20 @@ func Clone(c model.Config) model.Config {
 			}
 			x.Adapter.Cloudflared = &v
 		}
+		if api := x.Adapter.Cloudflare; api != nil {
+			v := *api
+			v.ExpectedOrigins = slices.Clone(api.ExpectedOrigins)
+			v.ExpectedColos = slices.Clone(api.ExpectedColos)
+			if api.ExpectedProxied != nil {
+				proxied := *api.ExpectedProxied
+				v.ExpectedProxied = &proxied
+			}
+			if api.ExpectedConnections != nil {
+				n := *api.ExpectedConnections
+				v.ExpectedConnections = &n
+			}
+			x.Adapter.Cloudflare = &v
+		}
 		x.Adapter.ExpectedProviders = maps.Clone(x.Adapter.ExpectedProviders)
 		for k, names := range x.Adapter.ExpectedProviders {
 			x.Adapter.ExpectedProviders[k] = slices.Clone(names)

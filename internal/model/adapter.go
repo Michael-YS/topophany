@@ -14,4 +14,5 @@ type AdapterOptions struct {
 	ProviderMatchModes       map[string]string        `json:"provider_match_modes,omitempty"`
 	TailscaleDiagnostic      string                   `json:"tailscale_diagnostic,omitempty"`
 	Cloudflared              *CloudflaredOptions      `json:"cloudflared,omitempty"`
+	Cloudflare               *CloudflareOptions       `json:"cloudflare,omitempty"`
 }

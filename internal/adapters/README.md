@@ -12,13 +12,23 @@ owns scheduling, cancellation, elapsed time, the observation envelope and
 error classification. Adapters fill software-specific facts and policy
 outcomes. Keep runtime reports distinct from measured application responses.
 
-Cloudflare, Vercel, CloudFront, Fastly and Netlify currently interpret headers
-from existing HTTP checks. Their `HeaderFacts` functions make no network calls
+Cloudflare, Vercel, CloudFront, Fastly and Netlify interpret headers from
+existing HTTP checks, and Cloudflare also owns the `cloudflare` API check kind
+below. Their `HeaderFacts` functions make no network calls
 and do not need separate check kinds or configuration validators. Shared
 reported-label bounds live in `edgeheaders`; `probe.EdgeFacts` retains the
 explicit first-match order: Cloudflare, Vercel, CloudFront, Fastly, Netlify.
 The HTTP probe still owns secret-response filtering. Provider branding remains
 in `view`, and generic `via` evidence attribution remains in `engine`.
+
+`cloudflare` reads three documented Cloudflare API resources, one allowlisted
+`GET` per check: a Tunnel's status, a DNS record's presence/proxied/content
+comparison, and a load balancer pool's origin health. The bearer token is named
+by `adapter.token_env` and read from the worker's environment; every response
+is credential-bearing, so only closed words, numbers, shaped tokens and
+declared comparisons leave the adapter. Outside a literal loopback test
+address the target must be exactly `https://api.cloudflare.com/client/v4`, and
+the kind may use explicit path proxies. See [cloudflare](cloudflare/README.md).
 
 `cloudflared` reads the local Cloudflare Tunnel connector's metrics listener.
 Its target must be a literal loopback URL, it sends no credential, and it is

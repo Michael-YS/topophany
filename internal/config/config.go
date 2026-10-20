@@ -19,6 +19,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflare"
 	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflared"
 	"github.com/WhitenWhiten/topophany/internal/adapters/mihomo"
 	"github.com/WhitenWhiten/topophany/internal/adapters/tailscale"
@@ -491,6 +492,30 @@ func validateResolved(c model.Config) error {
 			if err := cloudflared.Validate(x.Adapter.CloudflaredOptions()); err != nil {
 				return fmt.Errorf("check %s: %w", x.ID, err)
 			}
+		case "cloudflare":
+			// The API read sends a token and is at most one GET per check.
+			// The default target is the documented v4 base; a test may point
+			// it at a literal loopback server over http.
+			if x.IntervalSeconds < 60 {
+				return fmt.Errorf("check %s: cloudflare API reads require interval_seconds of at least 60", x.ID)
+			}
+			if x.Endpoint != "" {
+				return fmt.Errorf("check %s: cloudflare reads the API at target (default https://api.cloudflare.com/client/v4), not an endpoint", x.ID)
+			}
+			if x.Adapter.TokenEnv == "" || !SecretEnvName(x.Adapter.TokenEnv) {
+				return fmt.Errorf("check %s: cloudflare API reads require a valid adapter.token_env", x.ID)
+			}
+			if err := cloudflare.ValidateTarget(t); err != nil {
+				return fmt.Errorf("check %s: %w", x.ID, err)
+			}
+			if err := cloudflare.Validate(x.Adapter.CloudflareOptions()); err != nil {
+				return fmt.Errorf("check %s: %w", x.ID, err)
+			}
+			// token_env is a credential: it needs HTTPS or direct literal
+			// loopback without a proxy or remote resolve override.
+			if err := HTTPCredentials(c, x); err != nil {
+				return err
+			}
 		case "host":
 			// Validated above; this check reads only the observer's host.
 		default:
@@ -516,7 +541,7 @@ func validateResolved(c model.Config) error {
 		}
 		if x.Path != "" && len(paths[x.Path].Proxies) > 0 {
 			switch x.Kind {
-			case "http", "tcp", "tls", "ssh-banner", "mihomo":
+			case "http", "tcp", "tls", "ssh-banner", "mihomo", "cloudflare":
 			default:
 				return fmt.Errorf("check %s: this probe cannot traverse stream proxy chains", x.ID)
 			}
@@ -585,6 +610,11 @@ func Target(c model.Config, x model.Check) string {
 	if x.Target != "" {
 		value, _ := expandAddress(c.Addresses, x.Target)
 		return value
+	}
+	// The Cloudflare API adapter reads one documented v4 resource; naming the
+	// public base once keeps the contract and the request in step.
+	if x.Kind == "cloudflare" {
+		return "https://api.cloudflare.com/client/v4"
 	}
 	for _, e := range c.Endpoints {
 		if e.ID == x.Endpoint {

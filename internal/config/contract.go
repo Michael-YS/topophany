@@ -67,19 +67,16 @@ func Contracts(c model.Config) map[string]string {
 	}
 	c = resolved
 	out := make(map[string]string, len(c.Checks))
-	endpoints, paths := map[string]string{}, map[string][]model.Proxy{}
-	for _, e := range c.Endpoints {
-		endpoints[e.ID] = e.Address
-	}
+	paths := map[string][]model.Proxy{}
 	for _, p := range c.Paths {
 		paths[p.ID] = p.Proxies
 	}
 	for _, x := range c.Checks {
-		target := x.Target
-		if target == "" {
-			target = endpoints[x.Endpoint]
-		}
-		out[x.ID] = measurement(c.Project, x, target, paths[x.Path])
+		// Target is the one place a kind's default target is defined, so the
+		// batch contract must go through it too; the map of endpoints this
+		// used to read would silently disagree with Contract for a kind such
+		// as cloudflare, whose target defaults when empty.
+		out[x.ID] = measurement(c.Project, x, Target(c, x), paths[x.Path])
 	}
 	return out
 }

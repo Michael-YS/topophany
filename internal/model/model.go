@@ -201,7 +201,7 @@ type Check struct {
 	Service           string         `json:"service,omitempty"`
 	Path              string         `json:"path,omitempty"`
 	Link              string         `json:"link,omitempty"`
-	Kind              string         `json:"kind"`             // http,tcp,tls,ssh-banner,dns,udp-echo,icmp,mihomo,tailscale,wireguard,host,cloudflared
+	Kind              string         `json:"kind"`             // http,tcp,tls,ssh-banner,dns,udp-echo,icmp,mihomo,tailscale,wireguard,host,cloudflared,cloudflare
 	Target            string         `json:"target,omitempty"` // endpoint address unless overridden explicitly
 	IntervalSeconds   int            `json:"interval_seconds"`
 	TimeoutSeconds    int            `json:"timeout_seconds"`

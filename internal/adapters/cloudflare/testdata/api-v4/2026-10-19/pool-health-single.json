@@ -1,0 +1,21 @@
+{
+  "errors": [],
+  "messages": [],
+  "result": {
+    "pool_id": "44444444444444444444444444444444",
+    "pop_health": {
+      "healthy": true,
+      "origins": [
+        {
+          "192.0.2.10": {
+            "failure_reason": "synthetic placeholder",
+            "healthy": true,
+            "response_code": 200,
+            "rtt": "21.0ms"
+          }
+        }
+      ]
+    }
+  },
+  "success": true
+}

@@ -24,6 +24,35 @@ Client and executor tokens use private files or `token_env`. HTTP probe bearer t
 
 `request_header_envs` names the environment variable a request header's value comes from, never the value itself; for example, a Cloudflare Access service token is sent from `CF_ACCESS_ID` and `CF_ACCESS_SECRET` without either secret entering the topology file. The executor reads the variables when it sends the request. The map is an `http` option and other check kinds refuse it. It is cleared from the public topology beside `request_headers` and `bearer_env`, so viewers never learn which variables a check uses. A `Host` entry is allowed and must resolve to a host or `host:port`; it sets the request's Host but not TLS `ServerName`, which still names the URL's host unless `server_name` says otherwise. A missing or empty variable is a monitor error and sends nothing.
 
+The Cloudflare API adapter (`kind: "cloudflare"`) sends a bearer token named by
+`adapter.token_env`. The token itself is never written in the topology: the
+executor reads that environment variable when it runs the check and the
+variable's name is cleared from the public topology beside every other
+credential reference. Use a scoped API token holding only **Account ›
+Cloudflare Tunnel › Read**, **Zone › DNS › Read** and **Account › Load
+Balancing: Monitors and Pools Read**; the adapter calls nothing else. It does
+not call `/user/tokens/verify`, which would add a second request per check and
+need the `User API Tokens Read` permission; a 401 or 403 on the one selected
+read is reported as `authentication_failed` and is a monitor error, never an
+outage. Outside a literal loopback test address the target must be exactly
+`https://api.cloudflare.com/client/v4` with a valid port, so a lookalike host or
+another path is refused, and the client follows no redirect, so the token
+cannot be forwarded to another location; an explicit path proxy may carry it only under the same rule the
+Mihomo controller read follows, while no environment proxy applies.
+
+Every Cloudflare API response is treated as credential-bearing. The adapter
+keeps only closed words, numbers, shape-validated tokens and comparisons with
+the declared topology, sets `peer_text: withheld_secret_request`, and never
+stores a tunnel's `origin_ip`, its connection or client identifiers, a DNS
+record's content, an undeclared origin name or any `errors[].message` text.
+Numeric counts are the same documented numeric exception as elsewhere: a purely
+numeric credential could appear verbatim in a count. The reflection tests echo
+the bearer token into every string field of all three reads, including a
+24-character token that is itself a valid version token, and require that
+nothing of it reaches the observation, its fact keys or values, its detail or
+its error. A value exactly equal to the token is dropped even when its shape is
+one the adapter reports.
+
 POSIX credential files, the collector's TLS private key among them, require `0600` or stricter file permissions and reject static symlinks and non-regular files; a collector whose key is otherwise refuses to start. Copy a key out of a certificate tool's directory, such as Let's Encrypt's `live/` whose files are links, rather than pointing `--tls-key` at it. The parent directory must be owned and controlled by a trusted user; no defense is claimed against race-condition replacement attacks within a world-writable parent directory. Windows runtime reads rely on filesystem ACLs. Native bundle generation and installation replace and verify directory and existing child DACLs, allowing only the current user SID and necessary Administrators/SYSTEM before writing credentials. They reject unrelated owners and reparse points; they do not audit arbitrary parent-directory ACLs or defend against replacement races in untrusted writable parents. Manual deployers must confirm those same read-access limits.
 
 Privileged Unix installation checks every existing component of installation

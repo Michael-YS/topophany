@@ -140,6 +140,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before adding it to a topology. Tested against cloudflared 2026.10.0 with a
   fake, unregistered tunnel; the 200-ready and connected-metrics shapes are
   documented, not observed, and their fixtures say so.
+- A new check kind, `cloudflare`, reads three things only Cloudflare knows with
+  a least-privilege API token from `adapter.token_env`: a Tunnel's status and
+  connections (`tunnel_status`, `tunnel_connections`,
+  `tunnel_pending_reconnect`, `tunnel_colos`, `connector_versions`,
+  `oldest_connection_at`); whether a DNS record still exists, is still proxied
+  and still matches the declared content (`record_count`, `record_proxied`,
+  `record_ttl`, `record_content_matches`, with the record's content compared in
+  memory and never stored; an absent/null result or a partial
+  `result_info.total_count` page is a monitor error, while an explicit empty
+  list is `record_missing` policy); and a load balancer pool's origin health from
+  Cloudflare's own monitors (`pool_healthy`, `origins_healthy`,
+  `origins_total`, `regions_reporting`, and `origin.<declared>` only for
+  declared origins; an absent declared origin is policy but gets no invented
+  verdict). Each check makes exactly one allowlisted `GET` and never
+  requests the zone. The target defaults to
+  `https://api.cloudflare.com/client/v4`; outside a literal loopback test
+  address it must be exactly that host and base path, so the bearer token cannot
+  go to a lookalike service, and `interval_seconds` must be at least 60,
+  explicit path proxies are allowed, redirects are not followed and ambient
+  proxies do not apply. `adapter.cloudflare` selects `read: tunnel`,
+  `dns_record` or `pool` and carries the identifiers and declared expectations
+  that read needs; a field belonging to another read is refused. Declared
+  expectations are policy, not failure: `connections_below_expected`,
+  `colo_outside_expected`, `record_missing`, `record_not_proxied`,
+  `record_proxied_unexpectedly`, `record_content_mismatch` and
+  `origins_below_expected`. A missing token is a local setup error
+  (`cloudflare_token_missing`, nothing sent); a connect error or timeout, a
+  401/403, a 429 or any other non-200 (code `http_<status>`), an oversized
+  body and a malformed response are monitor `error`s at stage `adapter_api`,
+  never target outages; HTTP 200 with `success: false` is also a monitor
+  error. `tunnel_colos` is capped for the fact, but `colo_outside_expected`
+  compares every distinct reported colo, and a value exactly equal to the
+  bearer token is dropped even when its shape is one the adapter reports. Every response is credential-bearing, so only closed words, numbers,
+  shape-validated tokens and declared comparisons leave the adapter, and
+  `peer_text: withheld_secret_request` marks the sample. `topo edit` authors
+  the kind: token variable, read, the read's identifiers and its declared
+  expectations; switching reads clears the other read's fields. The token scopes are
+  Account › Cloudflare Tunnel › Read, Zone › DNS › Read and Account › Load
+  Balancing: Monitors and Pools Read, nothing else. The fixtures are synthetic
+  and document-based: no live account or token was used, so the acceptance
+  record names what a real account must still confirm. The nested options are
+  part of the measurement contract and the field is new, so upgrade collectors
+  and all viewers before adding it to a topology.
 - Topology maps place the Cloudflare colo a check reached. A new generated
   table in `internal/view/colos.go` holds Cloudflare's own public location
   list (`https://speed.cloudflare.com/locations`; 309 locations, fetched

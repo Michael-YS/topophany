@@ -158,6 +158,13 @@ func ValidatePublic(c model.Config) error {
 	}
 	for i := range copy.Checks {
 		x := &copy.Checks[i]
+		// A public topology strips token_env from every check; the API
+		// adapter still needs one to pass validation. Restore a non-secret
+		// placeholder on this owned, non-executable copy, as for a
+		// cloudflared https listener's ca_file.
+		if x.Kind == "cloudflare" {
+			x.Adapter.TokenEnv = publicCAPlaceholder
+		}
 		if x.Kind != "cloudflared" || x.CAFile != "" {
 			continue
 		}
