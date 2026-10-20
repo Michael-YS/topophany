@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/client"
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/preview"
 )
@@ -38,6 +39,7 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 			return Source{}, failure("project_mismatch", "preview project does not match request")
 		}
 		sim.SetScenario(r.Scenario, now().Add(-30*time.Minute))
+		book := monitor.NewSampleBook(r.Template)
 		fetch := func(ctx context.Context) (monitor.Input, error) {
 			if err := ctx.Err(); err != nil {
 				return monitor.Input{}, err
@@ -50,6 +52,11 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 				if e == nil {
 					in.AllSnapshot = &all
 				}
+			}
+			if err == nil {
+				in.Samples = book.Fill(ctx, s, "", -1, func(_ context.Context, id string) ([]model.Observation, error) {
+					return sim.History(id, monitor.CardSamples, at)
+				})
 			}
 			return in, err
 		}
@@ -88,8 +95,9 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 	}
 	sourceErrors := make(chan *Error, 1)
 	previous := monitor.Input{Unavailable: true}
+	book := monitor.NewSampleBook(r.Template)
 	fetch := func(ctx context.Context) (monitor.Input, error) {
-		s, all, err := cl.SnapshotViews(ctx, r.Observer)
+		s, all, server, err := cl.SourcedViews(ctx, r.Observer)
 		if errors.Is(err, client.ErrProjectMismatch) {
 			select {
 			case sourceErrors <- failure("project_mismatch", "snapshot project does not match request"):
@@ -101,6 +109,12 @@ func openSource(ctx context.Context, r Request, now func() time.Time) (Source, *
 			return monitor.Input{}, err
 		}
 		in := monitor.Input{Snapshot: s, AllSnapshot: all}
+		// History is read from the collector the snapshot came from, under
+		// the measurement it names, or not at all.
+		in.Samples = book.Fill(ctx, s, server+" "+s.Revision, monitor.HistoryReads, func(ctx context.Context, id string) ([]model.Observation, error) {
+			h, _, err := cl.HistoryAt(ctx, client.SnapshotHistory(s, server, id), monitor.CardSamples)
+			return h.Entries, err
+		})
 		previous = in
 		return in, nil
 	}

@@ -93,6 +93,7 @@ The TUI is built to answer one question before anything is read: *is anything wr
 - **Overview** — a verdict headline with a big failure count, a map of every node and link, the list of what needs attention (incidents, failing paths and services, silent observers), the services, and how fresh each observer is. Where the topology declares applications, the services card gives each application a line, with a mark for each of its services and how many need attention, and lists the services by name under their application where it has room, those needing attention first; otherwise it is a matrix of service names. Selecting an item lights its whole route on the map. On wide terminals the map sits beside the cards; smaller terminals stack them.
 - **Topology** — the node → endpoint → link hierarchy beside the map, with the evidence for the selected entity underneath.
 - **Servers** — a wall of cards, one per server: its state, kind, provider and place; the services it runs (and the edge in front of each); its addresses by network; the containers and VMs it hosts; the observers on it and its links; and your notes as a memo at the foot. Edges and platforms get cards too, listing what runs there, what they stand in front of, and the points of presence they answered from, ordered by their share over the last day (`LAX 92%`) when the collector keeps rollups, or by the codes the newest response headers named when it does not yet; the card's JSON says which with `pops_from_rollups`; `/` searches the memos as well; clicking a service, address or link opens it. A link's row carries the link's state glyph when it is down (`✖`) or degraded (`▲`), and what its own fresh checks report of it, at the right edge: `→ Cloudflare   cloudflared · 4 sessions · hkg,sin` for a connector holding four edge sessions, `✖ → Cloudflare   cloudflared · no ready session` for one holding none, and, when a `cloudflare` API read names the same link, `· API 4 connections healthy` after the connector's words. They are readings beside the link's state, never its reason, so a connector and the API that disagree are both shown. A row too narrow for all of it drops the transport word first, then cuts inside the last reading it has room for. In `topo show servers --json` each link gains `health` (unknown throughout a cached view) and `reading`, a list of those phrases that is absent when no fresh check of the link reported. Press `s` and the cards line up in a grid at one size, each saying the same things in the same places: the header, a panel each for CPU, memory and disk, how many services run there, how many addresses reach it and how many checks measure it, with a mark for each in its state and what needs a look in words, the address it is known by (its first public one) and the first two lines of its memo. In the resources' place, an edge or a platform, which has no machine of yours to read, says what it stands in front of and where it answered from; a host nothing reads says why (no worker runs there, or its worker runs no host check), and one whose reading has gone silent says when it was last read. Anything else a server lacks keeps its place empty, so the cards still read across; `s` brings the wall back. In either layout, `Enter` or a second click lays the selected card open over the others, which step back behind it: your notes first, as what the server is for, then its resources charted over the samples kept with each one's peak and limit, everything that runs on it and reaches it with nothing cut short, and the checks its state rests on, each leading to its evidence, in two columns where the terminal is wide. `↑↓` scroll it; `Enter`, `Esc` or a click beside it closes it. A node's evidence as the other tabs show it is on the Topology tab.
+- **Services as cards** — on the Services tab, `s` puts a card in place of each row, cut from the server cards' cloth and laid out as their grid at one size, under a heading for each application that says how many members it has and how many need a look. A card's band takes the hue of the server it runs on, so a service and its server match across the tabs, and trouble's color in trouble; under its name and state it says what runs it, on which server and where. Where a server's card charts CPU, memory and disk, a service's says who sees it from where: a row for each observer, the worst first, with a mark for each of its checks, so a path that fails beside one that passes stays in sight; then that observer's recent samples as a spark (a bar as tall as the sample took, `✖` where it failed, `·` where none was taken), its median latency over the day and the share of the day it was up. Two observers in one place go by their names. Then, as on a server's card, a tally each of its checks, its endpoints and what it depends on, with a mark for each and what needs a look in words; the address it is known by, with the edge in front and the colos that edge answered from (`⇠ ☁ SJC · FRA`); and the first two lines of its memo. A service no check measures says so rather than charting nothing; viewed from one observer (`v`), a service only other observers measure says it is not seen from here. `Enter` lays the card open over the others: each check by observer with its samples across the column, its median and 95th-percentile times, first byte and colo; each endpoint and what stands in front of it; the colos and cache statuses over the day; the server it runs on, which opens that server's card; what it depends on and what depends on it, each leading to its own; and its runbook, which topo links to but never runs. The samples are read from the collector's history when the cards first show and follow each snapshot after. `s` brings the table back, and the choice can be kept as a [preference](#display-and-startup-preferences).
 - **Services, Paths, Checks, Incidents, Observers** — aligned tables beside the evidence for the selected row. The state column stays empty for healthy rows, so problems are the only lit words, and a column in which every row says the same word (every check `fresh`, every item an `incident`) is left out, its room going to the names; it comes back as soon as a row differs. `Enter` expands the evidence behind a row. A check's evidence opens with its recent samples, read from the collector's history as the check is selected: a strip with one slot per sample, oldest at the left, colored by outcome (`●` ok, `▲` policy, `✖` fail, `○` error or unknown), and a grey `·` for each interval in which no sample was taken, so a silent worker shows as a gap rather than as health. Under it, a bar for what each passing sample took, then their median and 95th-percentile times and, where the probe timed them, the median DNS, connect, TLS and first-byte times. Where the collector keeps rollups, it adds the last day's first byte split by the edge's cache class (`first byte cached p50 40 ms · p95 90 ms · origin p50 600 ms · p95 700 ms · 24h`) and the share of answers by colo (`colos LAX 92% · HKG 8% · 24h`, at most four, with `other` not listed), each ending in its window, below the overall latency. The strip is read again when a newer sample arrives; a failed read keeps the samples already shown and says it was not refreshed. Below the check's state, **Availability** says how it fared over the last 24 hours, 7 days and 30 days, from the collector's long-term rollups: the share of the measured time it was up, over the share of the window that was measured, then how long it was down, degraded (a policy violated) or inconclusive (the monitor could not tell), such as `99.2% up over 96% measured · down 11m`. Each sample's outcome stands until the next sample or until it goes stale, so time without a current sample, as when a worker falls silent, is unmeasured rather than up; where the rollups begin inside a window, it says when they were first kept. The Checks tab shows the last day's share up as **UP 24H**, with how much of the day was measured when it was less than all of it (`98.9% · 3h`), and blank when nothing was measured.
 - **About** — a lit globe: a shaded ocean, dotted land and a graticule that curves with the surface, on which the places you declared are the only lights. The mouse wheel spins it, and it stays round on terminals whose character cells are not twice as tall as they are wide. Beside it are what the name means, the version, links to [topophany.com](https://topophany.com) and the source on GitHub, and, where there is room, the keys of the mode you are in.
 
@@ -117,6 +118,14 @@ Tabs count what in them needs a look: servers, services and paths that are down,
     <td align="center"><sub>Servers as uniform cards (<code>s</code>)</sub></td>
     <td align="center"><sub>A server's card laid open (<code>Enter</code>)</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="assets/services-cards.en.png" alt="The Services tab as cards under application headings: on each, the state over the server it runs on, a row per observer with a mark per check, a spark of recent samples, median latency and the day's share up, tallies of checks, endpoints and dependencies, the address it is known by and the memo"></td>
+    <td width="50%"><img src="assets/service-card.en.png" alt="A service's card laid open over the dimmed cards: each observer's check with its samples across the column, median and 95th-percentile latency, then how it is reached and the server it runs on"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Services as cards (<code>s</code>)</sub></td>
+    <td align="center"><sub>A service's card laid open (<code>Enter</code>)</sub></td>
+  </tr>
 </table>
 
 Press `m` to cycle the map through three modes:
@@ -131,12 +140,12 @@ Press `f` and the map has the screen to itself: the list and the evidence step a
 |---|---|
 | `1`–`9`, `Tab` / `Shift-Tab`, `h` / `l` | switch tabs (`?` toggles About) |
 | `j` / `k`, arrows, `PgUp` / `PgDn`, `g` / `G` | move through the list |
-| `Enter` | expand evidence for the selected row; on Servers, lay its card open over the others |
+| `Enter` | expand evidence for the selected row; on Servers, and on Services as cards, lay its card open over the others |
 | `/` | filter rows |
 | `v` | cycle observer vantage points |
 | `m` / `z` | cycle the map (virtual geo, geo, network) / zoom the geo map |
 | `p` | on the geo map, cycle Cards → Locations → Points: full site cards, compact city names (coordinates when unnamed), then markers alone; Locations and Points use dashed arcs |
-| `s` | on Servers, line the cards up at one size, each saying the same things; `s` brings the wall back |
+| `s` | on Servers, line the cards up at one size, each saying the same things; `s` brings the wall back. On Services, a card for each service in place of the table; `s` brings the table back |
 | `f` | show the map alone, on the Overview or Topology (from another tab, the Topology's); `f` or `Esc` brings the panels back |
 | `r` | refresh now |
 | `D` | debug overlay: frame time, bytes written, map geometry |
@@ -436,13 +445,15 @@ history. Reload the collector topology after edits to publish the new grouping.
 ## Display and startup preferences
 
 The built-in startup defaults are Overview, expanded groups, non-uniform Servers
-cards, maps with surrounding panels, automatic map mode and no provider logos. Startup display
+cards, the Services table rather than its cards, maps with surrounding panels,
+automatic map mode and no provider logos. Startup display
 preferences are local to the user and separate from topology and credentials.
 
 ```sh
 # Temporary overrides; never writes the saved defaults.
 topo --page servers --uniform-cards
 topo --page services --groups-collapsed
+topo --page services --service-cards
 topo --page topology --map-mode virtual --full-map
 
 # Save defaults for subsequent launches; no collector or terminal required.
@@ -452,7 +463,7 @@ topo preferences show
 topo preferences reset
 
 # Explicit false overrides a saved true for just this launch.
-topo --uniform-cards=false --groups-collapsed=false --full-map=false
+topo --uniform-cards=false --service-cards=false --groups-collapsed=false --full-map=false
 ```
 
 `--page` accepts overview, topology, servers, services, paths, checks, incidents,

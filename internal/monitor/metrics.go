@@ -534,6 +534,23 @@ func (p *projection) richValue(value Value) Value {
 		value.Health = card.Health
 		value.SampledAt = sampled
 		value.ValidUntil = until
+	case "service.card":
+		card, sampled, until, ok := p.service(value.Select.Service)
+		if !ok {
+			return missing(value, "entity_missing")
+		}
+		value.Value = card
+		value.Text = card.Name
+		value.Health = card.Health
+		value.SampledAt, value.ValidUntil = sampled, until
+	case "services.list":
+		list, sampled, until := p.serviceList()
+		value.Value = list
+		value.Text = fmt.Sprintf("%d services", len(list))
+		value.SampledAt, value.ValidUntil = sampled, until
+		for _, s := range list {
+			value.Health = worse(value.Health, s.Health)
+		}
 	case "servers.list":
 		servers, sampled, until := p.servers()
 		value.Value = servers

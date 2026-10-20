@@ -164,6 +164,9 @@ func (m *Model) phone(cv *Canvas, r rect) {
 	case m.Detail && m.Tab == tabServers && len(rows) > 0:
 		m.backBar(cv, r.x+1, r.y, r.w-1, len(rows))
 		m.drawSheet(cv, r.x, r.y+touchRows, r.w, r.h-touchRows, sel)
+	case m.Detail && m.serviceCards() && len(rows) > 0:
+		m.backBar(cv, r.x+1, r.y, r.w-1, len(rows))
+		m.drawServiceSheet(cv, r.x, r.y+touchRows, r.w, r.h-touchRows, sel)
 	case m.Detail:
 		m.backBar(cv, r.x+1, r.y, r.w-1, len(rows))
 		y := r.y + touchRows
@@ -191,6 +194,10 @@ func (m *Model) phone(cv *Canvas, r rect) {
 		m.listPanel(cv, rect{r.x, r.y + mh, r.w, r.h - mh}, rows, tag, true)
 	case m.Tab == tabServers:
 		ix, iy, iw, ih := m.panel(cv, r.x, r.y, r.w, r.h, title, tag, true)
+		m.drawCompactCards(cv, ix, iy, iw, ih, rows, true)
+	case m.serviceCards():
+		y := r.y + m.listTools(cv, r.x+1, r.y, r.w-1)
+		ix, iy, iw, ih := m.panel(cv, r.x, y, r.w, r.bottom()-y, title, tag, true)
 		m.drawCompactCards(cv, ix, iy, iw, ih, rows, true)
 	default:
 		y := r.y + m.listTools(cv, r.x+1, r.y, r.w-1)
@@ -222,10 +229,26 @@ func (m *Model) listTools(cv *Canvas, x, y, w int) int {
 	return touchRows
 }
 
-// compactCard is a server's card as a phone lists it: the band naming it,
-// its state, kind and place, over what runs on it, how it is reached and
-// what measures it.
+// compactCard is a card as a phone lists it. A server's: the band naming
+// it, its state, kind and place, over what runs on it, how it is reached
+// and what measures it. A service's: the band naming it, its state and
+// where it runs, over who sees it from where.
 func (m *Model) compactCard(f fleet, r Row, w int, selected bool) []cardRow {
+	if m.serviceCards() {
+		c, _ := f.ServiceCard(r.ID)
+		rows, _ := m.serviceHead(f, c, r, selected)
+		// A list of cards need not keep the grid's height: the panel goes
+		// without the rows that only pad it, a blank row over it.
+		panel := m.seenPanel(c, w)
+		blank := func(r cardRow) bool { return r.left == nil && r.right == nil }
+		for len(panel) > 0 && blank(panel[len(panel)-1]) {
+			panel = panel[:len(panel)-1]
+		}
+		if len(panel) > 0 && !blank(panel[0]) {
+			rows = append(rows, cardRow{})
+		}
+		return append(rows, panel...)
+	}
 	c := f.Card(r.ID)
 	rows, _ := m.cardHead(f, r, c, selected)
 	return append(rows, m.tallies(f, r, c, w)...)
@@ -235,6 +258,10 @@ func (m *Model) compactCard(f fleet, r Row, w int, selected bool) []cardRow {
 // phone does, scrolled so the selection shows; open makes a tap open a card.
 func (m *Model) drawCompactCards(cv *Canvas, x, y, w, h int, rows []Row, open bool) {
 	if len(rows) == 0 || w < 24 {
+		if m.serviceCards() {
+			m.drawServiceCards(cv, x, y, w, h, rows)
+			return
+		}
 		m.drawServers(cv, x, y, w, h, rows)
 		return
 	}
@@ -364,7 +391,7 @@ func (m *Model) twoPanes(cv *Canvas, look, touch rect) {
 		ix, iy, iw, ih := m.panel(cv, r.x, r.y, r.w, sh, "STATUS", "", false)
 		m.statusCard(cv, ix, iy, iw, ih)
 		m.listPanel(cv, rect{r.x, r.y + sh, r.w, r.h - sh}, rows, tag, false)
-	case m.Tab == tabServers:
+	case m.Tab == tabServers || m.serviceCards():
 		ix, iy, iw, ih := m.panel(cv, r.x, r.y, r.w, r.h, strings.ToUpper(tabs[m.Tab]), tag, true)
 		m.drawCompactCards(cv, ix, iy, iw, ih, rows, false)
 	default:
@@ -416,6 +443,8 @@ func (m *Model) lookPane(cv *Canvas, r rect, rows []Row, sel Row) {
 		m.mapPanel(cv, r, title, sel, m.touch.layout != layoutStacked)
 	case m.Tab == tabServers && len(rows) > 0:
 		m.drawSheet(cv, r.x, r.y, r.w, r.h, sel)
+	case m.serviceCards() && len(rows) > 0:
+		m.drawServiceSheet(cv, r.x, r.y, r.w, r.h, sel)
 	default:
 		hint := ""
 		if m.mapTab() {

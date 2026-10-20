@@ -131,8 +131,17 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	// fetches one as soon as attachMonitor starts it.
 	ingress := api.NewIngressCounter(api.DefaultIngressWindow)
 	backend.Ingress = ingress
-	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(context.Context) (monitor.Input, error) {
-		return monitor.Input{IO: ioaccount.Read(), Snapshot: backend.MonitorSnapshot(time.Now())}, nil
+	var samples *monitor.SampleBook
+	if panel != nil {
+		samples = monitor.NewSampleBook(panel.Template)
+	}
+	stopPanel, e := a.attachMonitor(ctx, panel, panelPath, func(ctx context.Context) (monitor.Input, error) {
+		s := backend.MonitorSnapshot(time.Now())
+		in := monitor.Input{IO: ioaccount.Read(), Snapshot: s}
+		in.Samples = samples.Fill(ctx, s, s.Revision, -1, func(_ context.Context, id string) ([]model.Observation, error) {
+			return backend.MonitorHistory(id, monitor.CardSamples)
+		})
+		return in, nil
 	}, *dir, *path, *authPath, *alertsPath, *cert, *key)
 	if e != nil {
 		return e

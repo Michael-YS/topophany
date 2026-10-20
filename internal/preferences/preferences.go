@@ -19,6 +19,7 @@ type Settings struct {
 	Page            string `json:"page"`
 	GroupsCollapsed bool   `json:"groups_collapsed"`
 	UniformCards    bool   `json:"uniform_cards"`
+	ServiceCards    bool   `json:"service_cards"`
 	FullMap         bool   `json:"full_map"`
 	MapMode         string `json:"map_mode"`
 	NerdFontIcons   bool   `json:"nerd_font_icons"`

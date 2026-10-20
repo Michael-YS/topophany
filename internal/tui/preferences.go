@@ -8,11 +8,11 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/preferences"
 )
 
-var preferenceNames = []string{"page", "groups-collapsed", "uniform-cards", "full-map", "map-mode", "nerd-font-icons"}
+var preferenceNames = []string{"page", "groups-collapsed", "uniform-cards", "service-cards", "full-map", "map-mode", "nerd-font-icons"}
 
 // prefFields is how many preferences the dialog lists; its three buttons
 // follow them.
-const prefFields = 6
+const prefFields = 7
 
 func preferenceForm(s preferences.Settings) *Form {
 	f := &Form{}
@@ -29,13 +29,14 @@ func preferenceForm(s preferences.Settings) *Form {
 		return "no"
 	}
 	f.add("Uniform cards", yes(s.UniformCards), fBool, "")
+	f.add("Service cards", yes(s.ServiceCards), fBool, "")
 	f.add("Full map", yes(s.FullMap), fBool, "")
 	f.add("Map mode", s.MapMode, fChoice, "", preferences.MapModes...)
 	f.add("Nerd Font icons", yes(s.NerdFontIcons), fBool, "")
 	return f
 }
 func formPreferences(f *Form) preferences.Settings {
-	return preferences.Settings{Page: f.val("Startup page"), GroupsCollapsed: f.val("Initial groups") == "collapsed", UniformCards: f.yes("Uniform cards"), FullMap: f.yes("Full map"), MapMode: f.val("Map mode"), NerdFontIcons: f.yes("Nerd Font icons")}
+	return preferences.Settings{Page: f.val("Startup page"), GroupsCollapsed: f.val("Initial groups") == "collapsed", UniformCards: f.yes("Uniform cards"), ServiceCards: f.yes("Service cards"), FullMap: f.yes("Full map"), MapMode: f.val("Map mode"), NerdFontIcons: f.yes("Nerd Font icons")}
 }
 func (m *Model) openPreferences() {
 	f := preferenceForm(m.currentPreferences())
@@ -131,6 +132,7 @@ var prefHelp = []string{
 	"The tab the TUI opens on.",
 	"Whether Services and Checks open with their groups expanded or folded.",
 	"Servers as a grid of cards of one size rather than a wall of full cards (s).",
+	"Services as a card each, under their groups, rather than a list (s).",
 	"Overview and Topology open with the map alone, without the panels (f).",
 	"The map shown first; auto picks the virtual geo map when places are declared (m).",
 	"Providers' logos before their names. Needs a Nerd Font in the terminal.",

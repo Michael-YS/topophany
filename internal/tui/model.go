@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -49,7 +50,7 @@ type Model struct {
 	GroupsCollapsed                         bool
 	PreferencesPath                         string
 	PreferenceOverrides                     []string
-	preferenceInitial                       [6]string
+	preferenceInitial                       [7]string
 	AttentionOnly                           bool
 	Search                                  string
 	Searching                               bool
@@ -62,6 +63,7 @@ type Model struct {
 	FullMap                                 bool      // the map alone fills the body where a tab has one (f)
 	GeoLabels                               geoLabels // geo map: cards, locations, points (p)
 	Uniform                                 bool      // Servers: a grid of uniform cards rather than the wall (s)
+	ServiceCards                            bool      // Services: a card for each service rather than the list (s)
 	NerdFont                                bool      // the terminal's font has the Nerd Fonts' logos, so providers wear them
 	Edit                                    *Editor   // non-nil only for topo edit
 	Preview                                 Preview   // non-nil only for topo preview
@@ -138,15 +140,33 @@ func (m *Model) Rows() []Row {
 		return *m.frameRows
 	}
 	var rows []Row
-	if m.businessTab() {
-		rows = m.view().GroupedList(m.Tab, view.GroupOptions{Application: m.Application, Environment: m.Environment, Service: m.ServiceFilter, By: m.groupMode(), Search: m.Search, Attention: m.AttentionOnly, Expanded: m.Expanded, Collapsed: m.GroupsCollapsed})
-	} else {
+	switch {
+	case m.serviceCards():
+		// The cards lie under their groups' headings, never folded away.
+		for _, r := range m.groupedRows(true) {
+			if r.Kind != "group" {
+				rows = append(rows, r)
+			}
+		}
+	case m.businessTab():
+		rows = m.groupedRows(false)
+	default:
 		rows = m.view().List(m.Tab, m.Search)
 	}
 	if m.frameRows != nil {
 		*m.frameRows = rows
 	}
 	return rows
+}
+
+// groupedRows are the business tab's rows by group, as the list folds
+// them, or with open every group unfolded.
+func (m *Model) groupedRows(open bool) []Row {
+	o := view.GroupOptions{Application: m.Application, Environment: m.Environment, Service: m.ServiceFilter, By: m.groupMode(), Search: m.Search, Attention: m.AttentionOnly, Expanded: m.Expanded, Collapsed: m.GroupsCollapsed}
+	if open {
+		o.Expanded, o.Collapsed = nil, false
+	}
+	return m.view().GroupedList(m.Tab, o)
 }
 
 // tabRows builds the unfiltered rows of a tab.
@@ -354,7 +374,15 @@ func (m *Model) Key(k string) string {
 				found = true
 			}
 		}
-		if !found && len(parts) == 3 {
+		if !found && len(parts) == 3 && parts[1] == "server" {
+			// A node's card on the Servers tab, rather than its row on the
+			// Topology's.
+			m.setTab(tabServers)
+			m.Search = ""
+			if i := slices.IndexFunc(m.Rows(), func(r Row) bool { return r.ID == parts[2] }); i >= 0 {
+				m.Selected = i
+			}
+		} else if !found && len(parts) == 3 {
 			m.selectEntity(parts[1], parts[2])
 		}
 		k = ""
@@ -436,9 +464,16 @@ func (m *Model) Key(k string) string {
 			m.GeoLabels = m.GeoLabels.next()
 		}
 	case "s":
-		// The Servers cards as a grid of one size, or the wall back.
-		if m.Tab == tabServers {
+		// The Servers cards as a grid of one size, or the wall back; the
+		// services as cards, or the list back, the same one selected.
+		switch m.Tab {
+		case tabServers:
 			m.Uniform = !m.Uniform
+		case tabServices:
+			sel, _ := m.selectedRow()
+			m.ServiceCards = !m.ServiceCards
+			m.Detail, m.Offset, m.cardsTop = false, 0, 0
+			m.Selected = max(0, slices.IndexFunc(m.Rows(), func(r Row) bool { return r.Kind == sel.Kind && r.ID == sel.ID }))
 		}
 	case "x":
 		if m.Preview != nil {

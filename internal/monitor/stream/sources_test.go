@@ -13,6 +13,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/engine"
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
@@ -116,5 +117,73 @@ func TestScopedPreviewAndLanguages(t *testing.T) {
 				t.Fatal(c)
 			}
 		}
+	}
+}
+
+// A service card's samples are its checks' history, read once from the
+// collector the snapshot came from under the measurement it names, then
+// extended from each snapshot.
+func TestSourcesReadServiceCardHistoryOnce(t *testing.T) {
+	r := request()
+	r.Template.Rows = append(r.Template.Rows, monitor.Row{ID: "blog", Metric: "service.card", Visual: "card", Select: monitor.Selector{Service: "blog"}})
+	source, e := OpenSource(context.Background(), r)
+	if e != nil {
+		t.Fatal(e)
+	}
+	card := monitor.Build(monitor.Config{Source: "preview", Template: r.Template}, source.Initial, time.Now()).Rows[1].Value.(monitor.ServiceCard)
+	for _, s := range card.SeenFrom {
+		for _, x := range s.Checks {
+			if len(x.Samples.Slots) < 2 {
+				t.Fatalf("the first preview frame lacks %s's history: %+v", x.ID, x.Samples)
+			}
+		}
+	}
+
+	c := testkit.Config()
+	var histories atomic.Int32
+	var snap atomic.Pointer[model.Snapshot]
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/history" {
+			histories.Add(1)
+			s := snap.Load()
+			id := r.URL.Query().Get("check")
+			h := client.History{Project: s.Project, Revision: s.Revision, Check: id}
+			for _, st := range s.Checks {
+				if st.ID == id {
+					h.Contract = st.Contract
+				}
+			}
+			for i := range 3 {
+				o := testkit.Observation(c, id, uint64(i+1), time.Now().UTC().Add(-time.Duration(30-i)*time.Second), "ok")
+				o.Contract = h.Contract
+				h.Entries = append(h.Entries, o)
+			}
+			json.NewEncoder(w).Encode(h)
+			return
+		}
+		s := engine.Build(c, "fixture", "", []model.Observation{testkit.Observation(c, "home-http", 9, time.Now().UTC().Add(-time.Second), "ok")}, nil, time.Now().UTC())
+		snap.Store(&s)
+		json.NewEncoder(w).Encode(s)
+	}))
+	defer server.Close()
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	creds := client.Credentials{Schema: 1, Active: "default", Profiles: map[string]client.Profile{"default": {Project: c.Project, Servers: []client.Endpoint{{URL: server.URL, Token: strings.Repeat("a", 64)}}}}}
+	if err := client.Save(path, creds); err != nil {
+		t.Fatal(err)
+	}
+	r = request()
+	r.Source, r.Lang, r.Credentials = "client", "", path
+	r.Template.Rows = append(r.Template.Rows, monitor.Row{ID: "web", Metric: "service.card", Visual: "card", Select: monitor.Selector{Service: "web"}})
+	source, e = OpenSource(context.Background(), r)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer source.Close()
+	in, err := source.Fetch(context.Background())
+	if err != nil || histories.Load() != 2 || len(in.Samples["home-http"]) != 4 || len(in.Samples["cloud-http"]) != 3 {
+		t.Fatal("history not read for the card's checks, or not extended", histories.Load(), in.Samples, err)
+	}
+	if in, err = source.Fetch(context.Background()); err != nil || histories.Load() != 2 || len(in.Samples["home-http"]) < 4 {
+		t.Fatal("history read again", histories.Load(), err)
 	}
 }

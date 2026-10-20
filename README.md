@@ -156,7 +156,7 @@ Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and net
 | `/` | filter |
 | `v` | switch the observer you view from |
 | `m` / `z` / `f` / `p` | cycle the maps / zoom / show the map alone / cycle the geo map's place cards, place names and points |
-| `s` | line the server cards up at one size |
+| `s` | line the server cards up at one size; on Services, a card per service |
 | `b` | browse services and checks by application, environment or host |
 | `q` | quit |
 

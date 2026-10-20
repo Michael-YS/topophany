@@ -17,6 +17,7 @@ func TestDefaultsPersistenceAndValidation(t *testing.T) {
 	}
 	s.Page = "servers"
 	s.UniformCards = true
+	s.ServiceCards = true
 	s.GroupsCollapsed = true
 	s.FullMap = true
 	s.MapMode = "network"
@@ -27,7 +28,7 @@ func TestDefaultsPersistenceAndValidation(t *testing.T) {
 	if err != nil || got != s {
 		t.Fatal(got, err)
 	}
-	for _, raw := range []string{`{"page":"bogus"}`, `{"map_mode":"bogus"}`, `{"unknown":true}`, `{"uniform_cards":"yes"}`, `{} {}`} {
+	for _, raw := range []string{`{"page":"bogus"}`, `{"map_mode":"bogus"}`, `{"unknown":true}`, `{"uniform_cards":"yes"}`, `{"service_cards":1}`, `{} {}`} {
 		if err = os.WriteFile(path, []byte(raw), 0600); err != nil {
 			t.Fatal(err)
 		}

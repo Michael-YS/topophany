@@ -449,6 +449,13 @@ func (m *Model) actions() []action {
 			add(2, "s", "Uniform", "s")
 		}
 	}
+	if m.Tab == tabServices && !m.Detail {
+		if m.ServiceCards {
+			add(2, "s", "List", "s")
+		} else {
+			add(2, "s", "Cards", "s")
+		}
+	}
 	if m.businessTab() && !m.Detail && len(m.Snapshot.Topology.Applications) > 0 {
 		add(1, "b", "Browse", "b")
 		if r, ok := m.selectedRow(); ok && r.Kind == "group" {

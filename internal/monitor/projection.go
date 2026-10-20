@@ -22,6 +22,7 @@ type projection struct {
 	currentClocks, completeClocks  *evidenceIndex
 	aged                           *model.Snapshot
 	stale                          map[string]int
+	samples                        map[string][]model.Observation
 }
 
 func (p *projection) scalarSnapshot() (model.Snapshot, map[string]int) {
@@ -45,7 +46,7 @@ func newProjection(in Input, now time.Time) *projection {
 		all.Snapshot = *in.AllSnapshot
 		all.Cached = view.Expired(all.Snapshot, now)
 	}
-	return &projection{v: v, all: all}
+	return &projection{v: v, all: all, samples: in.Samples}
 }
 
 func (p *projection) serverFleet() *view.Fleet {

@@ -3,6 +3,7 @@ package tui
 import (
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/view"
@@ -139,7 +140,12 @@ type tally struct {
 // runs on a server, how it is reached (for an edge, what it answers for)
 // and the checks its state rests on.
 func (m *Model) tallies(f fleet, r Row, c view.Card, w int) []cardRow {
-	ts := [3]tally{m.serviceTally(f, r, c), addressTally(c), m.checkTally(r)}
+	return tallyRows([3]tally{m.serviceTally(f, r, c), addressTally(c), m.checkTally(r)}, w)
+}
+
+// tallyRows lays three tallies out in the columns of a card's panel above,
+// w wide.
+func tallyRows(ts [3]tally, w int) []cardRow {
 	const gap = 2
 	pw := (w - 2*gap) / 3
 	extra := w - 2*gap - 3*pw
@@ -166,8 +172,9 @@ func (m *Model) tallies(f fleet, r Row, c view.Card, w int) []cardRow {
 }
 
 // clipSpans fits spans into n columns: whole while they fit, then the first
-// that does not cut short with "…", and no separator left hanging before
-// it; padded out to n.
+// that does not cut short with "…", or left out where it would keep a count
+// without its word, and no separator left hanging before the "…"; padded
+// out to n.
 func clipSpans(spans []span, n int) []span {
 	out := []span{}
 	used := 0
@@ -178,7 +185,13 @@ func clipSpans(spans []span, n int) []span {
 			used += w
 			continue
 		}
-		s.s = strings.TrimRight(fit(s.s, n-used-1), " ·")
+		cut := strings.TrimRight(fit(s.s, n-used-1), " ·")
+		if len(out) > 0 && !strings.ContainsFunc(cut, unicode.IsLetter) {
+			// A count without its word, as "1" of "1 unknown", says
+			// nothing: the whole parts before it end the line.
+			cut = ""
+		}
+		s.s = cut
 		if s.s == "" {
 			for len(out) > 0 && sep(out[len(out)-1]) {
 				used -= width(out[len(out)-1].s)

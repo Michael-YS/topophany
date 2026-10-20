@@ -37,6 +37,23 @@ func (m *Model) drawSheet(cv *Canvas, x, y, w, h int, r Row) {
 	if w < 20 || h < 6 {
 		return
 	}
+	f := m.fleet()
+	c := f.Card(r.ID)
+	band, hue := m.sheetBand(f, r, c)
+	m.drawOpenCard(cv, x, y, w, h, r, band, m.sheetBody(f, r, c, hue, sheetWidth(w)-4))
+}
+
+// sheetWidth is how wide a card lies open in a panel w wide.
+func sheetWidth(w int) int {
+	if w >= 72 {
+		return min(w-6, sheetMaxW)
+	}
+	return w
+}
+
+// drawOpenCard lays a card open over the cards in the panel at (x, y), w
+// by h: its band over its body, which scrolls; the card's state edges it.
+func (m *Model) drawOpenCard(cv *Canvas, x, y, w, h int, r Row, band []cardRow, body []sheetLine) {
 	// The cards behind step back, and a click on them closes the card.
 	cv.Tint(x, y, w, h, func(s Style) Style {
 		c, b := s.FG, s.BG
@@ -60,15 +77,8 @@ func (m *Model) drawSheet(cv *Canvas, x, y, w, h int, r Row) {
 		m.hit(x, yy, w, "key:esc")
 	}
 
-	sw := w
-	if w >= 72 {
-		sw = min(w-6, sheetMaxW)
-	}
+	sw := sheetWidth(w)
 	inner := sw - 4
-	f := m.fleet()
-	c := f.Card(r.ID)
-	band, hue := m.sheetBand(f, r, c)
-	body := m.sheetBody(f, r, c, hue, inner)
 	room := h
 	if h >= 20 {
 		room = h - 2
@@ -76,12 +86,16 @@ func (m *Model) drawSheet(cv *Canvas, x, y, w, h int, r Row) {
 	// A blank row under the body, where there is the room for it.
 	sh := min(room, len(band)+len(body)+3)
 	sx, sy := x+(w-sw)/2, y+(h-sh)/2
+	if m.touch.layout == layoutCompact {
+		// A phone's page reads from the top.
+		sy = y
+	}
 	bh := sh - 2 - len(band)
 	m.Offset = min(max(m.Offset, 0), max(0, len(body)-bh))
 
-	if !m.Transparent && !m.NoColor {
+	if !m.Transparent && !m.NoColor && m.touch.layout != layoutCompact {
 		// A shadow, two columns to the right and one row below, lifts the
-		// card off the others.
+		// card off the others; a phone shows none behind it.
 		shade := func(s Style) Style {
 			if s.BG == 0 {
 				s.BG = cv.Base
@@ -192,6 +206,13 @@ func (m *Model) sheetBody(f fleet, r Row, c view.Card, hue Color, inner int) []s
 	if ev := m.sheetEvidence(r, cw); ev != nil {
 		sections = append(sections, ev)
 	}
+	return sheetColumns(out, sections, two)
+}
+
+// sheetColumns lays an open card's sections under what out already holds:
+// in two columns where two, the sections keeping their order down the left
+// and on down the right; else one under another.
+func sheetColumns(out []sheetLine, sections [][]cardRow, two bool) []sheetLine {
 	stack := func(ss [][]cardRow) []cardRow {
 		rows := []cardRow{}
 		for i, s := range ss {
