@@ -109,7 +109,7 @@ Run `topo help` for the full list.
 
 ## Monitor your own network
 
-1. **Describe it.** A topology in JSON lists nodes, links, endpoints, services, paths, observers and checks. Have your agent write it as above, or start from [`examples/homelab.json`](examples/homelab.json) and edit it with `topo edit --config topology.json`. Either way, `topo validate` checks it.
+1. **Describe it.** A topology in JSON lists nodes, links, endpoints, services, paths, observers and checks. Have your agent write it as above, or start from [`examples/homelab.json`](examples/homelab.json) and edit it with `topo edit --config topology.json`. Either way, `topo validate` checks it. For a Cloudflare zone, [`examples/cloudflare.json`](examples/cloudflare.json) is a worked topology: a proxied origin with its own direct check, a Worker and a Pages site, a Tunnel with a `cloudflared` check beside a loopback check of the service, trace and DoT checks, and a hostname behind Access. `topo preview` simulates a challenge page, answers from a colo outside the declared list, and a Tunnel connector going down, so you can see how each is judged before anything runs.
 2. **Run a collector** where your devices can reach it, with TLS: `topo serve --config topology.json --auth auth.json --data collector-data --listen 0.0.0.0:7447 --tls-cert server.pem --tls-key server-key.pem`
 3. **Run a worker** on every machine you want to measure from: `topo worker --config topology.json --observer <id> --credentials worker-credentials.json --data worker-data`
 4. **Look at it** from anywhere: `topo login --server https://your-collector:7447 --project <name>`, then just `topo`.

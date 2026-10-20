@@ -109,7 +109,7 @@ topo --credentials ./demo/credentials.json
 
 ## 自分のネットワークを監視する
 
-1. **書き出す。** トポロジーは、ノード、リンク、エンドポイント、サービス、経路、観測点、チェックを並べた JSON です。上のようにエージェントに書かせるか、[`examples/homelab.json`](examples/homelab.json) をもとに `topo edit --config topology.json` で編集します。どちらの場合も `topo validate` で検証します。
+1. **書き出す。** トポロジーは、ノード、リンク、エンドポイント、サービス、経路、観測点、チェックを並べた JSON です。上のようにエージェントに書かせるか、[`examples/homelab.json`](examples/homelab.json) をもとに `topo edit --config topology.json` で編集します。どちらの場合も `topo validate` で検証します。Cloudflare のゾーンなら、[`examples/cloudflare.json`](examples/cloudflare.json) がそのまま使える例です。プロキシされたオリジンとその直接チェック、Worker と Pages サイト、Tunnel とコネクターの `cloudflared` チェック、サービス自身のループバックチェック、trace と DoT のチェック、Access 保護されたホスト名が入っています。`topo preview` は、チャレンジページ、宣言した一覧の外のコロからの応答、Tunnel コネクターの停止をシミュレートするので、実際に動かす前にそれぞれがどう判定されるかを確認できます。
 2. **コレクターを動かす。** 各マシンから届く場所で、TLS を有効にして起動します: `topo serve --config topology.json --auth auth.json --data collector-data --listen 0.0.0.0:7447 --tls-cert server.pem --tls-key server-key.pem`
 3. **ワーカーを動かす。** 計測の起点にしたいマシンそれぞれで起動します: `topo worker --config topology.json --observer <id> --credentials worker-credentials.json --data worker-data`
 4. **どこからでも見る。** `topo login --server https://your-collector:7447 --project <name>` を一度実行すれば、あとは `topo` だけです。

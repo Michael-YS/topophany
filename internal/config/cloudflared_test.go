@@ -218,11 +218,16 @@ func TestCloudflaredPublicHTTPSValidates(t *testing.T) {
 	}
 }
 
-// Every topology shipped in examples/ was written before adapter.cloudflared,
-// so none may carry it, not even as a null. Unset, the field writes nothing and
-// leaves every contract hash unchanged through a JSON round trip.
+// Every topology shipped in examples/ except the Cloudflare worked example was
+// written before adapter.cloudflared, so none of those may carry it, not even
+// as a null. Unset, the field writes nothing and leaves every contract hash
+// unchanged through a JSON round trip; the worked example opts in and is
+// checked by TestCloudflareExampleResolvesItsChecks instead.
 func TestExampleTopologiesCarryNoCloudflared(t *testing.T) {
 	for path, c := range exampleTopologies(t) {
+		if optedInExample(path) {
+			continue
+		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

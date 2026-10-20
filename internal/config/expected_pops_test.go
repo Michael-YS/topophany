@@ -87,11 +87,16 @@ func TestExpectedPopsContractAndDefaultJSON(t *testing.T) {
 	}
 }
 
-// Every topology shipped in examples/ was written before expected_pops, so
-// none may carry it: their contract hashes are unchanged by this field being
-// unset, through a JSON round trip.
+// Every topology shipped in examples/ except the Cloudflare worked example was
+// written before expected_pops, so none of those may carry it: their contract
+// hashes are unchanged by this field being unset, through a JSON round trip.
+// The worked example opts in and is checked by
+// TestCloudflareExampleResolvesItsChecks instead.
 func TestExampleTopologiesCarryNoExpectedPops(t *testing.T) {
 	for path, c := range exampleTopologies(t) {
+		if optedInExample(path) {
+			continue
+		}
 		before := config.Contracts(c)
 		out, err := json.Marshal(c)
 		if err != nil {

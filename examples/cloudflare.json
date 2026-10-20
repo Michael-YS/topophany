@@ -1,0 +1,418 @@
+{
+  "schema": 1,
+  "project": "cloudflare-example",
+  "applications": [
+    {
+      "id": "site",
+      "name": "Public site"
+    },
+    {
+      "id": "home",
+      "name": "Home services"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "cf",
+      "name": "Cloudflare",
+      "kind": "edge",
+      "provider": "cloudflare",
+      "notes": "Anycast edge in front of the origin. An answer from it proves the edge only. The Cloudflare API reads are not enabled here because this example holds no token or account: add three checks of kind \"cloudflare\" with adapter.token_env \"CF_API_TOKEN\" and adapter.cloudflare.read set to \"tunnel\" (link \"tunnel\", with account_id and tunnel_id), \"dns_record\" (with zone_id, record_name \"www.example.com\", record_type \"A\" and expected_proxied true) and \"pool\" (with account_id and pool_id). Their least-privilege token scopes are in docs/SECURITY.md. Without a real token and account the reads cannot run, so they stay documented rather than active."
+    },
+    {
+      "id": "origin",
+      "name": "Origin VPS",
+      "kind": "vm",
+      "provider": "hetzner",
+      "location": {
+        "label": "Helsinki",
+        "lat": 60.17,
+        "lon": 24.94
+      },
+      "notes": "The machine behind the proxied hostname. Its own check pins the dial address with resolve_ip, so the request reaches this machine directly while Host and SNI stay the zone name."
+    },
+    {
+      "id": "homebox",
+      "name": "Home box",
+      "kind": "host",
+      "group": "Home",
+      "location": {
+        "label": "Shanghai",
+        "lat": 31.23,
+        "lon": 121.47
+      },
+      "notes": "Runs the dashboard, a cloudflared connector and the local metrics listener the connector check reads. The public hostname reaches it through the Tunnel; the loopback check proves the dashboard itself."
+    },
+    {
+      "id": "resolver",
+      "name": "1.1.1.1",
+      "kind": "external",
+      "provider": "cloudflare",
+      "notes": "Public resolver reached over DNS over TLS with the name one.one.one.one."
+    }
+  ],
+  "links": [
+    {
+      "id": "tunnel",
+      "from": "homebox",
+      "to": "cf",
+      "transport": "cloudflared",
+      "notes": "Outbound Tunnel from the home box. Measured by the cloudflared check's own report and, with a token, by the API tunnel read. The public hostname's check through the edge proves the edge, never this link or the service behind it."
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "site-public",
+      "node": "origin",
+      "address": "https://www.example.com/",
+      "network": "public",
+      "via": [
+        "cf"
+      ],
+      "notes": "The zone as visitors reach it: Cloudflare answers first. An answer here proves the edge only, so the origin has a check of its own."
+    },
+    {
+      "id": "site-origin",
+      "node": "origin",
+      "address": "https://www.example.com/",
+      "network": "public",
+      "notes": "The origin itself, not through the edge. The check pins the dial address with resolve_ip, which keeps Host and SNI as the zone name, so the edge is not asked."
+    },
+    {
+      "id": "worker-url",
+      "node": "cf",
+      "address": "https://links.example.com/",
+      "network": "public",
+      "notes": "A Worker on the edge. The check of this address proves the edge answered, not the origin."
+    },
+    {
+      "id": "pages-url",
+      "node": "cf",
+      "address": "https://docs.example.com/",
+      "network": "public",
+      "notes": "A Pages site served by the edge cache."
+    },
+    {
+      "id": "home-public",
+      "node": "homebox",
+      "address": "https://home.example.com/",
+      "network": "public",
+      "via": [
+        "cf"
+      ],
+      "notes": "The home dashboard's public hostname, reached through the Tunnel and Cloudflare. The edge answered, so the origin is unproven."
+    },
+    {
+      "id": "home-local",
+      "node": "homebox",
+      "address": "http://127.0.0.1:8080/",
+      "network": "loopback",
+      "observer": "obs-home",
+      "notes": "The dashboard on the box itself, without the edge or the Tunnel."
+    },
+    {
+      "id": "dot",
+      "node": "resolver",
+      "address": "1.1.1.1:853",
+      "network": "public",
+      "notes": "DNS over TLS. The certificate names one.one.one.one, so the check sets server_name."
+    },
+    {
+      "id": "access-public",
+      "node": "origin",
+      "address": "https://internal.example.com/",
+      "network": "public",
+      "via": [
+        "cf"
+      ],
+      "notes": "An Access-protected hostname. Without a service token it redirects to the Access login; the check sends one from the worker's environment."
+    }
+  ],
+  "services": [
+    {
+      "id": "site",
+      "name": "Site",
+      "node": "origin",
+      "application": "site",
+      "endpoints": [
+        "site-public",
+        "site-origin"
+      ]
+    },
+    {
+      "id": "links",
+      "name": "Short links",
+      "node": "cf",
+      "runtime": "workers",
+      "application": "site",
+      "endpoints": [
+        "worker-url"
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "Docs",
+      "node": "cf",
+      "runtime": "pages",
+      "application": "site",
+      "endpoints": [
+        "pages-url"
+      ]
+    },
+    {
+      "id": "dashboard",
+      "name": "Home dashboard",
+      "node": "homebox",
+      "application": "home",
+      "endpoints": [
+        "home-public",
+        "home-local"
+      ]
+    },
+    {
+      "id": "internal",
+      "name": "Internal tools",
+      "node": "origin",
+      "application": "site",
+      "endpoints": [
+        "access-public"
+      ]
+    }
+  ],
+  "observers": [
+    {
+      "id": "obs-home",
+      "name": "Home box",
+      "node": "homebox",
+      "context": "Shanghai, residential, WARP on",
+      "stale_seconds": 180
+    },
+    {
+      "id": "obs-origin",
+      "name": "Origin VPS",
+      "node": "origin",
+      "context": "Helsinki, public",
+      "stale_seconds": 180
+    }
+  ],
+  "paths": [],
+  "checks": [
+    {
+      "id": "site-via-edge-home",
+      "name": "site through Cloudflare from home",
+      "observer": "obs-home",
+      "endpoint": "site-public",
+      "service": "site",
+      "kind": "http",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ],
+        "expected_pops": [
+          "HKG",
+          "NRT",
+          "SIN"
+        ]
+      },
+      "notes": "An answer here proves Cloudflare answered. expected_pops makes a response from another colo a policy violation, not an outage."
+    },
+    {
+      "id": "site-origin-direct",
+      "name": "origin itself from the VPS",
+      "observer": "obs-origin",
+      "endpoint": "site-origin",
+      "service": "site",
+      "kind": "http",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "resolve_ip": "203.0.113.10",
+      "http": {
+        "status": [
+          200
+        ]
+      },
+      "notes": "resolve_ip pins the dial address while Host and SNI stay www.example.com. This check never goes through the edge."
+    },
+    {
+      "id": "worker-home",
+      "name": "short links from home",
+      "observer": "obs-home",
+      "endpoint": "worker-url",
+      "service": "links",
+      "kind": "http",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "pages-home",
+      "name": "docs from home",
+      "observer": "obs-home",
+      "endpoint": "pages-url",
+      "service": "docs",
+      "kind": "http",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ]
+      }
+    },
+    {
+      "id": "home-via-edge",
+      "name": "dashboard through the Tunnel from the VPS",
+      "observer": "obs-origin",
+      "endpoint": "home-public",
+      "service": "dashboard",
+      "kind": "http",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ]
+      },
+      "notes": "Proves what Cloudflare says about the Tunnel hostname, not that the dashboard answered."
+    },
+    {
+      "id": "home-local",
+      "name": "dashboard on the box",
+      "observer": "obs-home",
+      "endpoint": "home-local",
+      "service": "dashboard",
+      "kind": "http",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ]
+      },
+      "notes": "The service itself, measured without the edge or the Tunnel."
+    },
+    {
+      "id": "tunnel-connector",
+      "name": "cloudflared connector",
+      "observer": "obs-home",
+      "link": "tunnel",
+      "kind": "cloudflared",
+      "target": "http://127.0.0.1:20241",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "adapter": {
+        "cloudflared": {
+          "expected_connections": 4
+        }
+      },
+      "notes": "Runs on the same host as the connector. expected_connections is the redundancy this deployment declares; below it is policy, zero ready sessions is tunnel_not_ready."
+    },
+    {
+      "id": "trace-home",
+      "name": "vantage trace from home",
+      "observer": "obs-home",
+      "kind": "http",
+      "target": "https://www.cloudflare.com/cdn-cgi/trace",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "exit_format": "trace",
+        "expected_trace": {
+          "warp": "on"
+        }
+      },
+      "notes": "The edge's own account of the vantage point: the colo, WARP and Gateway. These are reported words, not a measured route."
+    },
+    {
+      "id": "trace-origin",
+      "name": "vantage trace from the VPS",
+      "observer": "obs-origin",
+      "kind": "http",
+      "target": "https://www.cloudflare.com/cdn-cgi/trace",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "exit_format": "trace",
+        "expected_trace": {
+          "gateway": "off"
+        }
+      },
+      "notes": "The second observer's trace, so both vantage points report from the edge's side. A line the body did not report is not a violation."
+    },
+    {
+      "id": "dot-home",
+      "name": "1.1.1.1 over TLS from home",
+      "observer": "obs-home",
+      "endpoint": "dot",
+      "kind": "dns",
+      "server_name": "one.one.one.one",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "dns": {
+        "transport": "dot",
+        "name": "www.example.com",
+        "type": "A"
+      },
+      "notes": "DoT changes the transport, not the question: the same parser and expected_ips assertion as UDP would apply."
+    },
+    {
+      "id": "access-home",
+      "name": "internal tools with a service token",
+      "observer": "obs-home",
+      "endpoint": "access-public",
+      "service": "internal",
+      "kind": "http",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ],
+        "request_header_envs": {
+          "CF-Access-Client-Id": "CF_ACCESS_CLIENT_ID",
+          "CF-Access-Client-Secret": "CF_ACCESS_CLIENT_SECRET"
+        }
+      },
+      "notes": "Only the service token's variable names are written here; the values come from the worker's environment and never enter the topology. The same address without the headers would read edge_access: login_redirect."
+    }
+  ]
+}

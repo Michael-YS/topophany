@@ -146,7 +146,7 @@ def main() -> int:
             run("build-" + goos + "-" + goarch,
                 ["go", "build", "-trimpath", "-o", str(target), "./cmd/topo"],
                 overrides={"GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "0"}, timeout=300)
-        for example in ("minimal", "homelab", "host-resources"):
+        for example in ("minimal", "homelab", "host-resources", "cloudflare"):
             run("example-" + example, [str(binary), "validate", "--config", "examples/" + example + ".json"])
         for panel, source in (("desktop", "collector"), ("worker", "worker")):
             run("monitor-example-" + panel, [str(binary), "monitor", "configure", panel,

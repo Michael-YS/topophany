@@ -109,7 +109,7 @@ topo --credentials ./demo/credentials.json
 
 ## 监控你自己的网络
 
-1. **描述它。** 拓扑是一份 JSON，列出节点、链路、端点、服务、路径、观测点和检查。可以像上面那样交给 Agent 来写，也可以从 [`examples/homelab.json`](examples/homelab.json) 改起，用 `topo edit --config topology.json` 编辑。无论哪种方式，都用 `topo validate` 检查。
+1. **描述它。** 拓扑是一份 JSON，列出节点、链路、端点、服务、路径、观测点和检查。可以像上面那样交给 Agent 来写，也可以从 [`examples/homelab.json`](examples/homelab.json) 改起，用 `topo edit --config topology.json` 编辑。无论哪种方式，都用 `topo validate` 检查。如果是 Cloudflare 区域，[`examples/cloudflare.json`](examples/cloudflare.json) 是一份可以直接参照的完整示例：被代理的源站和它自己的直连检查、Worker 与 Pages 站点、带 `cloudflared` 检查的 Tunnel 以及服务自身的环回检查、trace 与 DoT 检查，还有一个受 Access 保护的域名。`topo preview` 会模拟质询页、来自声明列表之外的机房的应答以及 Tunnel 连接器中断，让你在真正运行之前看清它们各自如何判定。
 2. **运行采集器。** 放在你的设备都能访问到的地方，并启用 TLS：`topo serve --config topology.json --auth auth.json --data collector-data --listen 0.0.0.0:7447 --tls-cert server.pem --tls-key server-key.pem`
 3. **运行 worker。** 在每台你想作为测量起点的机器上：`topo worker --config topology.json --observer <id> --credentials worker-credentials.json --data worker-data`
 4. **随时随地查看。** 运行一次 `topo login --server https://your-collector:7447 --project <name>`，之后只需要 `topo`。

@@ -78,7 +78,29 @@ type Scenario struct {
 	Unreachable bool   // the collector itself cannot be reached
 	HostIssue   string // cpu, memory, disk or process; requires a host check
 	HostNode    string // affected node in the built-in topology; custom topologies fall back to their host checks
+	// EdgeIssue changes what a Cloudflare edge says to the home observers:
+	// edgeChallenge answers a request for a fronted origin with 403 and
+	// cf-mitigated: challenge instead of asking the origin, and edgeRerouted
+	// carries the answer from LAX whatever colo is nearest. It changes the
+	// evidence only; the engine judges it as it judges any other sample.
+	EdgeIssue string
+	// DeclaredPops states the colos a check's deployment declares, taking
+	// precedence over the check's own expected_pops. It is a scenario-side
+	// deployment statement, exactly what expected_pops would be in the file:
+	// a colo outside the list is a policy sample after a passing request,
+	// never a failed one. It does not change the base contract.
+	DeclaredPops map[string][]string
+	// TunnelDown makes a cloudflared connector report no ready edge session
+	// and the edge answer 530 for the hostname its tunnel fronts. It requires
+	// a cloudflared check; the origin itself keeps its own local evidence.
+	TunnelDown bool
 }
+
+// The two EdgeIssue words.
+const (
+	edgeChallenge = "challenge"
+	edgeRerouted  = "rerouted"
+)
 
 var scenarios = []Scenario{
 	{ID: "normal"},
@@ -99,6 +121,9 @@ var scenarios = []Scenario{
 	{ID: "host-memory-high", HostIssue: "memory", HostNode: "relay"},
 	{ID: "host-disk-full", HostIssue: "disk", HostNode: "exit-a"},
 	{ID: "host-process-missing", HostIssue: "process", HostNode: "transit"},
+	{ID: "edge-challenge", EdgeIssue: edgeChallenge},
+	{ID: "edge-rerouted", EdgeIssue: edgeRerouted, DeclaredPops: map[string][]string{"r-app-web": {"HKG", "NRT"}}},
+	{ID: "tunnel-down", TunnelDown: true},
 }
 
 type change struct {
@@ -166,6 +191,14 @@ func New(c model.Config, now time.Time, lang string) *Sim {
 		s.obsNode[o.ID] = o.Node
 		observers[o.ID] = true
 	}
+	// The edge and tunnel scenarios need the evidence they act on: a
+	// Cloudflare-fronted request from a home observer, or a connector check.
+	checks := map[string]bool{}
+	connector := false
+	for _, x := range c.Checks {
+		checks[x.ID] = true
+		connector = connector || x.Kind == "cloudflared" && !x.Disabled && !x.Maintenance
+	}
 	// Which colo an observer lands on is fixed by its declared place; find
 	// each once instead of once per simulated sample.
 	s.near = map[[2]string]pop{}
@@ -187,6 +220,15 @@ func New(c model.Config, now time.Time, lang string) *Sim {
 		}
 		for _, id := range append(append([]string{}, sc.Offline...), keysD(sc.Skew)...) {
 			ok = ok && observers[id]
+		}
+		if sc.TunnelDown {
+			ok = ok && connector
+		}
+		if sc.EdgeIssue != "" {
+			ok = ok && s.edgeIssueApplies(sc.EdgeIssue)
+		}
+		for id := range sc.DeclaredPops {
+			ok = ok && checks[id]
 		}
 		if ok {
 			s.available = append(s.available, i)
@@ -613,6 +655,60 @@ func (s *Sim) reach(x model.Check) []string {
 	return r
 }
 
+// edgeIssueApplies reports whether an edge scenario has evidence to change: a
+// Cloudflare-fronted request from a home observer, and for a challenge one
+// that goes through the edge to an origin rather than running on the edge.
+func (s *Sim) edgeIssueApplies(issue string) bool {
+	for _, x := range s.base.Checks {
+		if x.Kind != "http" || x.Disabled || x.Maintenance || !s.homeObserver(x.Observer) {
+			continue
+		}
+		ep := s.ends[x.Endpoint]
+		edge := ep.Node
+		if len(ep.Via) > 0 {
+			edge = ep.Via[0]
+		}
+		if s.nodes[edge].Kind != "edge" || s.nodes[edge].Provider != "cloudflare" {
+			continue
+		}
+		if issue == edgeChallenge && len(ep.Via) == 0 {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// tunnelFronts reports whether node reaches edge through a cloudflared link,
+// the topology the tunnel scenarios act on.
+func (s *Sim) tunnelFronts(node, edge string) bool {
+	for _, l := range s.base.Links {
+		if l.From == node && l.To == edge && strings.EqualFold(l.Transport, "cloudflared") {
+			return true
+		}
+	}
+	return false
+}
+
+// declaredPops is the colo list a check's deployment declares in sc: the
+// scenario's statement where it has one, else the check's own expected_pops.
+func declaredPops(sc Scenario, x model.Check) []string {
+	if pops, ok := sc.DeclaredPops[x.ID]; ok {
+		return pops
+	}
+	return x.HTTP.ExpectedPops
+}
+
+// popOutside reports whether a reported colo is outside the declared list. An
+// absent colo, an empty list and Vercel's non-colo region assert nothing, as
+// the probe decides.
+func popOutside(region string, pops []string) bool {
+	if region == "" || len(pops) == 0 {
+		return false
+	}
+	return !slices.Contains(pops, region)
+}
+
 // A point of presence: the code an edge network reports and where it is.
 // Cloudflare's are the locations of its public list, generated into
 // internal/view/colos.go, so the preview sends an observer to the colo it is
@@ -809,6 +905,20 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 		// false and the service behind it stays unproven.
 		o.Evidence, o.Stage = "reported", "adapter"
 		o.PathEvidence = model.LocalConnectorPathEvidence
+		if sc.TunnelDown {
+			// The connector itself reports no ready edge session. That is
+			// the thing this check exists to find, and it takes the link
+			// down; whether the service behind it answers is another
+			// check's evidence.
+			o.Outcome, o.Code = "fail", "tunnel_not_ready"
+			o.Detail = "the connector reports no ready edge session; the service behind it is unproven"
+			o.Facts["ready_connections"], o.Facts["ha_connections"] = "0", "0"
+			o.Facts["requests_total"], o.Facts["request_errors"] = "1200", "0"
+			o.Facts["active_streams"] = "0"
+			o.Facts["connector_version"] = "2026.10.0"
+			o.DurationMS = 2 + int64(noise*4)
+			return o
+		}
 		o.Outcome, o.Detail = "ok", "tunnel established; service behind it unproven"
 		o.Facts["ready_connections"], o.Facts["ha_connections"] = "4", "4"
 		o.Facts["connection_colos"] = "hkg,sin"
@@ -923,9 +1033,15 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 			o.Facts["response_proof"] = "verified_https"
 		}
 		provider := s.nodes[edge].Provider
+		region := ""
 		if s.nodes[edge].Kind == "edge" && popsFor(provider) != nil {
 			o.Facts["edge_provider"] = provider
-			region, _ := s.edgePop(provider, x.Observer)
+			region, _ = s.edgePop(provider, x.Observer)
+			// The reroute scenario carries the home observers' answers
+			// from LAX, whatever colo the edge would report normally.
+			if sc.EdgeIssue == edgeRerouted && s.homeObserver(x.Observer) {
+				region = "LAX"
+			}
 			if provider == "vercel" {
 				o.Facts["vercel_edge_region"] = region
 				o.Facts["vercel_route_regions"] = region + ":hnd1"
@@ -951,6 +1067,19 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 			o.Facts["http_status"] = "502"
 			o.Code = "unexpected_status"
 			o.Detail = "http_assert: unexpected_status"
+		} else if sc.TunnelDown && s.tunnelFronts(endpointNode, edge) {
+			// The edge answers for a Tunnel with no live connector: the
+			// response proves the edge and says the origin was not reached.
+			o.Outcome, o.Code, o.Detail = "fail", "unexpected_status", "http_assert: unexpected_status"
+			o.Facts["http_status"] = "530"
+		} else if sc.EdgeIssue == edgeChallenge && s.homeObserver(x.Observer) && len(s.ends[x.Endpoint].Via) > 0 && provider == "cloudflare" {
+			// The edge served a challenge page instead of asking the
+			// origin. The closed mitigation word is the evidence; the
+			// cache status describes an origin answer that never happened.
+			o.Outcome, o.Code, o.Detail = "fail", "unexpected_status", "http_assert: unexpected_status"
+			o.Facts["http_status"] = "403"
+			o.Facts["edge_mitigation"] = "challenge"
+			delete(o.Facts, "edge_cache")
 		} else if len(x.HTTP.ExpectedExit) > 0 {
 			exit := x.HTTP.ExpectedExit[0]
 			for _, n := range reach {
@@ -961,6 +1090,12 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 				}
 			}
 			o.Facts["exit_ip"] = exit
+		}
+		// A colo outside the declared list is a state assertion after a
+		// passing request, exactly as expected_pops decides at run time.
+		if o.Outcome == "ok" && provider != "vercel" && popOutside(region, declaredPops(sc, x)) {
+			o.Outcome, o.Stage, o.Code = "policy", "edge_assert", "pop_mismatch"
+			o.Detail = "request succeeded but the edge answered from a colo outside the declared list"
 		}
 	}
 	if broken != "" && beyond && x.Kind != "http" {
@@ -1000,7 +1135,18 @@ func (s *Sim) selected(observer string, sc Scenario, t time.Time) (string, float
 }
 
 func (s *Sim) blockedObserver(obs string) bool {
-	return obs == "obs-win" || obs == "obs-mac" || obs == "obs-relay"
+	return s.homeObserver(obs)
+}
+
+// homeObserver reports whether obs is one of the built-in home and relay
+// vantage points: the mainland observers in the localized topology, and the
+// ones whose public traffic the blocking scenarios filter.
+func (s *Sim) homeObserver(obs string) bool {
+	switch obs {
+	case "obs-win", "obs-mac", "obs-relay":
+		return true
+	}
+	return false
 }
 
 func (s *Sim) crossBorder(observer string, reach []string) bool {

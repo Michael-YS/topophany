@@ -35,6 +35,12 @@
   "scenario.host-disk-full.detail": "模拟文件系统容量使用率升至 98–99%；超过配置的磁盘阈值时产生 policy 事件。",
   "scenario.host-process-missing": "主机进程缺失",
   "scenario.host-process-missing.detail": "配置的进程没有非僵尸匹配；最小数量大于零时产生 policy 事件。",
+  "scenario.edge-challenge": "家庭观测点遭遇 Cloudflare 质询",
+  "scenario.edge-challenge.detail": "家庭观测点访问 Cloudflare 前置的源站时收到 403 质询页（`cf-mitigated: challenge`），远程观测点仍可正常访问。应答的是边缘，源站没有被询问，其自身状态无法确定。",
+  "scenario.edge-rerouted": "Cloudflare 改从 LAX 应答",
+  "scenario.edge-rerouted.detail": "家庭观测点的 Cloudflare 应答改从 LAX 返回，而检查声明的是 HKG 与 NRT → policy 违规，不是宕机：请求成功，没有任何失败。",
+  "scenario.tunnel-down": "隧道连接器中断",
+  "scenario.tunnel-down.detail": "家庭机器的 cloudflared 连接器报告没有任何就绪的边缘会话，链路因此为 down；公开域名从边缘收到 530，只能证明边缘，而环回检查仍能证明面板本身。",
   "node.win": "Windows 台式机",
   "group.home": "家庭·成都",
   "node.win.notes": "mihomo + Tailscale；家庭服务运行在本机",
@@ -186,5 +192,9 @@
   "check.host-jp": "GCP 东京 · 主机资源",
   "check.host-git-node": "DO 法兰克福 · 主机资源",
   "observer.host.context": "本机资源观测 worker；预览使用模拟数据",
-  "check.host-resources.notes": "模拟 CPU、内存、本地文件系统与进程数据。本机遥测不证明远程可达性。"
+  "check.host-resources.notes": "模拟 CPU、内存、本地文件系统与进程数据。本机遥测不证明远程可达性。",
+  "check.w-home-edge": "经 Cloudflare 的家庭面板",
+  "check.w-home-local": "家庭面板（本机）",
+  "check.w-tunnel": "cloudflared 连接器",
+  "link.home-cf.notes": "家庭机器到 Cloudflare 的出站隧道。这条链路由连接器自身的报告判定；经边缘的检查只能证明边缘。"
 }

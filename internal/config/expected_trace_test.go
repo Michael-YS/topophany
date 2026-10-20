@@ -151,10 +151,17 @@ func TestExpectedTraceContractAndDefaultJSON(t *testing.T) {
 	}
 }
 
-// Every topology shipped in examples/ was written before expected_trace and
-// request_header_envs, so none may carry either: their default contracts stay
-// what they were, and the upgrade order in the reference is the only way to
-// opt in.
+// optedInExample is the one worked example that opts into the fields added
+// for Cloudflare: examples/cloudflare.json exercises expected_pops,
+// expected_trace, request_header_envs, adapter.cloudflared and the documented
+// adapter.cloudflare reads. Every older example predates them and must stay
+// measured as it was.
+func optedInExample(path string) bool { return filepath.Base(path) == "cloudflare.json" }
+
+// Every topology shipped in examples/ except the Cloudflare worked example
+// was written before expected_trace and request_header_envs, so none of those
+// may carry either: their default contracts stay what they were, and the
+// upgrade order in the reference is the only way to opt in.
 func exampleTopologies(t *testing.T) map[string]model.Config {
 	t.Helper()
 	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.json"))
@@ -188,6 +195,9 @@ func exampleTopologies(t *testing.T) map[string]model.Config {
 
 func TestExampleTopologiesCarryNoExpectedTrace(t *testing.T) {
 	for path, c := range exampleTopologies(t) {
+		if optedInExample(path) {
+			continue
+		}
 		out, err := json.Marshal(c)
 		if err != nil {
 			t.Fatal(err)
@@ -200,6 +210,9 @@ func TestExampleTopologiesCarryNoExpectedTrace(t *testing.T) {
 
 func TestExampleTopologiesCarryNoRequestHeaderEnvs(t *testing.T) {
 	for path, c := range exampleTopologies(t) {
+		if optedInExample(path) {
+			continue
+		}
 		out, err := json.Marshal(c)
 		if err != nil {
 			t.Fatal(err)

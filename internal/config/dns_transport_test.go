@@ -107,8 +107,14 @@ func TestDNSTransportContractCloneAndJSON(t *testing.T) {
 	}
 }
 
+// Every topology shipped in examples/ except the Cloudflare worked example
+// was written before dns.transport; the worked example opts in and is checked
+// by TestCloudflareExampleResolvesItsChecks.
 func TestExampleTopologiesCarryNoDNSTransport(t *testing.T) {
 	for path, c := range exampleTopologies(t) {
+		if optedInExample(path) {
+			continue
+		}
 		for _, x := range c.Checks {
 			if x.DNS.Transport != "" {
 				t.Fatalf("%s: check %s carries a DNS transport", path, x.ID)

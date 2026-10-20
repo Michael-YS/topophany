@@ -120,7 +120,7 @@ Custom topologies such as `topo preview --config examples/host-resources.json` a
 
 `expected_exit` accepts an array of expected IP addresses or CIDR blocks. `exit_format` supports `plain`, `trace`, and `json` (with `exit_json_key`, default `ip`). When the observed egress IP violates constraints, `outcome` is set to `policy` while connectivity facts are preserved. Timestamps and configuration revisions are bound to measurements, preventing metric mixing across target changes.
 
-`expected_pops` declares the colos a response from an edge may name, as at most 16 distinct codes of exactly three ASCII uppercase letters. It is evaluated after the ordinary assertions and `expected_exit` have passed, and before `expected_trace`: when the response named a colo (`edge_pop`) and the edge is not Vercel, a colo outside the list is `policy` with stage `edge_assert` and code `pop_mismatch`, while connectivity facts are preserved because the request did succeed. A response with no `edge_pop` is not a violation: the target may be direct, or a secret request may have had its free labels withheld. Vercel's reported edge region is not a physical colo and never satisfies or violates the list. `expected_pops` is inside `http`, so it is part of the measurement contract: setting or changing it changes that check's contract and history, while an unset field leaves every contract unchanged. Older collectors and viewers reject the new field; upgrade them before enabling it in a topology, and default configurations omit it and remain readable by older clients.
+`expected_pops` declares the colos a response from an edge may name, as at most 16 distinct codes of exactly three ASCII uppercase letters. It is evaluated after the ordinary assertions and `expected_exit` have passed, and before `expected_trace`: when the response named a colo (`edge_pop`) and the edge is not Vercel, a colo outside the list is `policy` with stage `edge_assert` and code `pop_mismatch`, while connectivity facts are preserved because the request did succeed. A response with no `edge_pop` is not a violation: the target may be direct, or a secret request may have had its free labels withheld. Vercel's reported edge region is not a physical colo and never satisfies or violates the list. `expected_pops` is inside `http`, so it is part of the measurement contract: setting or changing it changes that check's contract and history, while an unset field leaves every contract unchanged. Older collectors and viewers reject the new field; upgrade them before enabling it in a topology, and default configurations omit it and remain readable by older clients. The preview's `edge-rerouted` scenario exercises the policy — home observers' answers arrive from `LAX` while the check declares `HKG` and `NRT` — and [`examples/cloudflare.json`](../examples/cloudflare.json) declares `HKG`, `NRT` and `SIN` on its proxied origin.
 
 `expected_trace` declares what a `/cdn-cgi/trace` body must report and requires `exit_format: "trace"`, because only that format parses a trace body. It must declare at least one of `warp`, `gateway` or `colos`; an empty expectation is refused, so an editor that drops it cannot change a contract the user did not edit. `warp` takes `off`, `on` or `plus`; `gateway` takes `on` or `off`; `colos` takes at most 16 distinct three-letter codes (uppercase ASCII). A reported value outside a declared one is `policy` with stage `trace_assert` and code `warp_mismatch`, `gateway_mismatch` or `colo_mismatch`, and its detail names neither the observed colo nor any free text; a line the trace did not report is not a violation, and the passing detail names it, or says the body was not a trace. `expected_trace` is inside `http`, so it is part of the measurement contract: setting or changing it changes that check's contract and history. Older collectors/viewers reject the new field. Upgrade collectors and all viewers to 1.4.0 or newer before enabling it in a topology; default configurations omit the field and remain readable by older clients.
 
@@ -786,7 +786,10 @@ unproven. A connector read that failed leaves the link unknown with its own
 reason. The public check through the edge still proves only the edge, and a
 colo is the connector's metadata, not routing proof. `/ready` proves a
 connector session, never that the hostname routes to this connector or that the
-service answers; add a separate application check for that.
+service answers; add a separate application check for that. The preview's
+`tunnel-down` scenario shows that shape: the connector reports
+`tunnel_not_ready`, its link reads down, the public hostname gets `530` from
+the edge and the loopback check still proves the service.
 
 `adapter.cloudflared` is new. Older binaries refuse a topology that contains
 it, so upgrade collectors and all viewers to 1.4.0 or newer before enabling it;
@@ -884,3 +887,12 @@ The nested options are part of the measurement contract, so setting or changing
 them starts a new contract and history for that check. The fixtures under
 `internal/adapters/cloudflare/testdata/api-v4/2026-10-19/` are synthetic and
 document-based; no live account or token was used.
+
+[`examples/cloudflare.json`](../examples/cloudflare.json) is the worked topology
+to copy from: a proxied origin with its own direct check, a Worker and a Pages
+site, a Tunnel with a `cloudflared` check on its link and a loopback check of
+the service behind it, trace and DoT checks, an Access-protected hostname using
+`request_header_envs`, and `expected_pops` on the edge check. The three reads
+above are named in the edge's `notes` with `CF_API_TOKEN` rather than enabled,
+because the example holds no token or account; the checks that are active use
+documentation hostnames and address ranges.

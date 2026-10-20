@@ -229,6 +229,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   virtual map now splits places into more columns, down to the narrowest card,
   instead of stacking cards past its height. The preview's recorded tours
   change because its colos are now real places.
+- `examples/cloudflare.json` is a worked Cloudflare zone written with
+  documentation hostnames and address ranges. It declares a proxied origin
+  with its own direct check (`resolve_ip` pins the dial address while Host and
+  SNI keep the zone name), a Worker and a Pages site on the edge, a home
+  dashboard reached both through a Tunnel and on the box, a `cloudflared`
+  check attached to the Tunnel's link, a trace check per observer, a DoT check
+  against `1.1.1.1` with `server_name: one.one.one.one`, an
+  Access-protected hostname whose service token comes from
+  `request_header_envs` (variable names only), and `expected_pops` on the
+  edge check. The three Cloudflare API reads are named in the edge's `notes`
+  with their `CF_API_TOKEN` variable rather than enabled, because the example
+  holds no token or account. `topo validate` accepts it, and `scripts/verify.py`
+  validates it with the other shipped examples.
+- The preview gains three Cloudflare failures, each implemented as a change
+  in the simulated evidence and judged by the unchanged engine.
+  `edge-challenge` answers home observers' requests for the fronted site with
+  `403` and `edge_mitigation: challenge`, so the evidence line names the
+  challenge and the incident says the origin was not asked.
+  `edge-rerouted` carries their answers from `LAX` while the check declares
+  `HKG` and `NRT`: the request succeeds, the check reads degraded, and a
+  policy incident opens instead of an outage. `tunnel-down` adds a Tunnel from
+  the built-in home box with a `cloudflared` check on its link: the connector
+  reports no ready edge session, the link reads down, the public hostname gets
+  `530` from the edge and proves only the edge, and the loopback check still
+  proves the dashboard. `topo preview scenarios` lists all three in every
+  language.
 
 ### Changed
 

@@ -491,6 +491,175 @@ func TestCloudflaredSimulationIsReported(t *testing.T) {
 	}
 }
 
+// incidentOf is the incident that lists check id, which the scenario's
+// evidence opened.
+func incidentOf(t *testing.T, s model.Snapshot, id string) model.Incident {
+	t.Helper()
+	for _, inc := range s.Incidents {
+		if contains(inc.Checks, id) {
+			return inc
+		}
+	}
+	t.Fatalf("no incident for %s: %+v", id, s.Incidents)
+	return model.Incident{}
+}
+
+// A challenge is the edge's own word that the origin was not asked. The closed
+// mitigation fact reaches the sample, the status fails the check, the incident
+// draws that conclusion, and a remote observer's answer to the same origin
+// stays counter-evidence rather than proof against it.
+func TestEdgeChallengeScenario(t *testing.T) {
+	s := settled(t, "edge-challenge")
+	web := check(t, s, "r-app-web")
+	if web.Health != "down" || web.Last == nil {
+		t.Fatalf("challenged check %+v", web)
+	}
+	last := web.Last
+	if last.Outcome != "fail" || last.Stage != "http_assert" || last.Code != "unexpected_status" || !last.Connectivity {
+		t.Fatalf("challenge sample %+v", last)
+	}
+	if last.Facts["http_status"] != "403" || last.Facts["edge_provider"] != "cloudflare" || last.Facts["edge_mitigation"] != "challenge" {
+		t.Fatalf("challenge facts %v", last.Facts)
+	}
+	if last.Facts["edge_cache"] != "" {
+		t.Fatalf("a challenge page carried an origin cache status: %v", last.Facts)
+	}
+	inc := incidentOf(t, s, "r-app-web")
+	if !strings.Contains(inc.Hypothesis, "challenge page") || !strings.Contains(inc.Hypothesis, "origin was not asked") {
+		t.Fatalf("the incident does not name the challenge: %q", inc.Hypothesis)
+	}
+	// The answer through the edge proves the edge, so the origin's own local
+	// check is the counter-evidence; a remote observer still gets through.
+	if !contains(inc.CounterEvidence, "s-web-local") {
+		t.Fatalf("the origin's own check is not counter-evidence: %v", inc.CounterEvidence)
+	}
+	if check(t, s, "j-blog").Health != "up" {
+		t.Fatal("the challenge spread to the remote observer")
+	}
+	if n := entity(t, s.Nodes, "cf"); n.Health != "up" {
+		t.Fatalf("the edge that answered is not up: %+v", n)
+	}
+	if n := entity(t, s.Nodes, "app"); n.Health == "down" {
+		t.Fatalf("the origin was blamed for a challenge: %+v", n)
+	}
+}
+
+// A response from a colo outside the declared list is a policy violation, not
+// an outage: the request succeeded, the check reads degraded, the incident is
+// a policy one, and no check in the scenario is down.
+func TestEdgeReroutedIsPolicyNotOutage(t *testing.T) {
+	for _, sc := range scenarios {
+		if sc.ID == "edge-rerouted" && !slices.Equal(sc.DeclaredPops["r-app-web"], []string{"HKG", "NRT"}) {
+			t.Fatalf("the rerouted scenario declares %v", sc.DeclaredPops)
+		}
+	}
+	s := settled(t, "edge-rerouted")
+	web := check(t, s, "r-app-web")
+	if web.Health != "degraded" || web.Last == nil {
+		t.Fatalf("rerouted check %+v", web)
+	}
+	last := web.Last
+	if last.Outcome != "policy" || last.Stage != "edge_assert" || last.Code != "pop_mismatch" || !last.Connectivity {
+		t.Fatalf("policy sample %+v", last)
+	}
+	if last.Facts["edge_pop"] != "LAX" || !strings.Contains(last.Detail, "outside the declared list") {
+		t.Fatalf("reroute evidence %+v", last)
+	}
+	for _, c := range s.Checks {
+		if c.Health == "down" {
+			t.Fatalf("a policy scenario confirmed an outage: %s", c.ID)
+		}
+	}
+	inc := incidentOf(t, s, "r-app-web")
+	if inc.Summary != "observed policy constraint violation" {
+		t.Fatalf("incident summary %q", inc.Summary)
+	}
+	// The worker on the edge from the same observer shows the reroute and
+	// declares no colos, so it stays up.
+	worker := check(t, s, "r-worker")
+	if worker.Health != "up" || worker.Last == nil || worker.Last.Facts["edge_pop"] != "LAX" {
+		t.Fatalf("the reroute did not reach the edge worker: %+v", worker)
+	}
+	// An observer outside the rerouted set still reports its nearest colo.
+	remote := check(t, s, "j-worker")
+	if remote.Last == nil || remote.Last.Facts["edge_pop"] == "LAX" || remote.Last.Facts["edge_pop"] == "" {
+		t.Fatalf("a remote observer was rerouted: %+v", remote.Last)
+	}
+}
+
+// A connector that reports no edge session takes its tunnel link down, while
+// the edge answers 530 for the hostname the tunnel fronts (proving the edge
+// only) and the loopback check still proves the service itself.
+func TestTunnelDownScenario(t *testing.T) {
+	calm := settled(t, "normal")
+	if link := entity(t, calm.Links, "home-cf"); link.Health != "up" {
+		t.Fatalf("healthy tunnel link %+v", link)
+	}
+	if pub := check(t, calm, "w-home-edge"); pub.Health != "up" || pub.Last.Facts["edge_pop"] == "" {
+		t.Fatalf("healthy public check %+v", pub)
+	}
+
+	down := settled(t, "tunnel-down")
+	connector := check(t, down, "w-tunnel")
+	if connector.Health != "down" || connector.Last == nil {
+		t.Fatalf("connector check %+v", connector)
+	}
+	last := connector.Last
+	if last.Outcome != "fail" || last.Stage != "adapter" || last.Code != "tunnel_not_ready" ||
+		last.Evidence != "reported" || last.PathEvidence != model.LocalConnectorPathEvidence || last.Connectivity {
+		t.Fatalf("connector sample %+v", last)
+	}
+	link := entity(t, down.Links, "home-cf")
+	if link.Health != "down" || !strings.Contains(link.Reason, "no established tunnel") {
+		t.Fatalf("tunnel link %+v", link)
+	}
+	pub := check(t, down, "w-home-edge")
+	if pub.Health != "down" || pub.Last == nil || !pub.Last.Connectivity || pub.Last.Facts["http_status"] != "530" {
+		t.Fatalf("public check through the edge %+v", pub)
+	}
+	inc := incidentOf(t, down, "w-home-edge")
+	if !strings.Contains(inc.Hypothesis, "Tunnel with no live connector") || !strings.Contains(inc.Hypothesis, "origin's own state is not established") {
+		t.Fatalf("the incident does not say what the edge reported: %q", inc.Hypothesis)
+	}
+	if check(t, down, "w-home-local").Health != "up" {
+		t.Fatal("the loopback check stopped proving the dashboard itself")
+	}
+	if n := entity(t, down.Nodes, "cf"); n.Health != "up" {
+		t.Fatalf("the edge is not up after answering 530: %+v", n)
+	}
+	if n := entity(t, down.Nodes, "win"); n.Health != "up" {
+		t.Fatalf("the home box is not up from its local checks: %+v", n)
+	}
+	if svc := entity(t, down.Services, "home-dash"); svc.Health != "degraded" {
+		t.Fatalf("the service should be degraded, not down: %+v", svc)
+	}
+
+	// Without a connector check there is no tunnel scenario to offer.
+	c, err := Preset(DefaultLanguage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Checks = slices.DeleteFunc(c.Checks, func(x model.Check) bool { return x.Kind == "cloudflared" })
+	if slices.Contains(New(c, testNow, DefaultLanguage).ScenarioIDs(), "tunnel-down") {
+		t.Fatal("tunnel-down offered without a cloudflared check")
+	}
+}
+
+// The three Cloudflare scenarios are named and described in every language.
+func TestCloudflareScenariosAreNamedInEveryLanguage(t *testing.T) {
+	for _, lang := range Languages() {
+		text, err := catalog(lang)
+		if err != nil {
+			t.Fatal(lang, err)
+		}
+		for _, id := range []string{"edge-challenge", "edge-rerouted", "tunnel-down"} {
+			if text["scenario."+id] == "" || text["scenario."+id+".detail"] == "" {
+				t.Fatalf("%s: no name or detail for scenario.%s", lang, id)
+			}
+		}
+	}
+}
+
 func TestPreviewMapPlacesTheColoTheEdgeReported(t *testing.T) {
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	for lang, want := range map[string]map[string]string{
