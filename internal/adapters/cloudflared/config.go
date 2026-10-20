@@ -12,9 +12,9 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
-// MaxConnections bounds expected_connections. A connector's HA pool is small
-// and the roadmap declares 1..8; a larger number is more likely a typo than
-// a deployment.
+// MaxConnections bounds expected_connections. A connector's HA pool is small,
+// four by default and never more than eight here; a larger number is more
+// likely a typo than a deployment.
 const MaxConnections = 8
 
 // MaxColos bounds expected_colos, matching the eight tokens one report may

@@ -46,6 +46,35 @@ func signalGlyph(s string) rune {
 
 func nodeSignal(n mapNode) string { return view.NodeSignal(n) }
 
+// coloGlyph leads the row of a reported colo. It is hollow because a colo is
+// where an edge said it answered from, not a server a check measured: the
+// label is evidence of a route, so the mark never claims what a measured
+// response does.
+const coloGlyph = '◌'
+
+// coloColor is a reported colo's quiet green, the up color mixed toward ink
+// as the hops a response carried over are drawn.
+var coloColor = Mix(cUp, cInk, .45)
+
+// signalMark is the glyph and color that mark a signal on a map. A colo that
+// carries a response or has no evidence is a hollow ◌, the carried one in a
+// muted green and the other in the unknown color; one on a failing route
+// keeps the warning every other mark gives.
+func signalMark(sig string, colo bool) (rune, Color) {
+	if colo {
+		switch sig {
+		case "carried", "up":
+			return coloGlyph, coloColor
+		case "unknown", "":
+			return coloGlyph, cUnknown
+		}
+	}
+	return signalGlyph(sig), signalColor(sig)
+}
+
+// nodeMark is the glyph and color of a node on a map.
+func nodeMark(n mapNode) (rune, Color) { return signalMark(nodeSignal(n), n.Kind == "colo") }
+
 // mapHue is a node's map color: an edge's or platform's brand color, a
 // reported colo's edge brand color, else the color of its group.
 func mapHue(n mapNode, groups map[string]Color) Color {
@@ -277,6 +306,7 @@ func (m *Model) mapLegend(cv *Canvas, x, ly, w int, nodes []mapNode, edges []map
 	}
 	for _, e := range edges {
 		if e.Kind == edgeColo {
+			item(coloGlyph, coloColor, "reported colo")
 			item('┈', Mix(cAccent, cInk, .35), "reported colo")
 			break
 		}

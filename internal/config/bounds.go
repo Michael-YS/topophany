@@ -135,9 +135,9 @@ const MaxTook = (MaxTimeoutSeconds + 5) * time.Second
 // MaxTimeoutSeconds is the longest timeout a check may have.
 const MaxTimeoutSeconds = 300
 
-// publicCAPlaceholder stands in for a stripped ca_file when a public
-// topology still has to pass validation. It is never executed.
-const publicCAPlaceholder = "redacted"
+// publicPlaceholder stands in for a stripped ca_file or token_env when a
+// public topology still has to pass validation. It is never executed.
+const publicPlaceholder = "redacted"
 
 // ValidatePublic restores only redacted placeholders on an owned copy; the
 // public topology is never executable and must still pass all graph checks.
@@ -163,13 +163,13 @@ func ValidatePublic(c model.Config) error {
 		// placeholder on this owned, non-executable copy, as for a
 		// cloudflared https listener's ca_file.
 		if x.Kind == "cloudflare" {
-			x.Adapter.TokenEnv = publicCAPlaceholder
+			x.Adapter.TokenEnv = publicPlaceholder
 		}
 		if x.Kind != "cloudflared" || x.CAFile != "" {
 			continue
 		}
 		if u, err := url.Parse(Target(copy, *x)); err == nil && u.Scheme == "https" {
-			x.CAFile = publicCAPlaceholder
+			x.CAFile = publicPlaceholder
 		}
 	}
 	return Validate(copy)

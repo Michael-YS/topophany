@@ -263,11 +263,46 @@ func (m *Model) cardSections(f fleet, r Row, c view.Card, hue Color, most int) [
 			if l.Inbound {
 				arrow = "← "
 			}
-			add(cardRow{left: []span{{arrow, fg(cAccent)}, {l.Other.Name, fg(cText)}}, right: []span{{l.Transport, fg(cFaint)}}, hit: "select:link:" + l.ID})
+			left := []span{{arrow, fg(cAccent)}, {l.Other.Name, fg(cText)}}
+			if l.Health == "down" || l.Health == "degraded" {
+				left = append([]span{{string(healthGlyph(l.Health)) + " ", fg(healthColor(l.Health))}}, left...)
+			}
+			right, tight := linkReading(l)
+			add(cardRow{left: left, right: right, tight: tight, hit: "select:link:" + l.ID})
 		}
 		done()
 	}
 	return out
+}
+
+// linkReading is what a link's row says on the right: its transport and
+// then what its own checks report, as "cloudflared · 4 sessions · hkg,sin ·
+// API 4 connections healthy". Each word after the transport carries its own
+// separator, so a row too narrow for all of it is cut inside the last word
+// it has room for (a colo list ends in "…"), never at a bare separator. The
+// shorter form drops the transport, which the reading already implies, and
+// is nil when no check reported.
+func linkReading(l view.CardLink) (long, tight []span) {
+	long = []span{}
+	if l.Transport != "" {
+		long = append(long, span{l.Transport, fg(cFaint)})
+	}
+	if len(l.Reading) == 0 {
+		return long, nil
+	}
+	for i, word := range l.Reading {
+		if i > 0 || len(long) > 0 {
+			word = " · " + word
+		}
+		long = append(long, span{word, fg(cMuted)})
+	}
+	for i, word := range l.Reading {
+		if i > 0 {
+			word = " · " + word
+		}
+		tight = append(tight, span{word, fg(cMuted)})
+	}
+	return long, tight
 }
 
 // via names the edges and proxies in front of something after lead, each

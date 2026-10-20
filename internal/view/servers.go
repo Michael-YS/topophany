@@ -94,12 +94,19 @@ type CardObserver struct {
 	Outdated bool      `json:"outdated"`
 }
 
-// CardLink is a declared link from or, when Inbound, to a server.
+// CardLink is a declared link from or, when Inbound, to a server. Health is
+// the link's, unknown throughout a cached view. Reading is what its own fresh
+// checks report of it, each a few words in the order the checks speak: a
+// connector's "4 sessions" and the colos it holds, then the platform API's
+// "API 4 connections healthy". It is reported evidence beside the health,
+// never a reason for it, and empty when no check of the link reported.
 type CardLink struct {
-	ID        string `json:"id"`
-	Other     Ref    `json:"other"`
-	Transport string `json:"transport"`
-	Inbound   bool   `json:"inbound"`
+	ID        string   `json:"id"`
+	Other     Ref      `json:"other"`
+	Transport string   `json:"transport"`
+	Inbound   bool     `json:"inbound"`
+	Health    string   `json:"health,omitempty"`
+	Reading   []string `json:"reading,omitempty"`
 }
 
 // Fleet is what the cards are built from, indexed once.
@@ -122,12 +129,14 @@ type Fleet struct {
 	regions    map[string][]string
 	pops       map[string][]string         // where each edge answered, freshly
 	popCounts  map[string]map[string]int64 // 24h colo counts by edge
+	linkState  map[string]string           // link health, unknown throughout a cached view
+	linkRead   map[string][]string         // what each link's fresh checks report of it
 }
 
 func (v View) Fleet() *Fleet {
 	s := v.Snapshot
 	t := s.Topology
-	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}, popCounts: map[string]map[string]int64{}}
+	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}, popCounts: map[string]map[string]int64{}, linkState: map[string]string{}, linkRead: map[string][]string{}}
 	for _, n := range t.Nodes {
 		f.Nodes[n.ID] = n
 		f.Names[n.ID] = n.Name
@@ -166,11 +175,19 @@ func (v View) Fleet() *Fleet {
 		if l.To != l.From {
 			f.links[l.To] = append(f.links[l.To], l)
 		}
+		f.linkState[l.ID] = "unknown"
+	}
+	if !v.Cached {
+		for _, e := range s.Links {
+			f.linkState[e.ID] = e.Health
+		}
+		f.linkReadings(s, t)
 	}
 	target := map[string]string{}
 	for _, x := range t.Checks {
 		target[x.ID] = x.Endpoint
 	}
+	byEdge := map[string][]model.CheckState{}
 	for _, cs := range s.Checks {
 		ep, ok := endpoints[target[cs.ID]]
 		if !ok {
@@ -182,17 +199,7 @@ func (v View) Fleet() *Fleet {
 		}
 		// The day's shares come from the check's rollups, fresh or not:
 		// they describe what was seen, and a stale view still holds them.
-		// The union is bounded by the colo alphabet, and the card displays
-		// cardPops; no per-check cap, which would lose a code rare in each
-		// check but large across them.
-		if r := RollupWindow(cs.Availability, "24h"); r != nil {
-			for code, n := range r.Pops {
-				if f.popCounts[at] == nil {
-					f.popCounts[at] = map[string]int64{}
-				}
-				f.popCounts[at][code] += n
-			}
-		}
+		byEdge[at] = append(byEdge[at], cs)
 		// Where an edge said it answered from, freshly, is the fallback for
 		// a collector that keeps no rollups yet.
 		if cs.Freshness != "fresh" || cs.Last == nil || v.Cached {
@@ -203,6 +210,11 @@ func (v View) Fleet() *Fleet {
 		}
 		if pop := cs.Last.Facts["edge_pop"]; cs.Last.Facts["edge_provider"] != "vercel" && pop != "" && !slices.Contains(f.pops[at], pop) {
 			f.pops[at] = append(f.pops[at], pop)
+		}
+	}
+	for at, checks := range byEdge {
+		if pops := sumDayPops(checks, nil); pops != nil {
+			f.popCounts[at] = pops
 		}
 	}
 	// An endpoint some check in the view targets has a health.
@@ -321,7 +333,7 @@ func (f *Fleet) Card(id string) Card {
 		if l.To == n.ID && l.From != n.ID {
 			inbound, other = true, l.From
 		}
-		c.Links = append(c.Links, CardLink{ID: l.ID, Other: Ref{other, f.Names[other]}, Transport: l.Transport, Inbound: inbound})
+		c.Links = append(c.Links, CardLink{ID: l.ID, Other: Ref{other, f.Names[other]}, Transport: l.Transport, Inbound: inbound, Health: f.linkState[l.ID], Reading: f.linkRead[l.ID]})
 	}
 	return c
 }

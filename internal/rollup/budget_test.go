@@ -66,6 +66,7 @@ func TestFirstByteAndLabelCountsStayWithinBudget(t *testing.T) {
 		r.Add(key, "obs", at, "ok", 1, time.Minute, at, Extra{
 			FirstByteMS:  int64(i % 5000),
 			HasFirstByte: true,
+			HasEdge:      true,
 			Cache:        caches[i%len(caches)],
 			Pop:          colos[i%len(colos)],
 		})

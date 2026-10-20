@@ -85,7 +85,9 @@ const defaultStale = 3 * 60 * 1000
 // start is a multiple of width. ms is the time each class stood, n the
 // samples taken by outcome, lat what the passing ones took, ttfb what their
 // first byte took by cache class, pops the colos every sample reported and
-// cache the cache status of every sample.
+// cache the cache status of every sample an edge answered. A sample with no
+// edge has no cache status to count, so a bucket of such samples holds no
+// cache map at all.
 type bucket struct {
 	start, width int64
 	ms           [classes]int64
@@ -223,24 +225,30 @@ func (r *Store) SetCurrent(current func(key string) bool) {
 // the worker's first-byte timing and the edge's cache and colo labels.
 // FirstByteMS counts only when HasFirstByte says the worker timed it; like
 // the overall latency, first-byte time is kept for passing samples only,
-// because that is what the model's latency describes. Cache and Pop are
-// counted for every sample, passing or not, as labels the response
-// reported; Pop is ignored when empty because there was no edge to report
-// one.
+// because that is what the model's latency describes. HasEdge says an edge
+// answered the sample, and the cache status is counted only then: an edge
+// answer without a status counts as other, but a sample with no edge, such
+// as a TCP, TLS, DNS or ICMP probe, has no status to be absent and counts
+// nothing. Cache is counted for every edge answer, passing or not, as the
+// label the response reported. Pop is ignored when empty because there was
+// no edge to report one.
 type Extra struct {
 	FirstByteMS  int64
 	HasFirstByte bool
+	HasEdge      bool
 	Cache, Pop   string
 }
 
-// ExtraOf reads what a sample reported for its rollup: the worker's
-// first-byte timing, the edge's cache status and the colo it named. Vercel
+// ExtraOf reads what a sample reported for its rollup: whether an edge
+// answered it, the worker's first-byte timing, the edge's cache status and
+// the colo it named. An edge answered when the observation names its
+// provider, which every edge adapter does before any other label. Vercel
 // still reports a cache status and a first-byte time, so those are kept;
 // only its colo is dropped, because its reported region is not a physical
-// colo. This is the one place the Vercel exception lives.
+// colo. This is the one place rollups drop it.
 func ExtraOf(v model.Observation) Extra {
 	ms, timed := v.Timings["first_byte_ms"]
-	e := Extra{FirstByteMS: ms, HasFirstByte: timed, Cache: v.Facts["edge_cache"], Pop: v.Facts["edge_pop"]}
+	e := Extra{FirstByteMS: ms, HasFirstByte: timed, HasEdge: v.Facts["edge_provider"] != "", Cache: v.Facts["edge_cache"], Pop: v.Facts["edge_pop"]}
 	if v.Facts["edge_provider"] == "vercel" {
 		e.Pop = ""
 	}
@@ -295,7 +303,9 @@ func (r *Store) Add(key, owner string, at time.Time, outcome string, elapsed int
 			b.ttfb[cacheClass(extra.Cache)].add(extra.FirstByteMS)
 		}
 	}
-	b.countCache(extra.Cache)
+	if extra.HasEdge {
+		b.countCache(extra.Cache)
+	}
 	b.countPop(extra.Pop)
 	r.grow(s, b.size()-before)
 	r.shed()

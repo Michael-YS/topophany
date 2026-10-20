@@ -31,6 +31,9 @@ func TestEveryLanguageHasEveryText(t *testing.T) {
 		}
 		for _, sc := range scenarios {
 			want["scenario."+sc.ID], want["scenario."+sc.ID+".detail"] = true, true
+			if len(sc.DeclaresPops) > 0 {
+				want["scenario."+sc.ID+".pops"] = true
+			}
 		}
 		text, e := catalog(lang)
 		if e != nil {

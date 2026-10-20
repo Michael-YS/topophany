@@ -59,7 +59,10 @@ Do not add implicit registration, dynamic loading or a direct transport fallback
 HTTP GET is not sufficient proof that an API endpoint has no side effects.
 
 `probe.TestAdapterCompatibility` compares serialized observations and measurement
-contracts against fixtures captured before the package split. It ignores only
+contracts against fixtures captured before the package split, plus one row per
+adapter added later (`cloudflared-ok`, `cloudflare-tunnel`, `cloudflare-dns`,
+`cloudflare-pool`), each frozen once from its first output and never
+regenerated. It ignores only
 the ephemeral listener address, sampling timestamp and elapsed time.
 `probe.TestEdgeFactsCompatibilityBeforePackageSplit` and
 `probe.FuzzEdgeFactsCompatibility` compare header facts with an independent,

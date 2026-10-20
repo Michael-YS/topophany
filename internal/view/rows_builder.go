@@ -28,6 +28,7 @@ type rowBuilder struct {
 	linkStates        map[string]model.EntityState
 	resources         map[string][]CardResource
 	opened            map[string]*model.IncidentRecord
+	policy            *policyIndex // built when an incident first needs it
 }
 
 func newRowBuilder(v View, tab int) *rowBuilder {
@@ -202,6 +203,7 @@ func (rb *rowBuilder) incidentRow(i model.Incident) Row {
 	if r := rb.opened[i.ID]; r != nil && r.Since.Before(i.Since) {
 		i.Since = r.Since
 	}
+	i.Hypothesis = rb.incidentHypothesis(i)
 	return Row{Kind: "incident", ID: i.ID, Health: "down", Title: v.IncidentTitle(i), Meta: i.Summary, Cols: []string{Age(v.Now, i.Since), Plural(len(i.Checks), "check")}, Details: IncidentDetails(v.Now, i, rb.opened[i.ID])}
 }
 

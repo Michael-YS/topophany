@@ -159,9 +159,10 @@ func TestCollectUnreachableAndTimeout(t *testing.T) {
 		t.Fatal("closed listener did not report a monitor error")
 	}
 
+	// The listener answers only when the client gives up, so the read can end
+	// only through the check's own deadline.
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(300 * time.Millisecond)
-		io.WriteString(w, readyFour)
+		<-r.Context().Done()
 	}))
 	defer slow.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -225,6 +226,39 @@ func TestCollectExpectedColosIsPolicy(t *testing.T) {
 			}
 			if o.Outcome != tc.outcome || o.Code != tc.code {
 				t.Fatalf("got %+v", o)
+			}
+		})
+	}
+}
+
+// The policy compares every distinct colo the report names, including one
+// beyond the eight the fact can carry: a ninth colo that sorts last must still
+// be named as outside the declared list.
+func TestCollectColoPolicyUsesFullSet(t *testing.T) {
+	var lines []string
+	for _, colo := range []string{"hkg", "iad", "jfk", "lax", "nrt", "ord", "sea", "sfo", "sin"} {
+		lines = append(lines, `cloudflared_tunnel_server_locations{edge_location="`+colo+`"} 1`)
+	}
+	metrics := write(strings.Join(lines, "\n") + "\n")
+	for _, tc := range []struct {
+		name    string
+		colos   []string
+		outcome string
+		code    string
+	}{
+		{"ninth outside the list", []string{"HKG", "IAD", "JFK", "LAX", "NRT", "ORD", "SEA", "SFO"}, "policy", "colo_outside_expected"},
+		{"first outside the list, ninth declared", []string{"IAD", "JFK", "LAX", "NRT", "ORD", "SEA", "SFO", "SIN"}, "policy", "colo_outside_expected"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o, err := collect(t, model.CloudflaredOptions{ExpectedColos: tc.colos}, write(readyFour), metrics)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if o.Outcome != tc.outcome || o.Code != tc.code {
+				t.Fatalf("a colo beyond the capped fact was not compared: %+v", o)
+			}
+			if got := strings.Split(o.Facts["connection_colos"], ","); len(got) != MaxColos || strings.Contains(o.Facts["connection_colos"], "sin") {
+				t.Fatalf("fact is not the capped list: %q", o.Facts["connection_colos"])
 			}
 		})
 	}

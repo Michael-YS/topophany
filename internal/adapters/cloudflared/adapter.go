@@ -117,8 +117,9 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 	// A colo the report did not name asserts nothing, as a missing trace line
 	// does not violate a trace policy. A reported colo is peer-reported
 	// metadata from the connector, not proof of which edge carried a service
-	// request.
-	if outsideColos(metrics.ServerLocations, options.ExpectedColos) {
+	// request. Every distinct colo is compared, not only the eight the fact
+	// can show: the ninth is still a connection outside a declared list.
+	if outsideColos(metrics.allLocations, options.ExpectedColos) {
 		o.Outcome, o.Code = "policy", "colo_outside_expected"
 		o.Detail = "the connector holds an edge connection outside the declared colos"
 	}

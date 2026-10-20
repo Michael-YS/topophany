@@ -1,14 +1,13 @@
 # Cloudflare API adapter — docs-based acceptance, 2026-10-19
 
-Implementation: workstream H of `Topophany_Cloudflare_Roadmap_2026-10-19.md`
-on top of `f550e0b`.
+Implementation: commit 3eb7ae8.
 
 ## What kind of acceptance this is
 
-**No Cloudflare account and no API token were used.** The "Verify first" live
-capture in Part 7 of the roadmap is blocked: it needs a real account, a real
-Tunnel, a real zone and a token holding only the least-privilege scopes. Asking
-for one was out of scope for this change. What was verified instead:
+**No Cloudflare account and no API token were used.** A live capture is
+blocked: it needs a real account, a real Tunnel, a real zone and a token
+holding only the least-privilege scopes. Asking for one was out of scope for
+this change. What was verified instead:
 
 - The three request paths, the response field names, the closed value
   vocabularies and the permission names were read from Cloudflare's own API
@@ -35,7 +34,7 @@ evidence that a real token and a real account behave as documented.
 | [Verify Token](https://developers.cloudflare.com/api/resources/user/subresources/tokens/methods/verify/) | `result` carries `id`, `status` (`active`, `disabled`, `expired`), `expires_on` and `not_before`. Consulted but **not called**: one GET per check is the rule, the selected read's own 401/403 proves the same thing, and this endpoint would need an extra permission. |
 | [API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/) | The exact permission names are `Cloudflare Tunnel Read`, `DNS Read` and `Load Balancing: Monitors and Pools Read`. |
 | [Create API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) | Token creation and scope model. |
-| `https://developers.cloudflare.com/fundamentals/api/reference/tokens/` (named in the work plan) | **404 Page Not Found** on 2026-10-19. The permissions page and the create-token guide above are the current pages; no content was taken from the missing URL. |
+| `https://developers.cloudflare.com/fundamentals/api/reference/tokens/` (an older link for token scopes) | **404 Page Not Found** on 2026-10-19. The permissions page and the create-token guide above are the current pages; no content was taken from the missing URL. |
 
 No undocumented field was invented. Where the reference is ambiguous, the
 adapter omits the fact or accepts the documented alternatives, as noted below.
@@ -53,7 +52,7 @@ before composing one allowlisted path.
 
 | Read | Request | Facts | Policy |
 |---|---|---|---|
-| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status`, `tunnel_connections`, `tunnel_pending_reconnect` (deprecated flag), `tunnel_colos` (fact capped at 8 sorted), `connector_versions` (≤ 4 sorted), `oldest_connection_at` | `connections_below_expected`, `colo_outside_expected` (compares every distinct reported colo, not only the capped fact) |
+| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status`, `tunnel_connections`, `tunnel_pending_reconnect` (deprecated flag), `tunnel_colos` (fact capped at 8 sorted), `connector_versions` (≤ 4 sorted), `oldest_connection_at`; the five connection facts are absent when the connection list is empty beside a `healthy` or `degraded` tunnel | `connections_below_expected`, `colo_outside_expected` (compares every distinct reported colo, not only the capped fact) |
 | `dns_record` | `GET /zones/{zone_id}/dns_records?name={record_name}&type={record_type}` | `record_count` (present `result` only), `record_proxied`, `record_ttl`, `record_content_matches` | `record_missing` only for an explicit `[]`; absent/null result and a partial `total_count` page are monitor errors |
 | `pool` | `GET /accounts/{account_id}/load_balancers/pools/{pool_id}/health` | `pool_healthy`, `origins_healthy`, `origins_total`, `regions_reporting`, `origin.<declared>` (a present verdict only) | `origins_below_expected` (an absent declared origin is policy but gets no per-origin fact) |
 
@@ -106,9 +105,10 @@ choice for each is documented in the package README.
    and compares canonically. A real report whose keys are names while the
    declaration uses addresses would read every declared origin as missing.
 5. **The deprecated tunnel `connections` array.** A live account may already
-   return it empty. In that case `tunnel_connections` reads 0 while
-   `tunnel_status` may read `healthy`; the adapter does not silently switch to
-   the dedicated connections endpoint, because that would be a second GET.
+   return it empty. In that case, beside `healthy` or `degraded`, the
+   connection list is treated as not reported and no connection fact is
+   emitted; the adapter does not switch to the dedicated connections endpoint,
+   because that would be a second GET.
 6. **Error bodies.** Only the success flag is read; the real `errors[]` code
    and message texts are never stored, so a 200/`success:false` body needs no
    fixture.
@@ -118,25 +118,35 @@ choice for each is documented in the package README.
 8. **Tunnel status changes.** Whether `degraded` means what the reference says
    in a real deployment, and how quickly the connections array catches up with
    a connector restart.
-9. **A tunnel check beside a `cloudflared` check.** The roadmap's done-when is
-   "a tunnel check beside G's local check shows the two counts on the same
-   link"; that requires a live account and was not run. Both adapters are
-   wired independently and this release does not put the API sample on a link
-   automatically. The link follow-up is recorded below.
+9. **A tunnel check beside a `cloudflared` check.** The goal of this adapter
+   is a tunnel check beside the connector's local check showing the two
+   readings on the same link; that requires a live account and was not run
+   against one. The link rule for the pair is covered by engine tests on
+   synthetic reports, as recorded below.
 
 ## Follow-ups this release does not close
 
-- **The link view.** The roadmap's done-when also wants the API tunnel count
-  beside G's local `ready_connections` on the same link. The link entity still
-  shows only the `cloudflared` check's reported state; the API check's
-  `tunnel_connections` is not joined to it. Adding that comparison is a
-  follow-up. Do not let either remote report decide the link's health: a
-  `cloudflared` connector report remains the local runtime statement, and a
-  Cloudflare API read is remote platform metadata.
+- **The link view.** An API tunnel check may now name the same link as the
+  `cloudflared` check, and the link's row on the Servers card shows both
+  readings, the connector's sessions and colos (`ready_connections`,
+  `connection_colos`) and the API's connections and status
+  (`tunnel_connections`, `tunnel_status`): `→ Cloudflare   cloudflared ·
+  4 sessions · hkg,sin · API 4 connections healthy`. `topo show servers --json`
+  carries the same words as the link's `reading`. The API sample does not vote: while a fresh connector report decides the link, the
+  API check is listed beside it and neither outvotes nor dilutes it, whether it
+  passes, violates a policy, fails to read or has gone stale, and the link
+  reads `reported` rather than `inferred`. Without a fresh connector report the
+  API sample stays one of the link's checks and a link it alone describes is
+  unknown. A `cloudflared` connector report remains the local runtime
+  statement, and a Cloudflare API read is remote platform metadata. This was
+  exercised on synthetic reports only
+  (`engine.TestRemotePlatformReportDoesNotVoteBesideConnector`,
+  `view.TestCardLinkCarriesTheTunnelReading` and
+  `tui.TestServerCardLinkRowSaysTheTunnel`).
 - **Preview.** `internal/preview` has no `cloudflare` branch, so a custom
   preview topology containing this kind falls through the generic synthetic
-  path. The shipped preview topologies contain no such check. Wiring a
-  reported branch belongs with the example/preview workstream (J).
+  path. The shipped preview topologies contain no such check, and a
+  reported branch for it is not part of this release.
 - **The region-keyed `pop_health` fixture** is a plausible reading of the
   reference, not a captured shape; the single-object fixture matches the
   generated model. Both are labelled synthetic in the fixture README.

@@ -142,16 +142,17 @@ func (m *Model) sampleLines(r Row, w int) []vline {
 	}
 	out = append(out, vline{{s.Latency.String(), fg(cText)}})
 	// The last day's first byte, split by what the edge said about its
-	// cache, and the colos it answered from, at most four shares. Both are
-	// wrapped to the panel so a narrow terminal keeps them readable.
+	// cache, and the colos it answered from, at most LinePops shares. Both
+	// say their window, so the pair reads together, and both are wrapped to
+	// the panel so a narrow terminal keeps them readable.
 	if day != nil {
 		if line := view.FirstByteLine(day.FirstByte); line != "" {
-			for _, l := range wrapParts("first byte "+line, w) {
+			for _, l := range wrapWindowed("first byte "+line, "24h", w) {
 				out = append(out, vline{{l, fg(cText)}})
 			}
 		}
-		if line := view.PopsLine(day.Pops, 4); line != "" {
-			for _, l := range wrapParts(line+" · 24h", w) {
+		if line := view.PopsLine(day.Pops, view.LinePops); line != "" {
+			for _, l := range wrapWindowed("colos "+line, "24h", w) {
 				out = append(out, vline{{l, fg(Mix(cAccent, cMuted, .35))}})
 			}
 		}

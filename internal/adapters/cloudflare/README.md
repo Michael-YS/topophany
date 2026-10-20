@@ -122,11 +122,11 @@ is named by `adapter.token_env` and read from the worker's environment; it is
 never written in the topology, never sent to the zone, and cleared from the
 public topology by `config.Public`. Documented scopes are exactly Account ›
 Cloudflare Tunnel › Read, Zone › DNS › Read and Account › Load Balancing:
-Monitors and Pools Read; a read that needs another permission is out of scope.
+Monitors and Pools › Read; a read that needs another permission is out of scope.
 
 | Read | Request (exact path) | Facts | Policy codes |
 |---|---|---|---|
-| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status` (closed `healthy`/`degraded`/`down`/`inactive`), `tunnel_connections`, `tunnel_pending_reconnect`, `tunnel_colos` (≤ 8 sorted tokens), `connector_versions` (≤ 4 sorted tokens), `oldest_connection_at` (RFC 3339) | `connections_below_expected`, `colo_outside_expected` (compares every distinct colo, not only the eight the fact shows) |
+| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status` (closed `healthy`/`degraded`/`down`/`inactive`), `tunnel_connections`, `tunnel_pending_reconnect`, `tunnel_colos` (≤ 8 sorted tokens), `connector_versions` (≤ 4 sorted tokens), `oldest_connection_at` (RFC 3339); the five connection facts are absent when the API's connection list is empty beside a `healthy` or `degraded` tunnel | `connections_below_expected`, `colo_outside_expected` (compares every distinct colo, not only the eight the fact shows) |
 | `dns_record` | `GET /zones/{zone_id}/dns_records?name={record_name}&type={record_type}` | `record_count`, `record_proxied` (`true`/`false` when every record agrees), `record_ttl` (when every record agrees), `record_content_matches` (`true`/`false`/`not_declared`) | `record_missing`, `record_not_proxied`, `record_proxied_unexpectedly`, `record_content_mismatch` |
 | `pool` | `GET /accounts/{account_id}/load_balancers/pools/{pool_id}/health` | `pool_healthy` (when a region reports it), `origins_healthy`, `origins_total`, `regions_reporting`, `origin.<declared>` (`healthy`/`unhealthy`, declared origins only) | `origins_below_expected` |
 
@@ -208,7 +208,7 @@ assertions are state comparisons, not request failures: the tunnel check reads
 `ok` with `tunnel_status: down` unless a declared count or colo list makes it
 `policy`, and a missing DNS record is `record_missing` policy.
 
-`tunnel_connections` is the length of the `result.connections` array,
+When the array is reported, `tunnel_connections` is its length,
 including any entry marked `is_pending_reconnect`; `tunnel_pending_reconnect`
 is the subset that carries that flag. The current reference marks
 `is_pending_reconnect` deprecated and says it is always false, so the pending
@@ -217,19 +217,33 @@ A `down` or `degraded` `tunnel_status` is a reported fact and does not by
 itself fail the check: it
 is the platform's word, and `expected_connections` and `expected_colos` are the
 declared state assertions. Use an application check and the link modelling
-from `cloudflared` for reachability.
+from `cloudflared` for reachability. A `cloudflare` check attached to the same
+link as a `cloudflared` check stays in the link's check list beside the
+connector's, but while a fresh connector report decides the link the API read
+does not vote on it, so it neither outvotes the connector nor degrades the
+link; with no connector report, an API read alone leaves the link unknown.
 
 The tunnel read counts the `result.connections` array. Cloudflare documents
 that array as deprecated and says it will start returning an empty array in
-favour of the dedicated connections endpoint; a later zero count can therefore
-mean the field moved rather than that no connector is live. `tunnel_status`
-carries the API's own word either way. The read does not call the dedicated
-endpoint: one GET per check is the rule, and that endpoint is outside the
-three allowlisted paths. The connection's `origin_ip`, its `id`, `client_id`
+favour of the dedicated connections endpoint. A `healthy` or `degraded`
+`tunnel_status` means at least one live connection by definition, so an empty
+array beside either is the field having moved, not a tunnel without a
+connector: the connection list is then **not reported**. The five connection
+facts (`tunnel_connections`, `tunnel_pending_reconnect`, `tunnel_colos`,
+`connector_versions`, `oldest_connection_at`) are absent, neither
+`connections_below_expected` nor `colo_outside_expected` can fire, the outcome
+stays `ok`, and the detail reads "Cloudflare API state reported; the
+connections list was not reported". An empty array beside `down` or `inactive`
+is a count of zero: `tunnel_connections` is `0` and the declared policies apply
+as for any count. A populated array is counted as returned whatever the status
+says. `tunnel_status` carries the API's own word in every case. The read does
+not call the dedicated endpoint: one GET per check is the rule, and that
+endpoint is outside the three allowlisted paths. The connection's `origin_ip`, its `id`, `client_id`
 and `uuid`, and the tunnel's name and account tag are never read into a fact.
 `connector_versions` keeps only tokens of at most 24 characters; `tunnel_colos`
 keeps only three uppercase letters, sorts them and keeps the first eight. The
-colo policy compares the same eight the fact shows.
+colo policy compares every distinct reported colo, not only the eight the fact
+shows: a ninth colo is still a connection outside a declared list.
 
 The DNS `result` must be present: an absent or null result is a monitor error,
 not an empty record list, while an explicit `[]` yields `record_missing`
@@ -240,8 +254,13 @@ one record for one name and type. The adapter reports `record_proxied` and
 `record_ttl` only when every record agrees; a mixed list leaves those facts
 absent and `record_count` says how many were returned. `record_missing` is policy with `record_content_matches: false` when
 a content expectation was declared and the list is empty. Content is compared
-with `expected_content` in memory; the record's content, id, zone name and
-comment are never stored.
+with `expected_content` in memory, in the form Cloudflare stores it rather than
+byte for byte: for an `A` or `AAAA` record both sides are parsed as addresses
+and compared as addresses (`2001:DB8::1` matches `2001:db8::1`), and an
+address that does not parse on either side is a mismatch; for a `CNAME` both
+sides are lowercased and lose one trailing dot (`Example.COM.` matches
+`example.com`). The record's content, id, zone name and comment are never
+stored.
 
 The pool reference renders `pop_health` both as a single object
 `{healthy, origins}` and as "a list of regions and associated health status",
@@ -262,11 +281,16 @@ missing or unhealthy is `origins_below_expected` policy; a missing one gets no
 
 The bearer token is echoed into every string field of every read by the
 reflection tests (`TestBearerTokenCannotEchoIntoObservation`,
-`TestShapedTokenCannotEchoAsVersion`): nothing of the token reaches the
-observation, its fact keys or values, its detail or its error. A value exactly
-equal to the token is dropped even when it has a reportable shape (a 24-character
-version token, a three-letter colo); shape-validated tokens from the platform
-are otherwise indistinguishable from evidence.
+`TestShapedTokenCannotEchoAsVersion`, `TestTokenFragmentsCannotEchoAsVersions`):
+nothing of the token reaches the observation, its fact keys or values, its detail or its error. In
+`tunnel_colos`, `connector_versions` and `oldest_connection_at`, a value (or a
+comma-separated member of a list) that is the token, or any run of at least
+eight bytes of it, is dropped even when it has a reportable shape (a
+24-character version token, a three-letter colo), so a token split across two
+version strings does not survive either; numbers are never examined, and
+shape-validated tokens from the platform are otherwise indistinguishable from
+evidence. A run shorter than eight bytes is not treated as an echo, because it
+cannot be told from a colo.
 Only closed words, numbers, shape-validated tokens (three uppercase letters for
 a colo, at most 24 token characters for a connector version) and comparisons
 with the topology leave the adapter. Numeric counts are an explicit exception,

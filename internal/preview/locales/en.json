@@ -35,10 +35,11 @@
   "scenario.host-disk-full.detail": "Synthetic filesystem capacity use rises to 98–99%; configured disk thresholds produce a policy incident.",
   "scenario.host-process-missing": "Host process missing",
   "scenario.host-process-missing.detail": "The configured process has zero non-zombie matches; a positive minimum produces a policy incident.",
-  "scenario.edge-challenge": "Cloudflare challenge for home observers",
-  "scenario.edge-challenge.detail": "Home observers' requests to a Cloudflare-fronted origin get a 403 challenge page (`cf-mitigated: challenge`) while remote observers still get through. The edge answered, the origin was not asked, and the origin's own state is not established.",
+  "scenario.edge-challenge": "Cloudflare challenge for the relay observer",
+  "scenario.edge-challenge.detail": "The San Jose DigitalOcean relay's requests to a Cloudflare-fronted origin get a 403 challenge page (`cf-mitigated: challenge`) while remote observers still get through. The edge answered, the origin was not asked, and the origin's own state is not established.",
   "scenario.edge-rerouted": "Cloudflare answers from LAX",
-  "scenario.edge-rerouted.detail": "Home observers' Cloudflare answers arrive from LAX while the check declares HKG and NRT → a policy violation, not an outage: the requests succeed and nothing fails.",
+  "scenario.edge-rerouted.detail": "The San Jose DigitalOcean relay's Cloudflare answers arrive from LAX instead of SJC while its check declares SJC and SEA → a policy violation, not an outage: the requests succeed and nothing fails.",
+  "scenario.edge-rerouted.pops": "SJC,SEA",
   "scenario.tunnel-down": "Tunnel connector down",
   "scenario.tunnel-down.detail": "The home box's cloudflared connector reports no ready edge session, so its link reads down; the public hostname gets 530 from the edge, which proves the edge only, while the loopback check still proves the dashboard.",
   "node.win": "Windows Desktop",
@@ -196,5 +197,8 @@
   "check.w-home-edge": "home dashboard through Cloudflare",
   "check.w-home-local": "home dashboard on the box",
   "check.w-tunnel": "cloudflared connector",
+  "check.w-trace": "Cloudflare trace · Windows",
+  "check.m-trace": "Cloudflare trace · MacBook",
+  "check.r-trace": "Cloudflare trace · relay",
   "link.home-cf.notes": "Outbound Tunnel from the home box to Cloudflare. The connector's own report decides this link; the check through the edge proves the edge only."
 }

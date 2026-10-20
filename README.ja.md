@@ -35,7 +35,7 @@
 - **壊れたことだけでなく、どこで壊れたのかを。** チェックはすべて、名前を付けた観測点から行います。大阪からは届かないのにニューヨークからは届くなら、それは大阪からの経路の障害です。Topophany はサーバーダウンと決めつけず、そのまま報告します。
 - **色ではなく根拠を。** 健全性、根拠の出どころ、鮮度はそれぞれ別のフィールドです。成功したチェックがなければ緑にはならず、誰もチェックしていないサービスは `unknown` のまま。キャッシュを表示しているときは、そうはっきり示します。
 - **ネットワークの備忘録に。** 何がどこで動き、各マシンにどうたどり着き、各経路がどのプロキシチェーンを通るのか。レビュー済みの JSON ファイル 1 つに、メモや手順書と一緒にまとまります。あなたが読み、エージェントが読み、監視もこのファイルを基準にチェックします。
-- **眺めていたくなる画面。** 点字で描く世界地図は、チェックが答えた Cloudflare のコロをその場所に置きます。場所の並びを保った模式図、ネットワークグラフ、サーバーごとのカード。サービスは属するアプリケーションごとにまとまります。どのターミナルでも動き、マウスも使えます。
+- **眺めていたくなる画面。** 点字で描く世界地図は、チェックに応答した Cloudflare のコロをその場所に置きます。場所の並びを保った模式図、ネットワークグラフ、サーバーごとのカード。サービスは属するアプリケーションごとにまとまります。どのターミナルでも動き、マウスも使えます。
 - **バイナリ 1 つ、ほかには何も要らない。** CGO も、データベースのデーモンも、Node.js も不要で、外部の Go モジュールにも一切依存しません。
 
 <p align="center">
@@ -109,7 +109,7 @@ topo --credentials ./demo/credentials.json
 
 ## 自分のネットワークを監視する
 
-1. **書き出す。** トポロジーは、ノード、リンク、エンドポイント、サービス、経路、観測点、チェックを並べた JSON です。上のようにエージェントに書かせるか、[`examples/homelab.json`](examples/homelab.json) をもとに `topo edit --config topology.json` で編集します。どちらの場合も `topo validate` で検証します。Cloudflare のゾーンなら、[`examples/cloudflare.json`](examples/cloudflare.json) がそのまま使える例です。プロキシされたオリジンとその直接チェック、Worker と Pages サイト、Tunnel とコネクターの `cloudflared` チェック、サービス自身のループバックチェック、trace と DoT のチェック、Access 保護されたホスト名が入っています。`topo preview` は、チャレンジページ、宣言した一覧の外のコロからの応答、Tunnel コネクターの停止をシミュレートするので、実際に動かす前にそれぞれがどう判定されるかを確認できます。
+1. **書き出す。** トポロジーは、ノード、リンク、エンドポイント、サービス、経路、観測点、チェックを並べた JSON です。上のようにエージェントに書かせるか、[`examples/homelab.json`](examples/homelab.json) をもとに `topo edit --config topology.json` で編集します。どちらの場合も `topo validate` で検証します。Cloudflare のゾーンなら、[`examples/cloudflare.json`](examples/cloudflare.json) が手本になる完成した例です。プロキシされたオリジンとその直接チェック、Worker と Pages サイト、Tunnel とコネクターの `cloudflared` チェック、サービス自身のループバックチェック、trace と DoT のチェック、Access 保護されたホスト名が入っています。`topo preview` は、チャレンジページ、宣言した一覧の外のコロからの応答、Tunnel コネクターの停止をシミュレートするので、実際に動かす前にそれぞれがどう判定されるかを確認できます。
 2. **コレクターを動かす。** 各マシンから届く場所で、TLS を有効にして起動します: `topo serve --config topology.json --auth auth.json --data collector-data --listen 0.0.0.0:7447 --tls-cert server.pem --tls-key server-key.pem`
 3. **ワーカーを動かす。** 計測の起点にしたいマシンそれぞれで起動します: `topo worker --config topology.json --observer <id> --credentials worker-credentials.json --data worker-data`
 4. **どこからでも見る。** `topo login --server https://your-collector:7447 --project <name>` を一度実行すれば、あとは `topo` だけです。

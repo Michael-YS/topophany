@@ -84,12 +84,15 @@ type Scenario struct {
 	// carries the answer from LAX whatever colo is nearest. It changes the
 	// evidence only; the engine judges it as it judges any other sample.
 	EdgeIssue string
-	// DeclaredPops states the colos a check's deployment declares, taking
-	// precedence over the check's own expected_pops. It is a scenario-side
-	// deployment statement, exactly what expected_pops would be in the file:
-	// a colo outside the list is a policy sample after a passing request,
-	// never a failed one. It does not change the base contract.
-	DeclaredPops map[string][]string
+	// DeclaresPops names the checks whose deployment declares the colos in
+	// the catalog's scenario.ID.pops, comma separated, taking precedence over
+	// the check's own expected_pops. It is a scenario-side deployment
+	// statement, exactly what expected_pops would be in the file: a colo
+	// outside the list is a policy sample after a passing request, never a
+	// failed one. The list is the catalog's because it is what the scenario's
+	// text says, and which colos make sense depends on where the language's
+	// topology puts the observer. It does not change the base contract.
+	DeclaresPops []string
 	// TunnelDown makes a cloudflared connector report no ready edge session
 	// and the edge answer 530 for the hostname its tunnel fronts. It requires
 	// a cloudflared check; the origin itself keeps its own local evidence.
@@ -122,7 +125,7 @@ var scenarios = []Scenario{
 	{ID: "host-disk-full", HostIssue: "disk", HostNode: "exit-a"},
 	{ID: "host-process-missing", HostIssue: "process", HostNode: "transit"},
 	{ID: "edge-challenge", EdgeIssue: edgeChallenge},
-	{ID: "edge-rerouted", EdgeIssue: edgeRerouted, DeclaredPops: map[string][]string{"r-app-web": {"HKG", "NRT"}}},
+	{ID: "edge-rerouted", EdgeIssue: edgeRerouted, DeclaresPops: []string{"r-app-web"}},
 	{ID: "tunnel-down", TunnelDown: true},
 }
 
@@ -227,8 +230,8 @@ func New(c model.Config, now time.Time, lang string) *Sim {
 		if sc.EdgeIssue != "" {
 			ok = ok && s.edgeIssueApplies(sc.EdgeIssue)
 		}
-		for id := range sc.DeclaredPops {
-			ok = ok && checks[id]
+		for _, id := range sc.DeclaresPops {
+			ok = ok && checks[id] && len(s.declared(sc)) > 0
 		}
 		if ok {
 			s.available = append(s.available, i)
@@ -571,7 +574,26 @@ func (s *Sim) build(view string, now time.Time) (model.Snapshot, error) {
 			beats[o.ID] = model.Heartbeat{Project: c.Project, Contracts: config.ObserverContracts(c, o.ID), Observer: o.ID, Boot: "preview", SampledAt: t, ReceivedAt: now}
 		}
 	}
-	return engine.Build(c, "preview", view, rows, beats, now), nil
+	return s.declaring(engine.Build(c, "preview", view, rows, beats, now), cur), nil
+}
+
+// declaring shows the colos a scenario's deployment declares in the topology
+// it serves, as the file would carry them as expected_pops, so a reader of
+// the incident sees what the answer was held to. The samples already
+// followed that statement (see Sim.declaredPops); the base config the engine
+// judged them against, and its contracts, are not touched.
+func (s *Sim) declaring(snap model.Snapshot, sc Scenario) model.Snapshot {
+	if len(sc.DeclaresPops) == 0 {
+		return snap
+	}
+	declared := s.declared(sc)
+	snap.Topology.Checks = slices.Clone(snap.Topology.Checks)
+	for i := range snap.Topology.Checks {
+		if slices.Contains(sc.DeclaresPops, snap.Topology.Checks[i].ID) {
+			snap.Topology.Checks[i].HTTP.ExpectedPops = slices.Clone(declared)
+		}
+	}
+	return snap
 }
 
 // History is what a collector would return for a check's history at now:
@@ -690,11 +712,24 @@ func (s *Sim) tunnelFronts(node, edge string) bool {
 	return false
 }
 
+// declared is the colo list a scenario's deployment declares, in the
+// simulator's language: the codes of the catalog's scenario.ID.pops.
+func (s *Sim) declared(sc Scenario) []string {
+	pops := []string{}
+	for _, code := range strings.Split(s.say("scenario."+sc.ID+".pops", ""), ",") {
+		if code = strings.TrimSpace(code); model.IsColo(code) {
+			pops = append(pops, code)
+		}
+	}
+	return pops
+}
+
 // declaredPops is the colo list a check's deployment declares in sc: the
-// scenario's statement where it has one, else the check's own expected_pops.
-func declaredPops(sc Scenario, x model.Check) []string {
-	if pops, ok := sc.DeclaredPops[x.ID]; ok {
-		return pops
+// scenario's statement where it has one for the check, else the check's own
+// expected_pops.
+func (s *Sim) declaredPops(sc Scenario, x model.Check) []string {
+	if slices.Contains(sc.DeclaresPops, x.ID) {
+		return s.declared(sc)
 	}
 	return x.HTTP.ExpectedPops
 }
@@ -1093,9 +1128,14 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 		}
 		// A colo outside the declared list is a state assertion after a
 		// passing request, exactly as expected_pops decides at run time.
-		if o.Outcome == "ok" && provider != "vercel" && popOutside(region, declaredPops(sc, x)) {
+		if o.Outcome == "ok" && provider != "vercel" && popOutside(region, s.declaredPops(sc, x)) {
 			o.Outcome, o.Stage, o.Code = "policy", "edge_assert", "pop_mismatch"
 			o.Detail = "request succeeded but the edge answered from a colo outside the declared list"
+		}
+		// A trace check reads the vantage point from the edge's own report
+		// of the request it just served.
+		if x.HTTP.ExitFormat == "trace" && (o.Outcome == "ok" || o.Outcome == "policy") {
+			s.traceFacts(&o, x, sc)
 		}
 	}
 	if broken != "" && beyond && x.Kind != "http" {
@@ -1106,6 +1146,45 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 	}
 	o.DurationMS = int64(total)
 	return o
+}
+
+// traceFacts adds what /cdn-cgi/trace says of the vantage point that asked,
+// as the probe keeps it: the colo the request landed on (the rerouted one
+// while that scenario lasts), whether WARP and Gateway are on, the protocol
+// versions, the country and the egress address. The home observers run behind
+// WARP; the egress address is a documentation address fixed per observer.
+func (s *Sim) traceFacts(o *model.Observation, x model.Check, sc Scenario) {
+	colo, _ := s.edgePop("cloudflare", x.Observer)
+	home := s.homeObserver(x.Observer)
+	if sc.EdgeIssue == edgeRerouted && home {
+		colo = "LAX"
+	}
+	if colo != "" {
+		o.Facts["trace_colo"] = colo
+	}
+	o.Facts["trace_warp"] = map[bool]string{true: "on", false: "off"}[home]
+	o.Facts["trace_gateway"] = "off"
+	o.Facts["trace_http"], o.Facts["trace_tls"] = "http1.1", "TLSv1.3"
+	if loc := country(s.where[s.obsNode[x.Observer]]); loc != "" {
+		o.Facts["trace_loc"] = loc
+	}
+	if o.Facts["exit_ip"] == "" {
+		o.Facts["exit_ip"] = "198.51.100." + strconv.Itoa(10+int(hash(x.Observer)%200))
+	}
+}
+
+// country is the two-letter code a trace names for a place the built-in
+// topologies use, "" for any other.
+func country(l *model.Location) string {
+	switch {
+	case isJapan(l):
+		return "JP"
+	case mainland(l):
+		return "CN"
+	case isNorthAmerica(l):
+		return "US"
+	}
+	return ""
 }
 
 // selected mimics the proxy core's fallback group: the first candidate whose

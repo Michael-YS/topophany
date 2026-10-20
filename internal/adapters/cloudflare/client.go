@@ -21,8 +21,9 @@ import (
 // comparisons with the topology leave the adapter.
 
 // PathEvidence marks a sample taken from Cloudflare's own API rather than
-// from a request the edge answered.
-const PathEvidence = "cloudflare_api_reported"
+// from a request the edge answered; the constant lives in model because the
+// engine reads the same marker.
+const PathEvidence = model.RemotePlatformPathEvidence
 
 // Body budgets. A tunnel or pool response is a few kilobytes; a DNS record
 // list can be larger but is still bounded. A body over its budget is a
@@ -141,29 +142,43 @@ func Collect(ctx context.Context, deps Dependencies, x model.Check, target strin
 	if err != nil {
 		return err
 	}
-	// A shaped value that is exactly the token is never evidence: drop it from
-	// the facts and from any comma-joined list, so even a token with a
-	// reportable shape (a version or colo token) cannot echo itself.
+	// A shaped value that is the token, or a long run of it, is never evidence:
+	// drop it from the facts and from any comma-joined list, so even a token
+	// with a reportable shape (a version or colo token) cannot echo itself,
+	// whole or split across several values.
 	scrubToken(o, token)
 	o.Stage = "adapter_api"
-	if o.Outcome == "ok" {
-		o.Detail = "Cloudflare API state reported; no request to the zone was made"
+	if o.Outcome == "ok" && o.Detail == "" {
+		o.Detail = "Cloudflare API state reported; no request to the zone's own hostname was made"
 	}
 	return nil
 }
 
-// scrubToken removes any fact value equal to the bearer token, and any member
-// of a comma-joined token list equal to it. Only the facts that carry peer
-// strings are examined: numbers are the documented numeric exception, and a
-// token that happens to be "3" must not erase a connection count. The topology
-// already knows the token; a peer echoing it is not evidence about the platform.
+// minTokenFragment is the shortest run of the bearer token that counts as an
+// echo of it. A shorter run is indistinguishable from the platform's own
+// three-letter colo, and a peer that splits a token into several version
+// strings needs each piece long enough to matter.
+const minTokenFragment = 8
+
+// echoesToken reports whether a peer string is the bearer token or a run of at
+// least minTokenFragment bytes of it.
+func echoesToken(value, token string) bool {
+	return value == token || len(value) >= minTokenFragment && strings.Contains(token, value)
+}
+
+// scrubToken removes any fact value that echoes the bearer token, and any
+// member of a comma-joined token list that does, whether it is the whole token
+// or a long enough run of it. Only the facts that carry peer strings are
+// examined: numbers are the documented numeric exception, and a token that
+// happens to be "3" must not erase a connection count. The topology already
+// knows the token; a peer echoing it is not evidence about the platform.
 func scrubToken(o *model.Observation, token string) {
 	for _, key := range []string{"tunnel_colos", "connector_versions", "oldest_connection_at"} {
 		value, ok := o.Facts[key]
 		if !ok {
 			continue
 		}
-		if value == token {
+		if echoesToken(value, token) {
 			delete(o.Facts, key)
 			continue
 		}
@@ -173,7 +188,7 @@ func scrubToken(o *model.Observation, token string) {
 		parts := strings.Split(value, ",")
 		kept := parts[:0]
 		for _, part := range parts {
-			if part != token {
+			if !echoesToken(part, token) {
 				kept = append(kept, part)
 			}
 		}

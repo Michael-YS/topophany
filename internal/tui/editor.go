@@ -892,6 +892,7 @@ func (m *Model) openForm(kind, id string) {
 			return f.val("Kind") == "dns" || f.val("Kind") == "tls"
 		}
 		cloudflareFields(f, x, kindIs("cloudflare"))
+		cloudflaredFields(f, x, kindIs("cloudflared"))
 		addHostFields(f, x.Host, kindIs("host"))
 		f.add("Notes", x.Notes, fText, "")
 		f.commit = func(c *model.Config) error {
@@ -966,6 +967,9 @@ func (m *Model) openForm(kind, id string) {
 				if err := cloudflareFieldsCommit(f, &x); err != nil {
 					return err
 				}
+			}
+			if err := cloudflaredFieldsCommit(f, &x); err != nil {
+				return err
 			}
 			host, err := hostFields(f, x.Kind)
 			if err != nil {
@@ -1106,5 +1110,44 @@ func cloudflareFieldsCommit(f *Form, x *model.Check) error {
 		return errors.New("Cloudflare read must be tunnel, dns_record or pool")
 	}
 	x.Adapter.Cloudflare = cf
+	return nil
+}
+
+// cloudflaredFields adds the connector adapter's authoring fields: the edge
+// sessions the deployment declares and the colos they may be held at. The
+// connector's listener needs no credential, so the target is all else it takes.
+func cloudflaredFields(f *Form, x model.Check, when func(*Form) bool) {
+	cf := x.Adapter.CloudflaredOptions()
+	connections := ""
+	if cf.ExpectedConnections != nil {
+		connections = strconv.Itoa(*cf.ExpectedConnections)
+	}
+	f.add("Cloudflared expected connections", connections, fText, "cloudflared: edge sessions the deployment declares, 1…8").when = when
+	f.add("Cloudflared expected colos", strings.Join(cf.ExpectedColos, ", "), fList, "cloudflared: colos its sessions may be held at, e.g. hkg, sin").when = when
+}
+
+// cloudflaredFieldsCommit writes the connector's options from the form when
+// the check is a connector check, and clears them on any other kind, so a
+// check that stops being one does not carry a declaration nothing reads.
+// Whether a count or a colo is acceptable is for the save-time validation to
+// say, so the form shows the reason it gives.
+func cloudflaredFieldsCommit(f *Form, x *model.Check) error {
+	if x.Kind != "cloudflared" {
+		x.Adapter.Cloudflared = nil
+		return nil
+	}
+	cf := &model.CloudflaredOptions{}
+	if value := f.val("Cloudflared expected connections"); value != "" {
+		n, err := f.num("Cloudflared expected connections")
+		if err != nil {
+			return err
+		}
+		cf.ExpectedConnections = &n
+	}
+	cf.ExpectedColos = f.list("Cloudflared expected colos")
+	if cf.ExpectedConnections == nil && len(cf.ExpectedColos) == 0 {
+		cf = nil
+	}
+	x.Adapter.Cloudflared = cf
 	return nil
 }

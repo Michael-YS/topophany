@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflare"
@@ -30,9 +31,9 @@ func cloudflareCheck(target string) model.Check {
 // and keep the monitor source separate from target reachability.
 func TestRunCloudflareReportedRead(t *testing.T) {
 	t.Setenv("TOPH_CLOUDFLARE_PROBE_TOKEN", "test-token")
-	var hits int
+	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
+		hits.Add(1)
 		io.WriteString(w, `{"success":true,"result":{"status":"healthy","connections":[{"client_version":"2026.10.0","colo_name":"HKG","is_pending_reconnect":false,"opened_at":"2026-10-19T08:00:00Z","origin_ip":"192.0.2.10"}]}}`)
 	}))
 	defer srv.Close()
@@ -50,8 +51,8 @@ func TestRunCloudflareReportedRead(t *testing.T) {
 	if _, ok := o.Facts["connection_semantics"]; ok {
 		t.Fatal("cloudflare keeps the request-stream fact")
 	}
-	if hits != 1 {
-		t.Fatalf("requests=%d", hits)
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("requests=%d", got)
 	}
 }
 
@@ -84,9 +85,9 @@ func TestRunCloudflareMissingTokenIsSetupError(t *testing.T) {
 // be forwarded to whatever Location names. The 3xx becomes a monitor error.
 func TestRunCloudflareRefusesRedirect(t *testing.T) {
 	t.Setenv("TOPH_CLOUDFLARE_PROBE_TOKEN", "test-token")
-	var redirected bool
+	var redirected atomic.Bool
 	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		redirected = true
+		redirected.Store(true)
 		io.WriteString(w, `{"success":true,"result":{"status":"healthy","connections":[]}}`)
 	}))
 	defer targetSrv.Close()
@@ -98,7 +99,7 @@ func TestRunCloudflareRefusesRedirect(t *testing.T) {
 	if o.Outcome != "error" || o.Stage != "adapter_api" || o.Code != "http_302" {
 		t.Fatalf("observation %+v", o)
 	}
-	if redirected {
+	if redirected.Load() {
 		t.Fatal("the bearer token followed a redirect")
 	}
 }

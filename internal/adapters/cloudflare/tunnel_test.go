@@ -46,8 +46,8 @@ func TestCollectTunnelClosedStatus(t *testing.T) {
 		if err := collectTunnel(body, tunnelOptions(), o); err != nil {
 			t.Fatalf("%s: %v", status, err)
 		}
-		if o.Facts["tunnel_status"] != status || o.Facts["tunnel_connections"] != "0" {
-			t.Fatalf("%s: %+v", status, o.Facts)
+		if o.Facts["tunnel_status"] != status || o.Outcome != "ok" {
+			t.Fatalf("%s: %+v", status, o)
 		}
 	}
 	for _, body := range []string{
@@ -59,6 +59,92 @@ func TestCollectTunnelClosedStatus(t *testing.T) {
 		if err := collectTunnel([]byte(body), tunnelOptions(), observation()); failureCode(err) != "unsupported_response_shape" {
 			t.Fatalf("%s: %v", body, err)
 		}
+	}
+}
+
+// The deprecated connections array is documented to start returning empty.
+// Beside healthy or degraded, which mean at least one live connection by
+// definition, an empty list is the field having moved: nothing is reported
+// about connections and neither connection policy can fire. Beside down or
+// inactive it is a count of zero, and the declared state still applies.
+func TestCollectTunnelEmptyConnectionList(t *testing.T) {
+	connectionFacts := []string{"tunnel_connections", "tunnel_pending_reconnect", "tunnel_colos", "connector_versions", "oldest_connection_at"}
+	declared := tunnelOptions()
+	declared.ExpectedConnections = intPtr(2)
+	declared.ExpectedColos = []string{"HKG"}
+	for _, tc := range []struct {
+		status   string
+		reported bool
+	}{
+		{"healthy", false},
+		{"degraded", false},
+		{"down", true},
+		{"inactive", true},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			body := []byte(`{"success":true,"result":{"status":"` + tc.status + `","connections":[]}}`)
+			plain := observation()
+			if err := collectTunnel(body, tunnelOptions(), plain); err != nil {
+				t.Fatal(err)
+			}
+			policed := observation()
+			if err := collectTunnel(body, declared, policed); err != nil {
+				t.Fatal(err)
+			}
+			for _, o := range []*model.Observation{plain, policed} {
+				if o.Facts["tunnel_status"] != tc.status {
+					t.Fatalf("status=%q", o.Facts["tunnel_status"])
+				}
+			}
+			if tc.reported {
+				if plain.Outcome != "ok" || plain.Facts["tunnel_connections"] != "0" || plain.Facts["tunnel_pending_reconnect"] != "0" || plain.Detail != "" {
+					t.Fatalf("a listless %s tunnel is not a count of zero: %+v", tc.status, plain)
+				}
+				if policed.Outcome != "policy" || policed.Code != "connections_below_expected" {
+					t.Fatalf("zero connections beside %s did not fall below the declared count: %+v", tc.status, policed)
+				}
+				return
+			}
+			for _, o := range []*model.Observation{plain, policed} {
+				for _, key := range connectionFacts {
+					if value, ok := o.Facts[key]; ok {
+						t.Fatalf("%s=%q reported without a connection list", key, value)
+					}
+				}
+				if o.Outcome != "ok" || o.Code != "" || o.Detail != connectionsNotReported {
+					t.Fatalf("an unreported connection list changed the read: %+v", o)
+				}
+			}
+		})
+	}
+}
+
+// A populated array is counted exactly as before, whatever the status says.
+func TestCollectTunnelPopulatedListIsCounted(t *testing.T) {
+	for _, status := range []string{"healthy", "degraded", "down", "inactive"} {
+		t.Run(status, func(t *testing.T) {
+			body := []byte(`{"success":true,"result":{"status":"` + status + `","connections":[{"colo_name":"HKG","client_version":"2026.10.0","opened_at":"2026-10-19T08:00:00Z","is_pending_reconnect":true}]}}`)
+			options := tunnelOptions()
+			options.ExpectedConnections = intPtr(2)
+			o := observation()
+			if err := collectTunnel(body, options, o); err != nil {
+				t.Fatal(err)
+			}
+			for key, value := range map[string]string{
+				"tunnel_connections":       "1",
+				"tunnel_pending_reconnect": "1",
+				"tunnel_colos":             "HKG",
+				"connector_versions":       "2026.10.0",
+				"oldest_connection_at":     "2026-10-19T08:00:00Z",
+			} {
+				if o.Facts[key] != value {
+					t.Fatalf("%s=%q want %q", key, o.Facts[key], value)
+				}
+			}
+			if o.Outcome != "policy" || o.Code != "connections_below_expected" || o.Detail == connectionsNotReported {
+				t.Fatalf("a populated list was not compared: %+v", o)
+			}
+		})
 	}
 }
 

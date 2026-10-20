@@ -607,7 +607,7 @@ func TestShowCheckJSONCarriesFirstByteAndColos(t *testing.T) {
 			plain = cs.Availability[0]
 		}
 	}
-	if plain.FirstByte != nil || len(plain.Pops) != 0 {
+	if plain.FirstByte != nil || len(plain.Pops) != 0 || len(plain.Cache) != 0 {
 		t.Fatalf("the TLS check unexpectedly carries edge labels: %+v", plain)
 	}
 	out, e = at(now, "preview", "--lang", preview.DefaultLanguage, "show", "checks", "w-transit-443", "--json")
@@ -618,7 +618,7 @@ func TestShowCheckJSONCarriesFirstByteAndColos(t *testing.T) {
 	if e := json.Unmarshal([]byte(out), &shown); e != nil || len(shown.Rows) != 1 || len(shown.Rows[0].Availability) != 3 {
 		t.Fatalf("show's JSON lost the plain check's availability: %v\n%s", e, out)
 	}
-	if got := shown.Rows[0].Availability[0]; got.FirstByte != nil || len(got.Pops) != 0 {
+	if got := shown.Rows[0].Availability[0]; got.FirstByte != nil || len(got.Pops) != 0 || len(got.Cache) != 0 {
 		t.Fatalf("show invented edge labels for a plain check: %+v", got)
 	}
 }

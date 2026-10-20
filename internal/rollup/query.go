@@ -2,7 +2,6 @@ package rollup
 
 import (
 	"errors"
-	"maps"
 	"math"
 	"sort"
 	"time"
@@ -108,10 +107,13 @@ func (a *tally) rollup(start, span int64) model.Rollup {
 		// Cap once, on the whole span: a code small in every bucket can be
 		// large over a day, so capping per bucket would lose it.
 		capPops(a.pops)
-		out.Pops = maps.Clone(a.pops)
+		// count creates a tally's maps itself and adds into them; it never
+		// keeps a bucket's own map. A tally is also read once, so the
+		// result owns these maps outright and needs no copy.
+		out.Pops = a.pops
 	}
 	if len(a.cache) > 0 {
-		out.Cache = maps.Clone(a.cache)
+		out.Cache = a.cache
 	}
 	return out
 }

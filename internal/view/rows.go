@@ -413,22 +413,8 @@ func (rb *rowBuilder) observerTrace(observer string) string {
 // colo, so a collector without rollups shows no line rather than an empty
 // one.
 func (rb *rowBuilder) observerPops(observer string) string {
-	// The union is bounded by the colo alphabet (three uppercase letters),
-	// and PopsLine shows four. No per-check cap: a code rare in each check
-	// can still be the largest across them.
-	pops := map[string]int64{}
-	for i := range rb.view.Snapshot.Checks {
-		x := &rb.view.Snapshot.Checks[i]
-		if x.Observer != observer {
-			continue
-		}
-		if r := RollupWindow(x.Availability, "24h"); r != nil {
-			for code, n := range r.Pops {
-				pops[code] += n
-			}
-		}
-	}
-	if line := PopsLine(pops, 4); line != "" {
+	pops := sumDayPops(rb.view.Snapshot.Checks, func(x model.CheckState) bool { return x.Observer == observer })
+	if line := PopsLine(pops, LinePops); line != "" {
 		return "Edge colos seen (24h): " + line
 	}
 	return ""
@@ -504,7 +490,24 @@ func IncidentDetails(now time.Time, i model.Incident, r *model.IncidentRecord) [
 	if r != nil {
 		out = append(out, "Opened: "+Stamp(now, r.Opened), "Seen before: "+before(r.Previous))
 	}
-	return append(out, "", i.Summary, "", "Failed checks:", strings.Join(i.Checks, ", "), "", "Other-observer response evidence:", strings.Join(i.CounterEvidence, ", "), "", "Hypothesis (not a finding):", i.Hypothesis, "", "No inference about all IP ports, untested UDP, physical power or GFW authority.")
+	out = append(out, "", i.Summary, "", "Failed checks:", strings.Join(i.Checks, ", "))
+	// A section with nothing under it is left out: a policy violation has no
+	// other observer to contrast it with, and a hypothesis not yet drawn is
+	// no heading.
+	if len(i.CounterEvidence) > 0 {
+		out = append(out, "", "Other-observer response evidence:", strings.Join(i.CounterEvidence, ", "))
+	}
+	if i.Hypothesis != "" {
+		// A policy incident's line is what its samples observed, a request
+		// that succeeded against a declared state it did not meet, so it is
+		// not headed as a hypothesis.
+		heading := "Hypothesis (not a finding):"
+		if strings.HasSuffix(i.Scope, "/policy") {
+			heading = "Policy (not an outage):"
+		}
+		out = append(append(out, "", heading), strings.Split(i.Hypothesis, "\n")...)
+	}
+	return append(out, "", "No inference about all IP ports, untested UDP, physical power or GFW authority.")
 }
 
 // endings say what each way a record closed means.

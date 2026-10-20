@@ -451,8 +451,8 @@ func (m *Model) drawPlate(cv *Canvas, ox, oy int, p plate, nodes []mapNode, f ma
 		if len(s.nodes) > 1 {
 			cv.Set(x+n, y, ' ', Style{BG: bg})
 			for k, i := range s.nodes[:min(len(s.nodes), 5)] {
-				sig := nodeSignal(nodes[i])
-				cv.Set(x+n+1+k, y, signalGlyph(sig), fg(signalColor(sig)).Bg(bg))
+				glyph, c := nodeMark(nodes[i])
+				cv.Set(x+n+1+k, y, glyph, fg(c).Bg(bg))
 			}
 			if len(s.nodes) > 5 {
 				cv.Text(x+n+6, y, "+"+itoa(len(s.nodes)-5), fg(cMuted).Bg(bg), -1)
@@ -465,7 +465,8 @@ func (m *Model) drawPlate(cv *Canvas, ox, oy int, p plate, nodes []mapNode, f ma
 	if s.focused || s.onRoute {
 		paper = Mix(cKeyBG, cSelBG, .5)
 	}
-	spine := Mix(signalColor(s.signal), paper, .25)
+	_, sc := s.mark()
+	spine := Mix(sc, paper, .25)
 	cv.Fill(x, y, p.w, p.h, Style{BG: paper})
 	for r := 0; r < p.h; r++ {
 		cv.Set(x, y+r, '▎', fg(spine).Bg(paper))
@@ -491,8 +492,8 @@ func (m *Model) drawPlate(cv *Canvas, ox, oy int, p plate, nodes []mapNode, f ma
 		if p.depth[r] > 0 {
 			cv.Set(cx-2, yy, '└', fg(cFaint).Bg(bg))
 		}
-		sig := nodeSignal(n)
-		cv.Set(cx, yy, signalGlyph(sig), fg(signalColor(sig)).Bg(bg).bold())
+		glyph, c := nodeMark(n)
+		cv.Set(cx, yy, glyph, fg(c).Bg(bg).bold())
 		if room := x + p.w - 1 - (cx + 2); room > 0 {
 			if k := cv.Text(cx+2, yy, ellipsis(n.Name, room), st, room); k == width(n.Name) {
 				drawRuns(cv, cx+2+k, yy, room-k, runs[n.ID], bg, false)

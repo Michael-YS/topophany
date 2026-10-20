@@ -7,13 +7,31 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"time"
 )
+
+// maxMillis is the latest moment a file may name, in Unix milliseconds: the
+// last whole second of the year 9999, the latest a time.Time encodes as JSON.
+// A moment is read back as a time in Since and in the slots of a layout, so
+// one beyond it would make every snapshot that includes it fail to encode.
+// The writer stamps real clocks, so it never writes one; the reader refuses
+// it as corruption rather than clamping it. It also keeps every sum of two
+// moments, a start and a width or a sample and how long it stays current,
+// far from overflowing an int64.
+var maxMillis = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC).UnixMilli()
+
+// moment reports whether ms is a moment the writer could have written.
+func moment(ms int64) bool { return ms >= 0 && ms <= maxMillis }
 
 // What a store looks like on disk: each series by key, with its owner,
 // its earliest moment, when it was last added to and its open sample
 // (at, stale, class) in Unix milliseconds, and its buckets with start and width in seconds,
 // the time of each class in milliseconds, the samples by outcome, and
 // their latency as count, sum, slowest and then pairs of bin and count.
+// A bucket may also carry the optional keys fb, p and c: fb the first-byte
+// time by cache class, as exactly three lists in the shape of the latency
+// (cached, origin, unclassified), p the colo counts and c the cache status
+// counts. A file without them reads as a bucket with none of those.
 type disk struct {
 	Schema int          `json:"schema"`
 	Series []diskSeries `json:"series"`
@@ -217,22 +235,24 @@ func (r *Store) UnmarshalJSON(raw []byte) error {
 	held := map[string]*series{}
 	size := int64(diskBytes)
 	for _, ds := range d.Series {
-		if ds.Key == "" || len(ds.Key) > 512 || len(ds.Owner) > 512 || held[ds.Key] != nil || ds.First < 0 || ds.Updated < 0 {
+		if ds.Key == "" || len(ds.Key) > 512 || len(ds.Owner) > 512 || held[ds.Key] != nil || !moment(ds.First) || !moment(ds.Updated) {
 			return errInvalid
 		}
 		s := &series{owner: ds.Owner, first: ds.First, updated: ds.Updated, size: seriesSize(ds.Key, ds.Owner), buckets: make([]bucket, 0, len(ds.Buckets)), recent: make([]open, 0, len(ds.Recent))}
 		if ds.Open != nil {
-			if len(ds.Open) != 3 || ds.Open[0] <= 0 || ds.Open[1] <= 0 || ds.Open[2] < 0 || ds.Open[2] >= classes {
+			// Its stale time is bounded like a moment, so at plus stale cannot
+			// overflow.
+			if len(ds.Open) != 3 || ds.Open[0] <= 0 || ds.Open[1] <= 0 || !moment(ds.Open[0]) || !moment(ds.Open[1]) || ds.Open[2] < 0 || ds.Open[2] >= classes {
 				return errInvalid
 			}
 			s.open = &open{ds.Open[0], ds.Open[1], int(ds.Open[2])}
 		}
-		if ds.CorrectionFrom < 0 {
+		if !moment(ds.CorrectionFrom) {
 			return errInvalid
 		}
 		s.correctionFrom = ds.CorrectionFrom
 		for _, point := range ds.Recent {
-			if point[0] <= 0 || point[1] <= 0 || point[2] < 0 || point[2] >= classes || len(s.recent) > 0 && point[0] <= s.recent[len(s.recent)-1].at {
+			if point[0] <= 0 || point[1] <= 0 || !moment(point[0]) || !moment(point[1]) || point[2] < 0 || point[2] >= classes || len(s.recent) > 0 && point[0] <= s.recent[len(s.recent)-1].at {
 				return errInvalid
 			}
 			s.recent = append(s.recent, open{point[0], point[1], int(point[2])})
@@ -249,8 +269,16 @@ func (r *Store) UnmarshalJSON(raw []byte) error {
 		s.size += int64(len(s.recent)) * boundaryBytes
 		end := int64(math.MinInt64)
 		for _, db := range ds.Buckets {
+			// Start and width are seconds on disk. Check them as seconds,
+			// before they become milliseconds: a value near 2^61 would wrap
+			// to a plausible one when multiplied. A start is a moment, and a
+			// width is one of the three the writer makes, none wider than a
+			// day, so a bucket's end is after its start and cannot overflow.
+			if db.S < 0 || db.S > maxMillis/1000 || db.W != fine/1000 && db.W != hour/1000 && db.W != day/1000 {
+				return errInvalid
+			}
 			b := bucket{start: db.S * 1000, width: db.W * 1000, ms: db.T, n: db.N, unreconciled: db.U}
-			if b.width != fine && b.width != hour && b.width != day || floor(b.start, b.width) != b.start || b.start < end {
+			if floor(b.start, b.width) != b.start || b.start < end {
 				return errInvalid
 			}
 			end = b.end()

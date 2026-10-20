@@ -7,22 +7,33 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
-// Classes of first-byte time, by what the edge said about the cache. A
-// sample whose cache status is absent or outside both lists is
-// unclassified: kept so the histograms stay separate, but not served,
-// because the edge did not say which side answered.
+// ttfbClass is a class of first-byte time, by what the edge said about the
+// cache. It is its own type so that it indexes the first-byte histograms
+// and cannot stand in for the health classes (up, degraded, down, unknown)
+// that index the time a bucket spent: both are small integers in one
+// package, and a function that takes or returns one will not accept the
+// other.
+type ttfbClass int
+
+// Classes of first-byte time. A sample whose cache status is absent or
+// outside both lists is unclassified: kept so the histograms stay
+// separate, but not served, because the edge did not say which side
+// answered.
 const (
-	cached = iota
+	cached ttfbClass = iota
 	origin
 	unclassified
-	ttfbClasses
 )
+
+// ttfbClasses is how many first-byte classes there are, as the length of
+// the arrays and lists indexed by them.
+const ttfbClasses = int(unclassified) + 1
 
 // cacheClass says whether a reported cache status describes an answer the
 // edge served from its cache or one it fetched from the origin. The closed
 // vocabulary is wider than these two lists; everything outside them,
 // including no report at all, is unclassified.
-func cacheClass(status string) int {
+func cacheClass(status string) ttfbClass {
 	switch status {
 	case "HIT", "REVALIDATED", "STALE", "UPDATING":
 		return cached
@@ -32,10 +43,12 @@ func cacheClass(status string) int {
 	return unclassified
 }
 
-// countCache counts one sample under the cache status the edge reported.
-// Every sample is counted; an absent or unknown word is other. A key is
-// kept only if the edge vocabulary knows it, so the map holds the closed
-// words plus other.
+// countCache counts one edge answer under the cache status the edge
+// reported. Every answer is counted; an absent or unknown word is other. A
+// key is kept only if the edge vocabulary knows it, so the map holds the
+// closed words plus other. The caller counts only samples an edge
+// answered: other says the edge gave no status, which a sample with no
+// edge cannot be said to have withheld.
 func (b *bucket) countCache(status string) {
 	if b.cache == nil {
 		b.cache = map[string]int64{}

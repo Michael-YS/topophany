@@ -380,8 +380,9 @@ type Rollup struct {
 	// FirstByte is what the passing samples' first byte took, split by what
 	// the edge said about its cache. Pops counts the colos every sample's
 	// response reported, keeping at most sixteen named codes plus other;
-	// Cache counts every sample's cache status in the closed vocabulary,
-	// with other for an absent or unknown one.
+	// Cache counts the cache status of every sample an edge answered, in the
+	// closed vocabulary, with other for an absent or unknown one; a sample
+	// with no edge counts none.
 	FirstByte *FirstByteLatency `json:"first_byte,omitempty"`
 	Pops      map[string]int64  `json:"pops,omitempty"`
 	Cache     map[string]int64  `json:"cache,omitempty"`

@@ -35,12 +35,19 @@ const (
 	tunnelInactive = "inactive"
 )
 
+// connectionsNotReported is the detail of a read whose connection list could
+// not be taken at its word; Collect keeps it instead of the generic one.
+const connectionsNotReported = "Cloudflare API state reported; the connections list was not reported"
+
 // collectTunnel turns the tunnel read into facts and declared-state policies.
-// The connection list is counted as the API returns it; Cloudflare documents
-// that this deprecated array will start returning empty in favour of the
-// dedicated connections endpoint, so a count of zero can mean the field moved
-// rather than that no connector is live. tunnel_status carries the API's own
-// word either way.
+// Cloudflare documents the connections array as deprecated and says it will
+// start returning empty in favour of the dedicated connections endpoint. The
+// statuses healthy and degraded mean at least one live connection by
+// definition, so an empty list beside either is the field having moved, not a
+// tunnel without a connector: the list is then treated as not reported, with
+// no connection fact and neither connection policy, and the read stays ok. An
+// empty list beside down or inactive is a count of zero, and the policies
+// apply. tunnel_status carries the API's own word either way.
 func collectTunnel(body []byte, options model.CloudflareOptions, o *model.Observation) error {
 	var doc tunnelResponse
 	if err := decodeJSON(body, &doc); err != nil {
@@ -60,6 +67,11 @@ func collectTunnel(body []byte, options model.CloudflareOptions, o *model.Observ
 	}
 	o.Outcome = "ok"
 
+	listed := len(doc.Result.Connections) > 0 || doc.Result.Status == tunnelDown || doc.Result.Status == tunnelInactive
+	if !listed {
+		o.Detail = connectionsNotReported
+		return nil
+	}
 	connections := len(doc.Result.Connections)
 	pending := 0
 	colos, versions := map[string]bool{}, map[string]bool{}

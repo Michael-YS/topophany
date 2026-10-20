@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +44,9 @@ func TestCloudflaredLinkAndPublicEdgeEvidence(t *testing.T) {
 	if link.Health != "up" || !strings.Contains(link.Reason, "service behind it is unproven") {
 		t.Fatalf("connector session not shown as reported-up: %+v", link)
 	}
+	if link.Evidence != "reported" {
+		t.Fatalf("a link the connector decided is not its own statement: %+v", link)
+	}
 	if v := findEntity(t, s.Nodes, "cf"); v.Health != "up" {
 		t.Fatalf("edge that answered is not up: %+v", v)
 	}
@@ -63,6 +67,9 @@ func TestCloudflaredLinkAndPublicEdgeEvidence(t *testing.T) {
 	link = findEntity(t, s.Links, "tunnel")
 	if link.Health != "down" || !strings.Contains(link.Reason, "no established tunnel") {
 		t.Fatalf("tunnel_not_ready did not take the link down: %+v", link)
+	}
+	if link.Evidence != "reported" {
+		t.Fatalf("a link the connector took down is not its own statement: %+v", link)
 	}
 	for _, n := range s.Nodes {
 		if n.Health == "down" && n.ID != "home" {
@@ -156,13 +163,129 @@ func TestConnectorLinkExemptionIsNarrow(t *testing.T) {
 		measured := testkit.Observation(c, "measured", 1, now.Add(-time.Second), "ok")
 		connector := connectorSample(c, now.Add(-time.Second), "ok")
 		s := Build(c, "collector", "", []model.Observation{measured, connector}, nil, now)
-		if link := findEntity(t, s.Links, "tunnel"); link.Health != "up" {
+		if link := findEntity(t, s.Links, "tunnel"); link.Health != "up" || link.Evidence != "inferred" {
 			t.Fatalf("mixed evidence: %+v", link)
 		}
 		connector = connectorSample(c, now.Add(-time.Second), "fail")
 		s = Build(c, "collector", "", []model.Observation{measured, connector}, nil, now)
 		if link := findEntity(t, s.Links, "tunnel"); link.Health != "degraded" {
 			t.Fatalf("one connector failure beside a measured success: %+v", link)
+		}
+	})
+}
+
+// The platform's own account of a tunnel, read beside the local connector's, is
+// informational on the link: it stays in the check list but never decides the
+// link and never dilutes what the connector decides. Alone it leaves the link
+// unknown, as every remote report does.
+func TestRemotePlatformReportDoesNotVoteBesideConnector(t *testing.T) {
+	now := time.Now().UTC()
+	config := func() model.Config {
+		c := connectorLinkConfig()
+		c.Checks = append(c.Checks, model.Check{
+			ID: "tunnel-api", Name: "Cloudflare API", Observer: "home", Link: "tunnel", Kind: "cloudflare",
+			IntervalSeconds: 60, TimeoutSeconds: 8, StaleSeconds: 180, FailureThreshold: 3, RecoveryThreshold: 2,
+			Adapter: model.AdapterOptions{TokenEnv: "CF_API_TOKEN", Cloudflare: &model.CloudflareOptions{
+				Read: "tunnel", AccountID: "11111111111111111111111111111111", TunnelID: "22222222222222222222222222222222",
+			}},
+		})
+		return c
+	}
+	apiSample := func(c model.Config, at time.Time, outcome, code string) model.Observation {
+		v := testkit.Observation(c, "tunnel-api", 1, at, outcome)
+		v.Evidence = "reported"
+		v.PathEvidence = model.RemotePlatformPathEvidence
+		v.Stage = "adapter_api"
+		v.Code = code
+		v.Facts = map[string]string{"tunnel_status": "healthy", "peer_text": "withheld_secret_request"}
+		return v
+	}
+	// A connector that is confirmed down needs its failure threshold of samples.
+	connectorDown := func(c model.Config) []model.Observation {
+		var rows []model.Observation
+		for i := 0; i < 3; i++ {
+			v := connectorSample(c, now.Add(time.Duration(i-4)*time.Second), "fail")
+			v.Sequence = uint64(1 + i)
+			rows = append(rows, v)
+		}
+		return rows
+	}
+	checkIDs := func(link model.EntityState) string { return strings.Join(link.Checks, ",") }
+
+	t.Run("connector up and API ok", func(t *testing.T) {
+		c := config()
+		s := Build(c, "collector", "", []model.Observation{connectorSample(c, now.Add(-time.Second), "ok"), apiSample(c, now.Add(-time.Second), "ok", "")}, nil, now)
+		link := findEntity(t, s.Links, "tunnel")
+		if link.Health != "up" || link.Evidence != "reported" || !strings.Contains(link.Reason, "local connector reports an established tunnel") {
+			t.Fatalf("the API report diluted the connector's verdict: %+v", link)
+		}
+		if got := checkIDs(link); got != "tunnel-connector,tunnel-api" {
+			t.Fatalf("the API check left the link's check list: %q", got)
+		}
+	})
+	t.Run("connector down and API ok", func(t *testing.T) {
+		c := config()
+		rows := append(connectorDown(c), apiSample(c, now.Add(-time.Second), "ok", ""))
+		s := Build(c, "collector", "", rows, nil, now)
+		link := findEntity(t, s.Links, "tunnel")
+		if link.Health != "down" || link.Evidence != "reported" || !strings.Contains(link.Reason, "no established tunnel") {
+			t.Fatalf("a healthy API report outvoted the connector: %+v", link)
+		}
+	})
+	t.Run("connector up and API policy", func(t *testing.T) {
+		c := config()
+		api := apiSample(c, now.Add(-time.Second), "policy", "connections_below_expected")
+		s := Build(c, "collector", "", []model.Observation{connectorSample(c, now.Add(-time.Second), "ok"), api}, nil, now)
+		if link := findEntity(t, s.Links, "tunnel"); link.Health != "up" {
+			t.Fatalf("an API policy sample degraded the connector's link: %+v", link)
+		}
+	})
+	t.Run("connector up and API read failed", func(t *testing.T) {
+		c := config()
+		api := apiSample(c, now.Add(-time.Second), "error", "authentication_failed")
+		s := Build(c, "collector", "", []model.Observation{connectorSample(c, now.Add(-time.Second), "ok"), api}, nil, now)
+		if link := findEntity(t, s.Links, "tunnel"); link.Health != "up" {
+			t.Fatalf("a monitor error from the API degraded the connector's link: %+v", link)
+		}
+	})
+	t.Run("connector up and API stale", func(t *testing.T) {
+		c := config()
+		api := apiSample(c, now.Add(-time.Hour), "ok", "")
+		s := Build(c, "collector", "", []model.Observation{connectorSample(c, now.Add(-time.Second), "ok"), api}, nil, now)
+		if link := findEntity(t, s.Links, "tunnel"); link.Health != "up" {
+			t.Fatalf("a stale API sample degraded the connector's link: %+v", link)
+		}
+	})
+	t.Run("API alone", func(t *testing.T) {
+		c := config()
+		c.Checks = slices.DeleteFunc(c.Checks, func(x model.Check) bool { return x.ID == "tunnel-connector" })
+		s := Build(c, "collector", "", []model.Observation{apiSample(c, now.Add(-time.Second), "ok", "")}, nil, now)
+		link := findEntity(t, s.Links, "tunnel")
+		if link.Health != "unknown" || link.Evidence == "reported" || !strings.Contains(link.Reason, "runtime reports only") {
+			t.Fatalf("an API report alone decided the link: %+v", link)
+		}
+	})
+	t.Run("connector read failed and API ok", func(t *testing.T) {
+		c := config()
+		failed := testkit.Observation(c, "tunnel-connector", 1, now.Add(-time.Second), "error")
+		failed.Evidence = "reported"
+		failed.PathEvidence = model.LocalConnectorPathEvidence
+		failed.Stage, failed.Code = "adapter", "metrics_unavailable"
+		s := Build(c, "collector", "", []model.Observation{failed, apiSample(c, now.Add(-time.Second), "ok", "")}, nil, now)
+		link := findEntity(t, s.Links, "tunnel")
+		if link.Health != "unknown" || !strings.Contains(link.Reason, "local connector read failed") {
+			t.Fatalf("an API report stood in for a failed connector read: %+v", link)
+		}
+	})
+	t.Run("measured check decides beside both", func(t *testing.T) {
+		c := config()
+		c.Endpoints[0].Via = []string{}
+		c.Checks = append(c.Checks, model.Check{ID: "measured", Observer: "home", Link: "tunnel", Endpoint: "dmit-http", Kind: "http", IntervalSeconds: 60, TimeoutSeconds: 8, StaleSeconds: 180, FailureThreshold: 3, RecoveryThreshold: 2})
+		measured := testkit.Observation(c, "measured", 1, now.Add(-time.Second), "ok")
+		rows := []model.Observation{measured, connectorSample(c, now.Add(-time.Second), "ok"), apiSample(c, now.Add(-time.Second), "ok", "")}
+		s := Build(c, "collector", "", rows, nil, now)
+		if link := findEntity(t, s.Links, "tunnel"); link.Health != "up" || link.Evidence != "inferred" {
+			t.Fatalf("a link decided with measured evidence: %+v", link)
 		}
 	})
 }

@@ -20,6 +20,7 @@ type vCard struct {
 	shown    []bool // rows on the card; the rest are counted in its frame
 	svc      []bool // rows with a line under them saying what runs there
 	place    string
+	city     string // a reported colo's, which names the card only when place is empty
 	lat, lon float64
 	located  bool
 	key      float64 // longitude along the arc, from its western end
@@ -236,17 +237,23 @@ func virtualCards(nodes []mapNode) []*vCard {
 					continue
 				}
 				dLat, dLon := math.Abs(a[0]-n.Lat), math.Abs(lonDiff(a[1], n.Lon))
-				if n.Place != "" && n.Place == o.place && dLat < 3 && dLon < 3 || dLat < .5 && dLon < .5 {
+				if n.Place != "" && (n.Place == o.place || n.Place == o.city) && dLat < 3 && dLon < 3 || dLat < .5 && dLon < .5 {
 					c = o
 					break
 				}
 			}
 			if c == nil {
-				c = &vCard{place: n.Place, located: true}
+				c = &vCard{located: true}
 				anchor[c] = [2]float64{n.Lat, n.Lon}
 				cards = append(cards, c)
 			}
-			if c.place == "" {
+			// A card is named by a declared node's place; a reported colo's
+			// city names it only when no declared node does.
+			if n.Kind == "colo" {
+				if c.city == "" {
+					c.city = n.Place
+				}
+			} else if c.place == "" {
 				c.place = n.Place
 			}
 			c.rows = append(c.rows, i)
@@ -269,6 +276,9 @@ func virtualCards(nodes []mapNode) []*vCard {
 		c.rows = append(c.rows, i)
 	}
 	for _, c := range cards {
+		if c.place == "" {
+			c.place = c.city
+		}
 		if a, ok := anchor[c]; ok {
 			dLat, dLon := 0.0, 0.0
 			for _, i := range c.rows {

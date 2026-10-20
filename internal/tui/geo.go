@@ -285,11 +285,16 @@ func (m *Model) drawLand(cv *Canvas, d *Dots, x, y, w, h int, g geoView) []uint8
 type geoSite struct {
 	x, y    float64 // dot coordinates
 	nodes   []int
-	places  []string
+	places  []string // where its declared nodes are; the colos' cities when it has none
+	cities  []string // where its reported colos are, said only by a site without a declared node
 	signal  string
+	colo    bool // holds only reported colos, which are marked hollow
 	focused bool // holds the selected node
 	onRoute bool // holds a node of the selected path
 }
+
+// mark is the glyph and color of the site's marker.
+func (s *geoSite) mark() (rune, Color) { return signalMark(s.signal, s.colo) }
 
 // geoSites merges placed nodes into sites: the same declared place, or
 // close enough on screen that their markers would collide.
@@ -303,16 +308,26 @@ func geoSites(nodes []mapNode, g geoView, f mapFocus) []*geoSite {
 		var s *geoSite
 		for _, t := range sites {
 			dx, dy := math.Abs(t.x-px), math.Abs(t.y-py)
-			if n.Place != "" && contains(t.places, n.Place) && dx < 24 && dy < 24 || dx <= 5 && dy <= 4 {
+			if n.Place != "" && (contains(t.places, n.Place) || contains(t.cities, n.Place)) && dx < 24 && dy < 24 || dx <= 5 && dy <= 4 {
 				s = t
 				break
 			}
 		}
 		if s == nil {
-			s = &geoSite{x: px, y: py}
+			s = &geoSite{x: px, y: py, colo: true}
 			sites = append(sites, s)
 		}
-		if n.Place != "" && !contains(s.places, n.Place) {
+		s.colo = s.colo && n.Kind == "colo"
+		// A colo is named by Cloudflare's city, which spells a declared
+		// place its own way ("Frankfurt-am-Main" beside "Frankfurt"): it
+		// names a site only when the site has no declared node to name it.
+		switch {
+		case n.Place == "":
+		case n.Kind == "colo":
+			if !contains(s.cities, n.Place) {
+				s.cities = append(s.cities, n.Place)
+			}
+		case !contains(s.places, n.Place):
 			s.places = append(s.places, n.Place)
 		}
 		s.nodes = append(s.nodes, i)
@@ -321,6 +336,9 @@ func geoSites(nodes []mapNode, g geoView, f mapFocus) []*geoSite {
 		s.onRoute = s.onRoute || f.nodes[n.ID]
 	}
 	for _, s := range sites {
+		if len(s.places) == 0 {
+			s.places = s.cities
+		}
 		sx, sy := 0.0, 0.0
 		for _, i := range s.nodes {
 			px, py := g.project(nodes[i].Lat, nodes[i].Lon)
@@ -499,7 +517,7 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 	// Halos: a quiet ring around every site; sites that need attention send
 	// out a slow ripple so they are found before they are read.
 	for k, s := range sites {
-		c := signalColor(s.signal)
+		_, c := s.mark()
 		ring := Mix(c, cInk, .62)
 		if s.focused || s.onRoute {
 			ring = Mix(c, cGlow, .25)
@@ -561,7 +579,8 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 		}
 		for _, p := range plates {
 			if !p.beside {
-				p.leader(d, Mix(signalColor(p.site.signal), cInk, .25), g.ky)
+				_, c := p.site.mark()
+				p.leader(d, Mix(c, cInk, .25), g.ky)
 			}
 		}
 	}
@@ -578,7 +597,8 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 				break
 			}
 		}
-		cv.Set(x+cx, y+cy, signalGlyph(s.signal), fg(signalColor(s.signal)).bold())
+		glyph, c := s.mark()
+		cv.Set(x+cx, y+cy, glyph, fg(c).bold())
 		m.hit(x+cx, y+cy, 1, "select:node:"+nodes[lead].ID)
 	}
 	for _, s := range seams {
@@ -602,8 +622,8 @@ func (m *Model) drawGeo(cv *Canvas, x, y, w, h int, nodes []mapNode, edges []map
 			if f.hasNode(n.ID) {
 				st = fg(cGlow).Bg(cSelBG).bold()
 			}
-			sig := nodeSignal(n)
-			cv.Set(cx, ty, signalGlyph(sig), fg(signalColor(sig)))
+			glyph, c := nodeMark(n)
+			cv.Set(cx, ty, glyph, fg(c))
 			k := cv.Text(cx+2, ty, n.Name, st, x+w-cx-2)
 			m.hit(cx, ty, k+2, "select:node:"+n.ID)
 			cx += k + 5

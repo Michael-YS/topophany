@@ -201,9 +201,9 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 			chip = cSelBG
 			st = fg(cGlow).Bg(chip).bold()
 		}
-		sig := nodeSignal(n)
+		glyph, mark := nodeMark(n)
 		cv.Set(ox+c.x, oy+c.y, ' ', Style{BG: chip})
-		cv.Set(ox+c.x+1, oy+c.y, signalGlyph(sig), fg(signalColor(sig)).Bg(chip).bold())
+		cv.Set(ox+c.x+1, oy+c.y, glyph, fg(mark).Bg(chip).bold())
 		cv.Pad(ox+c.x+2, oy+c.y, " "+ellipsis(n.Name, c.w-4)+" ", st, c.w-2)
 		if at := ox + c.x + 3 + width(n.Name); width(n.Name) <= c.w-4 {
 			drawRuns(cv, at, oy+c.y, ox+c.x+c.w-1-at, runs[n.ID], chip, false)
@@ -229,8 +229,8 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 		glyphs := min(len(c.rows), 5)
 		n := cv.Text(ox+c.x+1, oy+c.y, ellipsis(c.title(), c.w-3-glyphs), st, c.w-3-glyphs)
 		for k, i := range c.rows[:glyphs] {
-			sig := nodeSignal(nodes[i])
-			cv.Set(ox+c.x+2+n+k, oy+c.y, signalGlyph(sig), fg(signalColor(sig)).Bg(bg))
+			glyph, mark := nodeMark(nodes[i])
+			cv.Set(ox+c.x+2+n+k, oy+c.y, glyph, fg(mark).Bg(bg))
 		}
 		m.hit(ox+c.x, oy+c.y, c.w, "select:node:"+nodes[lead].ID)
 		return
@@ -333,8 +333,8 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 			cv.Set(cx, oy+yy, guide, fg(cFaint).Bg(bg))
 			cx += 2
 		}
-		sig := nodeSignal(n)
-		cv.Set(cx, oy+yy, signalGlyph(sig), fg(signalColor(sig)).Bg(bg).bold())
+		glyph, mark := nodeMark(n)
+		cv.Set(cx, oy+yy, glyph, fg(mark).Bg(bg).bold())
 		cx += 2
 		lined := c.svc != nil && c.svc[k]
 		if room := ox + c.x + c.w - 2 - laneW - cx; room > 0 {

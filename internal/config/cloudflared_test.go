@@ -52,25 +52,32 @@ func TestCloudflaredTargetValidation(t *testing.T) {
 
 // The listener is a local process: the adapter refuses a path, a source
 // binding, a dial override and any proxy chain, and it is not in the
-// proxy-traversal kind list.
+// proxy-traversal kind list. Each override is refused for its own reason: a
+// path of any kind is unsupported before the proxy-traversal rule can apply
+// to it, so a proxy chain is never the reason this kind gives.
 func TestCloudflaredRefusesRoutingOverrides(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		mutate func(*model.Config, *model.Check)
+		want   string
 	}{
-		{"bind_ip", func(_ *model.Config, x *model.Check) { x.BindIP = "127.0.0.1" }},
-		{"resolve_ip", func(_ *model.Config, x *model.Check) { x.ResolveIP = "127.0.0.1" }},
-		{"path without proxies", func(_ *model.Config, x *model.Check) { x.Path = "direct" }},
+		{"bind_ip", func(_ *model.Config, x *model.Check) { x.BindIP = "127.0.0.1" }, "does not accept bind_ip or resolve_ip"},
+		{"resolve_ip", func(_ *model.Config, x *model.Check) { x.ResolveIP = "127.0.0.1" }, "does not accept bind_ip or resolve_ip"},
+		{"path without proxies", func(_ *model.Config, x *model.Check) { x.Path = "direct" }, "path is unsupported"},
 		{"path with proxies", func(c *model.Config, x *model.Check) {
 			c.Paths[0].Proxies = []model.Proxy{{Kind: "socks5", Address: "127.0.0.1:1080"}}
 			x.Path = "direct"
-		}},
+		}, "path is unsupported"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := cloudflaredConfig("http://127.0.0.1:20241")
 			tc.mutate(&c, &c.Checks[0])
-			if err := config.Validate(c); err == nil {
+			err := config.Validate(c)
+			if err == nil {
 				t.Fatal("override accepted")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("refused for the wrong reason: %v; want %q", err, tc.want)
 			}
 		})
 	}

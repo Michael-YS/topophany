@@ -1,4 +1,89 @@
 {
+  "cloudflare-dns": {
+    "contract": "ad2963d74dff614763d3211a27ee612c89a35e2bf19ea16333f04fc1fbbc63f6",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "ok",
+      "evidence": "reported",
+      "stage": "adapter_api",
+      "detail": "Cloudflare API state reported; no request to the zone's own hostname was made",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "cloudflare_api_reported",
+      "facts": {
+        "peer_text": "withheld_secret_request",
+        "record_content_matches": "true",
+        "record_count": "1",
+        "record_proxied": "true",
+        "record_ttl": "300"
+      }
+    }
+  },
+  "cloudflare-pool": {
+    "contract": "aa770435e8e90a577a4963da2db4869d89efe9d7ea198086d3a92a1b349a6ba1",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "ok",
+      "evidence": "reported",
+      "stage": "adapter_api",
+      "detail": "Cloudflare API state reported; no request to the zone's own hostname was made",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "cloudflare_api_reported",
+      "facts": {
+        "origin.192.0.2.10": "healthy",
+        "origin.2001:db8::10": "healthy",
+        "origins_healthy": "3",
+        "origins_total": "4",
+        "peer_text": "withheld_secret_request",
+        "pool_healthy": "false",
+        "regions_reporting": "3"
+      }
+    }
+  },
+  "cloudflare-tunnel": {
+    "contract": "7432115ae6d2f2569a1f7c107c35ea04f59a6f798b0eb7dc9d8c7a9af14e6d84",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "ok",
+      "evidence": "reported",
+      "stage": "adapter_api",
+      "detail": "Cloudflare API state reported; no request to the zone's own hostname was made",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "cloudflare_api_reported",
+      "facts": {
+        "connector_versions": "2026.10.0,2026.9.1",
+        "oldest_connection_at": "2026-10-19T07:59:00Z",
+        "peer_text": "withheld_secret_request",
+        "tunnel_colos": "HKG,LAX,SIN",
+        "tunnel_connections": "3",
+        "tunnel_pending_reconnect": "1",
+        "tunnel_status": "healthy"
+      }
+    }
+  },
   "cloudflared-ok": {
     "contract": "9e2dc26821efd2200148ca0aa3b66b82227534915343ea354adfa0412906c53d",
     "observation": {

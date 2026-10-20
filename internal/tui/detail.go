@@ -278,3 +278,33 @@ func wrapParts(v string, w int) []string {
 	}
 	return append(out, wrap(cur, w)...)
 }
+
+// wrapWindowed wraps text as wrapParts does and ends it with " · window", on
+// its last line when that fits. When it does not, the last part moves down
+// to carry the window, so the window never stands alone on a line of its own.
+func wrapWindowed(text, window string, w int) []string {
+	lines := wrapParts(text, w)
+	if len(lines) == 0 {
+		return wrap(window, w)
+	}
+	end := len(lines) - 1
+	if width(lines[end])+3+width(window) <= w {
+		lines[end] += " · " + window
+		return lines
+	}
+	// Carry the window on the last part, else on the last word.
+	for _, sep := range []string{" · ", " "} {
+		if head, tail, ok := cutLast(lines[end], sep); ok {
+			return append(append(lines[:end], wrap(head, w)...), wrap(tail+" · "+window, w)...)
+		}
+	}
+	return append(lines[:end], wrap(lines[end]+" · "+window, w)...)
+}
+
+// cutLast splits s around the last occurrence of sep.
+func cutLast(s, sep string) (before, after string, found bool) {
+	if i := strings.LastIndex(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
+}

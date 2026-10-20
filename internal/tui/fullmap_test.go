@@ -66,20 +66,28 @@ func TestFullMapHidesThePanels(t *testing.T) {
 // the space beside it is free, rather than stopping at a fixed width.
 func TestLabelsUseTheRoomTheyHave(t *testing.T) {
 	m := previewModel(t)
-	m.Width, m.Height = 211, 50
 	m.setTab(tabTopology)
-	for mode, names := range map[string][]string{
-		"virtual": {"Azure 纽约", "互联网 (出口校验目标)", "Oracle 纽约"},
-		"network": {"PostgreSQL 容器", "OpenList 容器"},
+	// The network graph gives a column to every step from an observer to what
+	// it reached, a reported colo among them, so with the home observers'
+	// trace checks it needs a wider terminal than the virtual map to keep
+	// every name; the map panel is the columns left of the list.
+	for _, tc := range []struct {
+		mode        string
+		width, cols int
+		names       []string
+	}{
+		{"virtual", 211, 128, []string{"Azure 纽约", "互联网 (出口校验目标)", "Oracle 纽约"}},
+		{"network", 225, 136, []string{"PostgreSQL 容器", "OpenList 容器"}},
 	} {
-		m.MapMode = mode
-		out := mapText(m, 128)
-		for _, n := range names {
+		m.Width, m.Height, m.MapMode = tc.width, 50, tc.mode
+		out := mapText(m, tc.cols)
+		for _, n := range tc.names {
 			if !strings.Contains(out, n) {
-				t.Fatalf("%s map cuts %q short:\n%s", mode, n, out)
+				t.Fatalf("%s map cuts %q short:\n%s", tc.mode, n, out)
 			}
 		}
 	}
+	m.Width, m.Height = 211, 50
 	// With the map alone, the network graph has room for every name.
 	m.FullMap = true
 	out := visible(m)

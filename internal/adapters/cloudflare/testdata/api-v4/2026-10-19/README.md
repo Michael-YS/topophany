@@ -23,9 +23,10 @@ a browser user agent), not captured from the API:
 The permission names used in the documentation were verified at
 [API token permissions](https://developers.cloudflare.com/fundamentals/api/reference/permissions/):
 `Cloudflare Tunnel Read`, `DNS Read` and
-`Load Balancing: Monitors and Pools Read`. The URL named for token scopes in
-the work plan, `https://developers.cloudflare.com/fundamentals/api/reference/tokens/`,
-returned `404 Page Not Found` when fetched on 2026-10-19; the permissions page
+`Load Balancing: Monitors and Pools Read`. The page
+`https://developers.cloudflare.com/fundamentals/api/reference/tokens/`, which
+older links give for token scopes, returned `404 Page Not Found` when fetched
+on 2026-10-19; the permissions page
 and the token-creation guide
 ([Create API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/))
 are the current pages.

@@ -72,6 +72,59 @@ func TestCollectDNSRecordPolicies(t *testing.T) {
 	}
 }
 
+// Cloudflare stores a record's content in its own canonical form, so a
+// declared value is compared by meaning: an address by value, a CNAME target
+// without case or the root dot. A real difference is still a mismatch, and the
+// content itself is never put in a fact or a detail.
+func TestCollectDNSRecordContentIsCompared(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		kind     string
+		declared string
+		reported string
+		matches  bool
+	}{
+		{"A same", "A", "198.51.100.7", "198.51.100.7", true},
+		{"A different", "A", "198.51.100.7", "198.51.100.8", false},
+		{"A declared unparseable", "A", "198.51.100.7.", "198.51.100.7", false},
+		{"A reported unparseable", "A", "198.51.100.7", "not-an-address", false},
+		{"AAAA case", "AAAA", "2001:DB8::1", "2001:db8::1", true},
+		{"AAAA expanded", "AAAA", "2001:0db8:0000:0000:0000:0000:0000:0001", "2001:db8::1", true},
+		{"AAAA different", "AAAA", "2001:db8::1", "2001:db8::2", false},
+		{"AAAA declared unparseable", "AAAA", "2001:db8::g", "2001:db8::1", false},
+		{"AAAA reported unparseable", "AAAA", "2001:db8::1", "", false},
+		{"CNAME case and dot", "CNAME", "Example.COM.", "example.com", true},
+		{"CNAME dot on reported", "CNAME", "example.com", "example.com.", true},
+		{"CNAME identical", "CNAME", "origin.example.net", "origin.example.net", true},
+		{"CNAME different", "CNAME", "origin.example.net", "origin.example.org", false},
+		{"CNAME extra trailing dot", "CNAME", "example.com..", "example.com", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			options := dnsOptions()
+			options.RecordType = tc.kind
+			options.ExpectedContent = tc.declared
+			body, _ := json.Marshal(map[string]any{"success": true, "result": []map[string]any{{"content": tc.reported, "proxied": true, "ttl": 300}}})
+			o := observation()
+			if err := collectDNSRecord(body, options, o); err != nil {
+				t.Fatal(err)
+			}
+			wantMatches, wantCode, wantOutcome := "true", "", "ok"
+			if !tc.matches {
+				wantMatches, wantCode, wantOutcome = "false", "record_content_mismatch", "policy"
+			}
+			if o.Facts["record_content_matches"] != wantMatches || o.Code != wantCode || o.Outcome != wantOutcome {
+				t.Fatalf("facts=%+v outcome=%s code=%q", o.Facts, o.Outcome, o.Code)
+			}
+			raw, _ := json.Marshal(o)
+			for _, content := range []string{tc.declared, tc.reported} {
+				if len(content) >= 8 && strings.Contains(string(raw), content) {
+					t.Fatalf("record content %q reached the observation: %s", content, raw)
+				}
+			}
+		})
+	}
+}
+
 func TestCollectDNSRecordMultipleRecords(t *testing.T) {
 	body := `{"success":true,"result":[` +
 		`{"content":"198.51.100.7","proxied":true,"ttl":300},` +

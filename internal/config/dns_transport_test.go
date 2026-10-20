@@ -60,6 +60,31 @@ func TestDNSTransportValidation(t *testing.T) {
 	}
 }
 
+// No DNS transport traverses a proxy chain: the probe asks the resolver
+// directly, so a dns check on a path with a SOCKS hop is refused for every
+// transport, not run around the proxy.
+func TestDNSTransportRefusesProxyChain(t *testing.T) {
+	for _, tc := range []struct{ name, transport, target string }{
+		{"unset udp", "", "127.0.0.1:53"},
+		{"udp", "udp", "127.0.0.1:53"},
+		{"tcp", "tcp", "127.0.0.1:53"},
+		{"dot", "dot", "1.1.1.1:853"},
+		{"doh", "doh", "https://cloudflare-dns.com/dns-query"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := dnsTransportConfig(tc.transport, tc.target)
+			c.Checks[0].Path = c.Paths[0].ID
+			if err := config.Validate(c); err != nil {
+				t.Fatalf("the check is not valid without a proxy: %v", err)
+			}
+			c.Paths[0].Proxies = []model.Proxy{{Kind: "socks5", Address: "127.0.0.1:9"}}
+			if err := config.Validate(c); err == nil || !strings.Contains(err.Error(), "cannot traverse") {
+				t.Fatalf("a dns check behind a SOCKS hop: %v", err)
+			}
+		})
+	}
+}
+
 // dns.transport is inside DNSOptions, so it is part of the measurement
 // contract: unset it writes nothing and leaves every contract hash
 // unchanged, and set it gives that check a new contract. It is not a secret,

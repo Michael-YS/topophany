@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -73,7 +74,8 @@ func TestCheckEvidenceShowsRecentSamples(t *testing.T) {
 
 // A check's evidence adds the last day's first-byte time by cache class
 // and the share of answers by colo, when the collector's rollups hold them,
-// after the overall latency and before the legend.
+// after the overall latency and before the legend. Both lines name their
+// window, so the pair reads together, and the colos carry their label.
 func TestCheckEvidenceShowsFirstByteAndColos(t *testing.T) {
 	m := previewModel(t)
 	m.setTab(tabChecks)
@@ -102,46 +104,53 @@ func TestCheckEvidenceShowsFirstByteAndColos(t *testing.T) {
 	}
 	m.Detail = true
 	out := visible(m)
-	first := view.FirstByteLine(day.FirstByte)
-	colos := view.PopsLine(day.Pops, 4) + " · 24h"
+	first := "first byte " + view.FirstByteLine(day.FirstByte) + " · 24h"
+	colos := "colos " + view.PopsLine(day.Pops, 4) + " · 24h"
 	if !strings.Contains(out, first) || !strings.Contains(out, colos) {
 		t.Fatalf("evidence lacks first byte %q or colos %q:\n%s", first, colos, out)
 	}
-	// The same lines are wrapped to the panel, after the overall latency.
+	lines := func(r Row, w int) []string {
+		out := []string{}
+		for _, l := range m.sampleLines(r, w) {
+			text := ""
+			for _, sp := range l {
+				text += sp.s
+			}
+			out = append(out, text)
+		}
+		return out
+	}
 	var row Row
 	for _, r := range m.Rows() {
 		if r.ID == target {
 			row = r
 		}
 	}
-	lines := m.sampleLines(row, 18)
-	latency, firstAt, coloAt := -1, -1, -1
-	all := []string{}
-	for i, l := range lines {
-		text := ""
-		for _, sp := range l {
-			text += sp.s
-		}
-		all = append(all, text)
-		switch {
-		case strings.Contains(text, "p50") && strings.Contains(text, "dns"):
-			latency = i
-		case strings.HasPrefix(text, "first byte"):
-			firstAt = i
-			if width(text) > 18 {
-				t.Fatalf("first-byte line is %d wide: %q", width(text), text)
-			}
-		case strings.Contains(text, "24h"):
-			coloAt = i
-			if width(text) > 18 {
-				t.Fatalf("colo line is %d wide: %q", width(text), text)
-			}
+	// A known day: what the lines say, and where they break at the widths
+	// of a narrow panel, never leaving the window alone on a line.
+	for i := range m.Snapshot.Checks {
+		if m.Snapshot.Checks[i].ID == target {
+			m.Snapshot.Checks[i].Availability = []model.Availability{{Window: "24h", Rollup: model.Rollup{
+				FirstByte: &model.FirstByteLatency{Origin: &model.Latency{Samples: 900, P50: 98, P95: 126, Max: 300}},
+				Pops:      map[string]int64{"SJC": 970, "LAX": 20, "other": 10},
+			}}}
 		}
 	}
-	if latency < 0 || firstAt <= latency || coloAt <= firstAt {
-		t.Fatalf("first byte and colo lines are not after the latency and in order: latency=%d first=%d colos=%d\n%v", latency, firstAt, coloAt, lines)
-	}
-	if !strings.Contains(strings.Join(all, "\n"), "first byte") {
-		t.Fatal("wrapped lines lost the first-byte label")
+	for w, want := range map[int][]string{
+		60: {"first byte origin p50 98 ms · p95 126 ms · 24h", "colos SJC 97% · LAX 2% · 24h"},
+		44: {"first byte origin p50 98 ms", "p95 126 ms · 24h", "colos SJC 97% · LAX 2% · 24h"},
+		30: {"first byte origin p50 98 ms", "p95 126 ms · 24h", "colos SJC 97% · LAX 2% · 24h"},
+		18: {"first byte origin", "p50 98 ms", "p95 126 ms · 24h", "colos SJC 97%", "LAX 2% · 24h"},
+	} {
+		got := lines(row, w)
+		at := slices.Index(got, want[0])
+		if at < 0 || at+len(want) > len(got) || !slices.Equal(got[at:at+len(want)], want) {
+			t.Fatalf("at %d columns the evidence reads %q, want %q", w, got, want)
+		}
+		for _, l := range got {
+			if l == "24h" || strings.HasPrefix(l, "· ") {
+				t.Fatalf("at %d columns the window stands alone: %q", w, l)
+			}
+		}
 	}
 }

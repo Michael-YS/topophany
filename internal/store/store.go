@@ -365,9 +365,10 @@ func (s *Store) currentKey(key string) bool {
 }
 
 // roll folds a newly accepted sample into its rollup series, which its
-// observer owns. The extra labels are the worker's first-byte timing and
-// the edge's cache and colo; rollup.ExtraOf owns the one Vercel exception,
-// which drops only the reported region because it is not a physical colo.
+// observer owns. The extra labels are whether an edge answered, the
+// worker's first-byte timing and the edge's cache and colo; rollup.ExtraOf
+// is the one place rollups drop the Vercel colo, because its reported
+// region is not a physical colo.
 func (s *Store) roll(v model.Observation) {
 	s.rollups.Add(s.rollKey(v), v.Observer, v.SampledAt, v.Outcome, v.DurationMS, s.options.Stale[v.Check], s.options.Now(), rollup.ExtraOf(v))
 }

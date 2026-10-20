@@ -701,13 +701,23 @@ func aggregatePath(id string, states []model.CheckState, empty string) model.Ent
 // path, but a fresh local connector report decides the link's own state: the
 // connector is one end of the link and says whether it holds an edge session.
 // That is still reported evidence about the session, never proof that the
-// service behind it answers; the reason says so. A connector read that failed
-// is not a report about the link at all, so it neither counts as one nor
-// inherits the reported-only reason.
+// service behind it answers; the reason says so, and the link says its state is
+// reported rather than inferred when the connector alone decided it. A
+// connector read that failed is not a report about the link at all, so it
+// neither counts as one nor inherits the reported-only reason. The platform's
+// own account of the tunnel, read beside the connector's, stays in the check
+// list but does not vote while a connector report decides the link.
 func aggregateLink(id string, states []model.CheckState, empty string) model.EntityState {
-	s := Aggregate(id, linkEvidenceStates(states), empty)
+	voters := linkVoters(states)
+	s := Aggregate(id, linkEvidenceStates(voters), empty)
+	if len(voters) != len(states) {
+		s.Checks = s.Checks[:0]
+		for _, check := range states {
+			s.Checks = append(s.Checks, check.ID)
+		}
+	}
 	active, reported, connector, failed := 0, 0, 0, 0
-	for _, check := range states {
+	for _, check := range voters {
 		if check.Freshness == "paused" || check.Freshness == "maintenance" {
 			continue
 		}
@@ -728,8 +738,10 @@ func aggregateLink(id string, states []model.CheckState, empty string) model.Ent
 	}
 	switch {
 	case active > 0 && active == connector && s.Health == "up":
+		s.Evidence = "reported"
 		s.Reason = "local connector reports an established tunnel; the service behind it is unproven"
 	case active > 0 && active == connector && s.Health == "down":
+		s.Evidence = "reported"
 		s.Reason = "local connector reports no established tunnel"
 	case failed > 0 && s.Health == "unknown":
 		s.Reason = "local connector read failed; link state unknown"
@@ -737,6 +749,38 @@ func aggregateLink(id string, states []model.CheckState, empty string) model.Ent
 		s.Reason = "runtime reports only; inspect software policy checks; end-to-end reachability is unmeasured"
 	}
 	return s
+}
+
+// linkVoters is the checks that decide a link. While a fresh local connector
+// report that is not a failed read decides the link, the remote platform's
+// reported samples are left out: they are its account of the same tunnel,
+// shown beside the connector's, and neither outvote nor dilute it, whether
+// they pass, violate a policy, fail to read or have gone stale. Without a
+// connector report they stay, and a link they alone describe is unknown.
+func linkVoters(states []model.CheckState) []model.CheckState {
+	remote := func(s model.CheckState) bool {
+		return s.Last != nil && s.Last.Evidence == "reported" && s.Last.PathEvidence == model.RemotePlatformPathEvidence
+	}
+	decided, anyRemote := false, false
+	for _, s := range states {
+		if remote(s) {
+			anyRemote = true
+		}
+		if s.Freshness == "fresh" && s.Last != nil && s.Last.Evidence == "reported" &&
+			s.Last.PathEvidence == model.LocalConnectorPathEvidence && s.Last.Outcome != "error" {
+			decided = true
+		}
+	}
+	if !decided || !anyRemote {
+		return states
+	}
+	voters := make([]model.CheckState, 0, len(states))
+	for _, s := range states {
+		if !remote(s) {
+			voters = append(voters, s)
+		}
+	}
+	return voters
 }
 
 // linkEvidenceStates keeps a fresh local connector's own verdict and leaves

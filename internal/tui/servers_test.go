@@ -4,8 +4,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/preview"
 )
 
 // cardText is what a card's rows say, a line a row.
@@ -106,7 +108,7 @@ func TestServersUniformGrid(t *testing.T) {
 	// stand, what it is in front of and where it answered from; with
 	// nothing in front of it, who hosts it.
 	for id, want := range map[string][]string{
-		"cf":       {"IN FRONT OF", "www.example.invalid", "→ Oracle", "answered from FRA 57% · LAX 28% · EWR 14%", "RUNS HERE"},
+		"cf":       {"IN FRONT OF", "www.example.invalid", "→ Oracle", "answered from LAX 49% · FRA 40% · EWR 10%", "RUNS HERE"},
 		"vercel":   {"hosted by Vercel", "answered from edge region fra1"},
 		"supabase": {"hosted by Supabase", "no machine of yours to measure"},
 	} {
@@ -283,5 +285,110 @@ func TestServerCardAnsweredFromSaysItsSource(t *testing.T) {
 	}
 	if !strings.Contains(text, "reported colos") || strings.Contains(text, "24h shares") {
 		t.Fatalf("fresh colos are labelled %q", text)
+	}
+}
+
+// tunnelCardLinks is the "Home Dashboard" box's LINKS section in a preview
+// scenario, whose connector check reports on the link to Cloudflare.
+func tunnelCardLinks(t *testing.T, scenario string, reading ...string) (*Model, []cardRow) {
+	t.Helper()
+	m := previewModel(t)
+	if scenario != "normal" {
+		sim := m.Preview.(*preview.Sim)
+		sim.SetScenario(slices.Index(sim.ScenarioIDs(), scenario), m.Now.Add(-30*time.Minute))
+		m.Snapshot, _ = sim.Snapshot("", m.Now)
+	}
+	m.setTab(tabServers)
+	f := m.fleet()
+	for _, r := range m.Rows() {
+		if r.ID != "win" {
+			continue
+		}
+		c := f.Card(r.ID)
+		if len(reading) > 0 {
+			for i := range c.Links {
+				if c.Links[i].ID == "home-cf" {
+					c.Links[i].Reading = reading
+				}
+			}
+		}
+		for _, section := range m.cardSections(f, r, c, cAccent, 0) {
+			if strings.HasPrefix(cardText(section[:1]), "LINKS") {
+				return m, section[1:]
+			}
+		}
+	}
+	t.Fatal("no LINKS section on the Windows card")
+	return nil, nil
+}
+
+// padded writes a card row w columns wide: left, then right against the edge.
+func padded(left, right string, w int) string {
+	return left + strings.Repeat(" ", w-width(left)-width(right)) + right
+}
+
+// The row of a link to Cloudflare says the connector's reading beside the
+// transport, led by the link's state when it is down; where it does not fit,
+// the reading alone, and only then cut short with an ellipsis, the colo list
+// before anything it follows.
+func TestServerCardLinkRowSaysTheTunnel(t *testing.T) {
+	row := func(m *Model, rows []cardRow, lead string, w int) string {
+		t.Helper()
+		for _, r := range rows {
+			if text := rowText(m, r, w); strings.HasPrefix(text, lead) && strings.Contains(text, "Cloudflare") {
+				return text
+			}
+		}
+		t.Fatalf("no link row led by %q in\n%s", lead, cardText(rows))
+		return ""
+	}
+
+	m, rows := tunnelCardLinks(t, "normal")
+	for w, want := range map[int]string{
+		80: padded("→ Cloudflare", "cloudflared · 4 sessions · hkg,sin", 80),
+		47: padded("→ Cloudflare", "cloudflared · 4 sessions · hkg,sin", 47),
+		43: padded("→ Cloudflare", "4 sessions · hkg,sin", 43),
+		30: "→ Cloudflare 4 sessions · hkg…",
+	} {
+		if got := row(m, rows, "→", w); got != want {
+			t.Errorf("up, %d columns: %q, want %q", w, got, want)
+		}
+	}
+
+	m, rows = tunnelCardLinks(t, "tunnel-down")
+	for w, want := range map[int]string{
+		80: padded("✖ → Cloudflare", "cloudflared · no ready session", 80),
+		45: padded("✖ → Cloudflare", "cloudflared · no ready session", 45),
+		43: padded("✖ → Cloudflare", "no ready session", 43),
+		30: "✖ → Cloudflare no ready sessi…",
+	} {
+		if got := row(m, rows, "✖", w); got != want {
+			t.Errorf("down, %d columns: %q, want %q", w, got, want)
+		}
+	}
+
+	// The API's reading, beside the connector's.
+	m, rows = tunnelCardLinks(t, "normal", "4 sessions", "hkg,sin", "API 4 connections healthy")
+	for w, want := range map[int]string{
+		80: padded("→ Cloudflare", "cloudflared · 4 sessions · hkg,sin · API 4 connections healthy", 80),
+		61: padded("→ Cloudflare", "4 sessions · hkg,sin · API 4 connections healthy", 61),
+		43: "→ Cloudflare 4 sessions · hkg,sin · API 4…",
+	} {
+		if got := row(m, rows, "→", w); got != want {
+			t.Errorf("API beside the connector, %d columns: %q, want %q", w, got, want)
+		}
+	}
+
+	// A link no check reported on keeps the plain row: its transport.
+	m, rows = tunnelCardLinks(t, "normal")
+	plain := ""
+	for _, r := range rows {
+		if text := rowText(m, r, 60); !strings.Contains(text, "Cloudflare") && strings.HasPrefix(text, "→") {
+			plain = text
+			break
+		}
+	}
+	if plain == "" || !strings.HasSuffix(plain, "VLESS+Reality · TCP 443") || strings.Contains(plain, "session") {
+		t.Fatalf("a link without a reading changed: %q", plain)
 	}
 }

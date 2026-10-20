@@ -39,3 +39,9 @@ func (a AdapterOptions) CloudflaredOptions() CloudflaredOptions {
 // sample's own up/down verdict on a link; every other reported-only sample
 // stays unknown there.
 const LocalConnectorPathEvidence = "local_connector_runtime_reported"
+
+// RemotePlatformPathEvidence marks a reported sample taken from a platform's
+// own API, such as Cloudflare's tunnel read. It is the platform's account of a
+// resource, read beside the local connector's, and the engine never lets it
+// decide or dilute a link the local connector decides.
+const RemotePlatformPathEvidence = "cloudflare_api_reported"

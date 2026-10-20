@@ -17,7 +17,7 @@
       "name": "Cloudflare",
       "kind": "edge",
       "provider": "cloudflare",
-      "notes": "Anycast edge in front of the origin. An answer from it proves the edge only. The Cloudflare API reads are not enabled here because this example holds no token or account: add three checks of kind \"cloudflare\" with adapter.token_env \"CF_API_TOKEN\" and adapter.cloudflare.read set to \"tunnel\" (link \"tunnel\", with account_id and tunnel_id), \"dns_record\" (with zone_id, record_name \"www.example.com\", record_type \"A\" and expected_proxied true) and \"pool\" (with account_id and pool_id). Their least-privilege token scopes are in docs/SECURITY.md. Without a real token and account the reads cannot run, so they stay documented rather than active."
+      "notes": "Anycast edge in front of the origin. An answer from it proves the edge only. The Cloudflare API reads are not enabled here because this example holds no token or account: add three checks of kind \"cloudflare\" with adapter.token_env \"CF_API_TOKEN\" and adapter.cloudflare.read set to \"tunnel\" (with account_id and tunnel_id; it may carry link \"tunnel\", where it is shown beside the connector's report and never decides the link), \"dns_record\" (with zone_id, record_name \"www.example.com\", record_type \"A\" and expected_proxied true) and \"pool\" (with account_id and pool_id). Their least-privilege token scopes are in docs/SECURITY.md. Without a real token and account the reads cannot run, so they stay documented rather than active."
     },
     {
       "id": "origin",
@@ -57,7 +57,7 @@
       "from": "homebox",
       "to": "cf",
       "transport": "cloudflared",
-      "notes": "Outbound Tunnel from the home box. Measured by the cloudflared check's own report and, with a token, by the API tunnel read. The public hostname's check through the edge proves the edge, never this link or the service behind it."
+      "notes": "Outbound Tunnel from the home box. Measured by the cloudflared check's own report; an API tunnel read, with a token, may be attached to this link and is shown beside that report without deciding it. The public hostname's check through the edge proves the edge, never this link or the service behind it."
     }
   ],
   "endpoints": [

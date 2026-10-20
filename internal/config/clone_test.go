@@ -21,6 +21,7 @@ func TestConfigCloneDetachesEveryMutableField(t *testing.T) {
 	x.HTTP.Status = []int{200}
 	x.HTTP.Headers = map[string]string{"Response": "yes"}
 	x.HTTP.RequestHeaders = map[string]string{"X-Key": "private"}
+	x.HTTP.RequestHeaderEnvs = map[string]string{"CF-Access-Client-Id": "TOPH_ACCESS_ID", "CF-Access-Client-Secret": "TOPH_ACCESS_SECRET"}
 	x.HTTP.ExpectedExit = []string{"192.0.2.1"}
 	x.HTTP.ExpectedPops = []string{"HKG", "NRT"}
 	x.HTTP.ExitFormat = "trace"
@@ -35,6 +36,15 @@ func TestConfigCloneDetachesEveryMutableField(t *testing.T) {
 	keepalive := 25
 	x.Adapter.ExpectedKeepaliveSeconds = &keepalive
 	x.Adapter.ExpectedProviders = map[string][]string{"provider": {"one", "two"}}
+	connections, readyConnections := 4, 2
+	x.Adapter.Cloudflared = &model.CloudflaredOptions{ExpectedConnections: &readyConnections, ExpectedColos: []string{"hkg", "sin"}}
+	proxied := true
+	x.Adapter.Cloudflare = &model.CloudflareOptions{
+		Read: "tunnel", AccountID: "11111111111111111111111111111111", ZoneID: "33333333333333333333333333333333",
+		TunnelID: "22222222222222222222222222222222", RecordName: "www.example.com", RecordType: "A",
+		ExpectedProxied: &proxied, ExpectedContent: "198.51.100.7", PoolID: "44444444444444444444444444444444",
+		ExpectedOrigins: []string{"192.0.2.10", "192.0.2.11"}, ExpectedConnections: &connections, ExpectedColos: []string{"HKG", "LAX"},
+	}
 	before, _ := json.Marshal(c)
 	copy := config.Clone(c)
 	if !reflect.DeepEqual(c, copy) {
@@ -62,6 +72,10 @@ func TestConfigCloneDetachesEveryMutableField(t *testing.T) {
 				value.Set(v.MapIndex(k))
 				mutate(value)
 				v.SetMapIndex(k, value)
+			}
+		case reflect.Bool:
+			if v.CanSet() {
+				v.SetBool(!v.Bool())
 			}
 		case reflect.String:
 			if v.CanSet() {

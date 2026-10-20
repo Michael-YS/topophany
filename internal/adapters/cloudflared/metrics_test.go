@@ -136,6 +136,11 @@ func TestParseMetricsAllowlistAndValues(t *testing.T) {
 				if len(m.ServerLocations) != MaxColos {
 					t.Fatalf("got %v", m.ServerLocations)
 				}
+				// The fact is capped; the policy still has all nine, and the
+				// capped list cannot grow into them.
+				if len(m.allLocations) != 9 || !slices.IsSorted(m.allLocations) || cap(m.ServerLocations) != MaxColos {
+					t.Fatalf("allLocations=%v cap=%d", m.allLocations, cap(m.ServerLocations))
+				}
 				if !slices.IsSorted(m.ServerLocations) || m.ServerLocations[0] != "hkg" || m.ServerLocations[MaxColos-1] != "sfo" {
 					t.Fatalf("got %v", m.ServerLocations)
 				}

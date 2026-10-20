@@ -96,12 +96,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `BYPASS`, `DYNAMIC`) answers, each with `samples`, `p50_ms`, `p95_ms` and
   `max_ms`; a status outside both lists stays unclassified and is not
   reported. `pops` counts the colo every response named, at most sixteen named
-  codes plus `other`, and `cache` counts every cache status from the closed
-  vocabulary, absent or unknown as `other`. Vercel's reported region is not a
+  codes plus `other`, and `cache` counts the cache status of every edge answer
+  from the closed vocabulary, absent or unknown as `other`; checks no edge
+  answered (TCP, TLS, DNS, ICMP, host) carry no `cache`. Vercel's reported region is not a
   physical colo, so it contributes no `pops` count while its first-byte time
   and cache status still count. The TUI's check evidence adds the
   last day's `first byte cached p50 40 ms · p95 90 ms · origin p50 600 ms ·
-  p95 700 ms` and `LAX 92% · HKG 8% · 24h`; the Servers cards order their
+  p95 700 ms · 24h` and `colos LAX 92% · HKG 8% · 24h`; the Servers cards order their
   *ANSWERED FROM* colos by the day's share (`LAX 92%`) and fall back to fresh
   response headers when no rollups are kept yet, with the card's JSON saying
   which through `pops_from_rollups`; the Observers rows add
@@ -140,7 +141,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is `ok` with the detail `tunnel established; service behind it unproven`.
   `adapter.cloudflared.expected_connections` (1..8) and `expected_colos` (at
   most eight 3..8-character tokens, compared without case) are policy, with
-  codes `connections_below_expected` and `colo_outside_expected`; zero ready
+  codes `connections_below_expected` and `colo_outside_expected`;
+  `connection_colos` shows at most eight, but `expected_colos` is compared
+  against every distinct colo the connector reports; zero ready
   sessions stays `fail`, one or more below the declaration is policy, and an
   absent family is not a violation. The target must be a literal loopback
   address (`127.0.0.0/8` or `::1`; commonly `http://127.0.0.1:PORT`,
@@ -155,8 +158,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because the observed `2026.10.0` is nine. Evidence is reported, path
   evidence is `local_connector_runtime_reported`, and a fresh local connector
   report decides the state of the link it is attached to after the failure
-  threshold while the service behind it stays unproven; a failed connector
-  read leaves the link unknown. The nested options are part of the measurement
+  threshold while the service behind it stays unproven, and the link then
+  reads `reported` rather than `inferred`; a failed connector read leaves the
+  link unknown. A `cloudflare` API check on the same link is shown beside the
+  connector's report and does not vote on the link while a fresh connector
+  report decides it. The nested options are part of the measurement
   contract; older collectors and viewers reject the new field, so upgrade them
   before adding it to a topology. Tested against cloudflared 2026.10.0 with a
   fake, unregistered tunnel; the 200-ready and connected-metrics shapes are
@@ -174,8 +180,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cloudflare's own monitors (`pool_healthy`, `origins_healthy`,
   `origins_total`, `regions_reporting`, and `origin.<declared>` only for
   declared origins; an absent declared origin is policy but gets no invented
-  verdict). Each check makes exactly one allowlisted `GET` and never
-  requests the zone. The target defaults to
+  verdict). A tunnel that reads `healthy` or `degraded` with an empty
+  connections array, which Cloudflare has deprecated, is treated as not
+  reported: the five connection facts are absent, neither connection policy
+  can fire and the detail says so, while an empty array beside `down` or
+  `inactive` is a count of zero. The DNS content comparison is canonical: `A`
+  and `AAAA` content is compared as parsed addresses and `CNAME` content
+  without case or a trailing dot. Each check makes exactly one allowlisted
+  `GET` and never sends a request to the zone's own hostname; the token goes
+  only to the API. The target defaults to
   `https://api.cloudflare.com/client/v4`; outside a literal loopback test
   address it must be exactly that host and base path, so the bearer token cannot
   go to a lookalike service, and `interval_seconds` must be at least 60,
@@ -192,14 +205,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   body and a malformed response are monitor `error`s at stage `adapter_api`,
   never target outages; HTTP 200 with `success: false` is also a monitor
   error. `tunnel_colos` is capped for the fact, but `colo_outside_expected`
-  compares every distinct reported colo, and a value exactly equal to the
-  bearer token is dropped even when its shape is one the adapter reports. Every response is credential-bearing, so only closed words, numbers,
+  compares every distinct reported colo, and a value or list member equal to,
+  or a run of at least eight bytes of, the bearer token is dropped even when
+  its shape is one the adapter reports. Every response is credential-bearing, so only closed words, numbers,
   shape-validated tokens and declared comparisons leave the adapter, and
   `peer_text: withheld_secret_request` marks the sample. `topo edit` authors
   the kind: token variable, read, the read's identifiers and its declared
   expectations; switching reads clears the other read's fields. The token scopes are
   Account › Cloudflare Tunnel › Read, Zone › DNS › Read and Account › Load
-  Balancing: Monitors and Pools Read, nothing else. The fixtures are synthetic
+  Balancing: Monitors and Pools › Read, nothing else. The fixtures are synthetic
   and document-based: no live account or token was used, so the acceptance
   record names what a real account must still confirm. The nested options are
   part of the measurement contract and the field is new, so upgrade collectors
@@ -227,8 +241,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   count against its existing node and edge budgets; the nodes are kind `colo`
   and the hops a new `colo` edge kind in `topo show map` and its JSON. A short
   virtual map now splits places into more columns, down to the narrowest card,
-  instead of stacking cards past its height. The preview's recorded tours
-  change because its colos are now real places.
+  instead of stacking cards past its height. A reported colo is drawn hollow,
+  `◌`, in a muted green when it carried a response and in the unknown color
+  when nothing backs it, never as a server's filled `●`, since it is where the
+  edge said it answered from and not something a check measured; the legend
+  adds `◌ reported colo` and `┈ reported colo` while one is drawn. A site or
+  card is named by the place of its declared nodes, and a colo's city names it
+  only when no declared node there names a place, so a plate no longer reads
+  "Frankfurt · Frankfurt-am-Main". The preview's recorded tours change because
+  its colos are now real places.
 - `examples/cloudflare.json` is a worked Cloudflare zone written with
   documentation hostnames and address ranges. It declares a proxied origin
   with its own direct check (`resolve_ip` pins the dial address while Host and
@@ -240,21 +261,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `request_header_envs` (variable names only), and `expected_pops` on the
   edge check. The three Cloudflare API reads are named in the edge's `notes`
   with their `CF_API_TOKEN` variable rather than enabled, because the example
-  holds no token or account. `topo validate` accepts it, and `scripts/verify.py`
+  holds no token or account; the tunnel read may carry the Tunnel's link, where
+  it is shown beside the connector's report and never decides the link. Of its
+  public hosts only the trace target
+  (`https://www.cloudflare.com/cdn-cgi/trace`) and the `1.1.1.1` DoT resolver
+  are real; the `example.com` hosts are placeholders to replace. `topo validate` accepts it, and `scripts/verify.py`
   validates it with the other shipped examples.
 - The preview gains three Cloudflare failures, each implemented as a change
   in the simulated evidence and judged by the unchanged engine.
-  `edge-challenge` answers home observers' requests for the fronted site with
-  `403` and `edge_mitigation: challenge`, so the evidence line names the
+  `edge-challenge` answers the relay observer's requests for the fronted site
+  with `403` and `edge_mitigation: challenge`, so the evidence line names the
   challenge and the incident says the origin was not asked.
-  `edge-rerouted` carries their answers from `LAX` while the check declares
-  `HKG` and `NRT`: the request succeeds, the check reads degraded, and a
-  policy incident opens instead of an outage. `tunnel-down` adds a Tunnel from
+  `edge-rerouted` carries the relay's answers from `LAX` while its `r-app-web`
+  check declares colos near it, which each language's catalog names
+  (`scenario.edge-rerouted.pops`: `SJC` and `SEA`, `KIX` and `NRT`, or `HKG`
+  and `NRT`): the request succeeds, the check reads degraded, and a policy
+  incident opens instead of an outage, saying which colo answered and which
+  were declared. `tunnel-down` adds a Tunnel from
   the built-in home box with a `cloudflared` check on its link: the connector
   reports no ready edge session, the link reads down, the public hostname gets
   `530` from the edge and proves only the edge, and the loopback check still
   proves the dashboard. `topo preview scenarios` lists all three in every
-  language.
+  language. The preview topology also gains a `cf-trace` endpoint for
+  `https://www.cloudflare.com/cdn-cgi/trace` and three trace checks against it,
+  for the Windows, MacBook and relay observers, so the Observers tab shows
+  `Trace: WARP on · Gateway off (reported, not verified)` for each of them.
+- A Servers card's link row carries the link's state glyph when it is down
+  (`✖`) or degraded (`▲`) and what the link's own fresh checks report:
+  `→ Cloudflare   cloudflared · 4 sessions · hkg,sin`, or
+  `✖ → Cloudflare   cloudflared · no ready session`, with
+  `· API 4 connections healthy` appended when a `cloudflare` API read names the
+  same link. Both readings are shown and neither is the link's reason; a row
+  too narrow for all of it drops the transport word first. In
+  `topo show servers --json` each link gains `health` and `reading`.
+- `topo edit` authors `adapter.cloudflared`: the check form takes the expected
+  connections (1..8) and expected colos of a `cloudflared` check and clears
+  both when the kind is anything else.
+- An incident's details no longer print an "Other-observer response evidence"
+  or a hypothesis section with nothing under it. A policy incident, which has
+  no failed request to contrast with another observer's, is headed "Policy
+  (not an outage)" instead of "Hypothesis (not a finding)" and shows each
+  sample's detail with what it was held to: `(answered from LAX; declared SJC,
+  SEA)` for `pop_mismatch` and `colo_mismatch`, `(WARP off; declared on)` for
+  `warp_mismatch` and `gateway_mismatch`. Any other policy, `exit_mismatch`
+  included, keeps the sample's sentence alone.
 
 ### Changed
 
@@ -272,6 +322,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upgrading.
 - A configured `User-Agent` request header, literal or environment-backed, now
   wins over Topophany's default instead of being silently overwritten.
+- A `dns` check that receives a message whose transaction ID is not the
+  question's now reports the monitor error `unexpected_transaction_id` (stage
+  `dns_answer`, local) on the existing UDP path as on the new transports,
+  where it used to report the failed check `invalid_or_negative_answer`.
+- The rollup reader refuses, as corrupt, a checkpoint with a timestamp after
+  the end of the year 9999, as it would otherwise make every snapshot that
+  included it fail to encode.
 
 ## [1.3.0] - 2026-10-19
 

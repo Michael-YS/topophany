@@ -549,8 +549,8 @@ func TestEdgeChallengeScenario(t *testing.T) {
 // a policy one, and no check in the scenario is down.
 func TestEdgeReroutedIsPolicyNotOutage(t *testing.T) {
 	for _, sc := range scenarios {
-		if sc.ID == "edge-rerouted" && !slices.Equal(sc.DeclaredPops["r-app-web"], []string{"HKG", "NRT"}) {
-			t.Fatalf("the rerouted scenario declares %v", sc.DeclaredPops)
+		if sc.ID == "edge-rerouted" && !slices.Equal(sc.DeclaresPops, []string{"r-app-web"}) {
+			t.Fatalf("the rerouted scenario declares colos for %v", sc.DeclaresPops)
 		}
 	}
 	s := settled(t, "edge-rerouted")
@@ -564,6 +564,17 @@ func TestEdgeReroutedIsPolicyNotOutage(t *testing.T) {
 	}
 	if last.Facts["edge_pop"] != "LAX" || !strings.Contains(last.Detail, "outside the declared list") {
 		t.Fatalf("reroute evidence %+v", last)
+	}
+	// The incident the reader sees says which colo answered and which the
+	// check declares.
+	details := ""
+	for _, r := range (view.View{Snapshot: s, Now: s.GeneratedAt}).Rows(view.Incidents) {
+		if text := strings.Join(r.Details, "\n"); strings.Contains(text, "Failed checks:\nr-app-web\n") {
+			details = text
+		}
+	}
+	if !strings.Contains(details, "\nPolicy (not an outage):\nrequest succeeded but the edge answered from a colo outside the declared list (answered from LAX; declared SJC, SEA)\n") {
+		t.Fatalf("the incident does not say what was violated:\n%s", details)
 	}
 	for _, c := range s.Checks {
 		if c.Health == "down" {
@@ -645,6 +656,59 @@ func TestTunnelDownScenario(t *testing.T) {
 	}
 }
 
+// In every language the two edge scenarios that act on the relay's checks
+// name the observer the reader sees in the incident, and the rerouted one the
+// colos its check declares, which are the catalog's; they are colos the
+// language's topology can land the relay on or near.
+func TestEdgeScenariosNameTheObserverAndColosTheReaderSees(t *testing.T) {
+	for _, lang := range Languages() {
+		text, err := catalog(lang)
+		if err != nil {
+			t.Fatal(lang, err)
+		}
+		c, err := Preset(lang)
+		if err != nil {
+			t.Fatal(lang, err)
+		}
+		relay := ""
+		for _, o := range c.Observers {
+			if o.ID == "obs-relay" {
+				relay = o.Name
+			}
+		}
+		if relay == "" {
+			t.Fatalf("%s: no relay observer", lang)
+		}
+		for _, id := range []string{"edge-challenge", "edge-rerouted"} {
+			if !strings.Contains(text["scenario."+id+".detail"], relay) {
+				t.Errorf("%s: scenario %s does not name the observer %q", lang, id, relay)
+			}
+		}
+		sim := New(c, testNow, lang)
+		var scenario Scenario
+		for _, sc := range scenarios {
+			if sc.ID == "edge-rerouted" {
+				scenario = sc
+			}
+		}
+		declared := sim.declared(scenario)
+		if len(declared) == 0 || len(declared) > 2 {
+			t.Fatalf("%s: the rerouted scenario declares %v", lang, declared)
+		}
+		for _, code := range declared {
+			if !strings.Contains(text["scenario.edge-rerouted.detail"], code) {
+				t.Errorf("%s: the rerouted text does not name the declared colo %s", lang, code)
+			}
+		}
+		if landing, _ := sim.edgePop("cloudflare", "obs-relay"); slices.Contains(declared, "LAX") && landing != "LAX" {
+			t.Errorf("%s: LAX is declared, so the reroute is no violation", lang)
+		}
+		if !slices.Contains(sim.ScenarioIDs(), "edge-rerouted") {
+			t.Errorf("%s: the rerouted scenario is not offered", lang)
+		}
+	}
+}
+
 // The three Cloudflare scenarios are named and described in every language.
 func TestCloudflareScenariosAreNamedInEveryLanguage(t *testing.T) {
 	for _, lang := range Languages() {
@@ -663,7 +727,7 @@ func TestCloudflareScenariosAreNamedInEveryLanguage(t *testing.T) {
 func TestPreviewMapPlacesTheColoTheEdgeReported(t *testing.T) {
 	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
 	for lang, want := range map[string]map[string]string{
-		"en": {"SJC": "San Jose", "EWR": "Newark", "FRA": "Frankfurt-am-Main"},
+		"en": {"SJC": "San Jose", "SEA": "Seattle", "EWR": "Newark", "FRA": "Frankfurt-am-Main"},
 		"ja": {"KIX": "Osaka", "EWR": "Newark", "FRA": "Frankfurt-am-Main"},
 		"zh": {"LAX": "Los Angeles", "EWR": "Newark", "FRA": "Frankfurt-am-Main"},
 	} {
@@ -713,8 +777,15 @@ func TestPreviewMapPlacesTheColoTheEdgeReported(t *testing.T) {
 					t.Fatalf("%s: %s fronts %q, not the edge", lang, id, e.To)
 				}
 			}
-			if hops != 1 {
-				t.Fatalf("%s: %s has %d observer hops, want 1", lang, id, hops)
+			// An observer's hop is drawn for each colo it landed on, once however
+			// many checks reported it: the two Seattle observers share SEA, and
+			// the three in Osaka or the mainland share KIX or LAX.
+			want := map[string]int{"en/SEA": 2, "ja/KIX": 3, "zh/LAX": 3}[lang+"/"+code]
+			if want == 0 {
+				want = 1
+			}
+			if hops != want {
+				t.Fatalf("%s: %s has %d observer hops, want %d", lang, id, hops, want)
 			}
 		}
 	}
@@ -730,4 +801,78 @@ func TestNearestPopNeedsADeclaredPlace(t *testing.T) {
 	if code, loc := s.edgePop("cloudflare", "o"); code != "" || loc != nil {
 		t.Fatalf("a locationless observer got %q %v", code, loc)
 	}
+}
+
+// Each home observer runs a trace check against Cloudflare's own trace
+// endpoint in every language's topology, so the Observers tab can say what the
+// edge reports of the vantage point: where it lands, WARP on and Gateway off,
+// the protocol versions, the country and the egress address.
+func TestPreviewObserversReportTheirTrace(t *testing.T) {
+	country := map[string]string{"en": "US", "ja": "JP", "zh": "CN"}
+	for _, lang := range Languages() {
+		c, err := Preset(lang)
+		if err != nil {
+			t.Fatal(lang, err)
+		}
+		traces := map[string]model.Check{}
+		for _, x := range c.Checks {
+			if x.HTTP.ExitFormat == "trace" {
+				traces[x.Observer] = x
+			}
+		}
+		if len(traces) != 3 {
+			t.Fatalf("%s: trace checks of %v, want one per home observer", lang, traces)
+		}
+		for _, id := range []string{"obs-win", "obs-mac", "obs-relay"} {
+			x := traces[id]
+			if x.Kind != "http" || x.Endpoint != "cf-trace" || x.HTTP.ExpectedTrace == nil || x.HTTP.ExpectedTrace.Warp != "on" {
+				t.Errorf("%s: %s trace check %+v", lang, id, x)
+			}
+			if ep, ok := endpointOf(c, x.Endpoint); !ok || ep.Address != "https://www.cloudflare.com/cdn-cgi/trace" || ep.Node != "cf" {
+				t.Errorf("%s: trace endpoint %+v", lang, ep)
+			}
+		}
+
+		snap := settledIn(t, "normal", lang)
+		for id, traceID := range map[string]string{"obs-win": "w-trace", "obs-mac": "m-trace", "obs-relay": "r-trace"} {
+			cs := check(t, snap, traceID)
+			f := cs.Last.Facts
+			if cs.Health != "up" || f["edge_pop"] == "" || f["trace_colo"] != f["edge_pop"] || f["trace_warp"] != "on" || f["trace_gateway"] != "off" ||
+				f["trace_http"] != "http1.1" || f["trace_tls"] != "TLSv1.3" || f["trace_loc"] != country[lang] || !strings.HasPrefix(f["exit_ip"], "198.51.100.") {
+				t.Errorf("%s: %s reports %v (%s)", lang, traceID, f, cs.Health)
+			}
+			var row view.Row
+			for _, r := range (view.View{Snapshot: snap, Now: snap.GeneratedAt}).Rows(view.Observers) {
+				if r.ID == id {
+					row = r
+				}
+			}
+			if text := strings.Join(row.Details, "\n"); !strings.Contains(text, "\nTrace: WARP on · Gateway off (reported, not verified)\n") {
+				t.Errorf("%s: the %s row has no trace line:\n%s", lang, id, text)
+			}
+		}
+		// An observer that runs no trace check says nothing of WARP.
+		for _, r := range (view.View{Snapshot: snap, Now: snap.GeneratedAt}).Rows(view.Observers) {
+			if r.ID == "obs-app" && strings.Contains(strings.Join(r.Details, "\n"), "Trace:") {
+				t.Errorf("%s: an observer without a trace check shows a trace line", lang)
+			}
+		}
+
+		// Rerouted, the home observers' trace names the colo they were carried to.
+		re := settledIn(t, "edge-rerouted", lang)
+		for _, id := range []string{"w-trace", "m-trace", "r-trace"} {
+			if cs := check(t, re, id); cs.Last.Facts["trace_colo"] != "LAX" || cs.Last.Facts["edge_pop"] != "LAX" {
+				t.Errorf("%s: %s names %v after the reroute", lang, id, cs.Last.Facts)
+			}
+		}
+	}
+}
+
+func endpointOf(c model.Config, id string) (model.Endpoint, bool) {
+	for _, ep := range c.Endpoints {
+		if ep.ID == id {
+			return ep, true
+		}
+	}
+	return model.Endpoint{}, false
 }

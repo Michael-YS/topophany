@@ -263,7 +263,7 @@ func TestGraphCapsColoHopsWithManyObservers(t *testing.T) {
 		c.Observers = append(c.Observers, model.Observer{ID: obs, Node: node})
 		for k := 0; k < 32; k++ {
 			id := fmt.Sprintf("web-%02d-%02d", o, k)
-			code := fmt.Sprintf("%c%c%c", 'A'+k/26, 'A'+(k/1)%26, 'A'+k%26)
+			code := fmt.Sprintf("%c%c%c", 'A'+k/26, 'A'+k%26, 'X')
 			c.Checks = append(c.Checks, model.Check{ID: id, Observer: obs, Endpoint: "web", Kind: "http"})
 			snap.Checks = append(snap.Checks, model.CheckState{ID: id, Observer: obs, Health: "up", Freshness: "fresh", Last: &model.Observation{Facts: map[string]string{"edge_provider": "cloudflare", "edge_pop": code}}})
 		}

@@ -97,3 +97,32 @@ func PopShares(pops map[string]int64, limit int) []string {
 func PopsLine(pops map[string]int64, limit int) string {
 	return strings.Join(PopShares(pops, limit), " · ")
 }
+
+// LinePops is how many colos a one-line summary of shares lists: the
+// observer's "Edge colos seen" and a check's evidence. A card lists cardPops.
+const LinePops = 4
+
+// sumDayPops adds up the colo counts of the last day's rollup of every check
+// that keep accepts, or of every check when keep is nil. The union is bounded
+// by the colo alphabet, and the callers show a handful of it; no per-check
+// cap, which would lose a code rare in each check but large across them.
+// Nil when no accepted check holds a count.
+func sumDayPops(checks []model.CheckState, keep func(model.CheckState) bool) map[string]int64 {
+	var pops map[string]int64
+	for _, cs := range checks {
+		if keep != nil && !keep(cs) {
+			continue
+		}
+		r := RollupWindow(cs.Availability, "24h")
+		if r == nil {
+			continue
+		}
+		for code, n := range r.Pops {
+			if pops == nil {
+				pops = map[string]int64{}
+			}
+			pops[code] += n
+		}
+	}
+	return pops
+}

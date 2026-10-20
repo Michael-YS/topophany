@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -43,7 +44,9 @@ var allowedFamilies = map[string]bool{
 // Metrics is what the allowlisted families reported. A nil count means the
 // family was absent, which is not the same as a reported zero. TimerRetries
 // is parsed because the allowlist names it, but no observation fact carries
-// it: the eight-fact budget is spent on the readings the roadmap defines.
+// it: the eight-fact budget is spent on the eight facts this adapter documents.
+// ServerLocations is the capped list the connection_colos fact prints; the
+// colo policy compares allLocations, every distinct colo the report named.
 type Metrics struct {
 	ServerLocations  []string // lowercase colos, sorted, at most eight
 	HAConnections    *int64
@@ -52,6 +55,7 @@ type Metrics struct {
 	ActiveStreams    *int64
 	TimerRetries     *int64
 	ConnectorVersion string
+	allLocations     []string // every distinct lowercase colo, sorted
 	parsed           bool
 }
 
@@ -65,7 +69,7 @@ func (m Metrics) Count(p *int64) (string, bool) {
 	if p == nil {
 		return "", false
 	}
-	return decimal(*p), true
+	return strconv.FormatInt(*p, 10), true
 }
 
 // ParseMetrics reads the allowlisted families from a Prometheus text
@@ -133,14 +137,15 @@ func ParseMetrics(body []byte) Metrics {
 		}
 	}
 	if len(colos) > 0 {
-		m.ServerLocations = make([]string, 0, min(len(colos), MaxColos))
+		m.allLocations = make([]string, 0, len(colos))
 		for colo := range colos {
-			m.ServerLocations = append(m.ServerLocations, colo)
+			m.allLocations = append(m.allLocations, colo)
 		}
-		sort.Strings(m.ServerLocations)
-		if len(m.ServerLocations) > MaxColos {
-			m.ServerLocations = m.ServerLocations[:MaxColos]
-		}
+		sort.Strings(m.allLocations)
+		// The fact keeps the first eight; the full slice expression stops an
+		// append to it from overwriting the colos the policy still compares.
+		keep := min(len(m.allLocations), MaxColos)
+		m.ServerLocations = m.allLocations[:keep:keep]
 	}
 	return m
 }
@@ -366,20 +371,6 @@ func plainInteger(b []byte) (int64, bool) {
 }
 
 func count(value int64) *int64 { return &value }
-
-func decimal(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
-}
 
 func metricNameChar(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == ':'

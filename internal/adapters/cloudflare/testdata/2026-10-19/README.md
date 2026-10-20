@@ -4,7 +4,7 @@
 
 - URL: `https://speed.cloudflare.com/` (HTTP/1.1, no query, no credentials)
 - Captured: 2026-10-19, about 21:57 UTC, from Los Angeles (`LAX`)
-- Client: `curl 8.7.1 (x86_64-apple-darwin26.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.69.0`, run as `curl -s --http1.1 -D - -o /dev/null https://speed.cloudflare.com/`. The response also carried `CF-RAY: a4d30a510bb2b256-LAX`, `X-Worker-Version-Id: 7ce3efef-3b3a-4cd1-9898-4bf02b198eee` and no `CF-Cache-Status`.
+- Client: `curl 8.7.1 (x86_64-apple-darwin26.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.69.0`, run as `curl -s --http1.1 -D - -o /dev/null https://speed.cloudflare.com/`. The response also carried `CF-RAY: <ray>-LAX` (the ray identifier is not kept), an `X-Worker-Version-Id` header (its value is not kept) and no `CF-Cache-Status`.
 
 `server-timing.txt` is the header value plus the file's trailing newline, exactly as received, except that `cid` — a connection identifier — was replaced with sixteen zeros. No other character was changed.
 
@@ -26,7 +26,7 @@ The header's `rtt` is read as microseconds from this capture, not from a vendor 
 
 - URL: `https://www.cloudflare.com/cdn-cgi/trace` (HTTP/1.1, no query, no credentials)
 - Captured: 2026-10-19, about 23:06 UTC, from Los Angeles (`LAX`)
-- Client: `curl 8.7.1 (x86_64-apple-darwin26.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.69.0`, run as `curl -s --http1.1 https://www.cloudflare.com/cdn-cgi/trace`. The response carried `HTTP/1.1 200 OK`, `Content-Type: text/plain`, `Content-Length: 237` and `CF-RAY: a4d36f28387db74c-LAX`; the body was 237 bytes in 16 lines.
+- Client: `curl 8.7.1 (x86_64-apple-darwin26.0) libcurl/8.7.1 (SecureTransport) LibreSSL/3.3.6 zlib/1.2.12 nghttp2/1.69.0`, run as `curl -s --http1.1 https://www.cloudflare.com/cdn-cgi/trace`. The response carried `HTTP/1.1 200 OK`, `Content-Type: text/plain`, `Content-Length: 237` and `CF-RAY: <ray>-LAX`; the body was 237 bytes in 16 lines.
 
 `cdn-cgi-trace.txt` is that body with the `ip=` value replaced by the documentation address `203.0.113.8`. No other line was changed.
 

@@ -32,6 +32,51 @@ func feed(r *Store, key string, from, to time.Time, every, stale time.Duration, 
 
 func always(o string) func(time.Time) string { return func(time.Time) string { return o } }
 
+// edgeTail adds six samples to key, a minute apart and ending a minute
+// before now, that an edge answered with first byte, cache and colo labels:
+// every cache class, an unknown cache word, a malformed colo, an answer
+// with no first byte and, last, a failing sample whose first byte is not
+// kept because only passing samples keep it.
+func edgeTail(r *Store, key string, now time.Time) {
+	for i, extra := range []Extra{
+		{FirstByteMS: 40, HasFirstByte: true, HasEdge: true, Cache: "HIT", Pop: "LAX"},
+		{FirstByteMS: 600, HasFirstByte: true, HasEdge: true, Cache: "MISS", Pop: "HKG"},
+		{FirstByteMS: 90, HasFirstByte: true, HasEdge: true, Cache: "REVALIDATED", Pop: "NRT"},
+		{FirstByteMS: 20, HasFirstByte: true, HasEdge: true, Cache: "NONE", Pop: "lax"},
+		{HasEdge: true, Cache: "STALE"},
+		{FirstByteMS: 999, HasFirstByte: true, HasEdge: true, Cache: "HIT", Pop: "SIN"},
+	} {
+		outcome := "ok"
+		if i == 5 {
+			outcome = "fail"
+		}
+		r.Add(key, "", now.Add(-time.Duration(i+1)*time.Minute), outcome, 50, 10*time.Minute, now, extra)
+	}
+}
+
+// withoutLabels is a document as a store wrote it before first-byte time,
+// colo counts and cache counts: the same, with every fb, p and c key of
+// every bucket removed.
+func withoutLabels(tb testing.TB, raw []byte) []byte {
+	tb.Helper()
+	var generic map[string]any
+	if e := json.Unmarshal(raw, &generic); e != nil {
+		tb.Fatal(e)
+	}
+	for _, s := range generic["series"].([]any) {
+		for _, b := range s.(map[string]any)["b"].([]any) {
+			delete(b.(map[string]any), "fb")
+			delete(b.(map[string]any), "p")
+			delete(b.(map[string]any), "c")
+		}
+	}
+	out, e := json.Marshal(generic)
+	if e != nil {
+		tb.Fatal(e)
+	}
+	return out
+}
+
 // Each sample's outcome stands until the next sample or until it goes
 // stale. Time with no current sample is unmeasured, failures are down,
 // policy violations degraded, monitor-side errors unknown, and none of
@@ -265,6 +310,76 @@ func TestOneObserverCannotShedAnother(t *testing.T) {
 	}
 }
 
+// fbDoc is a one-bucket document whose bucket carries fb as given.
+func fbDoc(fb string) string {
+	return `{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"fb":` + fb + `}]}]}`
+}
+
+// tooManyPops holds seventeen named colos, one more than a bucket keeps.
+const tooManyPops = `{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{` +
+	`"AAA":1,"BBB":1,"CCC":1,"DDD":1,"EEE":1,"FFF":1,"GGG":1,"HHH":1,"III":1,"JJJ":1,"KKK":1,"LLL":1,"MMM":1,"NNN":1,"OOO":1,"PPP":1,"QQQ":1}}]}]}`
+
+// corruptStores are documents the store could not have written, each of
+// which the reader must refuse; the fuzz test seeds from them too.
+var corruptStores = []string{
+	`{"schema":2,"series":[]}`,
+	`{"schema":1,"series":[{"k":"","f":0,"u":0,"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":1,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":600,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]},{"s":300,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":600,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[-1,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"l":[2,10,5,20,1]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[1,0,0],"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[1,1,4],"b":[]}]}`,
+	// A moment the writer could not have stamped: after the year 9999,
+	// which no time.Time encodes and which a snapshot would fail on, or
+	// before 1970. Each of the series' moments and each bucket's start is
+	// refused, as is a start or width that is only plausible once its
+	// seconds wrap when made milliseconds (2^61 + 300 seconds).
+	`{"schema":1,"series":[{"k":"a","f":9223372036854775807,"u":0,"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":253402300800000,"u":0,"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":253402300800000,"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":-1,"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[253402300800000,60000,0],"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[1,9223372036854775807,0],"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"c":253402300800000,"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[9,60000,0],"r":[[9,60000,0]],"c":-1,"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[253402300800000,60000,0],"r":[[253402300800000,60000,0]],"b":[]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":253402301100,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":-300,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":9223372036854775807,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":2305843009213694252,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":2305843009213694252,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
+	// Label maps: a malformed or unknown key, a negative count, and
+	// more named colos than a bucket keeps.
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"lax":1}}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"LAX":-1}}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"LAX":0}}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"OTHER":1}}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"c":{"hit":1}}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"c":{"HIT":-1}}]}]}`,
+	`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"c":{"HIT":0}}]}]}`,
+	// fb is exactly three lists. Four, one and none are refused by that
+	// check before any list is read.
+	fbDoc(`[[1,0,0],[1,0,0],[1,0,0],[1,0,0]]`),
+	fbDoc(`[[1,0,0]]`),
+	fbDoc(`[]`),
+	// Three lists reach the histogram decoder, which refuses each of
+	// these in the class named: a list too short to hold a bin, a count
+	// that does not add up, a bin without its count, bins out of order, a
+	// bin past the last, a bin of no samples and a negative sum.
+	fbDoc(`[[1,0,0],[],[]]`),
+	fbDoc(`[[2,10,50,20,1],[],[]]`),
+	fbDoc(`[[1,0,0,20,1,30],[],[]]`),
+	fbDoc(`[[2,10,50,30,1,20,1],[],[]]`),
+	fbDoc(`[[1,0,0,81,1],[],[]]`),
+	fbDoc(`[[1,0,0,20,0],[],[]]`),
+	fbDoc(`[[1,-1,0,20,1],[],[]]`),
+	fbDoc(`[[],[1,0,0],[]]`),
+	fbDoc(`[[],[],[2,10,50,20,1]]`),
+	tooManyPops,
+}
+
 // What a store writes it reads back, old files and new fields included,
 // and it refuses what it could not have written.
 func TestStoreRoundTripsAndRefusesCorruption(t *testing.T) {
@@ -275,20 +390,7 @@ func TestStoreRoundTripsAndRefusesCorruption(t *testing.T) {
 	}, now)
 	r.Settle(now)
 	// A populated tail exercises the first-byte, colo and cache fields.
-	for i, extra := range []Extra{
-		{FirstByteMS: 40, HasFirstByte: true, Cache: "HIT", Pop: "LAX"},
-		{FirstByteMS: 600, HasFirstByte: true, Cache: "MISS", Pop: "HKG"},
-		{FirstByteMS: 90, HasFirstByte: true, Cache: "REVALIDATED", Pop: "NRT"},
-		{FirstByteMS: 20, HasFirstByte: true, Cache: "NONE", Pop: "lax"},
-		{Cache: "STALE"},
-		{FirstByteMS: 999, HasFirstByte: true, Cache: "HIT", Pop: "SIN"},
-	} {
-		outcome := "ok"
-		if i == 5 {
-			outcome = "fail" // first byte is kept for passing samples only
-		}
-		r.Add("k/c", "", now.Add(-time.Duration(i+1)*time.Minute), outcome, 50, 10*time.Minute, now, extra)
-	}
+	edgeTail(r, "k/c", now)
 	raw, e := json.Marshal(r)
 	if e != nil {
 		t.Fatal(e)
@@ -353,23 +455,8 @@ func TestStoreRoundTripsAndRefusesCorruption(t *testing.T) {
 
 	// An old file has no fb, p or c keys and reads as no first byte and no
 	// label counts. Remove them from a new file to stand in for one.
-	var generic map[string]any
-	if e := json.Unmarshal(raw, &generic); e != nil {
-		t.Fatal(e)
-	}
-	for _, s := range generic["series"].([]any) {
-		for _, b := range s.(map[string]any)["b"].([]any) {
-			delete(b.(map[string]any), "fb")
-			delete(b.(map[string]any), "p")
-			delete(b.(map[string]any), "c")
-		}
-	}
-	oldRaw, e := json.Marshal(generic)
-	if e != nil {
-		t.Fatal(e)
-	}
 	old := New(MaxLimit)
-	if e := json.Unmarshal(oldRaw, old); e != nil {
+	if e := json.Unmarshal(withoutLabels(t, raw), old); e != nil {
 		t.Fatal("an old file is refused:", e)
 	}
 	if got, _ := old.Window("k/c", now.Add(-24*time.Hour), now, now); got.FirstByte != nil || got.Pops != nil || got.Cache != nil {
@@ -396,36 +483,7 @@ func TestStoreRoundTripsAndRefusesCorruption(t *testing.T) {
 		t.Fatalf("an older reader could not read a new file: %v %+v", e, older)
 	}
 
-	tooManyPops := `{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{` +
-		`"AAA":1,"BBB":1,"CCC":1,"DDD":1,"EEE":1,"FFF":1,"GGG":1,"HHH":1,"III":1,"JJJ":1,"KKK":1,"LLL":1,"MMM":1,"NNN":1,"OOO":1,"PPP":1,"QQQ":1}}]}]}`
-	for _, bad := range []string{
-		`{"schema":2,"series":[]}`,
-		`{"schema":1,"series":[{"k":"","f":0,"u":0,"b":[]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":1,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":600,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]},{"s":300,"w":300,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":600,"t":[0,0,0,0],"n":[0,0,0,0,0]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[-1,0,0,0],"n":[0,0,0,0,0]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"l":[2,10,5,20,1]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[1,0,0],"b":[]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"o":[1,1,4],"b":[]}]}`,
-		// fb: four lists, a list not in the l shape, and a count that does
-		// not add up are all refused.
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"fb":[[1,0,0],[1,0,0],[1,0,0],[1,0,0]]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"fb":[[1,0,0]]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"fb":[[2,10,50,20,1]]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"fb":[]}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"fb":[[1,0,0,0,1]]}]}]}`,
-		// Label maps: a malformed or unknown key, a negative count, and
-		// more named colos than a bucket keeps.
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"lax":1}}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"LAX":-1}}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"LAX":0}}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"p":{"OTHER":1}}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"c":{"hit":1}}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"c":{"HIT":-1}}]}]}`,
-		`{"schema":1,"series":[{"k":"a","f":0,"u":0,"b":[{"s":300,"w":300,"t":[0,0,0,0],"n":[1,0,0,0,0],"c":{"HIT":0}}]}]}`,
-		tooManyPops,
-	} {
+	for _, bad := range corruptStores {
 		if e := json.Unmarshal([]byte(bad), New(MaxLimit)); e == nil {
 			t.Fatal("accepted", bad)
 		}
@@ -449,11 +507,11 @@ func TestFirstBytePercentilesByCacheClass(t *testing.T) {
 		} else {
 			cachedMS = append(cachedMS, ms)
 		}
-		r.Add("c", "", at, "ok", ms, 15*time.Minute, end, Extra{FirstByteMS: ms, HasFirstByte: true, Cache: cache, Pop: "LAX"})
+		r.Add("c", "", at, "ok", ms, 15*time.Minute, end, Extra{FirstByteMS: ms, HasFirstByte: true, HasEdge: true, Cache: cache, Pop: "LAX"})
 		pops++
 		if n%11 == 0 {
 			// A failing sample carries no first-byte time.
-			r.Add("c", "", at, "fail", 9999, 15*time.Minute, end, Extra{FirstByteMS: 9999, HasFirstByte: true, Cache: cache, Pop: "LAX"})
+			r.Add("c", "", at, "fail", 9999, 15*time.Minute, end, Extra{FirstByteMS: 9999, HasFirstByte: true, HasEdge: true, Cache: cache, Pop: "LAX"})
 			pops++
 		}
 		n++

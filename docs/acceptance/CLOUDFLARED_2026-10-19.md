@@ -1,10 +1,10 @@
 # cloudflared connector acceptance — 2026-10-19
 
-Workstream G adds the `cloudflared` check kind. It was verified against
-cloudflared **2026.10.0** (built 2026-10-05T15:39:13Z; Go 1.27.1) installed at
-`/opt/homebrew/bin/cloudflared` on macOS arm64, with a fake locally-managed
-tunnel and **no live Cloudflare Tunnel**. The tree is the uncommitted
-workstream G change on baseline `f92e931`.
+Implementation: f66119d (reviewed again in 3eb7ae8).
+
+The `cloudflared` check kind was verified against cloudflared **2026.10.0**
+(built 2026-10-05T15:39:13Z; Go 1.27.1), a Homebrew build on macOS arm64, with
+a fake locally-managed tunnel and **no live Cloudflare Tunnel**.
 
 This is a bounded acceptance record for the read-only listener paths and the
 automated suite. It is not a claim of compatibility with other cloudflared
@@ -19,7 +19,7 @@ file with fake `AccountTag` and `TunnelSecret` values, no ingress service but
 
 ```yaml
 tunnel: 00000000-0000-4000-8000-000000000000
-credentials-file: /tmp/cfcap/creds.json
+credentials-file: creds.json  # a temporary file holding fake values
 no-autoupdate: true
 metrics: 127.0.0.1:20241
 ingress:
@@ -27,7 +27,7 @@ ingress:
 ```
 
 ```sh
-/opt/homebrew/bin/cloudflared tunnel --config /tmp/cfcap/config.yml run
+cloudflared tunnel --config config.yml run
 curl -sS -D ready.headers   http://127.0.0.1:20241/ready
 curl -sS -D metrics.headers http://127.0.0.1:20241/metrics
 ```
@@ -41,9 +41,10 @@ Sanitized fixtures are in
 [`internal/adapters/cloudflared/testdata/2026.10.0/`](../../internal/adapters/cloudflared/testdata/2026.10.0/README.md).
 The connector UUID and the fabricated tunnel UUID are shown as all-zero
 placeholders; the account tag, `TunnelSecret` and temporary paths appear
-nowhere. The 200-ready and connected-metrics shapes are documented from the
-roadmap and its Appendix A, not observed, and those two fixtures are named
-`.synthetic`.
+nowhere. The 200-ready and connected-metrics shapes are documented from
+Cloudflare's own documentation of `/ready` and of the
+`cloudflared_tunnel_server_locations{connection_id,edge_location}` family, not
+observed, and those two fixtures are named `.synthetic`.
 
 ## Observed outputs
 
@@ -133,7 +134,7 @@ characters (`2026.10.0`), so the fact bound is 24, not eight; and that
 `ha_connections` is not a ready count. The label *names* `connection_id` and
 `edge_location` were seen as strings in the binary; the
 `cloudflared_tunnel_server_locations` sample shape and its lowercase values
-come from the roadmap and Appendix A, not from this capture.
+come from Cloudflare's documentation of that family, not from this capture.
 
 Not established: a 200 `/ready` body with ready connections; any
 `cloudflared_tunnel_server_locations` sample, so its label value case and

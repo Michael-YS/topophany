@@ -146,6 +146,37 @@ func TestDNSDoH(t *testing.T) {
 	}
 }
 
+// dnsRefusal is an answer a resolver can send that no encrypted transport may
+// turn into a pass: the same wire message is judged the same way whether it
+// arrives in an HTTPS body or a TLS frame.
+type dnsRefusal struct {
+	name        string
+	answer      func(q []byte) []byte
+	outcome     string
+	stage, code string
+}
+
+func sharedDNSRefusals() []dnsRefusal {
+	return []dnsRefusal{
+		{"wrong transaction ID", func(q []byte) []byte {
+			b := dnsAnswer(q, "203.0.113.8")
+			b[0] ^= 0xff
+			return b
+		}, "error", "dns_answer", "unexpected_transaction_id"},
+		{"truncated answer", func(q []byte) []byte {
+			b := dnsAnswer(q, "203.0.113.8")
+			binary.BigEndian.PutUint16(b[2:], 0x8380)
+			return b
+		}, "fail", "dns_answer", "invalid_or_negative_answer"},
+		{"negative answer", func(q []byte) []byte {
+			b := dnsAnswer(q)
+			b[3] = 0x83
+			return b
+		}, "fail", "dns_answer", "invalid_or_negative_answer"},
+		{"no address answer", func(q []byte) []byte { return dnsAnswer(q) }, "fail", "dns_answer", "no_address_answer"},
+	}
+}
+
 func TestDNSDoHRefusals(t *testing.T) {
 	mutate := func(f func([]byte) []byte) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -154,12 +185,13 @@ func TestDNSDoHRefusals(t *testing.T) {
 			_, _ = w.Write(f(body))
 		}
 	}
-	for _, tc := range []struct {
+	type refusal struct {
 		name        string
 		handler     http.HandlerFunc
 		outcome     string
 		stage, code string
-	}{
+	}
+	cases := []refusal{
 		{"wrong content type", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html")
 			_, _ = w.Write([]byte("<html>not a DNS answer</html>"))
@@ -171,23 +203,11 @@ func TestDNSDoHRefusals(t *testing.T) {
 			w.Header().Set("Content-Type", "application/dns-message")
 			_, _ = w.Write(make([]byte, maxDoHBody+1))
 		}, "error", "dns_transport", "response_too_large"},
-		{"wrong transaction ID", mutate(func(q []byte) []byte {
-			b := dnsAnswer(q, "203.0.113.8")
-			b[0] ^= 0xff
-			return b
-		}), "error", "dns_answer", "unexpected_transaction_id"},
-		{"truncated answer", mutate(func(q []byte) []byte {
-			b := dnsAnswer(q, "203.0.113.8")
-			binary.BigEndian.PutUint16(b[2:], 0x8380)
-			return b
-		}), "fail", "dns_answer", "invalid_or_negative_answer"},
-		{"negative answer", mutate(func(q []byte) []byte {
-			b := dnsAnswer(q)
-			b[3] = 0x83
-			return b
-		}), "fail", "dns_answer", "invalid_or_negative_answer"},
-		{"no address answer", mutate(func(q []byte) []byte { return dnsAnswer(q) }), "fail", "dns_answer", "no_address_answer"},
-	} {
+	}
+	for _, r := range sharedDNSRefusals() {
+		cases = append(cases, refusal{r.name, mutate(r.answer), r.outcome, r.stage, r.code})
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			target, ca, name := dohFixture(t, tc.handler)
 			x := dnsTestCheck(target, "doh")
@@ -197,6 +217,46 @@ func TestDNSDoHRefusals(t *testing.T) {
 				t.Fatalf("want %s/%s/%s; got %+v", tc.outcome, tc.stage, tc.code, o)
 			}
 		})
+	}
+}
+
+// The same answers are refused over DNS over TLS, and its framing adds two of
+// its own: the largest frame a two-byte length can announce, and a frame too
+// short to hold a DNS header. Both keep the question's transaction ID so that
+// it is the message, not the ID check, that is refused.
+func TestDNSDoTRefusals(t *testing.T) {
+	cases := append(sharedDNSRefusals(),
+		dnsRefusal{"largest frame", func(q []byte) []byte {
+			b := make([]byte, 65535)
+			copy(b, q[:2])
+			return b
+		}, "fail", "dns_answer", "invalid_or_negative_answer"},
+		dnsRefusal{"frame shorter than a header", func(q []byte) []byte {
+			return append([]byte(nil), q[:5]...)
+		}, "fail", "dns_answer", "invalid_or_negative_answer"},
+	)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			addr, ca, name := dotFixture(t, tc.answer)
+			x := dnsTestCheck(addr, "dot")
+			x.ServerName, x.CAFile = name, ca
+			o := (Runner{}).Run(context.Background(), testkit.Config(), x)
+			if o.Outcome != tc.outcome || o.Stage != tc.stage || o.Code != tc.code {
+				t.Fatalf("want %s/%s/%s; got %+v", tc.outcome, tc.stage, tc.code, o)
+			}
+		})
+	}
+	// The largest frame is also a legal one: a valid answer padded to it is
+	// read whole and passes, so the refusal above is the message, not the size.
+	addr, ca, name := dotFixture(t, func(q []byte) []byte {
+		b := make([]byte, 65535)
+		copy(b, dnsAnswer(q, "203.0.113.8"))
+		return b
+	})
+	x := dnsTestCheck(addr, "dot")
+	x.ServerName, x.CAFile = name, ca
+	if o := (Runner{}).Run(context.Background(), testkit.Config(), x); o.Outcome != "ok" || o.Facts["addresses"] != "203.0.113.8" {
+		t.Fatalf("a valid answer in the largest frame was not read: %+v", o)
 	}
 }
 

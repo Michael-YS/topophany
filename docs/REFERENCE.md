@@ -79,7 +79,7 @@ DoT and DoH record `tls_ms`, the verified TLS handshake, and `first_byte_ms`. Fo
 
 An answer the monitor cannot attribute or read within its budget is a monitor error, never evidence that the resolver is down: a message whose transaction ID is not the question's (`dns_answer` / `unexpected_transaction_id`) and a DoH body over 64 KiB (`dns_transport` / `response_too_large`). A DoH endpoint that answers with a non-200 status (`http_<status>`), a different content type (`content_type`), a truncated or malformed DNS message, a negative response or no address remains a failed answer (`fail`) for the configured question, not proof of a broader outage.
 
-A `dns` check cannot use a proxy chain: validation refuses a path with proxies for this kind, so the probe dials directly and DoH does not traverse the path's hops. `dns.transport` is inside `dns`, so it is part of the measurement contract; leaving it unset writes nothing and leaves every contract hash unchanged. Older collectors and viewers reject the field, so upgrade collectors and all viewers before enabling a transport in a topology.
+A `dns` check cannot use a proxy chain: validation refuses a path with proxies for this kind, so the probe dials directly and DoH does not traverse the path's hops. `dns.transport` is inside `dns`, so it is part of the measurement contract; leaving it unset writes nothing and leaves every contract hash unchanged. Older collectors and viewers reject the field, so upgrade collectors and all viewers to 1.4.0 or newer before enabling a transport in a topology.
 
 ### Host Resources
 
@@ -120,7 +120,7 @@ Custom topologies such as `topo preview --config examples/host-resources.json` a
 
 `expected_exit` accepts an array of expected IP addresses or CIDR blocks. `exit_format` supports `plain`, `trace`, and `json` (with `exit_json_key`, default `ip`). When the observed egress IP violates constraints, `outcome` is set to `policy` while connectivity facts are preserved. Timestamps and configuration revisions are bound to measurements, preventing metric mixing across target changes.
 
-`expected_pops` declares the colos a response from an edge may name, as at most 16 distinct codes of exactly three ASCII uppercase letters. It is evaluated after the ordinary assertions and `expected_exit` have passed, and before `expected_trace`: when the response named a colo (`edge_pop`) and the edge is not Vercel, a colo outside the list is `policy` with stage `edge_assert` and code `pop_mismatch`, while connectivity facts are preserved because the request did succeed. A response with no `edge_pop` is not a violation: the target may be direct, or a secret request may have had its free labels withheld. Vercel's reported edge region is not a physical colo and never satisfies or violates the list. `expected_pops` is inside `http`, so it is part of the measurement contract: setting or changing it changes that check's contract and history, while an unset field leaves every contract unchanged. Older collectors and viewers reject the new field; upgrade them before enabling it in a topology, and default configurations omit it and remain readable by older clients. The preview's `edge-rerouted` scenario exercises the policy — home observers' answers arrive from `LAX` while the check declares `HKG` and `NRT` — and [`examples/cloudflare.json`](../examples/cloudflare.json) declares `HKG`, `NRT` and `SIN` on its proxied origin.
+`expected_pops` declares the colos a response from an edge may name, as at most 16 distinct codes of exactly three ASCII uppercase letters. It is evaluated after the ordinary assertions and `expected_exit` have passed, and before `expected_trace`: when the response named a colo (`edge_pop`) and the edge is not Vercel, a colo outside the list is `policy` with stage `edge_assert` and code `pop_mismatch`, while connectivity facts are preserved because the request did succeed. A response with no `edge_pop` is not a violation: the target may be direct, or a secret request may have had its free labels withheld. Vercel's reported edge region is not a physical colo and never satisfies or violates the list. `expected_pops` is inside `http`, so it is part of the measurement contract: setting or changing it changes that check's contract and history, while an unset field leaves every contract unchanged. Older collectors and viewers reject the new field; upgrade them to 1.4.0 or newer before enabling it in a topology, and default configurations omit it and remain readable by older clients. The preview's `edge-rerouted` scenario exercises the policy — the relay observer's answers arrive from `LAX` while its check declares the colos its language's preview names (`SJC` and `SEA`, `KIX` and `NRT`, or `HKG` and `NRT`) — and [`examples/cloudflare.json`](../examples/cloudflare.json) declares `HKG`, `NRT` and `SIN` on its proxied origin.
 
 `expected_trace` declares what a `/cdn-cgi/trace` body must report and requires `exit_format: "trace"`, because only that format parses a trace body. It must declare at least one of `warp`, `gateway` or `colos`; an empty expectation is refused, so an editor that drops it cannot change a contract the user did not edit. `warp` takes `off`, `on` or `plus`; `gateway` takes `on` or `off`; `colos` takes at most 16 distinct three-letter codes (uppercase ASCII). A reported value outside a declared one is `policy` with stage `trace_assert` and code `warp_mismatch`, `gateway_mismatch` or `colo_mismatch`, and its detail names neither the observed colo nor any free text; a line the trace did not report is not a violation, and the passing detail names it, or says the body was not a trace. `expected_trace` is inside `http`, so it is part of the measurement contract: setting or changing it changes that check's contract and history. Older collectors/viewers reject the new field. Upgrade collectors and all viewers to 1.4.0 or newer before enabling it in a topology; default configurations omit the field and remain readable by older clients.
 
@@ -322,11 +322,11 @@ Remote configuration mutation, shell execution, and administrative actions are n
 
 A collector rolls every sample it accepts up into its check's rollups (see [operations](OPERATIONS.md#storage-and-disaster-recovery)). A rollup covers `seconds` from `start`. Each sample's outcome stands from when it was taken until the next sample or until it goes stale under the topology the collector counted it with, and the rollup says how long each stood: `up_seconds` (ok), `degraded_seconds` (policy), `down_seconds` (fail) and `unknown_seconds` (error or unknown: the monitor could not tell). `unmeasured_seconds` is the rest, when no current sample stood for it; it is never up or down. Availability is `up_seconds` over the measured time, `up_seconds + degraded_seconds + down_seconds`, read together with the share of `seconds` that was measured. `unreconciled_samples`, when nonzero, counts samples in intersecting buckets whose interval boundaries were unavailable after retention, budget eviction, the per-sample correction work limit or upgrade from an older checkpoint, or conflicted at an identical timestamp; this count can exceed `samples` when a partial bucket contributes time but its sample counts are omitted; time totals are incomplete, so clients do not present them as an uptime percentage. `samples` counts the samples taken within the rollup and `outcomes` the samples by outcome; `latency` estimates what the passing ones took (`samples`, `p50_ms`, `p95_ms` and `max_ms`) from histogram bins a quarter of a doubling wide.
 
-`first_byte` splits what the passing samples' first byte took by the cache class of the same sample, with the same `samples`, `p50_ms`, `p95_ms` and `max_ms` fields and the same bins: `cached` for `HIT`, `REVALIDATED`, `STALE` and `UPDATING`, `origin` for `MISS`, `EXPIRED`, `BYPASS` and `DYNAMIC`. A cache status outside both lists, including none, is unclassified: it is kept in the store so the classes stay separate but is not reported, so the two reported classes never include an answer the edge did not classify. First-byte time is kept for passing samples only, as `latency` is. `pops` counts every sample whose response named a colo, by exactly-three-uppercase-letter code; a malformed or unknown code counts under `other`, and a response with no colo is not counted. Vercel's reported region is not a physical colo, so a Vercel response contributes no `pops` count; its first-byte time and cache status are counted like any other response's. `cache` counts the cache status of every sample by the closed vocabulary the edge headers keep, with an absent or unknown status under `other`; failed samples are included in both maps even though their first-byte time is not.
+`first_byte` splits what the passing samples' first byte took by the cache class of the same sample, with the same `samples`, `p50_ms`, `p95_ms` and `max_ms` fields and the same bins: `cached` for `HIT`, `REVALIDATED`, `STALE` and `UPDATING`, `origin` for `MISS`, `EXPIRED`, `BYPASS` and `DYNAMIC`. A cache status outside both lists, including none, is unclassified: it is kept in the store so the classes stay separate but is not reported, so the two reported classes never include an answer the edge did not classify. First-byte time is kept for passing samples only, as `latency` is. `pops` counts every sample whose response named a colo, by exactly-three-uppercase-letter code; a malformed or unknown code counts under `other`, and a response with no colo is not counted. Vercel's reported region is not a physical colo, so a Vercel response contributes no `pops` count; its first-byte time and cache status are counted like any other response's. `cache` counts the cache status of every sample an edge answered, by the closed vocabulary the edge headers keep, with an absent or unknown status under `other`; a sample no edge answered (a TCP, TLS, DNS, ICMP or host check, or an HTTP check with no edge in front) is not counted and carries no `cache`, so `other` always means an edge answered without a status. A failing edge answer is counted in `pops` and `cache` even though its first-byte time is not.
 
 A bucket keeps at most sixteen named colos plus `other`. A new code enters only when its first sample ties the smallest named count, displacing that count into `other`; otherwise its sample counts as `other`. A code already named grows without rechecking, so a code rare when it appeared can become the largest, and ties evict the lexicographically largest held code. On a merge the smallest counts move into `other`. A window merges its buckets' maps uncapped and applies the same sixteen-code cap once, so a code that is small in every bucket but large over the day stays named. Views lower-bound each share, never rounding up, so independently listed shares cannot add to more than 100%.
 
-On disk these are the optional `fb`, `p` and `c` keys in the same schema 1 bucket. `fb` is absent or exactly three histogram lists in class order, each in the same shape as `l`, decoded by the same validator, so the two fields cannot drift; the writer emits all three once any class has a sample. Counts in `p` and `c` are positive, as the writer never emits a zero. A checkpoint written before these keys reads as no first-byte time and no label counts, and a checkpoint that carries them is still read by an older binary, which ignores JSON keys it does not know. No upgrade is needed to keep a collector running, but an older viewer shows none of the new fields; upgrade viewers to see them.
+On disk these are the optional `fb`, `p` and `c` keys in the same schema 1 bucket. `fb` is absent or exactly three histogram lists in class order, each in the same shape as `l`, decoded by the same validator, so the two fields cannot drift; the writer emits all three once any class has a sample. Counts in `p` and `c` are positive, as the writer never emits a zero. A bucket of samples no edge answered writes no `c`. The reader refuses a file whose timestamps cannot be a time, as corrupt rather than clamped: a series' `f`, `u` and `c`, the `at` and `stale` of its open sample `o` and of each `r` entry, and a bucket's `s` must lie between 1970 and the end of the year 9999, and a bucket's `w` must be 300, 3600 or 86400. A checkpoint written before these keys reads as no first-byte time and no label counts, and a checkpoint that carries them is still read by an older binary, which ignores JSON keys it does not know. No upgrade is needed to keep a collector running, but an older viewer shows none of the new fields; upgrade viewers to see them.
 
 `/v1/rollups` lays them out in slots of `step`: `5m`, `1h` (the default) or `1d`, aligned to UTC, over `span` before now, written as minutes, hours or days such as `90m`, `24h` or `30d` (by default a day of `5m`, a week of `1h` or 90 days of `1d`; at most 800 days and 999 steps). A collector keeps rollups five minutes wide for 48 hours, an hour wide for 32 days and a day wide after that; where they are wider than `step`, a slot is as wide as what is kept, so slots may grow wider into the past. The first slot holds the start of the span and the last ends now. `step_seconds` and `generated_at` say how it was laid out. A step or span outside these bounds is refused with `400 invalid_step` or `400 invalid_span`.
 
@@ -738,7 +738,7 @@ mantissas, NaN, Inf and overflow are not. An absent family stays absent and a
 non-integer is not reported as zero. `connection_colos` carries at most eight
 distinct lowercase colo tokens from `server_locations` samples whose value is
 1, sorted; when more are reported, the first eight sorted are kept, and the
-colo policy compares the same eight codes the fact carries. `edge_location` is
+colo policy compares every distinct reported colo. `edge_location` is
 lowercased deliberately, because Cloudflare writes a colo uppercase in `CF-Ray`
 and its documentation while this label is lowercase. The unready live capture
 did not include `cloudflared_tunnel_server_locations`, so its labels and values
@@ -769,8 +769,10 @@ failure; `readyConnections: 0` is still `fail`, and one or more ready sessions
 below the declaration is `policy`. `expected_colos` (at most eight
 3..8-character tokens) turns a reported session outside the declared list into
 `policy` with code `colo_outside_expected`. A colo the metrics did not report
-is not a violation, and an entry may use either case. These are policy
-assertions, not request failures. `cloudflared_tunnel_ha_connections` is not a
+is not a violation, and an entry may use either case. `topo edit` authors both:
+the check form takes the expected connections (1..8) and the expected colos of
+a `cloudflared` check and clears them when the kind is anything else. These
+are policy assertions, not request failures. `cloudflared_tunnel_ha_connections` is not a
 ready count: the live unready capture reported `ha_connections 1` with zero
 ready connections, so readiness is decided only by `/ready`.
 
@@ -782,7 +784,10 @@ started, and a decrease or a changed `connector_id` means a restart. A fresh
 local connector report decides the state of a `link` it is attached to: a
 `tunnel_not_ready` sample takes the link down after the failure threshold, an
 established session shows it up, and the reason says the service behind it is
-unproven. A connector read that failed leaves the link unknown with its own
+unproven. The link then reports its evidence as `reported` rather than
+`inferred`. A `cloudflare` API check on the same link is shown beside the
+connector's and does not vote on the link while a fresh connector report
+decides it. A connector read that failed leaves the link unknown with its own
 reason. The public check through the edge still proves only the edge, and a
 colo is the connector's metadata, not routing proof. `/ready` proves a
 connector session, never that the hostname routes to this connector or that the
@@ -825,7 +830,7 @@ refused rather than ignored.
 
 | Read | Request | Facts | Policy |
 |---|---|---|---|
-| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status` (`healthy`, `degraded`, `down` or `inactive`), `tunnel_connections`, `tunnel_pending_reconnect`, `tunnel_colos` (sorted, at most eight), `connector_versions` (sorted, at most four), `oldest_connection_at` (RFC 3339) | `connections_below_expected`, `colo_outside_expected` |
+| `tunnel` | `GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}` | `tunnel_status` (`healthy`, `degraded`, `down` or `inactive`), `tunnel_connections`, `tunnel_pending_reconnect`, `tunnel_colos` (sorted, at most eight), `connector_versions` (sorted, at most four), `oldest_connection_at` (RFC 3339); the five connection facts are absent when the connection list is empty beside a `healthy` or `degraded` tunnel | `connections_below_expected`, `colo_outside_expected` |
 | `dns_record` | `GET /zones/{zone_id}/dns_records?name={record_name}&type={record_type}` | `record_count`, `record_proxied` (`true`/`false` when every record agrees), `record_ttl` (same), `record_content_matches` (`true`, `false` or `not_declared`) | `record_missing`, `record_not_proxied`, `record_proxied_unexpectedly`, `record_content_mismatch` |
 | `pool` | `GET /accounts/{account_id}/load_balancers/pools/{pool_id}/health` | `pool_healthy` (when a region reports it), `origins_healthy`, `origins_total`, `regions_reporting`, `origin.<declared>` (`healthy`/`unhealthy`) | `origins_below_expected` |
 
@@ -835,7 +840,10 @@ parameter are refused with `api_path_not_allowed` before a request exists. The
 DNS record's `content` is compared with `expected_content` in memory and never
 stored; the observation keeps only whether it matched, so a record that still
 points at the old origin is reported as a mismatch without republishing the
-address. The record id, zone name and comment are never kept. The `result`
+address. The comparison is canonical: `A` and `AAAA` content is compared as
+parsed addresses (an address that does not parse on either side is a
+mismatch) and `CNAME` content without case or a trailing dot. The record id,
+zone name and comment are never kept. The `result`
 must be present: absent or null is a monitor error, while an explicit `[]` is
 `record_missing` policy; when `result_info.total_count` is present and differs
 from the page length the response is a partial page and is refused rather than
@@ -848,12 +856,15 @@ reconnections included; the current reference marks `is_pending_reconnect`
 deprecated and says it is always false) and records the API's closed `status`. `origin_ip`,
 connection and client identifiers and the tunnel name never become facts.
 Cloudflare documents that the connections array is deprecated in favour of the
-dedicated connections endpoint and will start returning empty; a zero count can
-therefore mean the field moved rather than that no connector is live, while
-`tunnel_status` still carries the API's own word. A `down` or `degraded` status
-is a reported fact and does not by itself fail the check: it is the platform's
-statement, and `expected_connections` and `expected_colos` are the declared
-assertions. The pool reference renders `pop_health` both as one
+dedicated connections endpoint and will start returning empty. An empty
+connections array beside `healthy` or `degraded` is treated as not reported:
+the five connection facts are absent, neither connection policy can fire, the
+outcome stays `ok` and the detail reads "Cloudflare API state reported; the
+connections list was not reported". Beside `down` or `inactive` it is a count
+of zero and the policies apply. `tunnel_status` carries the API's own word in
+every case. A `down` or `degraded` status is a reported fact and does not by
+itself fail the check: it is the platform's statement, and
+`expected_connections` and `expected_colos` are the declared assertions. The pool reference renders `pop_health` both as one
 `{healthy, origins}` object and as a list of regions, and the generated model
 collapses the region map; the adapter accepts both. `regions_reporting` counts
 parsed regions, the two origin counts cover distinct origins, and an origin
@@ -875,9 +886,10 @@ is `api_unavailable`, and `errors[].message` is never read. A passing sample is
 `peer_text: withheld_secret_request`. Only closed words, numbers,
 shape-validated tokens and comparisons with the topology leave the adapter;
 the reflection tests echo the bearer token into every string field and check
-that nothing of the token reaches the observation; a value exactly equal to the
-token is dropped even when it has a reportable shape (a connector version, a
-colo). The platform's statement says nothing about the origin or the public
+that nothing of the token reaches the observation; in `tunnel_colos`,
+`connector_versions` and `oldest_connection_at`, a value or list member that
+is the token, or any run of at least eight bytes of it, is dropped even when it
+has a reportable shape (a connector version, a colo). The platform's statement says nothing about the origin or the public
 hostname answering, so keep a separate application check and the edge check.
 
 `adapter.cloudflare` is new. Older binaries refuse a topology that contains it,
@@ -894,5 +906,9 @@ site, a Tunnel with a `cloudflared` check on its link and a loopback check of
 the service behind it, trace and DoT checks, an Access-protected hostname using
 `request_header_envs`, and `expected_pops` on the edge check. The three reads
 above are named in the edge's `notes` with `CF_API_TOKEN` rather than enabled,
-because the example holds no token or account; the checks that are active use
-documentation hostnames and address ranges.
+because the example holds no token or account; the tunnel read may carry the
+Tunnel's link, where it is shown beside the connector's report and never
+decides the link. The checks that are active use documentation hostnames and
+address ranges: of the public hosts only the trace target
+(`https://www.cloudflare.com/cdn-cgi/trace`) and the `1.1.1.1` DoT resolver
+are real, and the `example.com` hosts are placeholders to replace.

@@ -2,9 +2,13 @@ package rollup
 
 import (
 	"encoding/json"
+	"maps"
 	"math"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 // The cache class of a first-byte sample is decided in one place: the four
@@ -13,7 +17,7 @@ import (
 func TestCacheClassMapping(t *testing.T) {
 	for _, tc := range []struct {
 		word string
-		want int
+		want ttfbClass
 	}{
 		{"HIT", cached}, {"REVALIDATED", cached}, {"STALE", cached}, {"UPDATING", cached},
 		{"MISS", origin}, {"EXPIRED", origin}, {"BYPASS", origin}, {"DYNAMIC", origin},
@@ -24,6 +28,131 @@ func TestCacheClassMapping(t *testing.T) {
 		if got := cacheClass(tc.word); got != tc.want {
 			t.Errorf("cacheClass(%q) = %d, want %d", tc.word, got, tc.want)
 		}
+	}
+}
+
+// A cache status is counted only for a sample an edge answered. An edge
+// answer without a status counts as other; a sample with no edge has no
+// status to be absent, so it counts nothing, holds no map and costs what a
+// bucket cost before cache counts existed.
+func TestCacheCountsOnlyEdgeAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		outcome string
+		extra   Extra
+		want    map[string]int64
+	}{
+		{"no edge", "ok", Extra{}, nil},
+		{"no edge, failing", "fail", Extra{}, nil},
+		{"a status without an edge", "ok", Extra{Cache: "HIT"}, nil},
+		{"edge without a status", "ok", Extra{HasEdge: true}, map[string]int64{"other": 1}},
+		{"edge without a status, failing", "fail", Extra{HasEdge: true}, map[string]int64{"other": 1}},
+		{"edge, unknown word", "ok", Extra{HasEdge: true, Cache: "NOPE"}, map[string]int64{"other": 1}},
+		{"edge, HIT", "ok", Extra{HasEdge: true, Cache: "HIT"}, map[string]int64{"HIT": 1}},
+		{"edge, MISS, failing", "fail", Extra{HasEdge: true, Cache: "MISS"}, map[string]int64{"MISS": 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(MaxLimit)
+			r.Add("c", "", t0, tc.outcome, 40, time.Minute, t0, tc.extra)
+			b := r.series["c"].buckets[0]
+			if !maps.Equal(b.cache, tc.want) || (tc.want == nil) != (b.cache == nil) {
+				t.Fatalf("cache counted as %v, want %v", b.cache, tc.want)
+			}
+			// The baseline is the same sample from a probe with no edge: a
+			// bucket and, for a passing sample, one latency bin.
+			baseline := int64(bucketBase)
+			if tc.outcome == "ok" {
+				baseline += histogramOverhead + histogramBin
+			}
+			want := baseline
+			if tc.want != nil {
+				want += mapOverhead + mapEntry*int64(len(tc.want))
+			}
+			if got := b.size(); got != want {
+				t.Fatalf("bucket size %d, want %d", got, want)
+			}
+			// What Add accounted is what a settle recounts.
+			before := r.Size()
+			r.Settle(t0)
+			if r.Size() != before {
+				t.Fatalf("size %d when added, %d when settled", before, r.Size())
+			}
+		})
+	}
+}
+
+// ExtraOf says an edge answered when the observation names its provider,
+// which every edge adapter does before any other label, and keeps the cache
+// status of every provider and the colo of every provider but Vercel.
+func TestExtraOfSaysWhetherAnEdgeAnswered(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		facts   map[string]string
+		timings map[string]int64
+		want    Extra
+	}{
+		{"no facts", nil, nil, Extra{}},
+		{"a probe with no edge", map[string]string{"response_proof": "tls_handshake"}, nil, Extra{}},
+		{"cloudflare", map[string]string{"edge_provider": "cloudflare", "edge_cache": "HIT", "edge_pop": "LAX"}, map[string]int64{"first_byte_ms": 40},
+			Extra{FirstByteMS: 40, HasFirstByte: true, HasEdge: true, Cache: "HIT", Pop: "LAX"}},
+		{"an edge that named no cache status", map[string]string{"edge_provider": "fastly"}, nil, Extra{HasEdge: true}},
+		{"vercel keeps its cache status, not its region", map[string]string{"edge_provider": "vercel", "edge_cache": "MISS", "edge_pop": "hnd1"}, nil,
+			Extra{HasEdge: true, Cache: "MISS"}},
+		{"labels without a provider are not an edge", map[string]string{"edge_cache": "HIT"}, nil, Extra{Cache: "HIT"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ExtraOf(model.Observation{Facts: tc.facts, Timings: tc.timings}); got != tc.want {
+				t.Fatalf("ExtraOf = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// Through ExtraOf, a check no edge answered writes the same rollups it wrote
+// before cache counts: no cache map in a bucket, a window, a layout or the
+// file, and the same size. A check an edge answered without a status pays
+// for exactly one other entry in each bucket.
+func TestChecksWithNoEdgeCarryNoCacheCounts(t *testing.T) {
+	now := t0.Add(3 * time.Hour)
+	fill := func(facts map[string]string) *Store {
+		r := New(MaxLimit)
+		for at := t0; at.Before(now); at = at.Add(5 * time.Minute) {
+			r.Add("c", "obs", at, "ok", 20, 10*time.Minute, now, ExtraOf(model.Observation{Facts: facts}))
+		}
+		r.Settle(now)
+		return r
+	}
+	plain, baseline := fill(map[string]string{"response_proof": "tls_handshake"}), New(MaxLimit)
+	for at := t0; at.Before(now); at = at.Add(5 * time.Minute) {
+		baseline.Add("c", "obs", at, "ok", 20, 10*time.Minute, now, Extra{})
+	}
+	baseline.Settle(now)
+	if plain.Size() != baseline.Size() {
+		t.Fatalf("a plain check costs %d, the baseline %d", plain.Size(), baseline.Size())
+	}
+	raw, e := json.Marshal(plain)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(string(raw), `"c":{`) {
+		t.Fatalf("a plain check wrote a cache map: %s", raw)
+	}
+	if got, _ := plain.Window("c", t0, now, now); got.Cache != nil || got.Samples != 36 {
+		t.Fatalf("a plain check's window: %+v", got)
+	}
+	for i, slot := range plain.Buckets("c", t0, now, FineWidth, now) {
+		if slot.Cache != nil {
+			t.Fatalf("slot %d of a plain check carries %v", i, slot.Cache)
+		}
+	}
+
+	edge := fill(map[string]string{"edge_provider": "cloudflare"})
+	got, _ := edge.Window("c", t0, now, now)
+	if got.Cache["other"] != 36 || len(got.Cache) != 1 {
+		t.Fatalf("an edge answer without a status: %v", got.Cache)
+	}
+	if extra, buckets := edge.Size()-plain.Size(), int64(len(edge.series["c"].buckets)); extra != buckets*(mapOverhead+mapEntry) {
+		t.Fatalf("an edge's other entry costs %d over %d buckets", extra, buckets)
 	}
 }
 
@@ -208,7 +337,7 @@ func TestWindowLabelsFollowThePartialBucketRule(t *testing.T) {
 	r := New(MaxLimit)
 	now := t0.Add(time.Hour)
 	for _, at := range []time.Time{t0, t0.Add(time.Minute)} {
-		r.Add("c", "", at, "ok", 50, 10*time.Minute, now, Extra{FirstByteMS: 40, HasFirstByte: true, Cache: "HIT", Pop: "LAX"})
+		r.Add("c", "", at, "ok", 50, 10*time.Minute, now, Extra{FirstByteMS: 40, HasFirstByte: true, HasEdge: true, Cache: "HIT", Pop: "LAX"})
 	}
 	// The window holds the first fifth of the bucket: time only.
 	partial, _ := r.Window("c", t0.Add(4*time.Minute), now, now)

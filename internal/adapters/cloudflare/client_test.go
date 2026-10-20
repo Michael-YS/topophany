@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters"
@@ -36,9 +38,9 @@ func failureCode(err error) string {
 }
 
 func TestReadOnceAllowlist(t *testing.T) {
-	var hits int
+	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
+		hits.Add(1)
 		io.WriteString(w, `{"success":true,"result":{}}`)
 	}))
 	defer srv.Close()
@@ -74,8 +76,8 @@ func TestReadOnceAllowlist(t *testing.T) {
 			}
 		})
 	}
-	if hits != 3 {
-		t.Fatalf("disallowed paths reached the server: %d requests", hits)
+	if got := hits.Load(); got != 3 {
+		t.Fatalf("disallowed paths reached the server: %d requests", got)
 	}
 }
 
@@ -129,9 +131,9 @@ func TestReadOnceBuildsEachPath(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var method, path, authorization, query string
-			var hits int
+			var hits atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				hits++
+				hits.Add(1)
 				method, path, query = r.Method, r.URL.Path, r.URL.RawQuery
 				authorization = r.Header.Get("Authorization")
 				io.WriteString(w, `{"success":true,"result":{}}`)
@@ -142,8 +144,8 @@ func TestReadOnceBuildsEachPath(t *testing.T) {
 			if _, err := readOnce(context.Background(), client, srv.URL+"/client/v4/", request, "test-token", 1<<10); err != nil {
 				t.Fatal(err)
 			}
-			if hits != 1 || method != http.MethodGet {
-				t.Fatalf("hits=%d method=%s", hits, method)
+			if got := hits.Load(); got != 1 || method != http.MethodGet {
+				t.Fatalf("hits=%d method=%s", got, method)
 			}
 			if path != tc.path || query != tc.query {
 				t.Fatalf("path=%s query=%s want %s?%s", path, query, tc.path, tc.query)
@@ -156,9 +158,9 @@ func TestReadOnceBuildsEachPath(t *testing.T) {
 }
 
 func TestReadOnceRefusesRedirect(t *testing.T) {
-	var redirected bool
+	var redirected atomic.Bool
 	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		redirected = true
+		redirected.Store(true)
 		io.WriteString(w, `{"success":true}`)
 	}))
 	defer targetSrv.Close()
@@ -171,7 +173,7 @@ func TestReadOnceRefusesRedirect(t *testing.T) {
 	if code := failureCode(err); code != "http_302" {
 		t.Fatalf("code=%q err=%v", code, err)
 	}
-	if redirected {
+	if redirected.Load() {
 		t.Fatal("the bearer token followed a redirect")
 	}
 }
@@ -224,9 +226,9 @@ func TestCollectOneGetPerCheck(t *testing.T) {
 		{poolOptions(), fixture(t, "pool-health.json")},
 	} {
 		t.Run(tc.options.Read, func(t *testing.T) {
-			var hits int
+			var hits atomic.Int32
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				hits++
+				hits.Add(1)
 				w.Write(tc.body)
 			}))
 			defer srv.Close()
@@ -234,8 +236,8 @@ func TestCollectOneGetPerCheck(t *testing.T) {
 			if err := Collect(context.Background(), testDependencies(t), adapterCheck(tc.options), srv.URL+"/client/v4", o); err != nil {
 				t.Fatal(err)
 			}
-			if hits != 1 {
-				t.Fatalf("requests=%d", hits)
+			if got := hits.Load(); got != 1 {
+				t.Fatalf("requests=%d", got)
 			}
 			if o.PathEvidence != PathEvidence || o.Stage != "adapter_api" || o.Facts["peer_text"] != adapters.Withheld {
 				t.Fatalf("envelope %+v", o)
@@ -253,8 +255,8 @@ func TestCollectMissingToken(t *testing.T) {
 			if tc.env != "" {
 				t.Setenv(tc.env, tc.value)
 			}
-			var hits int
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
+			var hits atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
 			defer srv.Close()
 			x := adapterCheck(tunnelOptions())
 			x.Adapter.TokenEnv = tc.env
@@ -264,7 +266,7 @@ func TestCollectMissingToken(t *testing.T) {
 			if !errors.As(err, &failure) || failure.Stage != "setup" || failure.Code != "cloudflare_token_missing" || !failure.Local {
 				t.Fatalf("failure=%#v err=%v", failure, err)
 			}
-			if hits != 0 {
+			if hits.Load() != 0 {
 				t.Fatal("a request was sent without a token")
 			}
 		})
@@ -298,19 +300,34 @@ func TestCollectSuccessFalseIsMonitorError(t *testing.T) {
 func TestBearerTokenCannotEchoIntoObservation(t *testing.T) {
 	const token = "cf-test-token/with+symbols:and-more-than-a-shape"
 	t.Setenv("TOPH_CLOUDFLARE_TEST_TOKEN", token)
-	escape := func() string {
-		raw, _ := json.Marshal(token)
+	quote := func(s string) string {
+		raw, _ := json.Marshal(s)
 		return string(raw)
-	}()
+	}
+	escape := quote(token)
+	short, long := quote(token[:3]), quote(token[:24])
 	cases := []struct {
 		name    string
 		options model.CloudflareOptions
 		body    string
+		code    string
+		facts   map[string]string
 	}{
 		{
+			// The status is a closed word, so the connections are parsed and
+			// every string field they carry is exercised.
 			name:    "tunnel",
 			options: tunnelOptions(),
-			body:    `{"success":true,"result":{"id":` + escape + `,"name":` + escape + `,"status":` + escape + `,"connections":[{"client_version":` + escape + `,"colo_name":` + escape + `,"opened_at":` + escape + `,"origin_ip":` + escape + `,"id":` + escape + `}]}}`,
+			body: `{"success":true,"result":{"id":` + escape + `,"name":` + escape + `,"status":"healthy","connections":[` +
+				`{"client_version":` + escape + `,"colo_name":` + escape + `,"opened_at":` + escape + `,"origin_ip":` + escape + `,"id":` + escape + `},` +
+				`{"client_version":` + long + `,"colo_name":` + short + `,"opened_at":` + long + `,"origin_ip":` + long + `,"id":` + long + `}]}}`,
+			facts: map[string]string{"tunnel_status": "healthy", "tunnel_connections": "2"},
+		},
+		{
+			name:    "tunnel status",
+			options: tunnelOptions(),
+			body:    `{"success":true,"result":{"id":` + escape + `,"name":` + escape + `,"status":` + escape + `,"connections":[{"client_version":` + escape + `,"colo_name":` + escape + `}]}}`,
+			code:    "unsupported_response_shape",
 		},
 		{
 			name:    "dns",
@@ -331,12 +348,23 @@ func TestBearerTokenCannotEchoIntoObservation(t *testing.T) {
 			defer srv.Close()
 			o := observation()
 			err := Collect(context.Background(), testDependencies(t), adapterCheck(tc.options), srv.URL, o)
+			if code := failureCode(err); code != tc.code {
+				t.Fatalf("code=%q want %q err=%v", code, tc.code, err)
+			}
+			for key, value := range tc.facts {
+				if o.Facts[key] != value {
+					t.Fatalf("%s=%q want %q: the echo was not read", key, o.Facts[key], value)
+				}
+			}
 			raw, marshalErr := json.Marshal(o)
 			if marshalErr != nil {
 				t.Fatal(marshalErr)
 			}
-			if strings.Contains(string(raw), token) {
-				t.Fatalf("token reached the observation: %s", raw)
+			// The whole token and any run of it long enough to matter.
+			for _, echo := range []string{token, token[:24]} {
+				if strings.Contains(string(raw), echo) {
+					t.Fatalf("token reached the observation: %s", raw)
+				}
 			}
 			for key, value := range o.Facts {
 				if strings.Contains(key, token) || strings.Contains(value, token) {
@@ -405,6 +433,114 @@ func TestShapedTokenCannotEchoAsVersion(t *testing.T) {
 	}
 	if _, ok := o.Facts["connector_versions"]; ok {
 		t.Fatalf("token was kept as a version: %+v", o.Facts)
+	}
+}
+
+// A peer that splits the token over several shaped versions defeats an
+// exact-match rule: each half passes the version shape. Every member that is a
+// long run of the token is dropped, and with it the whole fact.
+func TestTokenFragmentsCannotEchoAsVersions(t *testing.T) {
+	const token = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0"
+	first, second := token[:24], token[16:]
+	for _, fragment := range []string{first, second} {
+		if !versionToken.MatchString(fragment) {
+			t.Fatalf("test fragment is not a shaped version token: %q", fragment)
+		}
+	}
+	t.Setenv("TOPH_CLOUDFLARE_TEST_TOKEN", token)
+	for _, tc := range []struct {
+		name     string
+		versions []string
+		want     string
+	}{
+		{"fragments only", []string{first, second}, ""},
+		{"fragment beside a version", []string{first, "2026.10.0"}, "2026.10.0"},
+		{"eight bytes is a fragment", []string{token[3:11], "2026.10.0"}, "2026.10.0"},
+		{"seven bytes is not", []string{token[3:10]}, token[3:10]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var connections []string
+			for _, version := range tc.versions {
+				connections = append(connections, `{"client_version":"`+version+`","colo_name":"HKG"}`)
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, `{"success":true,"result":{"status":"healthy","connections":[`+strings.Join(connections, ",")+`]}}`)
+			}))
+			defer srv.Close()
+			o := observation()
+			if err := Collect(context.Background(), testDependencies(t), adapterCheck(tunnelOptions()), srv.URL, o); err != nil {
+				t.Fatal(err)
+			}
+			got, present := o.Facts["connector_versions"]
+			if tc.want == "" && present || tc.want != "" && got != tc.want {
+				t.Fatalf("connector_versions=%q present=%v want %q", got, present, tc.want)
+			}
+			raw, _ := json.Marshal(o)
+			for _, fragment := range []string{first, second} {
+				if strings.Contains(string(raw), fragment) {
+					t.Fatalf("token fragment echoed: %s", raw)
+				}
+			}
+			if o.Facts["tunnel_connections"] != strconv.Itoa(len(tc.versions)) {
+				t.Fatalf("a count was erased: %+v", o.Facts)
+			}
+		})
+	}
+}
+
+// scrubToken looks only at the facts that carry peer strings. A timestamp or a
+// colo list that is a run of the token goes with it; a number never does, even
+// when the token contains the same digits.
+func TestScrubTokenFragmentsAndNumbers(t *testing.T) {
+	const token = "xx2026-10-19T08:00:00Zyy"
+	o := &model.Observation{Facts: map[string]string{
+		"oldest_connection_at": "2026-10-19T08:00:00Z",
+		"tunnel_colos":         "HKG,LAX",
+		"connector_versions":   "10-19T08:00:00Z,2026.10.0",
+		"tunnel_connections":   "2026",
+		"origins_total":        "08",
+	}}
+	scrubToken(o, token)
+	want := map[string]string{
+		"tunnel_colos":       "HKG,LAX",
+		"connector_versions": "2026.10.0",
+		"tunnel_connections": "2026",
+		"origins_total":      "08",
+	}
+	if len(o.Facts) != len(want) {
+		t.Fatalf("facts=%+v", o.Facts)
+	}
+	for key, value := range want {
+		if o.Facts[key] != value {
+			t.Fatalf("%s=%q want %q", key, o.Facts[key], value)
+		}
+	}
+}
+
+// The detail of a read whose connection list was not reported is the adapter's
+// own; the generic detail applies only when none was set.
+func TestCollectKeepsTunnelDetail(t *testing.T) {
+	t.Setenv("TOPH_CLOUDFLARE_TEST_TOKEN", "test-token")
+	for _, tc := range []struct {
+		name, body, detail string
+	}{
+		{"list not reported", `{"success":true,"result":{"status":"healthy","connections":[]}}`, "Cloudflare API state reported; the connections list was not reported"},
+		{"list reported", string(fixture(t, "tunnel-healthy.json")), "Cloudflare API state reported; no request to the zone's own hostname was made"},
+		{"zero is a count", `{"success":true,"result":{"status":"down","connections":[]}}`, "Cloudflare API state reported; no request to the zone's own hostname was made"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+			o := observation()
+			if err := Collect(context.Background(), testDependencies(t), adapterCheck(tunnelOptions()), srv.URL, o); err != nil {
+				t.Fatal(err)
+			}
+			if o.Outcome != "ok" || o.Detail != tc.detail || o.Stage != "adapter_api" {
+				t.Fatalf("outcome=%s stage=%s detail=%q", o.Outcome, o.Stage, o.Detail)
+			}
+		})
 	}
 }
 

@@ -530,9 +530,9 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 			chip = cSelBG
 			st = fg(cGlow).Bg(chip).bold()
 		}
-		sig := nodeSignal(n)
+		glyph, mark := nodeMark(n)
 		cv.Set(x+b.x, y+b.y, ' ', Style{BG: chip})
-		cv.Set(x+b.x+1, y+b.y, signalGlyph(sig), fg(signalColor(sig)).Bg(chip).bold())
+		cv.Set(x+b.x+1, y+b.y, glyph, fg(mark).Bg(chip).bold())
 		cv.Pad(x+b.x+2, y+b.y, " "+ellipsis(label[i], b.w-4)+" ", st, b.w-2)
 		m.hit(x+b.x, y+b.y, b.w, "select:node:"+n.ID)
 	}

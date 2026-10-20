@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -162,4 +163,33 @@ func TestEdgeCardCapsManyColoChecks(t *testing.T) {
 // more distinct codes than a hand-written list carries.
 func testColo(n int) string {
 	return string([]byte{byte('A' + n/676%26), byte('A' + n/26%26), byte('A' + n%26)})
+}
+
+// The day's colo counts of every check a filter accepts add up in one map,
+// and a window other than the day, or a check with no counts, adds nothing.
+func TestSumDayPops(t *testing.T) {
+	day := func(pops map[string]int64) []model.Availability {
+		return []model.Availability{{Window: "7d", Rollup: model.Rollup{Pops: map[string]int64{"ZZZ": 99}}}, {Window: "24h", Rollup: model.Rollup{Pops: pops}}}
+	}
+	checks := []model.CheckState{
+		{ID: "a", Observer: "o1", Availability: day(map[string]int64{"LAX": 3, "other": 1})},
+		{ID: "b", Observer: "o2", Availability: day(map[string]int64{"LAX": 2, "HKG": 5})},
+		{ID: "c", Observer: "o1", Availability: day(nil)},
+		{ID: "d", Observer: "o1"},
+	}
+	if got := sumDayPops(checks, nil); !maps.Equal(got, map[string]int64{"LAX": 5, "HKG": 5, "other": 1}) {
+		t.Fatalf("all checks: %v", got)
+	}
+	only := func(o string) func(model.CheckState) bool {
+		return func(c model.CheckState) bool { return c.Observer == o }
+	}
+	if got := sumDayPops(checks, only("o1")); !maps.Equal(got, map[string]int64{"LAX": 3, "other": 1}) {
+		t.Fatalf("one observer: %v", got)
+	}
+	if got := sumDayPops(checks, only("nobody")); got != nil {
+		t.Fatalf("no check accepted: %v", got)
+	}
+	if got := sumDayPops(checks[2:], nil); got != nil || PopsLine(got, LinePops) != "" {
+		t.Fatalf("checks without counts: %v", got)
+	}
 }

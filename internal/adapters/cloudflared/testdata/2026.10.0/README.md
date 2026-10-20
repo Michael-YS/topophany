@@ -1,8 +1,8 @@
 # cloudflared 2026.10.0 listener fixtures
 
 Captured 2026-10-19 on macOS arm64 from cloudflared **2026.10.0** (built
-2026-10-05T15:39:13Z), installed at `/opt/homebrew/bin/cloudflared`. These are
-the connector's own local metrics responses, not an application request.
+2026-10-05T15:39:13Z), a Homebrew build. These are the connector's own local
+metrics responses, not an application request.
 
 ## How it was started
 
@@ -13,9 +13,9 @@ placeholders. cloudflared still starts its metrics listener before (and while)
 registration fails, which is what let the unready shape be captured:
 
 ```sh
-/opt/homebrew/bin/cloudflared tunnel --config /tmp/cfcap/config.yml run
+cloudflared tunnel --config config.yml run
 # tunnel: 00000000-0000-4000-8000-000000000000
-# credentials-file: /tmp/cfcap/creds.json   (fake TunnelSecret and account tag)
+# credentials-file: a temporary file holding fake values (TunnelSecret and account tag)
 # no-autoupdate: true
 # metrics: 127.0.0.1:20241
 ```
@@ -51,8 +51,9 @@ account, a real tunnel, or a live edge connection.
   `cloudflared_tunnel_server_locations{connection_id,edge_location}`,
   `cloudflared_tunnel_active_streams` and
   `cloudflared_tunnel_timer_retries`. Family names and label names come from
-  the roadmap's Appendix A and the observed `edge_location`/`connection_id`
-  strings in the binary; the values and the four colos are invented.
+  Cloudflare's documentation of the connector's metrics and the observed
+  `edge_location`/`connection_id` strings in the binary; the values and the
+  four colos are invented.
 
 ## What was observed live
 
@@ -85,8 +86,10 @@ The 200 `/ready` shape, `readyConnections` above zero, the
 `cloudflared_tunnel_server_locations` family and its exact labels and values,
 `cloudflared_tunnel_active_streams` and `cloudflared_tunnel_timer_retries` were
 not observed live because they need a registered tunnel with at least one live
-edge connection. Their shapes are taken from the roadmap and its Appendix A,
-not from this capture, and the two `.synthetic` files say so in their names.
+edge connection. Their shapes are taken from Cloudflare's documentation of
+`/ready` and of the `cloudflared_tunnel_server_locations{connection_id,edge_location}`
+family, not from this capture, and the two `.synthetic` files say so in their
+names.
 `connector_version` is read from `build_info{version=...}`: the observed
 `2026.10.0` is nine characters, so the bound is 24 token characters, not the
 eight a colo token gets.

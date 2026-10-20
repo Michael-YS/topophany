@@ -1,7 +1,9 @@
 package cloudflare
 
 import (
+	"net/netip"
 	"strconv"
+	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters"
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -24,6 +26,33 @@ type dnsResponse struct {
 	ResultInfo *struct {
 		TotalCount *int `json:"total_count"`
 	} `json:"result_info"`
+}
+
+// sameContent compares a declared record content with the one Cloudflare
+// reports, in the form Cloudflare stores it rather than byte for byte: the
+// platform lowercases a CNAME target and drops its trailing dot, and writes an
+// address in its own canonical spelling, so what a person typed and what the
+// API returns can differ while naming the same thing. An address that does not
+// parse on either side is a mismatch. Neither value is returned or stored.
+func sameContent(recordType, declared, reported string) bool {
+	switch recordType {
+	case "A", "AAAA":
+		want, err := netip.ParseAddr(declared)
+		if err != nil {
+			return false
+		}
+		got, err := netip.ParseAddr(reported)
+		return err == nil && want == got
+	case "CNAME":
+		return canonicalName(declared) == canonicalName(reported)
+	}
+	return declared == reported
+}
+
+// canonicalName is a host name as Cloudflare stores a CNAME target: lowercase,
+// without the root label's trailing dot.
+func canonicalName(name string) string {
+	return strings.ToLower(strings.TrimSuffix(name, "."))
 }
 
 // collectDNSRecord turns the DNS list read into facts and declared-state
@@ -90,7 +119,7 @@ func collectDNSRecord(body []byte, options model.CloudflareOptions, o *model.Obs
 			matches = "false"
 		}
 		for _, record := range records {
-			if record.Content != options.ExpectedContent {
+			if !sameContent(options.RecordType, options.ExpectedContent, record.Content) {
 				matches = "false"
 			}
 		}

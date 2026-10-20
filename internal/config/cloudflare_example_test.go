@@ -181,7 +181,7 @@ func TestCloudflareExampleResolvesItsChecks(t *testing.T) {
 	}
 
 	// Every active address is documentation or reserved, except the public
-	// trace target the roadmap names.
+	// resolver the DNS over TLS check asks.
 	for _, e := range c.Endpoints {
 		if !strings.Contains(e.Address, ".example.com") && !strings.HasPrefix(e.Address, "http://127.0.0.1") && !strings.HasPrefix(e.Address, "1.1.1.1:") {
 			t.Fatalf("endpoint %s uses a real address: %s", e.ID, e.Address)

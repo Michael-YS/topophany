@@ -403,7 +403,7 @@ func validateResolved(c model.Config) error {
 			}
 			seenPops := make(map[string]bool, len(x.HTTP.ExpectedPops))
 			for _, pop := range x.HTTP.ExpectedPops {
-				if !traceColo(pop) || seenPops[pop] {
+				if !model.IsColo(pop) || seenPops[pop] {
 					return errors.New("expected_pops must be three uppercase letters, without duplicates")
 				}
 				seenPops[pop] = true
@@ -439,7 +439,7 @@ func validateResolved(c model.Config) error {
 				}
 				seen := make(map[string]bool, len(trace.Colos))
 				for _, colo := range trace.Colos {
-					if !traceColo(colo) || seen[colo] {
+					if !model.IsColo(colo) || seen[colo] {
 						return errors.New("trace colos must be three uppercase letters, without duplicates")
 					}
 					seen[colo] = true
@@ -569,10 +569,6 @@ func validateResolved(c model.Config) error {
 	return nil
 }
 
-// traceColo reports whether s is the shape a declared colo may take in
-// expected_trace and expected_pops alike. Case is part of the shape, so a
-// lowercase code is not normalized.
-func traceColo(s string) bool { return model.IsColo(s) }
 func acyclic(g map[string][]string) error {
 	remaining := map[string]int{}
 	parents := map[string][]string{}

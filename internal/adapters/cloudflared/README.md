@@ -66,8 +66,8 @@ shape; a larger value is a malformed-input guard, not a deployment limit),
 `connector_id` (lowercase UUID only), `ha_connections`, `requests_total`,
 `request_errors`, `active_streams` (decimal counts, absent when the family is
 absent), `connection_colos` (sorted lowercase tokens joined with commas, at
-most eight; when more are reported the first eight sorted are kept, and the
-colo policy compares the same eight) and `connector_version` (at most 24 token
+most eight; when more are reported the first eight sorted are kept, while the
+colo policy compares every distinct reported colo) and `connector_version` (at most 24 token
 characters). That is at most eight facts; the probe drops its generic
 `connection_semantics` fact for this kind. Counters and gauges are
 non-negative integers within eighteen decimal digits; Prometheus decimal and
@@ -131,8 +131,13 @@ Attach the check to a `link` from the origin to the edge node (`transport:
 "cloudflared"`). A fresh local connector report decides that link's state: a
 `tunnel_not_ready` sample turns the link down after the failure threshold,
 while a passing sample shows the session and leaves the service behind it
-unproven. A connector read that failed leaves the link unknown with its own
-reason (`local connector read failed`), never the reported-only reason.
+unproven. The link then says its state is `reported`, the connector's own
+statement, rather than `inferred` from measured checks. A connector read that
+failed leaves the link unknown with its own reason (`local connector read
+failed`), never the reported-only reason. A `cloudflare` API check attached to
+the same link is shown beside the connector's and does not vote on the link
+while a fresh connector report decides it: it can neither outvote the connector
+nor degrade the link, whether it passes, violates a policy or fails to read.
 
 ## Develop
 

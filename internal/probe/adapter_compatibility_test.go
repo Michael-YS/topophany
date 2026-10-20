@@ -22,12 +22,32 @@ import (
 // Captured before the package split; named semantic regressions update only
 // their observations. Legacy contract hashes remain pinned.
 // Only the listener address, sampling timestamp and elapsed time are variable.
+// A row for an adapter added later is frozen from its first output, once, and
+// is added to the fixture without touching the rows beside it.
 func TestAdapterCompatibility(t *testing.T) {
 	t.Setenv("TOPH_COMPAT_TOKEN", "synthetic-token")
+	// The Cloudflare API rows serve the sanitized bodies the adapter's own
+	// tests use, on the three allowlisted paths. The identifiers are the
+	// fixtures' synthetic ones.
+	const (
+		account = "11111111111111111111111111111111"
+		tunnel  = "22222222222222222222222222222222"
+		zone    = "33333333333333333333333333333333"
+		pool    = "44444444444444444444444444444444"
+	)
+	three, proxied := 3, true
+	cloudflareBody := func(name string) []byte {
+		body, err := os.ReadFile(filepath.Join("..", "adapters", "cloudflare", "testdata", "api-v4", "2026-10-19", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
 	cases := []struct {
 		name, kind, mode, proxies, providers, command string
 		status                                        int
 		commandError                                  bool
+		cloudflare                                    *model.CloudflareOptions
 	}{
 		{name: "mihomo-ok", kind: "mihomo", mode: "rule"},
 		{name: "mihomo-mode", kind: "mihomo", mode: "global"},
@@ -45,6 +65,18 @@ func TestAdapterCompatibility(t *testing.T) {
 		{name: "wireguard-shape", kind: "wireguard", command: "bad"},
 		{name: "wireguard-permission", kind: "wireguard", commandError: true},
 		{name: "cloudflared-ok", kind: "cloudflared"},
+		{name: "cloudflare-tunnel", kind: "cloudflare", cloudflare: &model.CloudflareOptions{
+			Read: "tunnel", AccountID: account, TunnelID: tunnel,
+			ExpectedConnections: &three, ExpectedColos: []string{"HKG", "LAX", "SIN"},
+		}},
+		{name: "cloudflare-dns", kind: "cloudflare", cloudflare: &model.CloudflareOptions{
+			Read: "dns_record", ZoneID: zone, RecordName: "www.example.com", RecordType: "A",
+			ExpectedProxied: &proxied, ExpectedContent: "198.51.100.7",
+		}},
+		{name: "cloudflare-pool", kind: "cloudflare", cloudflare: &model.CloudflareOptions{
+			Read: "pool", AccountID: account, PoolID: pool,
+			ExpectedOrigins: []string{"192.0.2.10", "2001:db8::10"},
+		}},
 	}
 	type record struct {
 		Contract    string            `json:"contract"`
@@ -72,6 +104,12 @@ func TestAdapterCompatibility(t *testing.T) {
 					body = `{"providers":{"pool":{"proxies":[{"name":"node"}]}}}`
 				}
 				w.Write([]byte(body))
+			case "/accounts/" + account + "/cfd_tunnel/" + tunnel:
+				w.Write(cloudflareBody("tunnel-healthy.json"))
+			case "/zones/" + zone + "/dns_records":
+				w.Write(cloudflareBody("dns-records.json"))
+			case "/accounts/" + account + "/load_balancers/pools/" + pool + "/health":
+				w.Write(cloudflareBody("pool-health.json"))
 			case "/ready":
 				io.WriteString(w, `{"status":200,"readyConnections":4,"connectorId":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}`)
 			case "/metrics":
@@ -83,6 +121,9 @@ func TestAdapterCompatibility(t *testing.T) {
 		x := httpCheck(s.URL)
 		x.Kind = tc.kind
 		x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_COMPAT_TOKEN", RootProxy: "root", ExpectedMode: "rule", ExpectedProviders: map[string][]string{"pool": {"node"}}, Peer: "peer", Interface: "wg0"}
+		if tc.cloudflare != nil {
+			x.Adapter = model.AdapterOptions{TokenEnv: "TOPH_COMPAT_TOKEN", Cloudflare: tc.cloudflare}
+		}
 		r := Runner{Command: func(_ context.Context, _ string, args ...string) ([]byte, error) {
 			if tc.commandError {
 				return nil, errors.New("private diagnostic")

@@ -110,3 +110,37 @@ func TestRollupFirstBytePopsAndCacheJSON(t *testing.T) {
 		t.Fatalf("an older reader lost the fields it knew: %+v", older.Total)
 	}
 }
+
+// A check no edge answered carries none of the edge fields in /v1/rollups,
+// in its total or in any slot: the keys are absent, not empty maps, so a
+// TCP, TLS, DNS or SSH check does not grow a cache count it cannot have.
+func TestRollupWithoutAnEdgeCarriesNoEdgeFields(t *testing.T) {
+	srv, h, b := fixture(t)
+	now := srv.Now()
+	o := testkit.Observation(srv.Config, "home-ssh", 1, now.Add(-time.Minute), "ok")
+	b.Observations = []model.Observation{o}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w := request(h, "GET", "/v1/rollups?check=home-ssh&step=5m&span=1h", viewerToken, "", nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var got struct {
+		Total map[string]json.RawMessage   `json:"total"`
+		Slots []map[string]json.RawMessage `json:"slots"`
+	}
+	if e := json.Unmarshal(w.Body.Bytes(), &got); e != nil {
+		t.Fatal(e)
+	}
+	if string(got.Total["samples"]) != "1" || len(got.Slots) == 0 {
+		t.Fatalf("the sample is not in the rollup: %s", w.Body.String())
+	}
+	for i, rollup := range append([]map[string]json.RawMessage{got.Total}, got.Slots...) {
+		for _, key := range []string{"first_byte", "pops", "cache"} {
+			if _, ok := rollup[key]; ok {
+				t.Fatalf("rollup %d of a check with no edge carries %s: %s", i, key, w.Body.String())
+			}
+		}
+	}
+}

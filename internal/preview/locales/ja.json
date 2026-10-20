@@ -35,10 +35,11 @@
   "scenario.host-disk-full.detail": "ファイルシステム使用率を 98–99% にシミュレート。設定したディスクしきい値を超えると policy インシデントが発生します。",
   "scenario.host-process-missing": "ホストのプロセス不在",
   "scenario.host-process-missing.detail": "設定したプロセスの非ゾンビ件数はゼロ。最小件数が正の場合、policy インシデントが発生します。",
-  "scenario.edge-challenge": "自宅観測点への Cloudflare チャレンジ",
-  "scenario.edge-challenge.detail": "自宅観測点から Cloudflare 経由のオリジンへのリクエストが 403 のチャレンジページ (`cf-mitigated: challenge`) を受け取る一方、リモート観測点は通常どおり到達します。応答したのはエッジで、オリジンは問い合わせを受けておらず、その状態は不明のままです。",
+  "scenario.edge-challenge": "中継観測点への Cloudflare チャレンジ",
+  "scenario.edge-challenge.detail": "大阪 Vultr の中継観測点から Cloudflare 経由のオリジンへのリクエストが 403 のチャレンジページ (`cf-mitigated: challenge`) を受け取る一方、リモート観測点は通常どおり到達します。応答したのはエッジで、オリジンは問い合わせを受けておらず、その状態は不明のままです。",
   "scenario.edge-rerouted": "Cloudflare が LAX から応答",
-  "scenario.edge-rerouted.detail": "自宅観測点への Cloudflare の応答が LAX から届く一方、チェックは HKG と NRT を宣言 → 停止ではなく policy 違反。リクエストは成功し、何も失敗していません。",
+  "scenario.edge-rerouted.detail": "大阪 Vultr の中継観測点への Cloudflare の応答が KIX ではなく LAX から届く一方、チェックは KIX と NRT を宣言 → 停止ではなく policy 違反。リクエストは成功し、何も失敗していません。",
+  "scenario.edge-rerouted.pops": "KIX,NRT",
   "scenario.tunnel-down": "トンネルコネクター停止",
   "scenario.tunnel-down.detail": "自宅マシンの cloudflared コネクターがエッジとのセッションを 1 本も報告しないため、リンクは down。公開ホスト名はエッジから 530 を受け取り、証明できるのはエッジまで。ループバックのチェックはダッシュボード自体を証明し続けます。",
   "node.win": "Windows デスクトップ",
@@ -195,5 +196,8 @@
   "check.w-home-edge": "Cloudflare 経由の自宅ダッシュボード",
   "check.w-home-local": "自宅ダッシュボード (マシン上)",
   "check.w-tunnel": "cloudflared コネクター",
+  "check.w-trace": "Cloudflare トレース · Windows",
+  "check.m-trace": "Cloudflare トレース · MacBook",
+  "check.r-trace": "Cloudflare トレース · 中継",
   "link.home-cf.notes": "自宅マシンから Cloudflare への外向きトンネル。このリンクはコネクター自身の報告で判定し、エッジ経由のチェックが証明するのはエッジまでです。"
 }

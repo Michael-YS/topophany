@@ -124,34 +124,46 @@ func TestHTTPRequestHeaderEnvSetsHost(t *testing.T) {
 }
 
 // A peer sent an environment-backed header can reflect it through the edge
-// labels and the Location it answers with. Closed words and numbers survive a
-// secret request; the secret itself must not reach the observation.
+// labels, the Server-Timing entry, a trace body and the Location it answers
+// with. Closed words and numbers survive a secret request; the secret itself
+// must not reach the observation, whole or in the fragments a parser could
+// pass: a colo-shaped prefix of it, its upper-case form, or a host label.
 func TestHTTPRequestHeaderEnvCannotEcho(t *testing.T) {
-	const token = "cf-access-secret-9a8b7c6d5e4f"
+	const token = "cfa-access-secret-9a8b7c6d5e4f"
 	t.Setenv("TOPH_REFLECT_SECRET", token)
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		secret := r.Header.Get("X-Secret")
 		w.Header().Set("Cf-Ray", "8f2c1b2a3d4e5f60-"+secret)
 		w.Header().Set("Cf-Cache-Status", secret)
 		w.Header().Set("Cf-Mitigated", "challenge"+secret)
-		w.Header().Set("Location", "https://team.cloudflareaccess.com/cdn-cgi/access/login/host?kid="+secret)
+		w.Header().Set("Server-Timing", `cfL4;desc="?rtt=1620&cid=`+secret+`"`)
+		w.Header().Set("Location", "https://"+secret+".cloudflareaccess.com/cdn-cgi/access/login/host?kid="+secret)
 		w.WriteHeader(http.StatusFound)
+		_, _ = io.WriteString(w, "fl=x\ncolo="+strings.ToUpper(secret[:3])+"\nwarp=on\ngateway=off\nhttp=http/1.1\ntls=TLSv1.3\n")
 	}))
 	defer s.Close()
 	x := httpCheck(s.URL)
 	x.HTTP.Status = []int{http.StatusFound}
+	x.HTTP.ExitFormat = "trace"
 	x.HTTP.RequestHeaderEnvs = map[string]string{"X-Secret": "TOPH_REFLECT_SECRET"}
 	o := (Runner{}).Run(context.Background(), testkit.Config(), x)
 	if o.Outcome != "ok" || o.Facts["peer_text"] != withheld || o.Facts["edge_access"] != "login_redirect" || o.Facts["edge_provider"] != "cloudflare" {
 		t.Fatalf("reflected secret request: %+v %v", o, o.Facts)
 	}
-	for _, key := range []string{"edge_pop", "edge_cache", "edge_mitigation", "http_status"} {
+	// The closed words and numbers beside the echoes are read, so the request
+	// really did pass through the parsers that would have kept the echo.
+	for key, want := range map[string]string{"edge_rtt_ms": "2", "trace_warp": "on", "trace_gateway": "off", "trace_http": "http1.1", "trace_tls": "TLSv1.3"} {
+		if o.Facts[key] != want {
+			t.Fatalf("%s=%q; want %q in %v", key, o.Facts[key], want, o.Facts)
+		}
+	}
+	for _, key := range []string{"edge_pop", "edge_cache", "edge_mitigation", "http_status", "trace_colo", "trace_loc", "exit_ip"} {
 		if o.Facts[key] != "" {
 			t.Fatalf("reflected value survived as %s: %q", key, o.Facts[key])
 		}
 	}
 	b, _ := json.Marshal(o)
-	for _, part := range []string{token[:12], token[12:], strings.ToUpper(token[:12])} {
+	for _, part := range []string{token, token[:12], token[12:], strings.ToUpper(token[:12]), strings.ToUpper(token[:3]), token[:3] + ".cloudflareaccess.com", "cid="} {
 		if strings.Contains(string(b), part) {
 			t.Fatalf("observation carries %q: %s", part, b)
 		}

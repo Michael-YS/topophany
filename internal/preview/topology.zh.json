@@ -510,6 +510,12 @@
       "network": "public"
     },
     {
+      "id": "cf-trace",
+      "node": "cf",
+      "address": "https://www.cloudflare.com/cdn-cgi/trace",
+      "network": "public"
+    },
+    {
       "id": "vercel-app",
       "node": "vercel",
       "address": "https://app.example.invalid/api/health",
@@ -2524,6 +2530,69 @@
       "adapter": {
         "cloudflared": {
           "expected_connections": 4
+        }
+      }
+    },
+    {
+      "id": "w-trace",
+      "name": "@check.w-trace",
+      "observer": "obs-win",
+      "endpoint": "cf-trace",
+      "kind": "http",
+      "interval_seconds": 30,
+      "timeout_seconds": 5,
+      "stale_seconds": 90,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "trace",
+        "expected_trace": {
+          "warp": "on"
+        }
+      }
+    },
+    {
+      "id": "m-trace",
+      "name": "@check.m-trace",
+      "observer": "obs-mac",
+      "endpoint": "cf-trace",
+      "kind": "http",
+      "interval_seconds": 30,
+      "timeout_seconds": 5,
+      "stale_seconds": 90,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "trace",
+        "expected_trace": {
+          "warp": "on"
+        }
+      }
+    },
+    {
+      "id": "r-trace",
+      "name": "@check.r-trace",
+      "observer": "obs-relay",
+      "endpoint": "cf-trace",
+      "kind": "http",
+      "interval_seconds": 30,
+      "timeout_seconds": 5,
+      "stale_seconds": 90,
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "http": {
+        "status": [
+          200
+        ],
+        "exit_format": "trace",
+        "expected_trace": {
+          "warp": "on"
         }
       }
     }
