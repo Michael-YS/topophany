@@ -20,6 +20,7 @@ func revisionFixture(t testing.TB) model.Config {
 	c.Checks[0].Target = "https://example.test/check?secret=one"
 	c.Checks[0].HTTP.BearerEnv = "TOKEN_A"
 	c.Checks[0].HTTP.RequestHeaders = map[string]string{"Authorization": "private-a"}
+	c.Checks[0].HTTP.RequestHeaderEnvs = map[string]string{"X-Private": "PRIVATE_A"}
 	c.Checks[0].Adapter.TokenEnv = "ADAPTER_A"
 	c.Checks[0].CAFile = "/private/ca-a.pem"
 	p := &c.Paths[0].Proxies[0]
@@ -67,6 +68,8 @@ func TestPublicRevisionIgnoresEveryRedactedField(t *testing.T) {
 		{"adapter_env", func(c *model.Config) { c.Checks[0].Adapter.TokenEnv = "ADAPTER_B" }},
 		{"header_value", func(c *model.Config) { c.Checks[0].HTTP.RequestHeaders["Authorization"] = "private-b" }},
 		{"header_name", func(c *model.Config) { c.Checks[0].HTTP.RequestHeaders["X-Private"] = "private-b" }},
+		{"header_env_name", func(c *model.Config) { c.Checks[0].HTTP.RequestHeaderEnvs["Y-Private"] = "PRIVATE_A" }},
+		{"header_env_value", func(c *model.Config) { c.Checks[0].HTTP.RequestHeaderEnvs["X-Private"] = "PRIVATE_B" }},
 		{"check_ca", func(c *model.Config) { c.Checks[0].CAFile = "/private/ca-b.pem" }},
 		{"proxy_user", func(c *model.Config) { c.Paths[0].Proxies[0].Username = "bob" }},
 		{"proxy_password", func(c *model.Config) { c.Paths[0].Proxies[0].PasswordEnv = "PASSWORD_B" }},

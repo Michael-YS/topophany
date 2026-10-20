@@ -46,6 +46,7 @@ func Clone(c model.Config) model.Config {
 		x.HTTP.Status = slices.Clone(x.HTTP.Status)
 		x.HTTP.ExpectedExit = slices.Clone(x.HTTP.ExpectedExit)
 		x.HTTP.Headers, x.HTTP.RequestHeaders = maps.Clone(x.HTTP.Headers), maps.Clone(x.HTTP.RequestHeaders)
+		x.HTTP.RequestHeaderEnvs = maps.Clone(x.HTTP.RequestHeaderEnvs)
 		if trace := x.HTTP.ExpectedTrace; trace != nil {
 			copy := *trace
 			copy.Colos = slices.Clone(trace.Colos)

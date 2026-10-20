@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -871,6 +872,16 @@ func (m *Model) openForm(kind, id string) {
 		f.add("Trace warp", trace.Warp, fChoice, "trace: expected WARP state", "", "off", "on", "plus").when = kindIs("http")
 		f.add("Trace gateway", trace.Gateway, fChoice, "trace: expected Gateway state", "", "on", "off").when = kindIs("http")
 		f.add("Trace colos", strings.Join(trace.Colos, ", "), fList, "trace: expected colos, e.g. HKG, NRT").when = kindIs("http")
+		envNames := make([]string, 0, len(x.HTTP.RequestHeaderEnvs))
+		for name := range x.HTTP.RequestHeaderEnvs {
+			envNames = append(envNames, name)
+		}
+		slices.Sort(envNames)
+		envEntries := make([]string, 0, len(envNames))
+		for _, name := range envNames {
+			envEntries = append(envEntries, name+"="+x.HTTP.RequestHeaderEnvs[name])
+		}
+		f.add("Secret request headers", strings.Join(envEntries, ", "), fList, "http: Name=ENV_VAR, comma separated").when = kindIs("http")
 		f.add("DNS name", x.DNS.Name, fText, "dns: name to resolve").when = kindIs("dns")
 		f.add("DNS type", x.DNS.Type, fChoice, "dns: record type", "", "A", "AAAA").when = kindIs("dns")
 		addHostFields(f, x.Host, kindIs("host"))
@@ -903,6 +914,27 @@ func (m *Model) openForm(kind, id string) {
 				x.HTTP.ExpectedTrace = &model.TraceExpectations{Warp: warp, Gateway: gateway, Colos: colos}
 			} else {
 				x.HTTP.ExpectedTrace = nil
+			}
+			// A map value is a variable name, never a value: the topology
+			// stays free of the secret it names.
+			envs := map[string]string{}
+			named := map[string]bool{}
+			for _, entry := range f.list("Secret request headers") {
+				name, env, ok := strings.Cut(entry, "=")
+				name, env = strings.TrimSpace(name), strings.TrimSpace(env)
+				if !ok || name == "" || env == "" {
+					return errors.New("Secret request headers must be Name=ENV_VAR entries")
+				}
+				if named[strings.ToLower(name)] {
+					return errors.New("duplicate secret request header name")
+				}
+				named[strings.ToLower(name)] = true
+				envs[name] = env
+			}
+			if len(envs) == 0 {
+				x.HTTP.RequestHeaderEnvs = nil
+			} else {
+				x.HTTP.RequestHeaderEnvs = envs
 			}
 			host, err := hostFields(f, x.Kind)
 			if err != nil {

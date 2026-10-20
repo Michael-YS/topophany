@@ -240,11 +240,14 @@ type HTTPOptions struct {
 	BodyRegex      string            `json:"body_regex,omitempty"`
 	Headers        map[string]string `json:"headers,omitempty"` // response assertions, not request secrets
 	RequestHeaders map[string]string `json:"request_headers,omitempty"`
-	BearerEnv      string            `json:"bearer_env,omitempty"`
-	ExpectedExit   []string          `json:"expected_exit,omitempty"` // exact IPs or CIDRs
-	ExitFormat     string            `json:"exit_format,omitempty"`   // plain, trace, json
-	ExitJSONKey    string            `json:"exit_json_key,omitempty"`
-	MaxBodyBytes   int64             `json:"max_body_bytes,omitempty"`
+	// RequestHeaderEnvs names a header's environment variable, never its
+	// value, so a credential need not be written into the topology.
+	RequestHeaderEnvs map[string]string `json:"request_header_envs,omitempty"`
+	BearerEnv         string            `json:"bearer_env,omitempty"`
+	ExpectedExit      []string          `json:"expected_exit,omitempty"` // exact IPs or CIDRs
+	ExitFormat        string            `json:"exit_format,omitempty"`   // plain, trace, json
+	ExitJSONKey       string            `json:"exit_json_key,omitempty"`
+	MaxBodyBytes      int64             `json:"max_body_bytes,omitempty"`
 	// ExpectedTrace requires exit_format trace, the only format whose body
 	// this probe parses as a trace.
 	ExpectedTrace *TraceExpectations `json:"expected_trace,omitempty"`

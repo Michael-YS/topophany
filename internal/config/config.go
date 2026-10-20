@@ -354,6 +354,9 @@ func validateResolved(c model.Config) error {
 			return fmt.Errorf("check %s: ICMP already requires a literal target; resolve_ip is unsupported", x.ID)
 		}
 		t := Target(c, x)
+		if len(x.HTTP.RequestHeaderEnvs) > 0 && x.Kind != "http" {
+			return fmt.Errorf("check %s: request_header_envs is supported only by http checks", x.ID)
+		}
 		switch x.Kind {
 		case "http", "mihomo":
 			u, e := url.Parse(t)
@@ -379,6 +382,12 @@ func validateResolved(c model.Config) error {
 			}
 			if e := HTTPHeaders(x.HTTP.RequestHeaders); e != nil {
 				return fmt.Errorf("check %s: %w", x.ID, e)
+			}
+			if e := HTTPHeaderEnvs(x.HTTP.RequestHeaders, x.HTTP.RequestHeaderEnvs); e != nil {
+				return fmt.Errorf("check %s: %w", x.ID, e)
+			}
+			if x.HTTP.BearerEnv != "" && !SecretEnvName(x.HTTP.BearerEnv) {
+				return fmt.Errorf("check %s: invalid bearer environment variable name", x.ID)
 			}
 			for _, v := range x.HTTP.ExpectedExit {
 				if _, e := netip.ParseAddr(v); e != nil {
@@ -556,12 +565,6 @@ func HostPort(s string) error {
 	return nil
 }
 
-// hostHeader reports whether v can stand as a request's Host: a name or
-// an address, with or without a port, and nothing more.
-func hostHeader(v string) bool {
-	u, e := url.Parse("http://" + v)
-	return e == nil && u.Host == v && u.Hostname() != "" && !strings.HasPrefix(v, "-")
-}
 func Target(c model.Config, x model.Check) string {
 	if x.Target != "" {
 		value, _ := expandAddress(c.Addresses, x.Target)
@@ -620,6 +623,7 @@ func Public(c model.Config) model.Config {
 			ref.URL, ref.TokenEnv, ref.CAFile = PublicURL(ref.URL), "", ""
 		}
 		x.HTTP.RequestHeaders = nil
+		x.HTTP.RequestHeaderEnvs = nil
 		x.CAFile = ""
 	}
 	for i := range out.Paths {

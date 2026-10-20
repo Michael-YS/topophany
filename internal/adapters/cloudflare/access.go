@@ -15,8 +15,12 @@ import (
 // Cloudflare documents a browser request without an Access session as a 302
 // to
 // https://<team>.cloudflareaccess.com/cdn-cgi/access/login/<host>?kid=...&redirect_url=...
-// (Debugging Pages, "Blocked HTTP validation"); a failed service-token
-// authentication returns 401 or 403 instead. 303 and 307 are accepted as
+// (Debugging Pages, "Blocked HTTP validation"). Under strict service-token
+// authentication (on by default for Zero Trust organizations created on or
+// after 2026-10-05, optional for older organizations), a failed service-token
+// authentication returns 401 or 403 instead, with no redirect to recognize
+// (https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/).
+// 303 and 307 are accepted as
 // redirects too; no other status is. The location must be an absolute URL
 // without user information, and its Hostname, lowercased, must end in
 // ".cloudflareaccess.com" with at least one character before the suffix. The

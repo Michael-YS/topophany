@@ -115,6 +115,75 @@ func TestEditorTraceFieldsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEditorSecretRequestHeadersRoundTrip(t *testing.T) {
+	m, _ := editorModel(t)
+	id := m.Edit.Config.Checks[0].ID
+	m.Edit.Config.Checks[0].HTTP.Contains = "READY"
+	m.Edit.Config.Checks[0].HTTP.RequestHeaders = map[string]string{"X-Literal": "kept"}
+	m.openForm("check", id)
+	f := m.modal.form
+	if f.get("Secret request headers").kind != fList {
+		t.Fatal("secret request headers are not a list")
+	}
+	f.get("Secret request headers").value = "CF-Access-Client-Secret=CF_ACCESS_SECRET, CF-Access-Client-Id=CF_ACCESS_ID"
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("valid secret request headers not applied", m.modal.form.err)
+	}
+	x := m.Edit.Config.Checks[0]
+	if x.HTTP.Contains != "READY" || x.HTTP.RequestHeaders["X-Literal"] != "kept" || x.HTTP.RequestHeaderEnvs["CF-Access-Client-Id"] != "CF_ACCESS_ID" || x.HTTP.RequestHeaderEnvs["CF-Access-Client-Secret"] != "CF_ACCESS_SECRET" || len(x.HTTP.RequestHeaderEnvs) != 2 {
+		t.Fatalf("secret request headers not saved or unlisted field lost: %+v", x.HTTP)
+	}
+	m.openForm("check", id)
+	f = m.modal.form
+	if got := f.val("Secret request headers"); got != "CF-Access-Client-Id=CF_ACCESS_ID, CF-Access-Client-Secret=CF_ACCESS_SECRET" {
+		t.Fatalf("secret request headers did not round-trip: %q", got)
+	}
+	// Clearing the field removes the whole map rather than writing an empty
+	// one; an empty topology field is the same execution as no field.
+	f.get("Secret request headers").value = ""
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("cleared secret request headers not applied", m.modal.form.err)
+	}
+	if x := m.Edit.Config.Checks[0]; x.HTTP.RequestHeaderEnvs != nil {
+		t.Fatalf("empty field kept a map: %#v", x.HTTP.RequestHeaderEnvs)
+	}
+	// A missing '=' is refused while the draft stays as it was.
+	m.openForm("check", id)
+	f = m.modal.form
+	f.get("Secret request headers").value = "CF-Access-Client-Id"
+	m.Key("ctrl-s")
+	if m.modal == nil || !strings.Contains(m.modal.form.err, "Name=ENV_VAR") {
+		t.Fatal("entry without '=' accepted", m.modal)
+	}
+	if x := m.Edit.Config.Checks[0]; x.HTTP.RequestHeaderEnvs != nil {
+		t.Fatalf("refused entry changed the draft: %#v", x.HTTP.RequestHeaderEnvs)
+	}
+	// An entry that parses here but names an invalid header is refused by the
+	// same whole-topology validation the save runs.
+	m.Key("esc")
+	m.openForm("check", id)
+	f = m.modal.form
+	f.get("Secret request headers").value = "Bad Header=CF_ACCESS_ID"
+	m.Key("ctrl-s")
+	if m.modal == nil || !strings.Contains(m.modal.form.err, "invalid HTTP header name") {
+		t.Fatal("invalid header name accepted", m.modal)
+	}
+	// Header names are unique whatever their case.
+	m.Key("esc")
+	m.openForm("check", id)
+	f = m.modal.form
+	f.get("Secret request headers").value = "X-Key=ENV_A, x-key=ENV_B"
+	m.Key("ctrl-s")
+	if m.modal == nil || !strings.Contains(m.modal.form.err, "duplicate secret request header name") {
+		t.Fatal("duplicate secret request header accepted", m.modal)
+	}
+	if x := m.Edit.Config.Checks[0]; x.HTTP.RequestHeaderEnvs != nil {
+		t.Fatalf("refused duplicate changed the draft: %#v", x.HTTP.RequestHeaderEnvs)
+	}
+}
+
 func TestEditorAddNodeWithPlaceLookupAndSave(t *testing.T) {
 	m, path := editorModel(t)
 	m.Key("2")

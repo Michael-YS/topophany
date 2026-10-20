@@ -51,6 +51,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (reported, not verified)`. `expected_trace` is part of the measurement
   contract: older collectors and viewers reject it, so upgrade them before
   enabling it.
+- HTTP checks can send request headers whose values come from the worker's
+  environment. `request_header_envs` maps a header name to a variable name,
+  for example `{"CF-Access-Client-Id": "CF_ACCESS_ID",
+  "CF-Access-Client-Secret": "CF_ACCESS_SECRET"}` for a Cloudflare Access
+  service token, so no secret is written in the topology. Header names follow
+  `request_headers`; `Authorization` and `Cookie` stay prohibited and a name
+  may not appear in both maps. A nonempty map counts as a credential, so plain
+  `http` is refused except direct literal loopback; a missing or empty variable
+  is a monitor error before anything is sent, a resolved value with a control
+  byte is a local `invalid_http_headers` error before anything is sent, and
+  every such request is withheld as `peer_text: withheld_secret_request`.
+  `Host` is allowed and is set only after its resolved value is checked as an
+  outbound host or `host:port`. Only `http` checks accept the map; another kind
+  that takes HTTP options refuses it. The editor has a "Secret request headers"
+  list of comma-separated `Name=ENV_VAR` entries, and the map is part of the
+  measurement contract (its variable names, not their values): older
+  collectors and viewers reject the field, so upgrade them before adding it to
+  a topology.
+
+### Changed
+
+- A configured `Host` request header, literal or read through
+  `request_header_envs`, must now be a value Go will actually send: a reg-name,
+  an IPv4 address or a bracketed IPv6 literal, with an optional 1..65535 port.
+  Raw non-ASCII/IDN, quotes, angle brackets, unbalanced brackets, unbracketed
+  IPv6 and empty or out-of-range ports are refused. A literal `Host` value that
+  the transport would reject or drop is no longer accepted silently; dial and
+  SNI behavior is unchanged.
+- Environment variable names for `bearer_env` and `request_header_envs` now
+  follow one rule: 1..128 bytes with no `=`, comma, whitespace, control or bidi
+  character. A `bearer_env` spelling that older releases accepted and that
+  violates this rule is now refused; check existing topologies before
+  upgrading.
+- A configured `User-Agent` request header, literal or environment-backed, now
+  wins over Topophany's default instead of being silently overwritten.
 
 ## [1.3.0] - 2026-10-19
 

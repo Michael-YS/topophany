@@ -11,8 +11,12 @@ this adapter drops them.
 `AccessFacts` reads the status and `Location` of a response. Cloudflare
 documents a browser request without an Access session as a `302` to
 `<team>.cloudflareaccess.com/cdn-cgi/access/login/<host>?kid=…&redirect_url=…`;
-a failed service-token authentication returns `401` or `403` instead, with no
-redirect to recognize. The adapter accepts `302`, `303` or `307` and keeps
+under strict service-token authentication, a failed service-token
+authentication returns `401` or `403` instead, with no redirect to recognize.
+Strict authentication is on by default for Zero Trust organizations created on
+or after 2026-10-05 and optional for older organizations
+([Cloudflare's service-token documentation](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)).
+The adapter accepts `302`, `303` or `307` and keeps
 only `edge_access: login_redirect` when the location is an absolute URL
 without user information whose host, lowercased, ends in
 `.cloudflareaccess.com` with at least one character before the suffix. The
@@ -21,7 +25,8 @@ one, so `.team.cloudflareaccess.com` and `..cloudflareaccess.com` pass: this
 follows the documented host suffix, not the team-name syntax. Malformed,
 opaque, relative, lookalike and control-bearing locations yield nothing.
 Nothing else of the location is kept, because it carries a key ID and the
-redirect target.
+redirect target. Tests use synthetic redirects; no live Access-protected host
+is used.
 The views append `· Access login` when the response also names the edge. Both
 the mitigation and Access words cross the secret boundary while the POP does
 not.

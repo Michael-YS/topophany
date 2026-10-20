@@ -151,15 +151,17 @@ func TestExpectedTraceContractAndDefaultJSON(t *testing.T) {
 	}
 }
 
-// Every topology shipped in examples/ was written before expected_trace, so
-// none may carry it: their default contracts stay what they were, and the
-// upgrade order in the reference is the only way to opt in.
-func TestExampleTopologiesCarryNoExpectedTrace(t *testing.T) {
+// Every topology shipped in examples/ was written before expected_trace and
+// request_header_envs, so none may carry either: their default contracts stay
+// what they were, and the upgrade order in the reference is the only way to
+// opt in.
+func exampleTopologies(t *testing.T) map[string]model.Config {
+	t.Helper()
 	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.json"))
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("examples not found: %v", err)
 	}
-	checked := 0
+	out := map[string]model.Config{}
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -176,6 +178,16 @@ func TestExampleTopologiesCarryNoExpectedTrace(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
+		out[path] = c
+	}
+	if len(out) == 0 {
+		t.Fatal("no example topologies found")
+	}
+	return out
+}
+
+func TestExampleTopologiesCarryNoExpectedTrace(t *testing.T) {
+	for path, c := range exampleTopologies(t) {
 		out, err := json.Marshal(c)
 		if err != nil {
 			t.Fatal(err)
@@ -183,9 +195,17 @@ func TestExampleTopologiesCarryNoExpectedTrace(t *testing.T) {
 		if strings.Contains(string(out), `"expected_trace"`) {
 			t.Fatalf("%s carries expected_trace", path)
 		}
-		checked++
 	}
-	if checked == 0 {
-		t.Fatal("no example topologies found")
+}
+
+func TestExampleTopologiesCarryNoRequestHeaderEnvs(t *testing.T) {
+	for path, c := range exampleTopologies(t) {
+		out, err := json.Marshal(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(out), `"request_header_envs"`) {
+			t.Fatalf("%s carries request_header_envs", path)
+		}
 	}
 }

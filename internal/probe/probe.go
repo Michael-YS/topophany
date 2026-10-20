@@ -58,6 +58,10 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 		o.Outcome, o.Code, o.Detail = "error", "invalid_http_headers", "invalid local HTTP header configuration"
 		return o
 	}
+	if x.Kind == "http" && config.HTTPHeaderEnvs(x.HTTP.RequestHeaders, x.HTTP.RequestHeaderEnvs) != nil {
+		o.Outcome, o.Code, o.Detail = "error", "invalid_http_headers", "invalid local HTTP header configuration"
+		return o
+	}
 	if (x.Kind == "http" || x.Kind == "mihomo") && config.HTTPCredentials(c, x) != nil {
 		o.Outcome, o.Code, o.Detail = "error", "insecure_http_credentials", "credentials require encrypted transport"
 		return o
@@ -259,6 +263,9 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	if e != nil {
 		return local("setup", "invalid_request")
 	}
+	// The default User-Agent yields to a configured one, literal or
+	// environment-backed.
+	req.Header.Set("User-Agent", "Topophany/"+model.Version)
 	for k, v := range x.HTTP.RequestHeaders {
 		// The client sends Request.Host and ignores a Host header.
 		if strings.EqualFold(k, "Host") {
@@ -267,18 +274,44 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		}
 		req.Header.Set(k, v)
 	}
+	// A secret request header is named in the topology but read from the
+	// executor's environment, so its value never reaches a config, a public
+	// view or a sample. Resolve and validate every value before sending: a
+	// missing variable is a monitor error, and a control-bearing value or bad
+	// Host would otherwise become a connect failure that looks like the
+	// target's.
+	for name, env := range x.HTTP.RequestHeaderEnvs {
+		value, e := secure.SecretEnv(env)
+		if e != nil || value == "" {
+			return local("setup", "http_secret_missing")
+		}
+		if !config.HTTPHeaderValue(value) {
+			return local("setup", "invalid_http_headers")
+		}
+		if strings.EqualFold(name, "Host") {
+			if !config.HostHeader(value) {
+				return local("setup", "invalid_http_headers")
+			}
+			req.Host = value
+			continue
+		}
+		req.Header.Set(name, value)
+	}
 	token, e := secure.SecretEnv(x.HTTP.BearerEnv)
 	if e != nil {
 		return local("setup", "http_secret_missing")
 	}
 	if token != "" {
+		if !config.HTTPHeaderValue(token) {
+			return local("setup", "invalid_http_headers")
+		}
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	// Any configured header, including a Host override, may be private.
 	// Count the topology's headers because Host lives in Request.Host,
-	// outside Request.Header; a bearer or query is private too.
-	secret := len(x.HTTP.RequestHeaders) > 0 || token != "" || req.URL.RawQuery != "" || u.Scheme != "https" && proxyCredentials(d.Proxies)
-	req.Header.Set("User-Agent", "Topophany/"+model.Version)
+	// outside Request.Header; an environment-backed header, a bearer or a
+	// query is private too.
+	secret := len(x.HTTP.RequestHeaders) > 0 || len(x.HTTP.RequestHeaderEnvs) > 0 || token != "" || req.URL.RawQuery != "" || u.Scheme != "https" && proxyCredentials(d.Proxies)
 	resp, e := client.Do(req)
 	if e != nil {
 		mu.Lock()

@@ -64,10 +64,10 @@ func ProxyCredentials(p model.Proxy, index int) error {
 }
 
 // HTTPCredentials refuses a check that sends a credential, a bearer or
-// adapter token or a target's query, where a hop it was not meant for can
-// read it.
+// adapter token, an environment-backed request header or a target's query,
+// where a hop it was not meant for can read it.
 func HTTPCredentials(c model.Config, x model.Check) error {
-	if x.HTTP.BearerEnv == "" && x.Adapter.TokenEnv == "" && len(x.HTTP.RequestHeaders) == 0 && !TargetQuery(c, x) {
+	if x.HTTP.BearerEnv == "" && x.Adapter.TokenEnv == "" && len(x.HTTP.RequestHeaders) == 0 && len(x.HTTP.RequestHeaderEnvs) == 0 && !TargetQuery(c, x) {
 		return nil
 	}
 	u, err := url.Parse(Target(c, x))
