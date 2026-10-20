@@ -41,6 +41,11 @@ func CacheWord(value string) string {
 // Preserve the pre-split allowlist, including its truncated CloudFront label.
 var cacheStatuses = map[string]bool{"HIT": true, "MISS": true, "EXPIRED": true, "STALE": true, "BYPASS": true, "REVALIDATED": true, "UPDATING": true, "DYNAMIC": true, "NONE": true, "UNKNOWN": true, "PRERENDER": true, "REFRESHHIT": true, "PASS": true, "ERROR": true, "REDIRECT": true, "LAMBDAGENERATEDRESPONSE": true, "FUNCTIONGENERATEDRESPONS": true}
 
+// CacheStatus reports whether word is one the closed cache vocabulary keeps.
+// Rollups count the same words the header parser admits, so the vocabulary
+// has one owner.
+func CacheStatus(word string) bool { return cacheStatuses[word] }
+
 func token(s string) string {
 	var b strings.Builder
 	for _, r := range strings.TrimSpace(s) {

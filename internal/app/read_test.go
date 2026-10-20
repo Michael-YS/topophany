@@ -552,3 +552,106 @@ func TestHowChecksFaredFromRollups(t *testing.T) {
 		}
 	}
 }
+
+// topo show checks ID --json hands over the check's rollup windows as the
+// API carries them, including the first-byte classes and the colo counts.
+func TestShowCheckJSONCarriesFirstByteAndColos(t *testing.T) {
+	c, e := preview.Preset(preview.DefaultLanguage)
+	if e != nil {
+		t.Fatal(e)
+	}
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	snap, e := preview.New(c, now, preview.DefaultLanguage).Snapshot("", now)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var want model.Availability
+	for _, cs := range snap.Checks {
+		if cs.ID == "r-app-web" && len(cs.Availability) > 0 {
+			want = cs.Availability[0]
+		}
+	}
+	if want.Window != "24h" || want.FirstByte == nil || len(want.Pops) == 0 {
+		t.Fatalf("the preview check holds no first-byte or colo rollup: %+v", want)
+	}
+	out, e := at(now, "preview", "--lang", preview.DefaultLanguage, "show", "checks", "r-app-web", "--json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var shown struct {
+		Rows []struct {
+			Availability []model.Availability `json:"availability"`
+		} `json:"rows"`
+	}
+	if e := json.Unmarshal([]byte(out), &shown); e != nil || len(shown.Rows) != 1 || len(shown.Rows[0].Availability) != 3 {
+		t.Fatalf("show's JSON lost availability: %v\n%s", e, out)
+	}
+	day := shown.Rows[0].Availability[0]
+	if day.FirstByte == nil || day.FirstByte.Cached == nil && day.FirstByte.Origin == nil || len(day.Pops) == 0 || len(day.Cache) == 0 {
+		t.Fatalf("show's JSON lost the new rollup fields: %+v", day)
+	}
+	normal := func(v any) any {
+		b, _ := json.Marshal(v)
+		var out any
+		_ = json.Unmarshal(b, &out)
+		return out
+	}
+	if !reflect.DeepEqual(normal(day), normal(want)) {
+		t.Fatalf("show's JSON day differs from the snapshot:\n%+v\n%+v", day, want)
+	}
+	// A check that reports no edge labels still carries its availability,
+	// with no first-byte or colo maps invented for it.
+	var plain model.Availability
+	for _, cs := range snap.Checks {
+		if cs.ID == "w-transit-443" && len(cs.Availability) > 0 {
+			plain = cs.Availability[0]
+		}
+	}
+	if plain.FirstByte != nil || len(plain.Pops) != 0 {
+		t.Fatalf("the TLS check unexpectedly carries edge labels: %+v", plain)
+	}
+	out, e = at(now, "preview", "--lang", preview.DefaultLanguage, "show", "checks", "w-transit-443", "--json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	shown.Rows = nil
+	if e := json.Unmarshal([]byte(out), &shown); e != nil || len(shown.Rows) != 1 || len(shown.Rows[0].Availability) != 3 {
+		t.Fatalf("show's JSON lost the plain check's availability: %v\n%s", e, out)
+	}
+	if got := shown.Rows[0].Availability[0]; got.FirstByte != nil || len(got.Pops) != 0 {
+		t.Fatalf("show invented edge labels for a plain check: %+v", got)
+	}
+}
+
+// A server card's text and JSON say whether ANSWERED FROM lists day shares
+// from rollups or the newest response headers; the flag is part of the card.
+func TestServerCardTextAndJSONSayColoSource(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		card view.Card
+		want string
+	}{
+		{"rollups", view.Card{Pops: []string{"LAX 92%"}, PopsFromRollups: true}, "(24h shares)"},
+		{"headers", view.Card{Pops: []string{"LAX"}}, "(response headers)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			txt := &text{w: &out}
+			txt.card(tc.card, time.Now())
+			if !strings.Contains(out.String(), "ANSWERED FROM") || !strings.Contains(out.String(), tc.card.Pops[0]+" "+tc.want) {
+				t.Fatalf("card text does not name the source %q:\n%s", tc.want, out.String())
+			}
+			raw, err := json.Marshal(tc.card)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := got["pops_from_rollups"]; ok != tc.card.PopsFromRollups {
+				t.Fatalf("pops_from_rollups presence = %v, want %v in %s", ok, tc.card.PopsFromRollups, raw)
+			}
+		})
+	}
+}

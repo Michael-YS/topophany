@@ -177,7 +177,14 @@ func (m *Model) cardSections(f fleet, r Row, c view.Card, hue Color, most int) [
 	}
 	if len(c.Pops) > 0 {
 		open("ANSWERED FROM", 0)
-		add(cardRow{left: []span{{strings.Join(c.Pops, " · "), fg(Mix(hue, cText, .25))}}, right: []span{{"response headers", fg(cFaint)}}})
+		// Shares come from the collector's day-long rollups; bare codes are
+		// the freshest response headers when no rollups are kept yet. The
+		// card's flag says which, so neither claims to be the other.
+		note := "reported colos"
+		if c.PopsFromRollups {
+			note = "24h shares"
+		}
+		add(cardRow{left: []span{{strings.Join(c.Pops, " · "), fg(Mix(hue, cText, .25))}}, right: []span{{note, fg(cFaint)}}})
 		done()
 	}
 

@@ -15,6 +15,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
 // Bucket widths, and how long buckets stay five minutes or an hour wide
@@ -81,12 +83,17 @@ const defaultStale = 3 * 60 * 1000
 
 // A bucket sums a series over [start, start+width), in Unix milliseconds;
 // start is a multiple of width. ms is the time each class stood, n the
-// samples taken by outcome, lat what the passing ones took.
+// samples taken by outcome, lat what the passing ones took, ttfb what their
+// first byte took by cache class, pops the colos every sample reported and
+// cache the cache status of every sample.
 type bucket struct {
 	start, width int64
 	ms           [classes]int64
 	n            [len(outcomes)]int64
 	lat          histogram
+	ttfb         [ttfbClasses]histogram
+	pops         map[string]int64 // named colos and other; nil until reported
+	cache        map[string]int64 // closed cache words and other
 	unreconciled int64
 }
 
@@ -101,10 +108,61 @@ func (b *bucket) merge(o bucket) {
 		b.n[i] += o.n[i]
 	}
 	b.lat.merge(o.lat)
+	for i := range b.ttfb {
+		b.ttfb[i].merge(o.ttfb[i])
+	}
+	b.mergePops(o.pops)
+	for k, n := range o.cache {
+		if b.cache == nil {
+			b.cache = map[string]int64{}
+		}
+		b.cache[k] += n
+	}
 }
 
-// size bounds a bucket's encoded size, in bytes.
-func (b *bucket) size() int64 { return 192 + 12*int64(len(b.lat.bins)) }
+// What a bucket costs besides its counts, in bytes, chosen so the sum
+// provably covers the widest JSON each field can write. A bin is
+// ",<bin>,<count>" with both at most 19 decimal digits (23 bytes); a
+// histogram list adds a three-number header and its key. A map entry is
+// quotes, a key of at most 23 bytes (the longest cache word), a colon, a
+// count of at most 19 digits and a comma (46 bytes); its envelope may hold
+// both maps. The base covers start, width, the four class times, the five
+// outcome counts and the unreconciled count with 19-digit values.
+const (
+	bucketBase        = 320
+	histogramOverhead = 96
+	histogramBin      = 24
+	firstByteEnvelope = 32
+	mapOverhead       = 32
+	mapEntry          = 48
+)
+
+// size bounds a bucket's encoded size, in bytes. Latency and first-byte
+// bins cost the same; a map pays for each key and its count besides its
+// envelope. It must never undercount what persistence writes, however
+// large an int64 count grows.
+func (b *bucket) size() int64 {
+	n := int64(bucketBase)
+	if b.lat.n > 0 {
+		n += histogramOverhead + histogramBin*int64(len(b.lat.bins))
+	}
+	anyFirstByte := false
+	for _, h := range b.ttfb {
+		if h.n > 0 {
+			anyFirstByte = true
+			n += histogramOverhead + histogramBin*int64(len(h.bins))
+		}
+	}
+	if anyFirstByte {
+		n += firstByteEnvelope
+	}
+	if b.pops != nil || b.cache != nil {
+		n += mapOverhead
+	}
+	n += int64(len(b.pops)) * mapEntry
+	n += int64(len(b.cache)) * mapEntry
+	return n
+}
 
 // A series is a check's samples under one contract, all taken by owner,
 // the check's observer. first is the earliest moment it holds, updated
@@ -161,14 +219,42 @@ func (r *Store) SetCurrent(current func(key string) bool) {
 	r.current = current
 }
 
+// Extra is what a sample reported besides its outcome and elapsed time:
+// the worker's first-byte timing and the edge's cache and colo labels.
+// FirstByteMS counts only when HasFirstByte says the worker timed it; like
+// the overall latency, first-byte time is kept for passing samples only,
+// because that is what the model's latency describes. Cache and Pop are
+// counted for every sample, passing or not, as labels the response
+// reported; Pop is ignored when empty because there was no edge to report
+// one.
+type Extra struct {
+	FirstByteMS  int64
+	HasFirstByte bool
+	Cache, Pop   string
+}
+
+// ExtraOf reads what a sample reported for its rollup: the worker's
+// first-byte timing, the edge's cache status and the colo it named. Vercel
+// still reports a cache status and a first-byte time, so those are kept;
+// only its colo is dropped, because its reported region is not a physical
+// colo. This is the one place the Vercel exception lives.
+func ExtraOf(v model.Observation) Extra {
+	ms, timed := v.Timings["first_byte_ms"]
+	e := Extra{FirstByteMS: ms, HasFirstByte: timed, Cache: v.Facts["edge_cache"], Pop: v.Facts["edge_pop"]}
+	if v.Facts["edge_provider"] == "vercel" {
+		e.Pop = ""
+	}
+	return e
+}
+
 // Add folds in a sample of the series key, taken by the observer owner:
 // taken at at, saying outcome, taking elapsed milliseconds, current for
-// stale. The newest sample before
+// stale, and reporting extra. The newest sample before
 // it stands until at or until it went stale, whichever came first. A
 // late sample corrects the intervals around it while their boundaries
 // are retained. Outside that window it counts as unreconciled. now, the
 // collector's clock, decides how wide a new bucket is.
-func (r *Store) Add(key, owner string, at time.Time, outcome string, elapsed int64, stale time.Duration, now time.Time) {
+func (r *Store) Add(key, owner string, at time.Time, outcome string, elapsed int64, stale time.Duration, now time.Time, extra Extra) {
 	t, n := at.UnixMilli(), now.UnixMilli()
 	if t <= 0 {
 		return
@@ -205,7 +291,12 @@ func (r *Store) Add(key, owner string, at time.Time, outcome string, elapsed int
 	}
 	if outcome == "ok" {
 		b.lat.add(elapsed)
+		if extra.HasFirstByte {
+			b.ttfb[cacheClass(extra.Cache)].add(extra.FirstByteMS)
+		}
 	}
+	b.countCache(extra.Cache)
+	b.countPop(extra.Pop)
 	r.grow(s, b.size()-before)
 	r.shed()
 }

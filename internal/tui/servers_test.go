@@ -106,13 +106,13 @@ func TestServersUniformGrid(t *testing.T) {
 	// stand, what it is in front of and where it answered from; with
 	// nothing in front of it, who hosts it.
 	for id, want := range map[string][]string{
-		"cf":       {"IN FRONT OF", "www.example.invalid", "→ Oracle", "answered from EWR · FRA · LAX", "RUNS HERE"},
+		"cf":       {"IN FRONT OF", "www.example.invalid", "→ Oracle", "answered from FRA 50% · LAX 33% · EWR 16%", "RUNS HERE"},
 		"vercel":   {"hosted by Vercel", "answered from edge region fra1"},
 		"supabase": {"hosted by Supabase", "no machine of yours to measure"},
 	} {
 		edge := m.tile(f, row(id), 46, false)
 		text := cardText(edge)
-		if len(edge) != tileRows || strings.Contains(text, "CPU") || strings.Contains(text, "%") {
+		if len(edge) != tileRows || strings.Contains(text, "CPU") || strings.Contains(text, "MEM") || strings.Contains(text, "DISK") {
 			t.Fatalf("%s's uniform card draws resources:\n%s", id, text)
 		}
 		for _, w := range want {
@@ -246,5 +246,42 @@ func TestOpenServerCardScrolls(t *testing.T) {
 	m.Key("esc")
 	if m.Detail {
 		t.Fatal("Esc does not close the open card")
+	}
+}
+
+// The full card says whether ANSWERED FROM lists day shares or the newest
+// reported colos, so neither source claims to be the other.
+func TestServerCardAnsweredFromSaysItsSource(t *testing.T) {
+	m := previewModel(t)
+	m.setTab(tabServers)
+	f := m.fleet()
+	row := Row{}
+	for _, r := range m.Rows() {
+		if r.ID == "cf" {
+			row = r
+		}
+	}
+	if row.ID == "" {
+		t.Fatal("no card for cf")
+	}
+	card := f.Card("cf")
+	if !card.PopsFromRollups {
+		t.Fatalf("preview shares are not marked from rollups: %v", card.Pops)
+	}
+	sections := m.cardSections(f, row, card, cAccent, 100)
+	text := ""
+	for _, section := range sections {
+		text += cardText(section)
+	}
+	if !strings.Contains(text, "24h shares") || strings.Contains(text, "reported colos") {
+		t.Fatalf("rollup shares are labelled %q", text)
+	}
+	card.Pops, card.PopsFromRollups = []string{"EWR"}, false
+	text = ""
+	for _, section := range m.cardSections(f, row, card, cAccent, 100) {
+		text += cardText(section)
+	}
+	if !strings.Contains(text, "reported colos") || strings.Contains(text, "24h shares") {
+		t.Fatalf("fresh colos are labelled %q", text)
 	}
 }

@@ -39,18 +39,18 @@ func TestLateSampleWorkLimitPreservesCountsAcrossRestart(t *testing.T) {
 	n := 10 * maxBoundaryShift
 	now := t0.Add(time.Minute)
 	for i := 0; i < n; i++ {
-		r.Add("c", "o", t0.Add(time.Duration(2*i)*time.Millisecond), "ok", 1, time.Minute, now)
+		r.Add("c", "o", t0.Add(time.Duration(2*i)*time.Millisecond), "ok", 1, time.Minute, now, Extra{})
 	}
 	for restart := 0; restart < 2; restart++ {
 		for i := 99; i >= 0; i-- {
-			r.Add("c", "o", t0.Add(time.Duration(2*i+1)*time.Millisecond), "fail", 1, time.Minute, now)
+			r.Add("c", "o", t0.Add(time.Duration(2*i+1)*time.Millisecond), "fail", 1, time.Minute, now, Extra{})
 		}
 		if len(r.series["c"].recent) != n+restart {
 			t.Fatal("over-budget samples changed correction boundaries")
 		}
 		// A nearby late sample still corrects normally after exhaustion.
 		at := t0.Add(time.Duration(2*n-3+restart) * time.Millisecond)
-		r.Add("c", "o", at, "ok", 1, time.Minute, now)
+		r.Add("c", "o", at, "ok", 1, time.Minute, now, Extra{})
 		got, _ := r.Window("c", t0, now, now)
 		if got.Unreconciled != int64(100*(restart+1)) || got.Samples != int64(n+101*(restart+1)) {
 			t.Fatal(got)
@@ -97,7 +97,7 @@ func FuzzLateSampleOrder(f *testing.F) {
 		now := t0.Add(time.Hour)
 		indices := make([]int, len(data))
 		add := func(r *Store, i int) {
-			r.Add("c", "o", t0.Add(time.Duration(i)*time.Minute), outcomes[int(data[i])%len(outcomes)], int64(data[i]), time.Duration(1+int(data[i])%120)*time.Second, now)
+			r.Add("c", "o", t0.Add(time.Duration(i)*time.Minute), outcomes[int(data[i])%len(outcomes)], int64(data[i]), time.Duration(1+int(data[i])%120)*time.Second, now, Extra{})
 		}
 		for i := range data {
 			indices[i] = i
@@ -128,7 +128,10 @@ func TestLateSamplesMatchChronologicalTotalsAcrossRestart(t *testing.T) {
 		points[i] = sample{t0.Add(time.Duration(i*37) * time.Second), []string{"ok", "fail", "policy", "error", "unknown"}[i%5], time.Duration(10+i%4*30) * time.Second}
 	}
 	now := points[len(points)-1].at.Add(time.Minute)
-	add := func(r *Store, i int) { p := points[i]; r.Add("c", "o", p.at, p.outcome, int64(i), p.stale, now) }
+	add := func(r *Store, i int) {
+		p := points[i]
+		r.Add("c", "o", p.at, p.outcome, int64(i), p.stale, now, Extra{})
+	}
 	ordered := New(MaxLimit)
 	for i := range points {
 		add(ordered, i)
@@ -165,10 +168,10 @@ func TestLateSamplesCorrectCompactedBuckets(t *testing.T) {
 	r := New(MaxLimit)
 	r.SetReorderWindow(30 * 24 * time.Hour)
 	now := t0.Add(10 * 24 * time.Hour)
-	r.Add("c", "o", t0, "ok", 1, 10*time.Minute, now)
-	r.Add("c", "o", t0.Add(10*time.Minute), "ok", 1, time.Minute, now)
+	r.Add("c", "o", t0, "ok", 1, 10*time.Minute, now, Extra{})
+	r.Add("c", "o", t0.Add(10*time.Minute), "ok", 1, time.Minute, now, Extra{})
 	r.Settle(now)
-	r.Add("c", "o", t0.Add(2*time.Minute), "fail", 1, 3*time.Minute, now)
+	r.Add("c", "o", t0.Add(2*time.Minute), "fail", 1, 3*time.Minute, now, Extra{})
 	got, _ := r.Window("c", t0, t0.Add(time.Hour), now)
 	if got.Up != 180 || got.Down != 180 || got.Unmeasured != 3240 || got.Unreconciled != 0 {
 		t.Fatal(got)
@@ -179,8 +182,8 @@ func TestLegacyAndExpiredCorrectionBoundariesAreExplicit(t *testing.T) {
 	for _, legacy := range []bool{false, true} {
 		r := New(MaxLimit)
 		r.SetReorderWindow(time.Minute)
-		r.Add("c", "o", t0, "ok", 1, 10*time.Minute, t0)
-		r.Add("c", "o", t0.Add(5*time.Minute), "ok", 1, time.Minute, t0.Add(5*time.Minute))
+		r.Add("c", "o", t0, "ok", 1, 10*time.Minute, t0, Extra{})
+		r.Add("c", "o", t0.Add(5*time.Minute), "ok", 1, time.Minute, t0.Add(5*time.Minute), Extra{})
 		if legacy {
 			raw, _ := json.Marshal(r)
 			var d disk
@@ -197,7 +200,7 @@ func TestLegacyAndExpiredCorrectionBoundariesAreExplicit(t *testing.T) {
 				t.Fatal(e)
 			}
 		}
-		r.Add("c", "o", t0.Add(2*time.Minute), "fail", 1, time.Minute, t0.Add(6*time.Minute))
+		r.Add("c", "o", t0.Add(2*time.Minute), "fail", 1, time.Minute, t0.Add(6*time.Minute), Extra{})
 		got, _ := r.Window("c", t0, t0.Add(6*time.Minute), t0.Add(6*time.Minute))
 		if got.Unreconciled != 1 || got.Samples != 3 {
 			t.Fatal(legacy, got)
@@ -209,7 +212,7 @@ func TestBoundaryBudgetIsReconstructed(t *testing.T) {
 	r := New(MinLimit)
 	for i := 0; i < 5000; i++ {
 		at := t0.Add(time.Duration(i) * time.Second)
-		r.Add("c", "o", at, "ok", 1, time.Minute, at)
+		r.Add("c", "o", at, "ok", 1, time.Minute, at, Extra{})
 	}
 	raw, e := json.Marshal(r)
 	if e != nil || int64(len(raw)) > r.Size() || r.Size() > MinLimit {
@@ -232,9 +235,9 @@ func TestBoundaryBudgetIsReconstructed(t *testing.T) {
 
 func TestPartialWindowsAndAmbiguousTimesRemainIncomplete(t *testing.T) {
 	r := New(MaxLimit)
-	r.Add("c", "o", t0, "ok", 1, 10*time.Minute, t0)
-	r.Add("c", "o", t0.Add(5*time.Minute), "ok", 1, time.Minute, t0.Add(5*time.Minute))
-	r.Add("c", "o", t0, "fail", 1, time.Minute, t0.Add(5*time.Minute))
+	r.Add("c", "o", t0, "ok", 1, 10*time.Minute, t0, Extra{})
+	r.Add("c", "o", t0.Add(5*time.Minute), "ok", 1, time.Minute, t0.Add(5*time.Minute), Extra{})
+	r.Add("c", "o", t0, "fail", 1, time.Minute, t0.Add(5*time.Minute), Extra{})
 	got, _ := r.Window("c", t0.Add(4*time.Minute), t0.Add(5*time.Minute), t0.Add(5*time.Minute))
 	if got.Unreconciled != 1 || got.Samples != 0 {
 		t.Fatal("partial bucket hid uncertain time", got)

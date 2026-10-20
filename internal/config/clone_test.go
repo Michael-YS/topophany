@@ -22,6 +22,7 @@ func TestConfigCloneDetachesEveryMutableField(t *testing.T) {
 	x.HTTP.Headers = map[string]string{"Response": "yes"}
 	x.HTTP.RequestHeaders = map[string]string{"X-Key": "private"}
 	x.HTTP.ExpectedExit = []string{"192.0.2.1"}
+	x.HTTP.ExpectedPops = []string{"HKG", "NRT"}
 	x.HTTP.ExitFormat = "trace"
 	x.HTTP.ExpectedTrace = &model.TraceExpectations{Warp: "on", Gateway: "off", Colos: []string{"HKG", "NRT"}}
 	x.DNS.ExpectedIPs = []string{"192.0.2.2"}

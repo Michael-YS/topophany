@@ -2,6 +2,7 @@ package rollup
 
 import (
 	"errors"
+	"maps"
 	"math"
 	"sort"
 	"time"
@@ -14,6 +15,9 @@ type tally struct {
 	ms           [classes]float64
 	n            [len(outcomes)]int64
 	lat          histogram
+	ttfb         [ttfbClasses]histogram
+	pops         map[string]int64
+	cache        map[string]int64
 	unreconciled int64
 }
 
@@ -23,6 +27,25 @@ func (a *tally) count(b bucket) {
 		a.n[i] += b.n[i]
 	}
 	a.lat.merge(b.lat)
+	for i := range a.ttfb {
+		a.ttfb[i].merge(b.ttfb[i])
+	}
+	if len(b.pops) > 0 {
+		if a.pops == nil {
+			a.pops = map[string]int64{}
+		}
+		for k, n := range b.pops {
+			a.pops[k] += n
+		}
+	}
+	if len(b.cache) > 0 {
+		if a.cache == nil {
+			a.cache = map[string]int64{}
+		}
+		for k, n := range b.cache {
+			a.cache[k] += n
+		}
+	}
 }
 
 // open adds the time the open sample o has stood within [from, to).
@@ -67,9 +90,35 @@ func (a *tally) rollup(start, span int64) model.Rollup {
 		}
 	}
 	if a.lat.n > 0 {
-		out.Latency = &model.Latency{Samples: a.lat.n, P50: a.lat.quantile(.5), P95: a.lat.quantile(.95), Max: a.lat.max}
+		out.Latency = latencyOf(a.lat)
+	}
+	// First byte is served by cache class. Unclassified samples are kept in
+	// the store but not reported: the edge did not say which side answered.
+	if a.ttfb[cached].n > 0 || a.ttfb[origin].n > 0 {
+		fb := &model.FirstByteLatency{}
+		if a.ttfb[cached].n > 0 {
+			fb.Cached = latencyOf(a.ttfb[cached])
+		}
+		if a.ttfb[origin].n > 0 {
+			fb.Origin = latencyOf(a.ttfb[origin])
+		}
+		out.FirstByte = fb
+	}
+	if len(a.pops) > 0 {
+		// Cap once, on the whole span: a code small in every bucket can be
+		// large over a day, so capping per bucket would lose it.
+		capPops(a.pops)
+		out.Pops = maps.Clone(a.pops)
+	}
+	if len(a.cache) > 0 {
+		out.Cache = maps.Clone(a.cache)
 	}
 	return out
+}
+
+// latencyOf is what passing samples took, from a histogram.
+func latencyOf(h histogram) *model.Latency {
+	return &model.Latency{Samples: h.n, P50: h.quantile(.5), P95: h.quantile(.95), Max: h.max}
 }
 
 // Window is the series key over [from, to), as read at now, and the

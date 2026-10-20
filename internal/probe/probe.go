@@ -449,6 +449,17 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	o.Outcome = "ok"
 	o.Stage = "http_assert"
 	o.Detail = "HTTP assertions passed; result applies only to this request"
+	// Policy order: the ordinary assertions and expected_exit decide first,
+	// then expected_pops, then expected_trace. A colo the response did not
+	// report is no violation: the request may be direct, or the colo may
+	// have been withheld from a secret request, and the stored fact is what
+	// decides, never the raw header. Vercel's reported region is not a
+	// physical colo, so it never satisfies or violates the list.
+	if popOutside(o.Facts, x.HTTP.ExpectedPops) {
+		o.Outcome, o.Stage, o.Code = "policy", "edge_assert", "pop_mismatch"
+		o.Detail = "request succeeded but the edge answered from a colo outside the declared list"
+		return nil
+	}
 	if t := x.HTTP.ExpectedTrace; t != nil {
 		// A body TraceFacts did not recognize is not a trace at all. Every
 		// declared field would read as unreported, which is true but misleading;
@@ -513,6 +524,16 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 		}
 	}
 	return nil
+}
+
+// popOutside reports whether a passing response named a colo outside the
+// declared list. An empty list asserts nothing, an absent colo (no edge, or
+// one withheld from a secret request) is no violation, and a Vercel region
+// is not a physical colo, so its report never decides this policy. The
+// decision reads the stored facts, never a header, so a secret request
+// cannot have its withheld colo compared.
+func popOutside(facts map[string]string, declared []string) bool {
+	return len(declared) > 0 && facts["edge_pop"] != "" && facts["edge_provider"] != "vercel" && !slices.Contains(declared, facts["edge_pop"])
 }
 
 // withheld says that what a peer answered is kept only as closed words,

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -677,5 +678,55 @@ func TestEditorSavePreservesAddressReferences(t *testing.T) {
 	c, e := config.Load(path)
 	if e != nil || c.Endpoints[0].Address != "https://${entry}/" || c.Addresses["entry"] != "192.0.2.10" {
 		t.Fatal(e, c.Endpoints[0])
+	}
+}
+
+// HTTP checks can declare the colos they expect; the editor validates the
+// shape and duplicate rule, keeps an empty list out of the topology, and
+// round-trips a set list.
+func TestEditorExpectedPopsRoundTrip(t *testing.T) {
+	m, _ := editorModel(t)
+	id := m.Edit.Config.Checks[0].ID
+	m.openForm("check", id)
+	f := m.modal.form
+	if f.get("Expected pops").kind != fList {
+		t.Fatal("expected pops are not a list")
+	}
+	f.get("Expected pops").value = "HKG, NRT"
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("valid expected pops not applied", m.modal.form.err)
+	}
+	x := m.Edit.Config.Checks[0]
+	if !slices.Equal(x.HTTP.ExpectedPops, []string{"HKG", "NRT"}) {
+		t.Fatalf("expected pops not saved: %+v", x.HTTP.ExpectedPops)
+	}
+	m.openForm("check", id)
+	f = m.modal.form
+	if got := f.val("Expected pops"); got != "HKG, NRT" {
+		t.Fatalf("expected pops did not round-trip: %q", got)
+	}
+	// Empty is absent, not an empty list in the contract.
+	f.get("Expected pops").value = ""
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("cleared expected pops not applied", m.modal.form.err)
+	}
+	if x := m.Edit.Config.Checks[0]; x.HTTP.ExpectedPops != nil {
+		t.Fatalf("empty list was kept: %#v", x.HTTP.ExpectedPops)
+	}
+	// A malformed or duplicate code is refused by the same rule the config
+	// validator applies, and the draft is left alone.
+	for _, bad := range []string{"hkg", "HK", "HKG, HKG"} {
+		m.openForm("check", id)
+		f = m.modal.form
+		f.get("Expected pops").value = bad
+		m.Key("ctrl-s")
+		if m.modal == nil || !strings.Contains(m.modal.form.err, "expected pops must be") {
+			t.Fatalf("%q was accepted or refused unclearly: %v", bad, m.modal.form.err)
+		}
+		if x := m.Edit.Config.Checks[0]; x.HTTP.ExpectedPops != nil {
+			t.Fatalf("refused %q changed the draft: %#v", bad, x.HTTP.ExpectedPops)
+		}
 	}
 }

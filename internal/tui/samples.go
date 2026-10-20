@@ -100,9 +100,15 @@ func (m *Model) sampleLines(r Row, w int) []vline {
 		return append(out, vline{})
 	}
 	x := model.Check{ID: r.ID}
+	var day *model.Rollup
 	for _, c := range m.Snapshot.Topology.Checks {
 		if c.ID == r.ID {
 			x = c
+		}
+	}
+	for i := range m.Snapshot.Checks {
+		if c := &m.Snapshot.Checks[i]; c.ID == r.ID {
+			day = view.RollupWindow(c.Availability, "24h")
 		}
 	}
 	n := w
@@ -134,7 +140,23 @@ func (m *Model) sampleLines(r Row, w int) []vline {
 	if s.Latency.Samples > 0 {
 		out = append(out, vline{{view.Bars(s.Slots), fg(Mix(cAccent, cMuted, .5))}})
 	}
-	return append(out, vline{{s.Latency.String(), fg(cText)}}, vline{{view.StripLegend, fg(cMuted).italic()}}, vline{})
+	out = append(out, vline{{s.Latency.String(), fg(cText)}})
+	// The last day's first byte, split by what the edge said about its
+	// cache, and the colos it answered from, at most four shares. Both are
+	// wrapped to the panel so a narrow terminal keeps them readable.
+	if day != nil {
+		if line := view.FirstByteLine(day.FirstByte); line != "" {
+			for _, l := range wrapParts("first byte "+line, w) {
+				out = append(out, vline{{l, fg(cText)}})
+			}
+		}
+		if line := view.PopsLine(day.Pops, 4); line != "" {
+			for _, l := range wrapParts(line+" · 24h", w) {
+				out = append(out, vline{{l, fg(Mix(cAccent, cMuted, .35))}})
+			}
+		}
+	}
+	return append(out, vline{{view.StripLegend, fg(cMuted).italic()}}, vline{})
 }
 
 // fetchedSamples is what a read of a check's samples returned.

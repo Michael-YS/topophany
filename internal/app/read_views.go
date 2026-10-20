@@ -170,13 +170,15 @@ func (a *App) status(v view.View, h header, asJSON bool) error {
 }
 
 // shown is a row as show prints it: a server's carries its card, and a
-// check shown on its own its recent samples, as its evidence panel has
-// them, or why they could not be read.
+// check shown on its own its recent samples, how it fared from the
+// collector's rollups, as its evidence panel has them, or why the samples
+// could not be read.
 type shown struct {
 	view.Row
-	Card         *view.Card  `json:"card,omitempty"`
-	Samples      *view.Strip `json:"samples,omitempty"`
-	SamplesError string      `json:"samples_error,omitempty"`
+	Card         *view.Card           `json:"card,omitempty"`
+	Samples      *view.Strip          `json:"samples,omitempty"`
+	SamplesError string               `json:"samples_error,omitempty"`
+	Availability []model.Availability `json:"availability,omitempty"`
 }
 
 func withCards(v view.View, tab int, rows []view.Row) []shown {
@@ -239,6 +241,14 @@ func (a *App) showEntry(ctx context.Context, r reader, v view.View, h header, ta
 			continue
 		}
 		x, _ := config.Check(v.Snapshot.Topology, e.ID)
+		// The check's rollup windows carry the first-byte, colo and cache
+		// fields; the row's details already print them, and --json hands
+		// them over in the same shape the API uses.
+		for _, cs := range v.Snapshot.Checks {
+			if cs.ID == e.ID {
+				e.Availability = cs.Availability
+			}
+		}
 		binding := client.SnapshotHistory(v.Snapshot, h.Server, e.ID)
 		samples, server, err := r.snapshotHistory(ctx, binding, view.StripSamples)
 		if err == nil {

@@ -343,6 +343,9 @@ func (rb *rowBuilder) observersRows(attentionOnly bool) []Row {
 		if line := rb.observerTrace(e.ID); line != "" {
 			r.Details = append(r.Details, "", line)
 		}
+		if line := rb.observerPops(e.ID); line != "" {
+			r.Details = append(r.Details, "", line)
+		}
 		for _, d := range e.Delivery {
 			r.Details = append(r.Details, "", "Worker-reported delivery: "+d.Collector, "Reported: "+Age(v.Now, d.ReportedAt), fmt.Sprintf("Pending: %d records / %d bytes; worker quarantine: %d bytes", d.PendingRecords, d.PendingBytes, d.QuarantineBytes), "Last sample ACK: "+Age(v.Now, d.LastAck), "Last contact: "+Age(v.Now, d.LastContact), "Retry: "+Stamp(v.Now, d.RetryAt), "Reason: "+d.Code)
 			if (d.Code != "" || d.QuarantineBytes > 0) && !v.Cached && e.Health == "up" {
@@ -403,6 +406,32 @@ func (rb *rowBuilder) observerTrace(observer string) string {
 		return ""
 	}
 	return "Trace: " + strings.Join(words, " · ") + " (reported, not verified)"
+}
+
+// observerPops is the colo share of every check the observer runs over the
+// last day, as one reported line. It is omitted when no rollup holds a named
+// colo, so a collector without rollups shows no line rather than an empty
+// one.
+func (rb *rowBuilder) observerPops(observer string) string {
+	// The union is bounded by the colo alphabet (three uppercase letters),
+	// and PopsLine shows four. No per-check cap: a code rare in each check
+	// can still be the largest across them.
+	pops := map[string]int64{}
+	for i := range rb.view.Snapshot.Checks {
+		x := &rb.view.Snapshot.Checks[i]
+		if x.Observer != observer {
+			continue
+		}
+		if r := RollupWindow(x.Availability, "24h"); r != nil {
+			for code, n := range r.Pops {
+				pops[code] += n
+			}
+		}
+	}
+	if line := PopsLine(pops, 4); line != "" {
+		return "Edge colos seen (24h): " + line
+	}
+	return ""
 }
 
 // IncidentTitle names an incident by who saw it and what failed, e.g.

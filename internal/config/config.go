@@ -396,6 +396,16 @@ func validateResolved(c model.Config) error {
 					}
 				}
 			}
+			if len(x.HTTP.ExpectedPops) > 16 {
+				return errors.New("at most 16 expected pops")
+			}
+			seenPops := make(map[string]bool, len(x.HTTP.ExpectedPops))
+			for _, pop := range x.HTTP.ExpectedPops {
+				if !traceColo(pop) || seenPops[pop] {
+					return errors.New("expected_pops must be three uppercase letters, without duplicates")
+				}
+				seenPops[pop] = true
+			}
 			if x.HTTP.ExitFormat != "" && x.HTTP.ExitFormat != "plain" && x.HTTP.ExitFormat != "trace" && x.HTTP.ExitFormat != "json" {
 				return errors.New("invalid exit_format")
 			}
@@ -499,20 +509,10 @@ func validateResolved(c model.Config) error {
 	return nil
 }
 
-// traceColo reports whether s is exactly three ASCII uppercase letters, the
-// shape Cloudflare codes a colo in and the only shape a declared colo may
-// take. Case is part of the shape, so a lowercase code is not normalized.
-func traceColo(s string) bool {
-	if len(s) != 3 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i] < 'A' || s[i] > 'Z' {
-			return false
-		}
-	}
-	return true
-}
+// traceColo reports whether s is the shape a declared colo may take in
+// expected_trace and expected_pops alike. Case is part of the shape, so a
+// lowercase code is not normalized.
+func traceColo(s string) bool { return model.IsColo(s) }
 func acyclic(g map[string][]string) error {
 	remaining := map[string]int{}
 	parents := map[string][]string{}

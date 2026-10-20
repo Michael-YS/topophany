@@ -159,7 +159,11 @@ func (t *text) card(c view.Card, now time.Time) {
 	}
 	if len(c.Pops) > 0 {
 		section("ANSWERED FROM", len(c.Pops))
-		t.line(clean(strings.Join(c.Pops, " · ")) + " (response headers)")
+		source := " (response headers)"
+		if c.PopsFromRollups {
+			source = " (24h shares)"
+		}
+		t.line(clean(strings.Join(c.Pops, " · ")) + source)
 	}
 	if len(c.Addresses) > 0 {
 		section("ADDRESSES", len(c.Addresses))

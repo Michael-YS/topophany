@@ -872,6 +872,7 @@ func (m *Model) openForm(kind, id string) {
 		f.add("Trace warp", trace.Warp, fChoice, "trace: expected WARP state", "", "off", "on", "plus").when = kindIs("http")
 		f.add("Trace gateway", trace.Gateway, fChoice, "trace: expected Gateway state", "", "on", "off").when = kindIs("http")
 		f.add("Trace colos", strings.Join(trace.Colos, ", "), fList, "trace: expected colos, e.g. HKG, NRT").when = kindIs("http")
+		f.add("Expected pops", strings.Join(x.HTTP.ExpectedPops, ", "), fList, "http: colos the edge may name, e.g. HKG, NRT").when = kindIs("http")
 		envNames := make([]string, 0, len(x.HTTP.RequestHeaderEnvs))
 		for name := range x.HTTP.RequestHeaderEnvs {
 			envNames = append(envNames, name)
@@ -914,6 +915,22 @@ func (m *Model) openForm(kind, id string) {
 				x.HTTP.ExpectedTrace = &model.TraceExpectations{Warp: warp, Gateway: gateway, Colos: colos}
 			} else {
 				x.HTTP.ExpectedTrace = nil
+			}
+			pops := f.list("Expected pops")
+			if len(pops) > 16 {
+				return errors.New("at most 16 expected pops")
+			}
+			seenPops := map[string]bool{}
+			for _, pop := range pops {
+				if !model.IsColo(pop) || seenPops[pop] {
+					return errors.New("expected pops must be three uppercase letters, without duplicates")
+				}
+				seenPops[pop] = true
+			}
+			if len(pops) == 0 {
+				x.HTTP.ExpectedPops = nil
+			} else {
+				x.HTTP.ExpectedPops = pops
 			}
 			// A map value is a variable name, never a value: the topology
 			// stays free of the secret it names.

@@ -87,7 +87,9 @@ func AvailabilityLine(a model.Availability) string {
 }
 
 // AvailabilityDetails are the lines a check's evidence shows of how it
-// fared: one per window, and how to read them.
+// fared: one per window, and how to read them. First-byte classes and colo
+// shares live in the samples panel (samples.go) and in --json, not here, so
+// the same panel does not print them twice.
 func AvailabilityDetails(list []model.Availability) []string {
 	if len(list) == 0 {
 		return nil

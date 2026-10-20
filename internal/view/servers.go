@@ -17,6 +17,10 @@ import (
 // and platforms get cards too, saying what runs there, what they stand in
 // front of and where they answered.
 
+// cardPops bounds the colos a card lists; the rest stay in the JSON's
+// rollup counts, not in the display.
+const cardPops = 6
+
 // ServerNode reports whether a node gets a card of its own: anything but an
 // external party or a container, which appears on its host's card.
 func ServerNode(n model.Node, known map[string]bool) bool {
@@ -39,12 +43,16 @@ type Card struct {
 	Services  []CardService  `json:"services"`        // what runs here, trouble first
 	Fronts    []CardEndpoint `json:"in_front_of"`     // the addresses it answers first for
 	Regions   []string       `json:"reported_edge_regions,omitempty"`
-	Pops      []string       `json:"answered_from"`  // where it said it answered, by response headers
-	Addresses []CardEndpoint `json:"addresses"`      // how it is reached
-	Hosts     []CardHost     `json:"hosts"`          // the containers and VMs on it
-	Observers []CardObserver `json:"observers"`      // who observes from here
-	Links     []CardLink     `json:"links"`          // its declared connections
-	Memo      string         `json:"memo,omitempty"` // the operator's notes
+	Pops      []string       `json:"answered_from"` // where it said it answered: "LAX 92%", or a bare colo from fresh facts
+	// PopsFromRollups says whether Pops are day shares from the collector's
+	// rollups or the freshest reported colo codes. The two must not be read
+	// as each other.
+	PopsFromRollups bool           `json:"pops_from_rollups,omitempty"`
+	Addresses       []CardEndpoint `json:"addresses"`      // how it is reached
+	Hosts           []CardHost     `json:"hosts"`          // the containers and VMs on it
+	Observers       []CardObserver `json:"observers"`      // who observes from here
+	Links           []CardLink     `json:"links"`          // its declared connections
+	Memo            string         `json:"memo,omitempty"` // the operator's notes
 }
 
 // CardService is a service that runs on a server. Via are the edges and
@@ -112,13 +120,14 @@ type Fleet struct {
 	obsState   map[string]model.ObserverState
 	links      map[string][]model.Link // by either end
 	regions    map[string][]string
-	pops       map[string][]string // where each edge answered
+	pops       map[string][]string         // where each edge answered, freshly
+	popCounts  map[string]map[string]int64 // 24h colo counts by edge
 }
 
 func (v View) Fleet() *Fleet {
 	s := v.Snapshot
 	t := s.Topology
-	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}}
+	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}, popCounts: map[string]map[string]int64{}}
 	for _, n := range t.Nodes {
 		f.Nodes[n.ID] = n
 		f.Names[n.ID] = n.Name
@@ -167,13 +176,27 @@ func (v View) Fleet() *Fleet {
 		if !ok {
 			continue
 		}
-		// Where an edge said it answered from, freshly.
-		if cs.Freshness != "fresh" || cs.Last == nil || v.Cached {
-			continue
-		}
 		at := ep.Node
 		if len(ep.Via) > 0 {
 			at = ep.Via[0]
+		}
+		// The day's shares come from the check's rollups, fresh or not:
+		// they describe what was seen, and a stale view still holds them.
+		// The union is bounded by the colo alphabet, and the card displays
+		// cardPops; no per-check cap, which would lose a code rare in each
+		// check but large across them.
+		if r := RollupWindow(cs.Availability, "24h"); r != nil {
+			for code, n := range r.Pops {
+				if f.popCounts[at] == nil {
+					f.popCounts[at] = map[string]int64{}
+				}
+				f.popCounts[at][code] += n
+			}
+		}
+		// Where an edge said it answered from, freshly, is the fallback for
+		// a collector that keeps no rollups yet.
+		if cs.Freshness != "fresh" || cs.Last == nil || v.Cached {
+			continue
 		}
 		if r := cs.Last.Facts["vercel_edge_region"]; cs.Last.Facts["edge_provider"] == "vercel" && r != "" && !slices.Contains(f.regions[at], r) {
 			f.regions[at] = append(f.regions[at], r)
@@ -264,7 +287,16 @@ func (f *Fleet) Card(id string) Card {
 	for _, ep := range f.fronted[n.ID] {
 		c.Fronts = append(c.Fronts, endpoint(ep))
 	}
-	c.Pops = append(c.Pops, f.pops[n.ID]...)
+	// The day's shares first, at most six, largest first; a collector with
+	// no rollups yet falls back to the freshly reported colos, ordered by
+	// code as before. The flag keeps the two sources apart for text, JSON
+	// and the TUI.
+	if shares := PopShares(f.popCounts[n.ID], cardPops); len(shares) > 0 {
+		c.Pops = append(c.Pops, shares...)
+		c.PopsFromRollups = true
+	} else {
+		c.Pops = append(c.Pops, f.pops[n.ID]...)
+	}
 	c.Regions = append(c.Regions, f.regions[n.ID]...)
 
 	// How it is reached, what it hosts and who observes from here.

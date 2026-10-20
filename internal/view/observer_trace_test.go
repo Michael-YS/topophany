@@ -92,3 +92,44 @@ func TestObserverRowShowsNewestFreshTrace(t *testing.T) {
 		}
 	})
 }
+
+// The observer row also aggregates its checks' 24h colo counts after the
+// trace line, at most four shares; without rollups it says nothing, and
+// the trace line is unchanged.
+func TestObserverRowShowsDayColos(t *testing.T) {
+	now := time.Date(2026, 10, 19, 18, 0, 0, 0, time.UTC)
+	c := testkit.Config()
+	c.Checks[0].HTTP.ExitFormat = "trace"
+	o := testkit.Observation(c, c.Checks[0].ID, 1, now.Add(-time.Second), "ok")
+	o.Facts["trace_warp"] = "on"
+	snap := engine.Build(c, "primary", "", []model.Observation{o}, nil, now)
+	for i := range snap.Checks {
+		switch snap.Checks[i].ID {
+		case "home-http":
+			snap.Checks[i].Availability = []model.Availability{{Window: "24h", Rollup: model.Rollup{Pops: map[string]int64{"LAX": 90, "HKG": 10}}}}
+		default:
+			snap.Checks[i].Availability = nil
+		}
+	}
+	details := ""
+	for _, r := range (View{Snapshot: snap, Now: now}).Rows(Observers) {
+		if r.ID == "home" {
+			details = strings.Join(r.Details, "\n")
+		}
+	}
+	if !strings.Contains(details, "Trace: WARP on (reported, not verified)") || !strings.Contains(details, "Edge colos seen (24h): LAX 90% · HKG 10%") {
+		t.Fatalf("observer row lacks trace or colos:\n%s", details)
+	}
+	for i := range snap.Checks {
+		snap.Checks[i].Availability = nil
+	}
+	details = ""
+	for _, r := range (View{Snapshot: snap, Now: now}).Rows(Observers) {
+		if r.ID == "home" {
+			details = strings.Join(r.Details, "\n")
+		}
+	}
+	if strings.Contains(details, "Edge colos seen") {
+		t.Fatalf("an empty rollup produced a colo line:\n%s", details)
+	}
+}

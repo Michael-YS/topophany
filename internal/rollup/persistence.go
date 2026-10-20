@@ -31,12 +31,74 @@ type diskSeries struct {
 }
 
 type diskBucket struct {
-	S int64                `json:"s"`
-	W int64                `json:"w"`
-	T [classes]int64       `json:"t"`
-	N [len(outcomes)]int64 `json:"n"`
-	L []int64              `json:"l,omitempty"`
-	U int64                `json:"u,omitempty"`
+	S  int64                `json:"s"`
+	W  int64                `json:"w"`
+	T  [classes]int64       `json:"t"`
+	N  [len(outcomes)]int64 `json:"n"`
+	L  []int64              `json:"l,omitempty"`  // latency of passing samples
+	Fb [][]int64            `json:"fb,omitempty"` // first byte by cached, origin, unclassified
+	P  map[string]int64     `json:"p,omitempty"`  // colo counts
+	C  map[string]int64     `json:"c,omitempty"`  // cache status counts
+	U  int64                `json:"u,omitempty"`
+}
+
+// encodeHistogram writes a histogram as its count, sum, slowest sample and
+// then bin/count pairs, the one shape both latency and first-byte fields
+// use. An empty histogram is nil so omitempty drops it.
+func encodeHistogram(h histogram) []int64 {
+	if h.n == 0 {
+		return nil
+	}
+	out := make([]int64, 3, 3+2*len(h.bins))
+	out[0], out[1], out[2] = h.n, h.sum, h.max
+	for _, x := range h.bins {
+		out = append(out, int64(x.at), x.n)
+	}
+	return out
+}
+
+// decodeHistogram reads what encodeHistogram wrote, refusing anything the
+// store could not have written. An empty list is a histogram with no
+// samples.
+func decodeHistogram(raw []int64) (histogram, bool) {
+	if len(raw) == 0 {
+		return histogram{}, true
+	}
+	if len(raw) < 5 || len(raw)%2 == 0 || raw[0] <= 0 || raw[1] < 0 || raw[2] < 0 {
+		return histogram{}, false
+	}
+	h := histogram{n: raw[0], sum: raw[1], max: raw[2], bins: make([]bin, 0, (len(raw)-3)/2)}
+	count := int64(0)
+	for i := 3; i < len(raw); i += 2 {
+		at, n := raw[i], raw[i+1]
+		if at < 0 || at > maxBin || n <= 0 || len(h.bins) > 0 && int64(h.bins[len(h.bins)-1].at) >= at {
+			return histogram{}, false
+		}
+		h.bins = append(h.bins, bin{uint8(at), n})
+		count += n
+	}
+	if count != h.n {
+		return histogram{}, false
+	}
+	return h, true
+}
+
+// diskOfBucket is the one projection of a bucket to disk, used by both the
+// buffered and the streaming writers so their fields cannot drift.
+func diskOfBucket(b bucket) diskBucket {
+	db := diskBucket{S: b.start / 1000, W: b.width / 1000, T: b.ms, N: b.n, L: encodeHistogram(b.lat), P: b.pops, C: b.cache, U: b.unreconciled}
+	for i := range b.ttfb {
+		if b.ttfb[i].n > 0 {
+			if db.Fb == nil {
+				db.Fb = make([][]int64, ttfbClasses)
+				for j := range db.Fb {
+					db.Fb[j] = []int64{}
+				}
+			}
+			db.Fb[i] = encodeHistogram(b.ttfb[i])
+		}
+	}
+	return db
 }
 
 // WriteJSON emits the same schema as MarshalJSON, with bounded temporary
@@ -85,14 +147,7 @@ func (r *Store) WriteJSON(w io.Writer) error {
 			if j > 0 {
 				text(",")
 			}
-			db := diskBucket{S: b.start / 1000, W: b.width / 1000, T: b.ms, N: b.n, U: b.unreconciled}
-			if b.lat.n > 0 {
-				db.L = []int64{b.lat.n, b.lat.sum, b.lat.max}
-				for _, x := range b.lat.bins {
-					db.L = append(db.L, int64(x.at), x.n)
-				}
-			}
-			value(db)
+			value(diskOfBucket(b))
 		}
 		text(`]`)
 		if len(s.recent) > 0 {
@@ -131,14 +186,7 @@ func (r *Store) MarshalJSON() ([]byte, error) {
 			ds.Open = []int64{s.open.at, s.open.stale, int64(s.open.class)}
 		}
 		for _, b := range s.buckets {
-			db := diskBucket{S: b.start / 1000, W: b.width / 1000, T: b.ms, N: b.n, U: b.unreconciled}
-			if b.lat.n > 0 {
-				db.L = []int64{b.lat.n, b.lat.sum, b.lat.max}
-				for _, x := range b.lat.bins {
-					db.L = append(db.L, int64(x.at), x.n)
-				}
-			}
-			ds.Buckets = append(ds.Buckets, db)
+			ds.Buckets = append(ds.Buckets, diskOfBucket(b))
 		}
 		d.Series = append(d.Series, ds)
 	}
@@ -218,25 +266,29 @@ func (r *Store) UnmarshalJSON(raw []byte) error {
 			if b.unreconciled < 0 || b.unreconciled > counted {
 				return errInvalid
 			}
-			if len(db.L) > 0 {
-				if len(db.L) < 5 || len(db.L)%2 == 0 || db.L[0] <= 0 || db.L[1] < 0 || db.L[2] < 0 {
-					return errInvalid
-				}
-				b.lat = histogram{n: db.L[0], sum: db.L[1], max: db.L[2]}
-				b.lat.bins = make([]bin, 0, (len(db.L)-3)/2)
-				count := int64(0)
-				for i := 3; i < len(db.L); i += 2 {
-					at, n := db.L[i], db.L[i+1]
-					if at < 0 || at > maxBin || n <= 0 || len(b.lat.bins) > 0 && int64(b.lat.bins[len(b.lat.bins)-1].at) >= at {
-						return errInvalid
-					}
-					b.lat.bins = append(b.lat.bins, bin{uint8(at), n})
-					count += n
-				}
-				if count != b.lat.n {
-					return errInvalid
-				}
+			if h, ok := decodeHistogram(db.L); !ok {
+				return errInvalid
+			} else {
+				b.lat = h
 			}
+			// fb is absent or exactly three histogram lists in class order;
+			// the writer emits all three once any class has a sample, with
+			// empty lists for the others. A shorter list is not a shape this
+			// writer can produce, so it is refused rather than guessed at.
+			if db.Fb != nil && len(db.Fb) != ttfbClasses {
+				return errInvalid
+			}
+			for i, raw := range db.Fb {
+				h, ok := decodeHistogram(raw)
+				if !ok {
+					return errInvalid
+				}
+				b.ttfb[i] = h
+			}
+			if !validPops(db.P) || !validCache(db.C) {
+				return errInvalid
+			}
+			b.pops, b.cache = db.P, db.C
 			s.buckets = append(s.buckets, b)
 			s.size += b.size()
 		}

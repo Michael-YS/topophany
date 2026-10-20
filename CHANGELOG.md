@@ -69,6 +69,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measurement contract (its variable names, not their values): older
   collectors and viewers reject the field, so upgrade them before adding it to
   a topology.
+- Rollups keep what the edge said, not only outcomes and duration.
+  `first_byte` splits passing samples' first-byte time into `cached` (`HIT`,
+  `REVALIDATED`, `STALE`, `UPDATING`) and `origin` (`MISS`, `EXPIRED`,
+  `BYPASS`, `DYNAMIC`) answers, each with `samples`, `p50_ms`, `p95_ms` and
+  `max_ms`; a status outside both lists stays unclassified and is not
+  reported. `pops` counts the colo every response named, at most sixteen named
+  codes plus `other`, and `cache` counts every cache status from the closed
+  vocabulary, absent or unknown as `other`. Vercel's reported region is not a
+  physical colo, so it contributes no `pops` count while its first-byte time
+  and cache status still count. The TUI's check evidence adds the
+  last day's `first byte cached p50 40 ms · p95 90 ms · origin p50 600 ms ·
+  p95 700 ms` and `LAX 92% · HKG 8% · 24h`; the Servers cards order their
+  *ANSWERED FROM* colos by the day's share (`LAX 92%`) and fall back to fresh
+  response headers when no rollups are kept yet, with the card's JSON saying
+  which through `pops_from_rollups`; the Observers rows add
+  `Edge colos seen (24h): LAX 92% · HKG 8%`. The fields are additive schema 1
+  rollup keys (`fb`, `p`, `c`): an old checkpoint reads as no first-byte time
+  and no label counts, and an old binary ignores the keys it does not know, so
+  no upgrade is needed to keep a collector running, though only an upgraded
+  viewer shows them.
+- HTTP checks can declare `expected_pops`, at most sixteen distinct colos of
+  exactly three uppercase letters. After the ordinary assertions and
+  `expected_exit` pass, and before `expected_trace`, a response whose edge
+  named a colo outside the list is a `policy` sample (stage `edge_assert`,
+  code `pop_mismatch`), never a failed request; a response with no colo,
+  including one withheld on a secret request, is not a violation, and
+  Vercel's region is not a physical colo. The editor takes the list as
+  comma-separated codes. The list is part of the measurement contract, so
+  changing it starts a new history. Older collectors and viewers reject the
+  field, so upgrade them before using it.
 
 ### Changed
 

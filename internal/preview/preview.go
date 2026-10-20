@@ -414,7 +414,9 @@ func (s *Sim) roll(at time.Time) *rollup.Store {
 					stands = at.Add(time.Minute).Sub(t)
 				}
 				o := s.observe(c, y, t, sc)
-				r.Add(x.ID, x.Observer, t, o.Outcome, o.DurationMS, stands, at)
+				// The synthetic observation carries the same labels a worker
+				// would; rollup.ExtraOf drops only Vercel's non-colo region.
+				r.Add(x.ID, x.Observer, t, o.Outcome, o.DurationMS, stands, at, rollup.ExtraOf(o))
 			}
 		}
 	}

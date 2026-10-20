@@ -335,3 +335,39 @@ func TestFloorsAreKeptWithoutVisitingThemAll(t *testing.T) {
 		t.Fatalf("a write with %d floors held took %v to prune them, with %d %v", 1<<17, full, 1<<10, few)
 	}
 }
+
+// A Vercel region is not a physical colo, so it contributes no colo count;
+// its cache status and first-byte time are still ordinary evidence and are
+// rolled up like any other provider's.
+func TestRollupsKeepVercelCacheAndFirstByteButNotColo(t *testing.T) {
+	c := testkit.Config()
+	start := time.Now().UTC()
+	now := start
+	s := openTest(t, t.TempDir(), Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Now: func() time.Time { return now }})
+	vercel := testkit.Observation(c, "home-http", 1, now, "ok")
+	vercel.Timings = map[string]int64{"first_byte_ms": 40}
+	vercel.Facts["edge_provider"], vercel.Facts["edge_cache"], vercel.Facts["edge_pop"] = "vercel", "HIT", "LAX"
+	cloudflare := testkit.Observation(c, "home-http", 2, now, "ok")
+	cloudflare.Timings = map[string]int64{"first_byte_ms": 600}
+	cloudflare.Facts["edge_provider"], cloudflare.Facts["edge_cache"], cloudflare.Facts["edge_pop"] = "cloudflare", "MISS", "NRT"
+	if e := s.Put(batch(c, vercel, cloudflare)); e != nil {
+		t.Fatal(e)
+	}
+	now = now.Add(time.Second)
+	for _, a := range s.Availability("home-http", config.Contracts(c)["home-http"], now) {
+		if a.Window != "24h" {
+			continue
+		}
+		if a.FirstByte == nil || a.FirstByte.Cached == nil || a.FirstByte.Cached.Samples != 1 || a.FirstByte.Cached.Max != 40 || a.FirstByte.Origin == nil || a.FirstByte.Origin.Samples != 1 || a.FirstByte.Origin.Max != 600 {
+			t.Fatalf("first-byte classes were lost or merged: %+v", a.FirstByte)
+		}
+		if a.Cache["HIT"] != 1 || a.Cache["MISS"] != 1 {
+			t.Fatalf("cache statuses were not counted: %+v", a.Cache)
+		}
+		if a.Pops["NRT"] != 1 || a.Pops["LAX"] != 0 || len(a.Pops) != 1 {
+			t.Fatalf("Vercel's region counted as a colo: %+v", a.Pops)
+		}
+		return
+	}
+	t.Fatal("no 24h availability")
+}

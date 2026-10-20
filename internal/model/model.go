@@ -245,9 +245,15 @@ type HTTPOptions struct {
 	RequestHeaderEnvs map[string]string `json:"request_header_envs,omitempty"`
 	BearerEnv         string            `json:"bearer_env,omitempty"`
 	ExpectedExit      []string          `json:"expected_exit,omitempty"` // exact IPs or CIDRs
-	ExitFormat        string            `json:"exit_format,omitempty"`   // plain, trace, json
-	ExitJSONKey       string            `json:"exit_json_key,omitempty"`
-	MaxBodyBytes      int64             `json:"max_body_bytes,omitempty"`
+	// ExpectedPops declares the colos a response from an edge may name, as
+	// exactly three uppercase letters each; at most 16, without duplicates.
+	// A colo outside the list is a policy violation, never a failed request,
+	// and an absent colo (no edge, or withheld on a secret request) asserts
+	// nothing.
+	ExpectedPops []string `json:"expected_pops,omitempty"`
+	ExitFormat   string   `json:"exit_format,omitempty"` // plain, trace, json
+	ExitJSONKey  string   `json:"exit_json_key,omitempty"`
+	MaxBodyBytes int64    `json:"max_body_bytes,omitempty"`
 	// ExpectedTrace requires exit_format trace, the only format whose body
 	// this probe parses as a trace.
 	ExpectedTrace *TraceExpectations `json:"expected_trace,omitempty"`
@@ -366,6 +372,14 @@ type Rollup struct {
 	Unreconciled int64            `json:"unreconciled_samples,omitempty"`
 	Outcomes     map[string]int64 `json:"outcomes,omitempty"`
 	Latency      *Latency         `json:"latency,omitempty"`
+	// FirstByte is what the passing samples' first byte took, split by what
+	// the edge said about its cache. Pops counts the colos every sample's
+	// response reported, keeping at most sixteen named codes plus other;
+	// Cache counts every sample's cache status in the closed vocabulary,
+	// with other for an absent or unknown one.
+	FirstByte *FirstByteLatency `json:"first_byte,omitempty"`
+	Pops      map[string]int64  `json:"pops,omitempty"`
+	Cache     map[string]int64  `json:"cache,omitempty"`
 }
 
 // Measured is how long a rollup's samples said whether the check passed:
@@ -380,6 +394,16 @@ type Latency struct {
 	P50     int64 `json:"p50_ms"`
 	P95     int64 `json:"p95_ms"`
 	Max     int64 `json:"max_ms"`
+}
+
+// FirstByteLatency is what the first byte of passing samples took, split
+// by the cache class the edge reported: Cached for answers the edge served
+// itself, Origin for ones it fetched from the origin. A class with no
+// passing samples is nil. Samples whose cache status was absent or outside
+// both lists are kept unclassified and are not reported.
+type FirstByteLatency struct {
+	Cached *Latency `json:"cached,omitempty"`
+	Origin *Latency `json:"origin,omitempty"`
 }
 
 // Availability is a check's rollup over a window ending when its snapshot
@@ -443,6 +467,23 @@ type ObserverState struct {
 	Reason    string    `json:"reason"`
 	Contracts string    `json:"contracts,omitempty"`
 }
+
+// IsColo reports whether s is exactly three ASCII uppercase letters, the
+// shape Cloudflare codes a colo in. The rollup, config validation and views
+// all use this one predicate, so they cannot disagree about what names a
+// colo.
+func IsColo(s string) bool {
+	if len(s) != 3 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < 'A' || s[i] > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
 type Snapshot struct {
 	Storage *StorageUsage `json:"storage,omitempty"`
 	Ingress *Ingress      `json:"ingress,omitempty"`
