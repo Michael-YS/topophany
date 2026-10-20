@@ -3,6 +3,7 @@
 package tui
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -73,10 +74,20 @@ func screens(t *testing.T, check func(t *testing.T, name string, m *Model, s dis
 		all = append(all, screen{"fit", size})
 	}
 	for _, sc := range all {
+		// Every tab uses the same moment of synthetic evidence. Build it once
+		// per screen instead of replaying the preview for every frame; keep
+		// the mutable model state and trend buffers separate for each case.
+		r := deviceRecorder(t, sc.id)
 		for tab := range tabs {
 			for _, detail := range []bool{false, true} {
-				r := deviceRecorder(t, sc.id)
-				m := r.m
+				base := *r.m
+				m := &base
+				m.trends = maps.Clone(r.m.trends)
+				for id, tr := range m.trends {
+					tr := *tr
+					tr.samples = slices.Clone(tr.samples)
+					m.trends[id] = &tr
+				}
 				m.Width, m.Height = sc.size[0], sc.size[1]
 				m.setTab(tab)
 				s := m.screen()

@@ -571,18 +571,20 @@ func TestGlobeIsRoundOnTallCells(t *testing.T) {
 
 func TestEveryModeFrameBounds(t *testing.T) {
 	ed, _ := editorModel(t)
-	models := []func() *Model{
-		func() *Model { m := homelabModel(t); return &m },
-		func() *Model { m := fixtureModel(); m.NoColor = false; return &m },
-		func() *Model { m := *ed; return &m },
-	}
+	fixture := fixtureModel()
+	fixture.NoColor = false
+	// Rendering and opening overlays only read the snapshot and editor draft.
+	// Build each fixture once, then copy the pristine model for every frame so
+	// navigation, modals, trends and layout caches stay local to that case.
+	// Rebuilding the same topology thousands of times dominates race runs.
+	models := []Model{homelabModel(t), fixture, *ed}
 	for _, dim := range [][2]int{{30, 10}, {64, 18}, {99, 30}, {100, 28}, {181, 52}} {
-		for _, mk := range models {
+		for _, base := range models {
 			for tab := range tabs {
 				for _, mode := range []string{"virtual", "geo", "network"} {
 					for zoom := 0; zoom < 3; zoom++ {
 						for _, overlay := range []string{"", "a", "e"} {
-							m := mk()
+							m := base
 							m.Width, m.Height = dim[0], dim[1]
 							m.setTab(tab)
 							m.MapMode, m.Zoom = mode, zoom
