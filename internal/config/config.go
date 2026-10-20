@@ -455,9 +455,28 @@ func validateResolved(c model.Config) error {
 					}
 				}
 			}
-		case "tcp", "tls", "ssh-banner", "dns", "udp-echo":
+		case "tcp", "tls", "ssh-banner", "udp-echo":
 			if e := HostPort(t); e != nil {
 				return fmt.Errorf("check %s: %w", x.ID, e)
+			}
+		case "dns":
+			// The transport decides the target rule: the three stream/one
+			// datagram transports take a resolver host:port (Dot is usually
+			// 853, but any port is the operator's), while DoH takes an https
+			// URL whose path may select the endpoint. An unknown transport is
+			// refused rather than silently executed as UDP.
+			switch x.DNS.Transport {
+			case "", "udp", "tcp", "dot":
+				if e := HostPort(t); e != nil {
+					return fmt.Errorf("check %s: %w", x.ID, e)
+				}
+			case "doh":
+				u, e := url.Parse(t)
+				if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+					return fmt.Errorf("check %s: a doh target must be an https URL with a host and optional path, without userinfo, query or fragment", x.ID)
+				}
+			default:
+				return fmt.Errorf("check %s: dns transport must be empty, udp, tcp, dot or doh", x.ID)
 			}
 		case "icmp":
 			if ip, e := netip.ParseAddr(t); e != nil || !ip.Is4() {

@@ -885,6 +885,12 @@ func (m *Model) openForm(kind, id string) {
 		f.add("Secret request headers", strings.Join(envEntries, ", "), fList, "http: Name=ENV_VAR, comma separated").when = kindIs("http")
 		f.add("DNS name", x.DNS.Name, fText, "dns: name to resolve").when = kindIs("dns")
 		f.add("DNS type", x.DNS.Type, fChoice, "dns: record type", "", "A", "AAAA").when = kindIs("dns")
+		// Empty is the historical UDP probe; the other choices change only
+		// how the same question travels.
+		f.add("DNS transport", x.DNS.Transport, fChoice, "dns: udp (blank), tcp, dot or doh", "", "udp", "tcp", "dot", "doh").when = kindIs("dns")
+		f.add("Server name", x.ServerName, fText, "dns dot/doh: certificate name; tls: SNI and certificate name").when = func(f *Form) bool {
+			return f.val("Kind") == "dns" || f.val("Kind") == "tls"
+		}
 		cloudflareFields(f, x, kindIs("cloudflare"))
 		addHostFields(f, x.Host, kindIs("host"))
 		f.add("Notes", x.Notes, fText, "")
@@ -909,6 +915,8 @@ func (m *Model) openForm(kind, id string) {
 				x.HTTP.Status = append(x.HTTP.Status, n)
 			}
 			x.HTTP.Contains, x.DNS.Name, x.DNS.Type = f.val("HTTP contains"), f.val("DNS name"), f.val("DNS type")
+			x.DNS.Transport = f.val("DNS transport")
+			x.ServerName = f.val("Server name")
 			x.HTTP.ExitFormat = f.val("Exit format")
 			x.HTTP.ExitJSONKey = f.val("Exit JSON key")
 			warp, gateway, colos := f.val("Trace warp"), f.val("Trace gateway"), f.list("Trace colos")

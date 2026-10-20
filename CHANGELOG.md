@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- DNS checks can ask over DNS over TLS or DNS over HTTPS with
+  `dns.transport`: empty or `udp` keeps the historical UDP probe with one
+  TCP retry for a truncated answer, `tcp` uses TCP directly, `dot` makes a
+  verified TLS handshake (usually port 853; `server_name` names the
+  certificate, so an IP target such as 1.1.1.1 needs `one.one.one.one` or
+  `cloudflare-dns.com`), and `doh` `POST`s the DNS wire question to an
+  `https` URL with `Content-Type` and `Accept: application/dns-message`,
+  reading at most 64 KiB. The transport changes only how the question
+  travels: the same parser, transaction-ID check and `expected_ips`
+  assertion decide a pass, and `dns_transport` records `udp`,
+  `tcp_fallback`, `tcp`, `dot` or `doh`. DoT and DoH record `tls_ms` and
+  `first_byte_ms`. The DoH `POST` is the probe's only non-GET request: it
+  carries the same question as the RFC 8484 GET form in its body, with no
+  query string and no credential. A wrong transaction ID or an oversized
+  DoH body is a monitor error, never proof the resolver is down; a non-200
+  status, wrong content type, truncated or negative answer remains a failed
+  answer. DoH targets must be `https` URLs without userinfo, query or
+  fragment; a `dns` check still cannot traverse a proxy chain. `transport`
+  is inside `dns`, so it is part of the measurement contract: an unset field
+  leaves every existing hash unchanged, and older collectors and viewers
+  reject it, so upgrade them before enabling a transport.
 - Cloudflare challenge pages are recorded as `edge_mitigation: challenge`
   from `cf-mitigated`, a closed word that survives a secret request. The
   check's evidence line reads, for example, *Cloudflare NRT · cache DYNAMIC ·

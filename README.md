@@ -133,7 +133,7 @@ The [changelog](CHANGELOG.md) has the notes for every earlier release.
 
 ## What it checks
 
-- **Native probes:** HTTP (status, body, headers, egress IP), TCP, TLS with certificate validation, SSH banner, DNS A/AAAA, UDP echo, ICMP (IPv4).
+- **Native probes:** HTTP (status, body, headers, egress IP), TCP, TLS with certificate validation, SSH banner, DNS A/AAAA (UDP, TCP, DoT, DoH), UDP echo, ICMP (IPv4).
 - **Host resources (Linux, macOS, Windows):** CPU, memory, filesystem capacity and inodes, process counts and selected-process RSS, with optional resource and process-count assertions. See [`examples/host-resources.json`](examples/host-resources.json).
 - **Proxy chains:** HTTP CONNECT, HTTPS CONNECT, SOCKS5 and OpenSSH `-W`, chained over several hops.
 - **Read-only adapters:** Mihomo, Tailscale, WireGuard, cloudflared, Cloudflare API.

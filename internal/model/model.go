@@ -272,6 +272,11 @@ type DNSOptions struct {
 	Name        string   `json:"name,omitempty"`
 	Type        string   `json:"type,omitempty"`
 	ExpectedIPs []string `json:"expected_ips,omitempty"`
+	// Transport selects how the question travels: empty or "udp" over UDP
+	// with a TCP retry for a truncated answer, "tcp" over TCP, "dot" over
+	// verified DNS-over-TLS, and "doh" over DNS-over-HTTPS. It changes the
+	// transport, not the answer the parser and assertions accept.
+	Transport string `json:"transport,omitempty"`
 }
 
 // Observation is a single bounded measurement. ReceivedAt is assigned by the

@@ -143,7 +143,7 @@ func TestDNSAAAAAllowlistMismatchAndNegativeResponses(t *testing.T) {
 		ips, expected []string
 		mutate        func([]byte)
 		outcome, code string
-	}{{"IPv6 response", "AAAA", []string{"2001:db8::8"}, []string{"2001:db8::8"}, nil, "ok", ""}, {"allowlist rejects unexpected IP", "A", []string{"192.0.2.9"}, []string{"203.0.113.8"}, nil, "fail", "address_outside_allowlist"}, {"wrong transaction ID", "A", []string{"203.0.113.8"}, nil, func(b []byte) { b[0] ^= 0xff }, "fail", "invalid_or_negative_answer"}, {"NXDOMAIN", "A", nil, nil, func(b []byte) { b[3] = 0x83 }, "fail", "invalid_or_negative_answer"}, {"no address answer", "A", nil, nil, nil, "fail", "no_address_answer"}} {
+	}{{"IPv6 response", "AAAA", []string{"2001:db8::8"}, []string{"2001:db8::8"}, nil, "ok", ""}, {"allowlist rejects unexpected IP", "A", []string{"192.0.2.9"}, []string{"203.0.113.8"}, nil, "fail", "address_outside_allowlist"}, {"wrong transaction ID", "A", []string{"203.0.113.8"}, nil, func(b []byte) { b[0] ^= 0xff }, "error", "unexpected_transaction_id"}, {"NXDOMAIN", "A", nil, nil, func(b []byte) { b[3] = 0x83 }, "fail", "invalid_or_negative_answer"}, {"no address answer", "A", nil, nil, nil, "fail", "no_address_answer"}} {
 		t.Run(tt.name, func(t *testing.T) {
 			server := dnsFixture(t, false, func(q []byte) []byte {
 				b := dnsAnswer(q, tt.ips...)

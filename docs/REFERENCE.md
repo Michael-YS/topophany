@@ -52,7 +52,7 @@ Older collectors/viewers reject the new `policy_threshold` field. Upgrade collec
 | `tcp` | `host:port` | Observer established a TCP connection; does not prove application protocol health or end-to-end proxy path function |
 | `tls` | `host:port`; `server_name`, `ca_file` | Complete TLS handshake with verified identity and trust chain; does not attest to custom proxy transport authentication |
 | `ssh-banner` | `host:port` | Received a valid `SSH-2.0` protocol banner; does not prove host key authentication |
-| `dns` | Resolver `host:port`; `dns.name`, `type=A/AAAA`, `expected_ips` | Resolver returned matching resource records within constraints; no DNSSEC validation guarantee |
+| `dns` | Resolver `host:port` for `dns.transport` empty, `udp`, `tcp` or `dot`, or an `https` URL for `doh`; `dns.name`, `type=A/AAAA`, `expected_ips`; `server_name`, `ca_file` for DoT/DoH | Resolver returned matching resource records over the declared transport within constraints; DoT and DoH change the transport, not the answer; no DNSSEC validation guarantee |
 | `udp-echo` | `host:port` | Target reflected the randomly generated per-probe nonce; requires an active UDP echo service |
 | `icmp` | IPv4 literal | Matching ICMP echo reply received with expected identifier and sequence; requires raw socket privileges |
 | `mihomo` | Controller API base URL; `adapter` object | Successfully queried runtime metadata; indicates reported state rather than end-to-end traffic success |
@@ -61,6 +61,25 @@ Older collectors/viewers reject the new `policy_threshold` field. Upgrade collec
 | `cloudflared` | Connector metrics listener at a literal loopback `http://127.0.0.1:PORT` or `http://[::1]:PORT`; `adapter` object | Read the connector's own `/ready` and `/metrics`; reports an edge session and its counters, not the reachability of the service behind it |
 | `cloudflare` | Cloudflare API base URL, default `https://api.cloudflare.com/client/v4`; `adapter.token_env` and one `adapter.cloudflare` read | Read one of Cloudflare's own records (tunnel, DNS record, pool health) with one GET; reports the platform's state, never a request the edge answered or the origin's reachability |
 | `host` | Optional `host` object; Linux, macOS and Windows | Local CPU, memory, filesystem and process counters collected; configured resource assertions pass |
+
+### DNS Probe Transports
+
+`dns.transport` selects how the question travels: empty (the historical UDP probe) or one of `udp`, `tcp`, `dot` and `doh`. The transport is part of the measurement contract, but a DoT or DoH check asks the same question and applies the same parser, transaction-ID check and `expected_ips` assertion as UDP: the transport changes, not the meaning of a pass. A pass says the configured resolver returned addresses satisfying the assertions over that transport; DNSSEC is still not validated.
+
+| `dns.transport` | Target | Exchange |
+|---|---|---|
+| empty or `udp` | resolver `host:port` | One UDP question. A truncated answer (TC) is retried once over TCP; `dns_transport` is `udp`, or `tcp_fallback` after the retry. |
+| `tcp` | resolver `host:port` | One length-prefixed question over TCP, without trying UDP first; `dns_transport: tcp`. |
+| `dot` | resolver `host:port`; 853 by convention, but any valid port is accepted | TCP, then a verified TLS handshake, then one length-prefixed question. The certificate name is `server_name`, or the target host when it is empty; `ca_file` adds a private CA. A certificate is normally issued for a name, so an IP target needs `server_name` — for 1.1.1.1 use `one.one.one.one` or `cloudflare-dns.com`. `dns_transport: dot`. |
+| `doh` | an `https` URL with a host and optional path, without userinfo, query or fragment | One `POST` whose body is the DNS wire query; `Content-Type` and `Accept` are both `application/dns-message`. The answer must be a `200` `application/dns-message` body of at most 64 KiB, parsed by the same DNS parser. The URL's host is the TLS name unless `server_name` overrides it; `resolve_ip` pins the dial address and `bind_ip` the source. `dns_transport: doh`. |
+
+The DoH `POST` is the only non-GET request the probe makes. RFC 8484 defines it as the same question as the GET form, carried in the request body: it has no query string, no credential and no side effect beyond asking the resolver to answer, so it stays inside the read-only boundary. HTTP checks still accept only `GET` and `HEAD`.
+
+DoT and DoH record `tls_ms`, the verified TLS handshake, and `first_byte_ms`. For `dot`, `first_byte_ms` runs from just before the TCP connect through the handshake to the first byte of the length-prefixed answer, so it includes the handshake; for `doh` it runs from sending the request to the first response byte, which likewise includes the connect and handshake. `tls_ms` isolates the handshake in both cases. Neither timing includes resolver name lookup on the worker.
+
+An answer the monitor cannot attribute or read within its budget is a monitor error, never evidence that the resolver is down: a message whose transaction ID is not the question's (`dns_answer` / `unexpected_transaction_id`) and a DoH body over 64 KiB (`dns_transport` / `response_too_large`). A DoH endpoint that answers with a non-200 status (`http_<status>`), a different content type (`content_type`), a truncated or malformed DNS message, a negative response or no address remains a failed answer (`fail`) for the configured question, not proof of a broader outage.
+
+A `dns` check cannot use a proxy chain: validation refuses a path with proxies for this kind, so the probe dials directly and DoH does not traverse the path's hops. `dns.transport` is inside `dns`, so it is part of the measurement contract; leaving it unset writes nothing and leaves every contract hash unchanged. Older collectors and viewers reject the field, so upgrade collectors and all viewers before enabling a transport in a topology.
 
 ### Host Resources
 

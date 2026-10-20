@@ -4,21 +4,38 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptrace"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
+// dns asks one question over the transport the check declares. A transport
+// changes only how the question travels: every one of them parses the same
+// wire answer and applies the same expected_ips assertion. An empty
+// transport is the historical UDP probe, with one TCP retry for a truncated
+// answer; tcp, dot and doh never touch UDP.
 func dns(ctx context.Context, x model.Check, target string, o *model.Observation) error {
-	target = pinned(target, x.ResolveIP)
+	transport := x.DNS.Transport
+	switch transport {
+	case "":
+		transport = "udp"
+	case "udp", "tcp", "dot", "doh":
+	default:
+		return local("setup", "invalid_dns_transport")
+	}
 	var idb [2]byte
 	if _, e := rand.Read(idb[:]); e != nil {
 		return local("setup", "entropy_failure")
@@ -33,62 +50,32 @@ func dns(ctx context.Context, x model.Check, target string, o *model.Observation
 		return local("setup", "invalid_dns_question")
 	}
 	var bind netip.AddrPort
-	nd := net.Dialer{}
 	if x.BindIP != "" {
 		if bind, e = bindAddr(x.BindIP); e != nil {
 			return e
 		}
-		nd.LocalAddr = net.UDPAddrFromAddrPort(bind)
 	}
-	conn, e := nd.DialContext(ctx, "udp", target)
+	var b []byte
+	switch transport {
+	case "udp":
+		b, e = dnsOverUDP(ctx, x, target, q, id, bind, o)
+	case "tcp":
+		b, e = dnsOverTCP(ctx, x, target, q, bind, o)
+	case "dot":
+		b, e = dnsOverTLS(ctx, x, target, q, bind, o)
+	case "doh":
+		b, e = dnsOverHTTPS(ctx, x, target, q, bind, o)
+	}
 	if e != nil {
-		return fail("dns_transport", e)
+		return e
 	}
-	defer conn.Close()
-	if dl, ok := ctx.Deadline(); ok {
-		_ = conn.SetDeadline(dl)
-	}
-	stop := context.AfterFunc(ctx, func() { conn.Close() })
-	defer stop()
-	if _, e = conn.Write(q); e != nil {
-		return fail("dns_transport", e)
-	}
-	buf := make([]byte, 65535)
-	n, e := conn.Read(buf)
-	if e != nil {
-		return fail("dns_transport", e)
-	}
-	b := buf[:n]
-	o.Facts["dns_transport"] = "udp"
-	if len(b) >= 4 && binary.BigEndian.Uint16(b) == id && b[2]&2 != 0 {
-		td := net.Dialer{}
-		if bind.IsValid() {
-			td.LocalAddr = net.TCPAddrFromAddrPort(bind)
-		}
-		tcp, e := td.DialContext(ctx, "tcp", target)
-		if e != nil {
-			return fail("dns_tcp", e)
-		}
-		defer tcp.Close()
-		if dl, ok := ctx.Deadline(); ok {
-			_ = tcp.SetDeadline(dl)
-		}
-		stop := context.AfterFunc(ctx, func() { tcp.Close() })
-		defer stop()
-		packet := binary.BigEndian.AppendUint16(nil, uint16(len(q)))
-		packet = append(packet, q...)
-		if _, e = tcp.Write(packet); e != nil {
-			return fail("dns_tcp", e)
-		}
-		var lb [2]byte
-		if _, e = io.ReadFull(tcp, lb[:]); e != nil {
-			return fail("dns_tcp", e)
-		}
-		b = make([]byte, int(binary.BigEndian.Uint16(lb[:])))
-		if _, e = io.ReadFull(tcp, b); e != nil {
-			return fail("dns_tcp", e)
-		}
-		o.Facts["dns_transport"] = "tcp_fallback"
+	// A message whose transaction ID is not the question's is not an answer:
+	// it may be stale, stray or spoofed. The monitor can say only that it
+	// could not attribute what arrived, never that the resolver is down. A
+	// matching ID that still does not parse is a failed answer below, as for
+	// a negative response.
+	if len(b) >= 2 && binary.BigEndian.Uint16(b) != id {
+		return &failure{Stage: "dns_answer", Code: "unexpected_transaction_id", Local: true}
 	}
 	ips, e := parseDNS(b, id, x.DNS.Name, qt)
 	if e != nil {
@@ -125,6 +112,272 @@ func dns(ctx context.Context, x model.Check, target string, o *model.Observation
 	o.Detail = "configured resolver returned addresses satisfying assertions; DNSSEC not validated"
 	return nil
 }
+
+// dnsOverUDP is the historical transport: one UDP question, and one TCP
+// retry only when the resolver says the answer was truncated. The fact is
+// udp until that retry succeeds, so a failed retry still says how far the
+// exchange got.
+func dnsOverUDP(ctx context.Context, x model.Check, target string, q []byte, id uint16, bind netip.AddrPort, o *model.Observation) ([]byte, error) {
+	target = pinned(target, x.ResolveIP)
+	nd := net.Dialer{}
+	if bind.IsValid() {
+		nd.LocalAddr = net.UDPAddrFromAddrPort(bind)
+	}
+	conn, e := nd.DialContext(ctx, "udp", target)
+	if e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	defer conn.Close()
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
+	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+	if _, e = conn.Write(q); e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	buf := make([]byte, 65535)
+	n, e := conn.Read(buf)
+	if e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	b := buf[:n]
+	o.Facts["dns_transport"] = "udp"
+	if len(b) >= 4 && binary.BigEndian.Uint16(b) == id && b[2]&2 != 0 {
+		td := net.Dialer{}
+		if bind.IsValid() {
+			td.LocalAddr = net.TCPAddrFromAddrPort(bind)
+		}
+		tcp, e := td.DialContext(ctx, "tcp", target)
+		if e != nil {
+			return nil, fail("dns_tcp", e)
+		}
+		defer tcp.Close()
+		if dl, ok := ctx.Deadline(); ok {
+			_ = tcp.SetDeadline(dl)
+		}
+		stop := context.AfterFunc(ctx, func() { tcp.Close() })
+		defer stop()
+		b, _, e = dnsOverStream(tcp, q, time.Time{})
+		if e != nil {
+			return nil, fail("dns_tcp", e)
+		}
+		o.Facts["dns_transport"] = "tcp_fallback"
+	}
+	return b, nil
+}
+
+// dnsOverTCP asks over TCP directly, without trying UDP first.
+func dnsOverTCP(ctx context.Context, x model.Check, target string, q []byte, bind netip.AddrPort, o *model.Observation) ([]byte, error) {
+	target = pinned(target, x.ResolveIP)
+	d := net.Dialer{}
+	if bind.IsValid() {
+		d.LocalAddr = net.TCPAddrFromAddrPort(bind)
+	}
+	conn, e := d.DialContext(ctx, "tcp", target)
+	if e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	defer conn.Close()
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
+	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+	b, _, e := dnsOverStream(conn, q, time.Time{})
+	if e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	o.Facts["dns_transport"] = "tcp"
+	return b, nil
+}
+
+// dnsOverTLS asks the resolver over DNS-over-TLS. The certificate name is
+// server_name, or the target host when server_name is empty; a resolver's
+// certificate is normally issued for a name, so an IP target needs
+// server_name (for 1.1.1.1, one.one.one.one or cloudflare-dns.com). resolve_ip
+// pins the dial address without changing that TLS name, as everywhere else.
+// first_byte_ms runs from before the TCP connect through the handshake to the
+// first byte of the framed answer, so it includes the handshake; tls_ms
+// isolates the handshake.
+func dnsOverTLS(ctx context.Context, x model.Check, target string, q []byte, bind netip.AddrPort, o *model.Observation) ([]byte, error) {
+	host, _, e := net.SplitHostPort(target)
+	if e != nil {
+		return nil, local("setup", "invalid_dns_target")
+	}
+	name := host
+	if x.ServerName != "" {
+		name = x.ServerName
+	}
+	tc, e := TLSConfig(name, x.CAFile)
+	if e != nil {
+		return nil, e
+	}
+	d := net.Dialer{}
+	if bind.IsValid() {
+		d.LocalAddr = net.TCPAddrFromAddrPort(bind)
+	}
+	began := time.Now()
+	raw, e := d.DialContext(ctx, "tcp", pinned(target, x.ResolveIP))
+	if e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	defer raw.Close()
+	if dl, ok := ctx.Deadline(); ok {
+		_ = raw.SetDeadline(dl)
+	}
+	stop := context.AfterFunc(ctx, func() { raw.Close() })
+	defer stop()
+	conn := tls.Client(raw, tc)
+	handshake := time.Now()
+	if e = conn.HandshakeContext(ctx); e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	o.Timings["tls_ms"] = time.Since(handshake).Milliseconds()
+	b, first, e := dnsOverStream(conn, q, began)
+	if e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	o.Timings["first_byte_ms"] = first.Milliseconds()
+	o.Facts["dns_transport"] = "dot"
+	return b, nil
+}
+
+// maxDoHBody is one DNS message in TCP framing's largest size plus a byte,
+// so a body over it cannot be a DNS answer and is refused without reading an
+// unbounded response.
+const maxDoHBody = 65536
+
+// dnsOverHTTPS asks over DNS-over-HTTPS (RFC 8484) with POST. The wire query
+// is the body, so the URL carries no query string and no credential; POST is
+// the same question as the GET form and asks the resolver to answer it, with
+// no other side effect. This is the probe's only non-GET request. The
+// exchange is read directly, not through the check's proxy path: config
+// validation refuses a proxy chain for the dns kind. The TLS name is
+// server_name, or the URL's host; resolve_ip pins the dial address.
+func dnsOverHTTPS(ctx context.Context, x model.Check, target string, q []byte, bind netip.AddrPort, o *model.Observation) ([]byte, error) {
+	u, e := url.Parse(target)
+	if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, local("setup", "invalid_doh_url")
+	}
+	name := u.Hostname()
+	if x.ServerName != "" {
+		name = x.ServerName
+	}
+	tc, e := TLSConfig(name, x.CAFile)
+	if e != nil {
+		return nil, e
+	}
+	d := net.Dialer{}
+	if bind.IsValid() {
+		d.LocalAddr = net.TCPAddrFromAddrPort(bind)
+	}
+	// The HTTP transport dials and handshakes in another goroutine, so the
+	// timings cross back through atomics; requestStart is read there under
+	// the trace and written before the request starts.
+	var tlsMS, firstMS atomic.Int64
+	var gotTLS, gotFirst atomic.Bool
+	requestStart := time.Now()
+	tr := &http.Transport{
+		Proxy:                  nil,
+		DisableKeepAlives:      true,
+		DisableCompression:     true,
+		TLSClientConfig:        tc,
+		ForceAttemptHTTP2:      false,
+		MaxResponseHeaderBytes: 32768,
+		ResponseHeaderTimeout:  time.Duration(x.TimeoutSeconds) * time.Second,
+		DialTLSContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			raw, e := d.DialContext(ctx, network, pinned(address, x.ResolveIP))
+			if e != nil {
+				return nil, fail("dns_transport", e)
+			}
+			conn := tls.Client(raw, tc)
+			handshake := time.Now()
+			if e = conn.HandshakeContext(ctx); e != nil {
+				raw.Close()
+				return nil, fail("dns_transport", e)
+			}
+			tlsMS.Store(time.Since(handshake).Milliseconds())
+			gotTLS.Store(true)
+			return conn, nil
+		},
+	}
+	defer tr.CloseIdleConnections()
+	client := http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	trace := &httptrace.ClientTrace{GotFirstResponseByte: func() {
+		firstMS.Store(time.Since(requestStart).Milliseconds())
+		gotFirst.Store(true)
+	}}
+	req, e := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), http.MethodPost, target, bytes.NewReader(q))
+	if e != nil {
+		return nil, local("setup", "invalid_doh_url")
+	}
+	req.Header.Set("User-Agent", "Topophany/"+model.Version)
+	req.Header.Set("Content-Type", "application/dns-message")
+	req.Header.Set("Accept", "application/dns-message")
+	resp, e := client.Do(req)
+	if gotTLS.Load() {
+		o.Timings["tls_ms"] = tlsMS.Load()
+	}
+	if gotFirst.Load() {
+		o.Timings["first_byte_ms"] = firstMS.Load()
+	}
+	if e != nil {
+		var f *failure
+		if errors.As(e, &f) {
+			return nil, e
+		}
+		return nil, fail("dns_transport", e)
+	}
+	defer resp.Body.Close()
+	o.Facts["dns_transport"] = "doh"
+	// A status or content type the exchange did not ask for is the peer's
+	// answer, so it fails the check; only a body the monitor cannot read
+	// within its budget is a monitor error (below).
+	if resp.StatusCode != http.StatusOK {
+		return nil, &failure{Stage: "dns_transport", Code: "http_" + strconv.Itoa(resp.StatusCode)}
+	}
+	ct := resp.Header.Get("Content-Type")
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = ct[:i]
+	}
+	if !strings.EqualFold(strings.TrimSpace(ct), "application/dns-message") {
+		return nil, &failure{Stage: "dns_transport", Code: "content_type"}
+	}
+	body, e := io.ReadAll(io.LimitReader(resp.Body, maxDoHBody+1))
+	if e != nil {
+		return nil, fail("dns_transport", e)
+	}
+	if len(body) > maxDoHBody {
+		return nil, &failure{Stage: "dns_transport", Code: "response_too_large", Local: true}
+	}
+	return body, nil
+}
+
+// dnsOverStream sends one question on a stream with RFC 1035's length prefix
+// and reads one length-prefixed answer. since starts the first-byte reading;
+// zero measures from the write. The connection's deadline bounds both reads.
+func dnsOverStream(conn net.Conn, q []byte, since time.Time) ([]byte, time.Duration, error) {
+	if since.IsZero() {
+		since = time.Now()
+	}
+	packet := binary.BigEndian.AppendUint16(nil, uint16(len(q)))
+	packet = append(packet, q...)
+	if _, e := conn.Write(packet); e != nil {
+		return nil, 0, e
+	}
+	var lb [2]byte
+	if _, e := io.ReadFull(conn, lb[:]); e != nil {
+		return nil, 0, e
+	}
+	first := time.Since(since)
+	b := make([]byte, int(binary.BigEndian.Uint16(lb[:])))
+	if _, e := io.ReadFull(conn, b); e != nil {
+		return nil, 0, e
+	}
+	return b, first, nil
+}
+
 func dnsQuery(id uint16, name string, qt uint16) ([]byte, error) {
 	b := make([]byte, 12)
 	binary.BigEndian.PutUint16(b, id)

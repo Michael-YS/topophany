@@ -730,3 +730,49 @@ func TestEditorExpectedPopsRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// The DNS form chooses a transport without losing the target and the
+// certificate name; empty remains the historical UDP probe.
+func TestEditorDNSTransportRoundTrip(t *testing.T) {
+	m, _ := editorModel(t)
+	id := m.Edit.Config.Checks[0].ID
+	m.openForm("check", id)
+	f := m.modal.form
+	if f.get("DNS transport").kind != fChoice || f.get("Server name").kind != fText {
+		t.Fatal("DNS transport is not a choice or server name is not text")
+	}
+	if got := strings.Join(f.get("DNS transport").choices, ","); got != ",udp,tcp,dot,doh" {
+		t.Fatalf("DNS transport choices are %q", got)
+	}
+	f.get("Kind").value = "dns"
+	f.get("Target").value = "127.0.0.1:853"
+	f.get("DNS name").value = "test.example"
+	f.get("DNS type").value = "A"
+	f.get("DNS transport").value = "dot"
+	f.get("Server name").value = "dot.test"
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("valid DoT check not applied", m.modal.form.err)
+	}
+	x := m.Edit.Config.Checks[0]
+	if x.Kind != "dns" || x.Target != "127.0.0.1:853" || x.DNS.Transport != "dot" || x.ServerName != "dot.test" {
+		t.Fatalf("DNS transport not saved: %+v", x)
+	}
+	m.openForm("check", id)
+	f = m.modal.form
+	if f.val("DNS transport") != "dot" || f.val("Server name") != "dot.test" || f.val("Target") != "127.0.0.1:853" {
+		t.Fatalf("DNS transport did not round-trip: %q %q %q", f.val("DNS transport"), f.val("Server name"), f.val("Target"))
+	}
+	// A DoH target is an https URL; switching transport keeps the fields the
+	// user typed and the form validates the new pair before saving.
+	f.get("DNS transport").value = "doh"
+	f.get("Target").value = "https://cloudflare-dns.com/dns-query"
+	f.get("Server name").value = ""
+	m.Key("ctrl-s")
+	if m.modal != nil {
+		t.Fatal("valid DoH check not applied", m.modal.form.err)
+	}
+	if x := m.Edit.Config.Checks[0]; x.DNS.Transport != "doh" || x.ServerName != "" || x.Target != "https://cloudflare-dns.com/dns-query" {
+		t.Fatalf("DoH transport did not round-trip: %+v", x)
+	}
+}
