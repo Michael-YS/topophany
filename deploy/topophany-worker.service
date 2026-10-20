@@ -11,6 +11,9 @@ StateDirectory=topophany-worker
 WorkingDirectory=/var/lib/topophany-worker
 EnvironmentFile=-/etc/topophany/worker.env
 # Change observer-node-01 to this machine's separately reviewed observer ID.
+# A cloudflared check reads the connector's metrics listener on 127.0.0.1, so
+# run this worker on the same host as the connector; the check refuses a host
+# name or any non-loopback target, and another host's loopback is unreachable.
 ExecStart=/usr/local/bin/topo worker --memory-limit 64MiB --memory-max 128MiB --config /etc/topophany/topology.json --credentials /etc/topophany/worker-credentials.json --data /var/lib/topophany-worker/outbox --observer observer-node-01
 MemoryAccounting=true
 MemoryMax=128M

@@ -165,6 +165,7 @@
   "probes.mihomo": "mode, chain and selection, as the core reports them",
   "probes.tailscale": "peer online, direct or relayed",
   "probes.wireguard": "last handshake and byte counts; keys never kept",
+  "probes.cloudflared": "tunnel sessions and their colos, as the connector reports them",
   "probes.adapters-note": "What a tool reports is shown as reported, never as an end-to-end pass.",
   "probes.edges": "Edges and platforms",
   "probes.cloudflare": "Workers and Pages; the POP that answered",

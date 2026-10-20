@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -43,6 +44,7 @@ func TestAdapterCompatibility(t *testing.T) {
 		{name: "wireguard-missing", kind: "wireguard", command: "PRIVATE interface-public 51820 off\n"},
 		{name: "wireguard-shape", kind: "wireguard", command: "bad"},
 		{name: "wireguard-permission", kind: "wireguard", commandError: true},
+		{name: "cloudflared-ok", kind: "cloudflared"},
 	}
 	type record struct {
 		Contract    string            `json:"contract"`
@@ -70,6 +72,10 @@ func TestAdapterCompatibility(t *testing.T) {
 					body = `{"providers":{"pool":{"proxies":[{"name":"node"}]}}}`
 				}
 				w.Write([]byte(body))
+			case "/ready":
+				io.WriteString(w, `{"status":200,"readyConnections":4,"connectorId":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}`)
+			case "/metrics":
+				io.WriteString(w, "build_info{version=\"2026.10.0\"} 1\ncloudflared_tunnel_ha_connections 4\ncloudflared_tunnel_total_requests 120\ncloudflared_tunnel_request_errors 2\ncloudflared_tunnel_active_streams 3\ncloudflared_tunnel_server_locations{connection_id=\"a\",edge_location=\"hkg\"} 1\ncloudflared_tunnel_server_locations{connection_id=\"b\",edge_location=\"sin\"} 1\n")
 			default:
 				t.Errorf("unexpected API path: %s", r.URL.Path)
 			}

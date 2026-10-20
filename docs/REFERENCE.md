@@ -58,6 +58,7 @@ Older collectors/viewers reject the new `policy_threshold` field. Upgrade collec
 | `mihomo` | Controller API base URL; `adapter` object | Successfully queried runtime metadata; indicates reported state rather than end-to-end traffic success |
 | `tailscale` | `adapter.peer` matching peer DNS, IP, or ID | Local Tailscale client reported peer status; idle or relay indicators do not directly prove application service status |
 | `wireguard` | `adapter.interface`, `adapter.peer` (public key) | Local WireGuard status queried; older handshakes do not imply broken connectivity; private keys and PSKs are stripped |
+| `cloudflared` | Connector metrics listener at a literal loopback `http://127.0.0.1:PORT` or `http://[::1]:PORT`; `adapter` object | Read the connector's own `/ready` and `/metrics`; reports an edge session and its counters, not the reachability of the service behind it |
 | `host` | Optional `host` object; Linux, macOS and Windows | Local CPU, memory, filesystem and process counters collected; configured resource assertions pass |
 
 ### Host Resources
@@ -686,3 +687,89 @@ other non-zero exit stays a monitor-side error, so a stopped daemon, a missing
 peer or a permission problem is never read as the peer not answering. Facts
 carry `last_seen` only when the control plane reports it; a missing time reads
 `not reported`, not the year 1 and not the sample's own time.
+
+Cloudflare Tunnel connectors are read by `kind: "cloudflared"` from
+cloudflared's local metrics listener. The target is the listener itself: a
+literal loopback address (`127.0.0.0/8` or `::1`), commonly
+`http://127.0.0.1:PORT` or `http://[::1]:PORT`, or `https` with `ca_file`. A
+host name, including `localhost`, is refused because a hosts file or resolver
+could point it elsewhere, and the URL carries no user information, query,
+fragment or path other than a bare `/`. `path`, `bind_ip`, `resolve_ip` and
+proxy chains are refused; this kind is not in the proxy-traversal list, so no
+environment proxy applies and there is no fallback transport. No credential is
+sent. Run the worker on the same host as the connector: another host's
+loopback listener is unreachable by design.
+
+Two fixed reads happen under the check's timeout. `GET /ready` is limited to
+4 KiB of JSON and yields `ready_connections`, plus `connector_id` only when the
+body's identifier has a UUID shape (lowercased); any other value is omitted. A
+reported count above 1024 is not this listener's shape: that is a
+malformed-input bound, not a deployment limit. `GET /metrics` is limited to
+1 MiB of Prometheus text. Only `cloudflared_tunnel_server_locations`,
+`cloudflared_tunnel_ha_connections`, `cloudflared_tunnel_total_requests`,
+`cloudflared_tunnel_request_errors`, `cloudflared_tunnel_active_streams`,
+`cloudflared_tunnel_timer_retries` and `build_info` are parsed; every other
+line, including histogram members and `cloudflared_tunnel_response_by_code`, is
+skipped as soon as its name is read. Labels are parsed with escaped quotes and
+backslashes, and counters and gauges must be non-negative integers within
+eighteen decimal digits; Prometheus decimal and exponent forms whose value is
+integral (`1.0`, `1e+06`) are accepted, while fractional values, signed
+mantissas, NaN, Inf and overflow are not. An absent family stays absent and a
+non-integer is not reported as zero. `connection_colos` carries at most eight
+distinct lowercase colo tokens from `server_locations` samples whose value is
+1, sorted; when more are reported, the first eight sorted are kept, and the
+colo policy compares the same eight codes the fact carries. `edge_location` is
+lowercased deliberately, because Cloudflare writes a colo uppercase in `CF-Ray`
+and its documentation while this label is lowercase. The unready live capture
+did not include `cloudflared_tunnel_server_locations`, so its labels and values
+are the documented shape, not an observation. `connector_version` comes from
+`build_info{version=...}` and is a token of at most 24 characters: the observed
+`2026.10.0` is nine, and a bound that could not hold the real version would
+hide it. `cloudflared_tunnel_timer_retries` is parsed but not reported as a
+fact: the eight-fact budget is spent on the defined readings.
+
+`/ready` decides the outcome; `/metrics` supplies facts. If `/ready` cannot be
+read, is non-JSON or is oversized, the sample is a monitor `error` with code
+`metrics_unavailable` and `/metrics` is not consulted. If `/ready` is a 503,
+its body `status` is not 200, or `readyConnections` is 0, the sample is `fail`
+with code `tunnel_not_ready`, stage `adapter`: the connector's own statement
+that it has no edge session; `/metrics` is then read only as a best-effort fact
+source and its failure is ignored. If `/ready` reports at least one session but
+`/metrics` is unreadable, non-200 or has no allowlisted family, the sample is
+`error` with code `metrics_unavailable`. That is how a stopped connector
+differs from a live one with no session: a full process stop closes the
+listener and is `metrics_unavailable`, while `tunnel_not_ready` is a live
+connector that says it holds no session. Otherwise the sample is `ok` with the
+detail `tunnel established; service behind it unproven`. A failed sample
+reaches the link only after the check's failure threshold, as with any check.
+
+`adapter.cloudflared.expected_connections` (1..8) turns ready sessions below the
+declared number into `policy` with code `connections_below_expected`, never a
+failure; `readyConnections: 0` is still `fail`, and one or more ready sessions
+below the declaration is `policy`. `expected_colos` (at most eight
+3..8-character tokens) turns a reported session outside the declared list into
+`policy` with code `colo_outside_expected`. A colo the metrics did not report
+is not a violation, and an entry may use either case. These are policy
+assertions, not request failures. `cloudflared_tunnel_ha_connections` is not a
+ready count: the live unready capture reported `ha_connections 1` with zero
+ready connections, so readiness is decided only by `/ready`.
+
+The facts are `ready_connections`, `connector_id`, `ha_connections`,
+`connection_colos`, `requests_total`, `request_errors`, `active_streams` and
+`connector_version`, at most eight. Evidence is `reported` and path evidence is
+`local_connector_runtime_reported`; counters are cumulative since the connector
+started, and a decrease or a changed `connector_id` means a restart. A fresh
+local connector report decides the state of a `link` it is attached to: a
+`tunnel_not_ready` sample takes the link down after the failure threshold, an
+established session shows it up, and the reason says the service behind it is
+unproven. A connector read that failed leaves the link unknown with its own
+reason. The public check through the edge still proves only the edge, and a
+colo is the connector's metadata, not routing proof. `/ready` proves a
+connector session, never that the hostname routes to this connector or that the
+service answers; add a separate application check for that.
+
+`adapter.cloudflared` is new. Older binaries refuse a topology that contains
+it, so upgrade collectors and all viewers to 1.4.0 or newer before enabling it;
+default configurations omit the field and remain readable by older clients.
+The nested options are part of the measurement contract, so setting or changing
+them starts a new contract and history for that check.

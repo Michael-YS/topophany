@@ -13,4 +13,5 @@ type AdapterOptions struct {
 	ExpectedTUN              *bool                    `json:"expected_tun,omitempty"`
 	ProviderMatchModes       map[string]string        `json:"provider_match_modes,omitempty"`
 	TailscaleDiagnostic      string                   `json:"tailscale_diagnostic,omitempty"`
+	Cloudflared              *CloudflaredOptions      `json:"cloudflared,omitempty"`
 }

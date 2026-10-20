@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
 func settled(t *testing.T, id string) model.Snapshot {
@@ -414,4 +415,38 @@ func same(a, b []model.Availability) bool {
 		}
 	}
 	return true
+}
+
+// A cloudflared check in a preview topology is a reported local connector
+// read, never a measured request: the link it feeds is up, and the service
+// behind the tunnel stays unproven.
+func TestCloudflaredSimulationIsReported(t *testing.T) {
+	c := testkit.Config()
+	expected := 4
+	c.Checks = append(c.Checks, model.Check{
+		ID: "tunnel-connector", Name: "cloudflared", Observer: "home", Link: "home-dmit-link",
+		Kind: "cloudflared", Target: "http://127.0.0.1:20241", IntervalSeconds: 60,
+		TimeoutSeconds: 8, StaleSeconds: 180, FailureThreshold: 3, RecoveryThreshold: 2,
+		Adapter: model.AdapterOptions{Cloudflared: &model.CloudflaredOptions{ExpectedConnections: &expected}},
+	})
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	s := New(c, now, DefaultLanguage)
+	snap, err := s.Snapshot("", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := check(t, snap, "tunnel-connector")
+	if state.Health != "up" || state.Last == nil {
+		t.Fatalf("check %+v", state)
+	}
+	if state.Last.Evidence != "reported" || state.Last.PathEvidence != model.LocalConnectorPathEvidence || state.Last.Connectivity {
+		t.Fatalf("cloudflared simulated as a measured request: %+v", state.Last)
+	}
+	if state.Last.Facts["ready_connections"] != "4" || state.Last.Facts["connection_colos"] != "hkg,sin" {
+		t.Fatalf("connector facts %v", state.Last.Facts)
+	}
+	link := entity(t, snap.Links, "home-dmit-link")
+	if link.Health != "up" {
+		t.Fatalf("link %+v", link)
+	}
 }

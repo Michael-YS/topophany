@@ -2,11 +2,13 @@ package probe
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters"
+	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflared"
 	"github.com/WhitenWhiten/topophany/internal/adapters/mihomo"
 	"github.com/WhitenWhiten/topophany/internal/adapters/tailscale"
 	"github.com/WhitenWhiten/topophany/internal/adapters/wireguard"
@@ -34,6 +36,48 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 		return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
 	}, Proxied: len(d.Proxies) > 0, ProxyCredentials: proxyCredentials(d.Proxies)}, x, target, o)
 }
+
+// cloudflared reads the connector's own listener on this host. The target is
+// a literal loopback URL by validation; the dialer refuses anything else so a
+// changed address has no route and no fallback.
+func (r Runner) cloudflared(ctx context.Context, x model.Check, target string, o *model.Observation) error {
+	return cloudflared.Collect(ctx, cloudflared.Dependencies{Client: cloudflaredClient}, x, target, o)
+}
+
+// cloudflaredClient is the only transport the adapter gets. It reads the
+// literal loopback listener directly: no proxy of the check's, no ambient
+// proxy, no compression and no keep-alive. A dial that is not loopback is
+// refused rather than routed elsewhere.
+func cloudflaredClient(x model.Check, target string) (*http.Client, func(), error) {
+	u, err := url.Parse(target)
+	if err != nil {
+		return nil, nil, local("setup", "invalid_adapter_url")
+	}
+	name := u.Hostname()
+	if x.ServerName != "" {
+		name = x.ServerName
+	}
+	tc, err := TLSConfig(name, x.CAFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, ForceAttemptHTTP2: false, MaxResponseHeaderBytes: 32768, DialContext: loopbackDial}
+	return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
+}
+
+// loopbackDial accepts only a literal loopback address. The cloudflared
+// listener is local; there is no direct or proxied fallback.
+func loopbackDial(ctx context.Context, network, address string) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+		return nil, errors.New("cloudflared listener is not loopback")
+	}
+	return (&net.Dialer{}).DialContext(ctx, network, address)
+}
+
 func (r Runner) tailscale(ctx context.Context, x model.Check, o *model.Observation) error {
 	return tailscale.Collect(ctx, r.command, x.Adapter.Tailscale(), o)
 }

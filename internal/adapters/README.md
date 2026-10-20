@@ -20,10 +20,17 @@ explicit first-match order: Cloudflare, Vercel, CloudFront, Fastly, Netlify.
 The HTTP probe still owns secret-response filtering. Provider branding remains
 in `view`, and generic `via` evidence attribution remains in `engine`.
 
+`cloudflared` reads the local Cloudflare Tunnel connector's metrics listener.
+Its target must be a literal loopback URL, it sends no credential, and it is
+not in the proxy-traversal list; the listener's `/ready` and `/metrics` are
+read-only. The connector's own statement is reported evidence about the tunnel
+session and never proves that the service behind it answers. See
+[cloudflared](cloudflared/README.md).
+
 Supabase currently uses the shared topology model and ordinary HTTP checks.
 Add its adapter directory when introducing actual platform-specific behavior.
-Future cloud API or local connector collection belongs in the relevant platform
-directory with explicit typed configuration and separate evidence boundaries.
+Future cloud API collection belongs in the relevant platform directory with
+explicit typed configuration and separate evidence boundaries.
 
 To add an adapter:
 

@@ -1,4 +1,34 @@
 {
+  "cloudflared-ok": {
+    "contract": "9e2dc26821efd2200148ca0aa3b66b82227534915343ea354adfa0412906c53d",
+    "observation": {
+      "id": "",
+      "project": "lab",
+      "check": "check",
+      "observer": "home",
+      "boot": "",
+      "sequence": 0,
+      "sampled_at": "0001-01-01T00:00:00Z",
+      "received_at": "0001-01-01T00:00:00Z",
+      "outcome": "ok",
+      "evidence": "reported",
+      "stage": "adapter",
+      "detail": "tunnel established; service behind it unproven",
+      "duration_ms": 0,
+      "connectivity": false,
+      "path_evidence": "local_connector_runtime_reported",
+      "facts": {
+        "active_streams": "3",
+        "connection_colos": "hkg,sin",
+        "connector_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "connector_version": "2026.10.0",
+        "ha_connections": "4",
+        "ready_connections": "4",
+        "request_errors": "2",
+        "requests_total": "120"
+      }
+    }
+  },
   "mihomo-auth": {
     "contract": "05ac778c57d503bb9161fffacd79ebaf5643151aec0f72396e99d96392d5d71f",
     "observation": {

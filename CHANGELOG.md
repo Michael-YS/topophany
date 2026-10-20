@@ -99,6 +99,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comma-separated codes. The list is part of the measurement contract, so
   changing it starts a new history. Older collectors and viewers reject the
   field, so upgrade them before using it.
+- A new check kind, `cloudflared`, reads a Cloudflare Tunnel connector's own
+  report from the local metrics listener that cloudflared runs beside the
+  tunnel. It reads only `GET /ready` (4 KiB of JSON, `secure.JSONResponseBudget`)
+  and `GET /metrics` (1 MiB of Prometheus text, seven allowlisted families) and
+  sends no credential. `ready_connections`, `connector_id` (UUID shape only,
+  lowercased), `ha_connections`, `connection_colos` (at most eight sorted
+  lowercase tokens), `requests_total`, `request_errors`, `active_streams` and
+  `connector_version` are reported facts, at most eight. `/ready` decides the
+  outcome first. A 503, a body `status` other than 200 or zero ready
+  connections is `fail` / `tunnel_not_ready` — the connector's own statement
+  that it has no edge session. A refused or timed-out listener, a non-JSON or
+  oversized `/ready`, and, only when `/ready` reported a session, an
+  unreadable `/metrics` or one with no known family are monitor `error` /
+  `metrics_unavailable`, never an outage. When `/ready` says there is no
+  session, `/metrics` supplies best-effort facts and its failure is ignored:
+  a full process stop closes the listener and is `metrics_unavailable`, while
+  `tunnel_not_ready` is a live connector with no session. Otherwise the sample
+  is `ok` with the detail `tunnel established; service behind it unproven`.
+  `adapter.cloudflared.expected_connections` (1..8) and `expected_colos` (at
+  most eight 3..8-character tokens, compared without case) are policy, with
+  codes `connections_below_expected` and `colo_outside_expected`; zero ready
+  sessions stays `fail`, one or more below the declaration is policy, and an
+  absent family is not a violation. The target must be a literal loopback
+  address (`127.0.0.0/8` or `::1`; commonly `http://127.0.0.1:PORT`,
+  `http://[::1]:PORT`, or `https` with `ca_file`): `path`, `bind_ip`,
+  `resolve_ip`, host names including `localhost`, proxies and credentials are
+  refused, and no environment proxy applies. A public topology strips the
+  `ca_file` path, so validation restores a non-secret placeholder on its owned
+  copy for an https listener; the real path never reappears. Run the worker on
+  the same host as the connector. Counters accept Prometheus decimal and
+  exponent forms whose value is integral (`1.0`, `1e+06`) within the
+  eighteen-digit bound. The connector version bound is 24 token characters
+  because the observed `2026.10.0` is nine. Evidence is reported, path
+  evidence is `local_connector_runtime_reported`, and a fresh local connector
+  report decides the state of the link it is attached to after the failure
+  threshold while the service behind it stays unproven; a failed connector
+  read leaves the link unknown. The nested options are part of the measurement
+  contract; older collectors and viewers reject the new field, so upgrade them
+  before adding it to a topology. Tested against cloudflared 2026.10.0 with a
+  fake, unregistered tunnel; the 200-ready and connected-metrics shapes are
+  documented, not observed, and their fixtures say so.
 
 ### Changed
 

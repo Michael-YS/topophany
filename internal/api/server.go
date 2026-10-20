@@ -621,7 +621,7 @@ func (g *generation) validateBatch(b model.Batch, observer string, now time.Time
 		}
 		expected := "measured"
 		switch x.Kind {
-		case "mihomo", "tailscale", "wireguard", "host":
+		case "mihomo", "tailscale", "wireguard", "host", "cloudflared":
 			expected = "reported"
 		}
 		if v.Evidence != expected {

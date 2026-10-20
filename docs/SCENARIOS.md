@@ -210,6 +210,21 @@ Interoperability across live OpenSSH, Tailscale, and WireGuard tunnels and nativ
 
 Vercel routing corrections: `vercel.TestHeaderFacts`, `probe.TestVercelRouteLabelsCannotReflectPrivateRequests`, and `view.TestVercelLocationIsReportedAsRegions` cover real formats, bounds, secret reflection and region terminology. The frozen pre-split oracle is preserved; only selected Vercel location fields have declared differences.
 
+## Cloudflare Tunnel connector (cloudflared 2026.10.0)
+
+The fixtures are sanitized captures from a connector started with a fake,
+unregistered tunnel ([provenance](../internal/adapters/cloudflared/testdata/2026.10.0/README.md));
+the 200-ready and connected-metrics shapes are documented, not observed, and
+are labelled synthetic.
+
+| Scenario | Regression |
+|---|---|
+| A connector session is not the service: `/ready` with four sessions yields `ok`, `ready_connections`, `connection_colos` and the other allowlisted facts, while the check detail says the service behind it is unproven; only a separate application check measures the service | `TestCollectEstablishedTunnel`, `TestCloudflaredLinkAndPublicEdgeEvidence`, `TestCloudflaredAdapterDetails` |
+| `/ready` proves a session and nothing more: a 503, a body status other than 200 or zero ready connections is `fail` / `tunnel_not_ready`, while a refused or timed-out listener, non-JSON or oversized bodies, and, only when `/ready` reported a session, an unreadable metrics read or a metrics body with no allowlisted family are monitor errors `metrics_unavailable` | `TestParseReady`, `TestCollectUnreadyIsFail`, `TestCollectReadyDecidesBeforeMetrics`, `TestCollectEstablishedRequiresMetrics`, `TestCollectMonitorErrors`, `TestCollectUnreachableAndTimeout`, `FuzzReady` |
+| The public edge check proves only the edge: a link whose fresh local connector report establishes the tunnel is up, and the same link turns down on `tunnel_not_ready` after the failure threshold, while a measured request through Cloudflare leaves the origin behind it unknown; a stale, mixed or failed connector read is not treated as a session report | `TestCloudflaredLinkAndPublicEdgeEvidence`, `TestConnectorLinkExemptionIsNarrow`, `TestLinkStillNeedsResponseProof` |
+| Declared redundancy is policy, not failure: zero ready sessions stays `fail`, while one or more ready sessions below `expected_connections` are `policy` / `connections_below_expected`, a reported colo outside `expected_colos` is `policy` / `colo_outside_expected`, an absent metrics family is no violation, and the options are part of the measurement contract and cloned | `TestCollectExpectedConnectionsIsPolicy`, `TestCollectExpectedColosIsPolicy`, `TestCloudflaredOptionsValidation`, `TestCloudflaredContractCloneAndJSON`, `TestCloudflaredTargetValidation`, `TestCloudflaredRefusesRoutingOverrides` |
+| The listener is local and bounded: only `GET /ready` and `GET /metrics` are read with `GET`, the production client has no proxy and its dialer accepts literal loopback only, facts stay within eight, and parsers reject oversized bodies, bound escaped labels and keep only shaped or integral values | `TestCloudflaredClientRefusesProxies`, `TestCloudflaredDialIsLoopbackOnly`, `TestCollectReadsReadyThenMetricsWithGET`, `TestCloudflaredIsAdmittedAsReportedEvidence`, `TestParseMetricsLiveFixture`, `TestParseMetricsConnectedFixture`, `TestMetricIntegerForms`, `TestParseMetricsLabelValueBound`, `FuzzMetrics`, `TestAdapterCompatibility`, `TestEditorCloudflaredKindKeepsNestedOptions` |
+
 ## Geographic map labels (1.2.0)
 
 `TestGeoLabelsCycle` verifies Cards → Locations → Points → Cards, including

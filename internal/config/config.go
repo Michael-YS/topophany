@@ -19,6 +19,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflared"
 	"github.com/WhitenWhiten/topophany/internal/adapters/mihomo"
 	"github.com/WhitenWhiten/topophany/internal/adapters/tailscale"
 	"github.com/WhitenWhiten/topophany/internal/adapters/wireguard"
@@ -474,6 +475,21 @@ func validateResolved(c model.Config) error {
 		case "wireguard":
 			if err := wireguard.Validate(x.Adapter.WireGuard()); err != nil {
 				return err
+			}
+		case "cloudflared":
+			// The connector's metrics listener is a local process: no host
+			// override, no source binding, no proxy chain, no path.
+			if x.Path != "" {
+				return fmt.Errorf("check %s: cloudflared reads a literal loopback listener; path is unsupported", x.ID)
+			}
+			if x.BindIP != "" || x.ResolveIP != "" {
+				return fmt.Errorf("check %s: cloudflared does not accept bind_ip or resolve_ip", x.ID)
+			}
+			if err := cloudflared.ValidateTarget(t, x.CAFile); err != nil {
+				return fmt.Errorf("check %s: %w", x.ID, err)
+			}
+			if err := cloudflared.Validate(x.Adapter.CloudflaredOptions()); err != nil {
+				return fmt.Errorf("check %s: %w", x.ID, err)
 			}
 		case "host":
 			// Validated above; this check reads only the observer's host.

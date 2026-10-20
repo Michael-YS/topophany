@@ -73,6 +73,15 @@ func Clone(c model.Config) model.Config {
 			copy := *value
 			x.Adapter.ExpectedKeepaliveSeconds = &copy
 		}
+		if cloud := x.Adapter.Cloudflared; cloud != nil {
+			v := *cloud
+			v.ExpectedColos = slices.Clone(cloud.ExpectedColos)
+			if cloud.ExpectedConnections != nil {
+				n := *cloud.ExpectedConnections
+				v.ExpectedConnections = &n
+			}
+			x.Adapter.Cloudflared = &v
+		}
 		x.Adapter.ExpectedProviders = maps.Clone(x.Adapter.ExpectedProviders)
 		for k, names := range x.Adapter.ExpectedProviders {
 			x.Adapter.ExpectedProviders[k] = slices.Clone(names)

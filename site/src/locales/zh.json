@@ -165,6 +165,7 @@
   "probes.mihomo": "内核报告的模式、链路和当前选择",
   "probes.tailscale": "对端是否在线，直连还是中继",
   "probes.wireguard": "最近一次握手与收发字节；从不保留密钥",
+  "probes.cloudflared": "连接器报告的隧道会话与 colo",
   "probes.adapters-note": "工具报告的状态只当作报告展示，绝不算作端到端的通过。",
   "probes.edges": "边缘与平台",
   "probes.cloudflare": "Workers 与 Pages；以及应答的 POP",

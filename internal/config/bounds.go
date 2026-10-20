@@ -135,9 +135,15 @@ const MaxTook = (MaxTimeoutSeconds + 5) * time.Second
 // MaxTimeoutSeconds is the longest timeout a check may have.
 const MaxTimeoutSeconds = 300
 
-// ValidatePublic restores only redacted SSH login and file placeholders on an
-// owned copy; the public topology is never executable and must still pass all
-// graph checks.
+// publicCAPlaceholder stands in for a stripped ca_file when a public
+// topology still has to pass validation. It is never executed.
+const publicCAPlaceholder = "redacted"
+
+// ValidatePublic restores only redacted placeholders on an owned copy; the
+// public topology is never executable and must still pass all graph checks.
+// A cloudflared check over https needs a ca_file to validate, so its public
+// copy gets the placeholder too: the real path, like the SSH files, never
+// reappears, and a viewer never executes the topology.
 func ValidatePublic(c model.Config) error {
 	copy := Clone(c)
 	for i := range copy.Paths {
@@ -148,6 +154,15 @@ func ValidatePublic(c model.Config) error {
 				p.SSHIdentityFile = "redacted"
 				p.SSHKnownHosts = "redacted"
 			}
+		}
+	}
+	for i := range copy.Checks {
+		x := &copy.Checks[i]
+		if x.Kind != "cloudflared" || x.CAFile != "" {
+			continue
+		}
+		if u, err := url.Parse(Target(copy, *x)); err == nil && u.Scheme == "https" {
+			x.CAFile = publicCAPlaceholder
 		}
 	}
 	return Validate(copy)

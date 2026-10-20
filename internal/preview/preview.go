@@ -593,7 +593,7 @@ func (s *Sim) reach(x model.Check) []string {
 		if s.nodes[x.Adapter.Peer].ID != "" {
 			add(x.Adapter.Peer)
 		}
-	case "mihomo":
+	case "mihomo", "cloudflared":
 	default:
 		for _, v := range s.ends[x.Endpoint].Via {
 			add(v)
@@ -750,6 +750,24 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 	timeout := float64(x.TimeoutSeconds * 1000)
 
 	switch x.Kind {
+	case "cloudflared":
+		// The connector's own listener is a synthetic read: four reported
+		// sessions and their counters, with no request, so Connectivity stays
+		// false and the service behind it stays unproven.
+		o.Evidence, o.Stage = "reported", "adapter"
+		o.PathEvidence = model.LocalConnectorPathEvidence
+		o.Outcome, o.Detail = "ok", "tunnel established; service behind it unproven"
+		o.Facts["ready_connections"], o.Facts["ha_connections"] = "4", "4"
+		o.Facts["connection_colos"] = "hkg,sin"
+		o.Facts["requests_total"], o.Facts["request_errors"] = "1200", "0"
+		o.Facts["active_streams"] = "0"
+		o.Facts["connector_version"] = "2026.10.0"
+		if expected := x.Adapter.CloudflaredOptions().ExpectedConnections; expected != nil && *expected > 4 {
+			o.Outcome, o.Code = "policy", "connections_below_expected"
+			o.Detail = "the connector holds fewer edge connections than the deployment declares"
+		}
+		o.DurationMS = 2 + int64(noise*4)
+		return o
 	case "mihomo":
 		o.Evidence, o.Stage = "reported", "adapter"
 		o.Outcome, o.Detail = "ok", "read-only runtime telemetry collected; not an end-to-end service check"

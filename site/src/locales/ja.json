@@ -165,6 +165,7 @@
   "probes.mihomo": "コアが報告するモード、チェーン、選択中のノード",
   "probes.tailscale": "ピアのオンライン状態、直結かリレーか",
   "probes.wireguard": "最後のハンドシェイクと転送量。鍵は保持しない",
+  "probes.cloudflared": "コネクタが報告するトンネルセッションと colo",
   "probes.adapters-note": "ツールの報告は報告として示し、エンドツーエンドの合格とはみなしません。",
   "probes.edges": "エッジとプラットフォーム",
   "probes.cloudflare": "Workers と Pages。応答した POP も",

@@ -22,6 +22,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/adapters"
 	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflare"
+	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflared"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -99,6 +100,12 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 	case "wireguard":
 		o.Evidence = "reported"
 		e = r.wireguard(ctx, x, &o)
+	case "cloudflared":
+		o.Evidence = "reported"
+		o.PathEvidence = cloudflared.PathEvidence
+		// The listener is a local HTTP read, not a client stream to a core.
+		delete(o.Facts, "connection_semantics")
+		e = r.cloudflared(ctx, x, target, &o)
 	case "host":
 		o.Evidence = "reported"
 		o.PathEvidence = "local_host_runtime_reported"

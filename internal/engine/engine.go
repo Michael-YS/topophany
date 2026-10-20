@@ -329,7 +329,7 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 		}
 	}
 	for _, l := range c.Links {
-		s := aggregatePath(l.ID, group(p.linkChecks[l.ID]), "segment not independently measured")
+		s := aggregateLink(l.ID, group(p.linkChecks[l.ID]), "segment not independently measured")
 		for _, id := range p.linkPaths[l.ID] {
 			if relevant(model.Check{Observer: p.paths[id].Observer}) && evalPath(id).Health == "down" {
 				s.Affected = true
@@ -675,9 +675,9 @@ func Aggregate(id string, states []model.CheckState, empty string) model.EntityS
 	return s
 }
 
-// aggregatePath is the state of a path or link from its checks. When every
-// active check is a fresh runtime report, the path is unknown for a reason
-// worth saying: the software answered, and nothing measured the path itself.
+// aggregatePath is the state of a path from its checks. When every active
+// check is a fresh runtime report, the path is unknown for a reason worth
+// saying: the software answered, and nothing measured the path itself.
 func aggregatePath(id string, states []model.CheckState, empty string) model.EntityState {
 	s := Aggregate(id, pathEvidenceStates(states), empty)
 	active, reported := 0, 0
@@ -694,6 +694,68 @@ func aggregatePath(id string, states []model.CheckState, empty string) model.Ent
 		s.Reason = "runtime reports only; inspect software policy checks; end-to-end reachability is unmeasured"
 	}
 	return s
+}
+
+// aggregateLink is the state of a link from its checks. A measured check
+// decides it as usual. Remote-reported telemetry alone stays unknown, as on a
+// path, but a fresh local connector report decides the link's own state: the
+// connector is one end of the link and says whether it holds an edge session.
+// That is still reported evidence about the session, never proof that the
+// service behind it answers; the reason says so. A connector read that failed
+// is not a report about the link at all, so it neither counts as one nor
+// inherits the reported-only reason.
+func aggregateLink(id string, states []model.CheckState, empty string) model.EntityState {
+	s := Aggregate(id, linkEvidenceStates(states), empty)
+	active, reported, connector, failed := 0, 0, 0, 0
+	for _, check := range states {
+		if check.Freshness == "paused" || check.Freshness == "maintenance" {
+			continue
+		}
+		active++
+		if check.Freshness != "fresh" || check.Last == nil || check.Last.Evidence != "reported" {
+			continue
+		}
+		if check.Last.Outcome == "error" {
+			if check.Last.PathEvidence == model.LocalConnectorPathEvidence {
+				failed++
+			}
+			continue
+		}
+		reported++
+		if check.Last.PathEvidence == model.LocalConnectorPathEvidence {
+			connector++
+		}
+	}
+	switch {
+	case active > 0 && active == connector && s.Health == "up":
+		s.Reason = "local connector reports an established tunnel; the service behind it is unproven"
+	case active > 0 && active == connector && s.Health == "down":
+		s.Reason = "local connector reports no established tunnel"
+	case failed > 0 && s.Health == "unknown":
+		s.Reason = "local connector read failed; link state unknown"
+	case active > 0 && active == reported && s.Health == "unknown":
+		s.Reason = "runtime reports only; inspect software policy checks; end-to-end reachability is unmeasured"
+	}
+	return s
+}
+
+// linkEvidenceStates keeps a fresh local connector's own verdict and leaves
+// every other non-measured sample unknown, as a path does.
+func linkEvidenceStates(states []model.CheckState) []model.CheckState {
+	out := make([]model.CheckState, len(states))
+	copy(out, states)
+	for i := range out {
+		s := &out[i]
+		connector := s.Last != nil && s.Last.Evidence != "measured" && s.Last.PathEvidence == model.LocalConnectorPathEvidence
+		if s.Last != nil && s.Last.Evidence != "measured" && !connector {
+			s.Health = "unknown"
+			s.Reason = "runtime telemetry is not an end-to-end probe"
+		} else if s.Health == "up" && !connector && (s.Last == nil || s.Last.Facts["response_proof"] == "" || s.Last.Facts["response_proof"] == "none") {
+			s.Health = "unknown"
+			s.Reason = "no remote protocol response proof"
+		}
+	}
+	return out
 }
 
 // Runtime selection/handshake metadata and a TUN-visible TCP accept are not

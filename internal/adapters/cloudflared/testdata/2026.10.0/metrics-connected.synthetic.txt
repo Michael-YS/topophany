@@ -1,0 +1,30 @@
+# HELP build_info Build and version information
+# TYPE build_info gauge
+build_info{goversion="go1.27.1",revision="2026-10-05T15:39:13Z",type="",version="2026.10.0"} 1
+# HELP cloudflared_tunnel_ha_connections Number of active ha connections
+# TYPE cloudflared_tunnel_ha_connections gauge
+cloudflared_tunnel_ha_connections 4
+# HELP cloudflared_tunnel_server_locations Location of the server tunnel connections are connected to
+# TYPE cloudflared_tunnel_server_locations gauge
+cloudflared_tunnel_server_locations{connection_id="00000000-0000-4000-8000-000000000001",edge_location="hkg"} 1
+cloudflared_tunnel_server_locations{connection_id="00000000-0000-4000-8000-000000000002",edge_location="sin"} 1
+cloudflared_tunnel_server_locations{connection_id="00000000-0000-4000-8000-000000000003",edge_location="nrt"} 1
+cloudflared_tunnel_server_locations{connection_id="00000000-0000-4000-8000-000000000004",edge_location="lax"} 1
+# HELP cloudflared_tunnel_total_requests Total count of requests proxied through all tunnel connections
+# TYPE cloudflared_tunnel_total_requests counter
+cloudflared_tunnel_total_requests 120
+# HELP cloudflared_tunnel_request_errors Total count of requests errored proxying through all tunnel connections
+# TYPE cloudflared_tunnel_request_errors counter
+cloudflared_tunnel_request_errors 2
+# HELP cloudflared_tunnel_active_streams Number of active streams
+# TYPE cloudflared_tunnel_active_streams gauge
+cloudflared_tunnel_active_streams 3
+# HELP cloudflared_tunnel_timer_retries Number of timer retries
+# TYPE cloudflared_tunnel_timer_retries counter
+cloudflared_tunnel_timer_retries 1
+# HELP cloudflared_tunnel_concurrent_requests_per_tunnel Concurrent requests proxied through each tunnel
+# TYPE cloudflared_tunnel_concurrent_requests_per_tunnel gauge
+cloudflared_tunnel_concurrent_requests_per_tunnel 3
+# HELP go_goroutines Number of goroutines that currently exist.
+# TYPE go_goroutines gauge
+go_goroutines 24

@@ -609,7 +609,7 @@ func remove(c *model.Config, kind, id string) error {
 	return nil
 }
 
-var checkKinds = []string{"http", "tcp", "tls", "ssh-banner", "dns", "udp-echo", "icmp", "mihomo", "tailscale", "wireguard", "host"}
+var checkKinds = []string{"http", "tcp", "tls", "ssh-banner", "dns", "udp-echo", "icmp", "mihomo", "tailscale", "wireguard", "host", "cloudflared"}
 
 func (m *Model) openForm(kind, id string) {
 	// Browser viewers never author topology; omit forms and their builders.

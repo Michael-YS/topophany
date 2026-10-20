@@ -127,6 +127,8 @@ def main() -> int:
             ("adapters/tailscale", "FuzzTailscaleStatus"),
             ("adapters/tailscale", "FuzzTailscaleDiagnostic"),
             ("adapters/wireguard", "FuzzWireGuardRows"),
+            ("adapters/cloudflared", "FuzzReady"),
+            ("adapters/cloudflared", "FuzzMetrics"),
             ("probe", "FuzzDNSPacket"),
             ("probe", "FuzzICMPChecksum"),
             ("rollup", "FuzzLateSampleOrder"),
