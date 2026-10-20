@@ -709,7 +709,9 @@ func TestVercelRouteLabelsCannotReflectPrivateRequests(t *testing.T) {
 					t.Fatal("public route labels missing", o.Facts)
 				}
 			} else {
-				raw, _ := json.Marshal(o)
+				// Check peer-supplied facts, not the monitor's contract digest:
+				// a hash can coincidentally contain these four-character fragments.
+				raw, _ := json.Marshal(o.Facts)
 				if strings.Contains(string(raw), "abc1") || strings.Contains(string(raw), "def2") || o.Facts["peer_text"] != withheld {
 					t.Fatal("private route reflection reached shared evidence", o.Facts)
 				}
