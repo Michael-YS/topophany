@@ -520,7 +520,7 @@ func (m *Model) drawNetwork(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		if b.x+b.w > w {
 			continue
 		}
-		gc := groups[n.Group]
+		gc := mapHue(n, groups)
 		chip := Mix(gc, cInk, .86)
 		st := fg(Mix(gc, cText, .3)).Bg(chip)
 		if n.Kind == "external" {

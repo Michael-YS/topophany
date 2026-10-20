@@ -32,7 +32,7 @@ func (m *Model) drawVirtual(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		c := vCache{key: key, paths: l.routeBudget(work)}
 		c.dropped = unrouted(c.paths)
 		if c.dropped > 0 && l.cols > 1 && work.remaining > 0 {
-			if l2 := m.layoutVirtual(w, h, l.cols-1, nodes, edges, f); l2 != nil {
+			if l2 := m.layoutVirtual(w, h, l.cols-1, nodes, edges, f); l2 != nil && l2.fits() {
 				if p2 := l2.routeBudget(work); unrouted(p2) < c.dropped {
 					c.cols, c.paths, c.dropped = l.cols-1, p2, unrouted(p2)
 				}
@@ -41,7 +41,9 @@ func (m *Model) drawVirtual(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		m.vcache = c
 	}
 	if m.vcache.cols > 0 {
-		l = m.layoutVirtual(w, h, m.vcache.cols, nodes, edges, f)
+		if l2 := m.layoutVirtual(w, h, m.vcache.cols, nodes, edges, f); l2 != nil && l2.fits() {
+			l = l2
+		}
 	}
 	// Each end of a wire meets its card's edge on one side of one row.
 	type end struct {
@@ -173,10 +175,7 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 		if !in(c.y) {
 			return
 		}
-		hue := groups[n.Group]
-		if hosted(n.Kind) {
-			hue = providerColor(n.Provider, hue)
-		}
+		hue := mapHue(n, groups)
 		chip := Mix(hue, cInk, .84)
 		st := fg(Mix(hue, cText, .35)).Bg(chip)
 		if n.Kind == "external" {
@@ -292,7 +291,7 @@ func (m *Model) drawVCard(cv *Canvas, ox, oy, h int, c *vCard, nodes []mapNode, 
 		}
 		n := nodes[i]
 		bg := paper
-		st := fg(Mix(groups[n.Group], cText, .35)).Bg(bg)
+		st := fg(Mix(mapHue(n, groups), cText, .35)).Bg(bg)
 		if n.Kind == "external" {
 			st = st.italic()
 		}

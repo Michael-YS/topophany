@@ -140,6 +140,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before adding it to a topology. Tested against cloudflared 2026.10.0 with a
   fake, unregistered tunnel; the 200-ready and connected-metrics shapes are
   documented, not observed, and their fixtures say so.
+- Topology maps place the Cloudflare colo a check reached. A new generated
+  table in `internal/view/colos.go` holds Cloudflare's own public location
+  list (`https://speed.cloudflare.com/locations`; 309 locations, fetched
+  2026-10-19, input SHA-256
+  `6fd21425b338fc8ff37da26f1e1031bf528c537dc695db59e3e24dab64d898b2`), written
+  by `scripts/gen_colos.py` from a saved capture (`--input`) and verified
+  without writing (`--check`); `ColoAt` and `AllColos` read it and no request is
+  made at runtime. The preview's Cloudflare nearest-colo choice now uses all
+  309 real locations instead of seven stand-ins, keeping the mainland `LAX`
+  override and Vercel's own lowercase region table. On every map, a fresh
+  check whose endpoint reaches an edge and whose last sample says
+  `edge_pop` adds one pseudo-node per (edge, colo) at the colo's coordinates,
+  named by its code and placed by its city, with one hop from the observer
+  node that saw it and one to the edge pill. The node and its hops claim what
+  the check claims: carried when it passed, and only affected when it failed,
+  because a failing request does not establish that the colo is down; a stale,
+  paused, cached or withheld sample, a malformed code, and Vercel's non-colo
+  region place nothing. A well-formed code the list does not know floats in
+  the "no location" tray. A map draws at most 32 colo pseudo-nodes, and they
+  count against its existing node and edge budgets; the nodes are kind `colo`
+  and the hops a new `colo` edge kind in `topo show map` and its JSON. A short
+  virtual map now splits places into more columns, down to the narrowest card,
+  instead of stacking cards past its height. The preview's recorded tours
+  change because its colos are now real places.
 
 ### Changed
 

@@ -22,6 +22,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 //go:embed topology.json topology.*.json
@@ -117,6 +118,7 @@ type Sim struct {
 	paths     map[string]model.Path
 	services  map[string]model.Service
 	obsNode   map[string]string
+	near      map[[2]string]pop // provider and observer -> the colo it lands on
 	ledger    *ledger.Ledger    // what a collector watching all along would remember
 	observed  time.Time         // when the ledger last judged the evidence
 	text      map[string]string // the catalog the scenarios are named from
@@ -163,6 +165,14 @@ func New(c model.Config, now time.Time, lang string) *Sim {
 	for _, o := range c.Observers {
 		s.obsNode[o.ID] = o.Node
 		observers[o.ID] = true
+	}
+	// Which colo an observer lands on is fixed by its declared place; find
+	// each once instead of once per simulated sample.
+	s.near = map[[2]string]pop{}
+	for _, provider := range []string{"cloudflare", "vercel"} {
+		for observer := range s.obsNode {
+			s.near[[2]string{provider, observer}] = s.nearestPop(provider, observer)
+		}
 	}
 	for i, sc := range scenarios {
 		ok := true
@@ -603,31 +613,68 @@ func (s *Sim) reach(x model.Check) []string {
 	return r
 }
 
-// pops are a few points of presence per edge network. An observer lands on
-// the nearest, except that mainland observers on plans without a China
-// network are carried abroad.
+// A point of presence: the code an edge network reports and where it is.
+// Cloudflare's are the locations of its public list, generated into
+// internal/view/colos.go, so the preview sends an observer to the colo it is
+// actually nearest to. Vercel codes its own regions with lowercase tokens
+// that are not IATA codes, so they keep a small table of their own here.
 type pop struct {
 	code     string
 	lat, lon float64
 }
 
-var pops = map[string][]pop{
-	"cloudflare": {{"NRT", 35.77, 140.39}, {"HKG", 22.31, 113.92}, {"SIN", 1.36, 103.99}, {"LAX", 33.94, -118.41}, {"HNL", 21.32, -157.92}, {"EWR", 40.69, -74.17}, {"FRA", 50.04, 8.56}},
-	"vercel":     {{"hnd1", 35.55, 139.78}, {"hkg1", 22.31, 113.92}, {"sin1", 1.36, 103.99}, {"sfo1", 37.62, -122.38}, {"iad1", 38.95, -77.45}, {"fra1", 50.04, 8.56}},
-}
+var cloudflarePops = func() []pop {
+	all := view.AllColos()
+	list := make([]pop, len(all))
+	for i, c := range all {
+		list[i] = pop{c.Code, c.Lat, c.Lon}
+	}
+	return list
+}()
+
+var vercelPops = []pop{{"hnd1", 35.55, 139.78}, {"hkg1", 22.31, 113.92}, {"sin1", 1.36, 103.99}, {"sfo1", 37.62, -122.38}, {"iad1", 38.95, -77.45}, {"fra1", 50.04, 8.56}}
+
 var mainlandPop = map[string]string{"cloudflare": "LAX", "vercel": "hkg1"}
 
-// edgePop is where an observer's requests to an edge network land.
+// popsFor is the points of presence an edge network reports, nil for one
+// whose edge names no region at all.
+func popsFor(provider string) []pop {
+	switch provider {
+	case "cloudflare":
+		return cloudflarePops
+	case "vercel":
+		return vercelPops
+	}
+	return nil
+}
+
+// edgePop is where an observer's requests to an edge network land: the
+// nearest reported point of presence, except that mainland observers on
+// plans without a China network are carried abroad. The answer is fixed by
+// the observer's declared place, so New finds it once for every provider and
+// observer; the preview builds tens of thousands of samples from it.
 func (s *Sim) edgePop(provider, observer string) (string, *model.Location) {
-	list := pops[provider]
-	if len(list) == 0 {
+	best, ok := s.near[[2]string{provider, observer}]
+	if !ok {
+		best = s.nearestPop(provider, observer)
+	}
+	if best.code == "" {
 		return "", nil
+	}
+	return best.code, &model.Location{Label: best.code, Lat: best.lat, Lon: best.lon}
+}
+
+// nearestPop is edgePop without the cache.
+func (s *Sim) nearestPop(provider, observer string) pop {
+	list := popsFor(provider)
+	if len(list) == 0 {
+		return pop{}
 	}
 	best := list[0]
 	if code := mainlandPop[provider]; code != "" && s.china(s.obsNode[observer]) {
 		for _, p := range list {
 			if p.code == code {
-				best = p
+				return p
 			}
 		}
 	} else if from := s.where[s.obsNode[observer]]; from != nil {
@@ -638,7 +685,7 @@ func (s *Sim) edgePop(provider, observer string) (string, *model.Location) {
 			}
 		}
 	}
-	return best.code, &model.Location{Label: best.code, Lat: best.lat, Lon: best.lon}
+	return best
 }
 
 // loc is where traffic to a node goes: its declared place, or for an edge
@@ -870,7 +917,7 @@ func (s *Sim) observe(c model.Config, x model.Check, t time.Time, sc Scenario) m
 			o.Facts["response_proof"] = "verified_https"
 		}
 		provider := s.nodes[edge].Provider
-		if s.nodes[edge].Kind == "edge" && pops[provider] != nil {
+		if s.nodes[edge].Kind == "edge" && popsFor(provider) != nil {
 			o.Facts["edge_provider"] = provider
 			region, _ := s.edgePop(provider, x.Observer)
 			if provider == "vercel" {

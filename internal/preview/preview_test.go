@@ -8,6 +8,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 func settled(t *testing.T, id string) model.Snapshot {
@@ -273,6 +274,45 @@ func contains(list []string, v string) bool {
 	return false
 }
 
+func TestEdgePopUsesCloudflaresOwnLocations(t *testing.T) {
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	for _, tc := range []struct{ lang, observer, provider, want string }{
+		{"en", "obs-win", "cloudflare", "SEA"},
+		{"en", "obs-remote", "cloudflare", "FRA"},
+		{"ja", "obs-win", "cloudflare", "KIX"},
+		{"zh", "obs-win", "cloudflare", "LAX"}, // a mainland observer is carried abroad
+		{"en", "obs-win", "vercel", "sfo1"},
+		{"zh", "obs-win", "vercel", "hkg1"},
+	} {
+		c, err := Preset(tc.lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := New(c, now, tc.lang)
+		code, loc := s.edgePop(tc.provider, tc.observer)
+		if code != tc.want {
+			t.Fatalf("%s/%s from %s = %q, want %q", tc.lang, tc.provider, tc.observer, code, tc.want)
+		}
+		if tc.provider != "cloudflare" {
+			continue
+		}
+		known, ok := view.ColoAt(code)
+		if !ok {
+			t.Fatalf("%s is not in Cloudflare's generated locations", code)
+		}
+		if loc == nil || loc.Label != code || loc.Lat != known.Lat || loc.Lon != known.Lon {
+			t.Fatalf("%s: location %+v does not match the table's %+v", code, loc, known)
+		}
+	}
+	c, err := Preset("en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, loc := New(c, now, "en").edgePop("netlify", "obs-win"); code != "" || loc != nil {
+		t.Fatalf("an edge with no location list returned %q, %+v", code, loc)
+	}
+}
+
 func TestEdgeAnswersForTheOriginBehindIt(t *testing.T) {
 	ok := settled(t, "normal")
 	if f := check(t, ok, "r-app-web").Last.Facts; f["edge_provider"] != "cloudflare" || f["edge_cache"] != "DYNAMIC" {
@@ -448,5 +488,65 @@ func TestCloudflaredSimulationIsReported(t *testing.T) {
 	link := entity(t, snap.Links, "home-dmit-link")
 	if link.Health != "up" {
 		t.Fatalf("link %+v", link)
+	}
+}
+
+func TestPreviewMapPlacesTheColoTheEdgeReported(t *testing.T) {
+	now := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
+	for lang, want := range map[string]map[string]string{
+		"en": {"SJC": "San Jose", "EWR": "Newark", "FRA": "Frankfurt-am-Main"},
+		"ja": {"KIX": "Osaka", "EWR": "Newark", "FRA": "Frankfurt-am-Main"},
+		"zh": {"LAX": "Los Angeles", "EWR": "Newark", "FRA": "Frankfurt-am-Main"},
+	} {
+		c, err := Preset(lang)
+		if err != nil {
+			t.Fatal(err)
+		}
+		snap, err := New(c, now, lang).Snapshot("", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nodes, edges := (view.View{Snapshot: snap, Now: now}).Graph()
+		found := map[string]view.MapNode{}
+		for _, n := range nodes {
+			if n.Kind == "colo" {
+				found[n.ID] = n
+			}
+		}
+		if len(found) != len(want) {
+			t.Fatalf("%s: colo nodes = %v, want %v", lang, found, want)
+		}
+		for code, place := range want {
+			id := "colo:cf:" + code
+			n, ok := found[id]
+			if !ok {
+				t.Fatalf("%s: no %s", lang, id)
+			}
+			known, knownOK := view.ColoAt(code)
+			if !knownOK || !n.Located || n.Place != place || n.Lat != known.Lat || n.Lon != known.Lon {
+				t.Fatalf("%s: %s placed at %q %.4f,%.4f, want %q %.4f,%.4f", lang, id, n.Place, n.Lat, n.Lon, place, known.Lat, known.Lon)
+			}
+			if view.NodeSignal(n) != "up" {
+				t.Fatalf("%s: %s carries a passing preview check but reads %q", lang, id, view.NodeSignal(n))
+			}
+			hops := 0
+			for _, e := range edges {
+				if e.Kind != view.EdgeColo {
+					continue
+				}
+				if e.To == id {
+					hops++
+					if e.From == "" || e.From == "cf" {
+						t.Fatalf("%s: observer hop from %q", lang, e.From)
+					}
+				}
+				if e.From == id && e.To != "cf" {
+					t.Fatalf("%s: %s fronts %q, not the edge", lang, id, e.To)
+				}
+			}
+			if hops != 1 {
+				t.Fatalf("%s: %s has %d observer hops, want 1", lang, id, hops)
+			}
+		}
 	}
 }

@@ -14,7 +14,8 @@ const (
 	edgeLink    = view.EdgeLink
 	edgePath    = view.EdgePath
 	edgeContain = view.EdgeContain
-	edgeVia     = view.EdgeVia // an edge or proxy in front of an endpoint's node
+	edgeVia     = view.EdgeVia  // an edge or proxy in front of an endpoint's node
+	edgeColo    = view.EdgeColo // a reported colo between an observer and the edge
 )
 
 // What a map element may claim is its signal; see view.SignalRank.
@@ -44,6 +45,16 @@ func signalGlyph(s string) rune {
 }
 
 func nodeSignal(n mapNode) string { return view.NodeSignal(n) }
+
+// mapHue is a node's map color: an edge's or platform's brand color, a
+// reported colo's edge brand color, else the color of its group.
+func mapHue(n mapNode, groups map[string]Color) Color {
+	hue := groups[n.Group]
+	if hosted(n.Kind) || n.Kind == "colo" {
+		return providerColor(n.Provider, hue)
+	}
+	return hue
+}
 
 // graph derives drawable nodes and edges from the snapshot, and the hue of
 // each node group. Path-implied edges are declared expectations (dashed),
@@ -264,6 +275,12 @@ func (m *Model) mapLegend(cv *Canvas, x, ly, w int, nodes []mapNode, edges []map
 			break
 		}
 	}
+	for _, e := range edges {
+		if e.Kind == edgeColo {
+			item('┈', Mix(cAccent, cInk, .35), "reported colo")
+			break
+		}
+	}
 	if m.mapMode() == "network" {
 		item('┊', cFaint, "hosted in")
 	}
@@ -302,7 +319,7 @@ func edgeStyle(e mapEdge, f mapFocus) (Color, int8, int) {
 		if e.Signal == "unknown" || e.Signal == "carried" {
 			c, pri = Mix(c, cInk, .3), pri-1
 		}
-	case edgeVia:
+	case edgeVia, edgeColo:
 		dash = 1
 	case edgeContain:
 		c, pri, dash = Mix(cFaint, cInk, .2), 2, 1

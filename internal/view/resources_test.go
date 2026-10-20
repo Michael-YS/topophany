@@ -1,4 +1,4 @@
-package view
+package view_test
 
 import (
 	"strings"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/preview"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 func TestServerCardsShowOnlyCurrentLocalResources(t *testing.T) {
@@ -18,7 +19,7 @@ func TestServerCardsShowOnlyCurrentLocalResources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := View{Snapshot: snap, Now: now}
+	v := view.View{Snapshot: snap, Now: now}
 	resources := v.Fleet().Card("app").Resources
 	if len(resources) != 1 || resources[0].Check != "host-app" || resources[0].Health != "up" {
 		t.Fatal(resources)
@@ -27,7 +28,7 @@ func TestServerCardsShowOnlyCurrentLocalResources(t *testing.T) {
 		t.Fatal("edge has local host resources")
 	}
 	details := ""
-	for _, r := range v.Rows(Servers) {
+	for _, r := range v.Rows(view.Servers) {
 		if r.ID == "app" {
 			details = strings.Join(r.Details, "\n")
 		}
@@ -62,7 +63,7 @@ func TestServerCardsShowOnlyCurrentLocalResources(t *testing.T) {
 		if r.Health != "unknown" || len(r.Facts) > 0 {
 			t.Fatal("historical values shown as current", mode, r)
 		}
-		for _, pair := range ResourceValues(r) {
+		for _, pair := range view.ResourceValues(r) {
 			if pair[1] != "unknown" {
 				t.Fatal(mode, pair)
 			}

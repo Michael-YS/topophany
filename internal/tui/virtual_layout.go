@@ -65,6 +65,23 @@ type vLayout struct {
 	drawn  []vEdge
 }
 
+// fits reports whether every card lies inside the area's border and no two
+// cards overlap. A column count may only be reduced while the result still
+// fits, so a short map does not trade fewer columns for a pile of cards.
+func (l *vLayout) fits() bool {
+	for i, a := range l.cards {
+		if a.x < 2 || a.y < 0 || a.x+a.w > l.w-2 || a.y+a.h > l.h {
+			return false
+		}
+		for _, b := range l.cards[i+1:] {
+			if a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // layoutVirtual lays the map out in a w×h area in at most maxCols columns
 // (0 for as many as fit), or returns nil when no node has a location or when
 // structural limits would make optional layout unsafe in the event loop.
@@ -171,18 +188,55 @@ func (m *Model) layoutVirtual(w, h, maxCols int, nodes []mapNode, edges []mapEdg
 	if maxCols > 0 {
 		nc = min(nc, maxCols)
 	}
-	for ; nc > 1; nc-- {
+	// The widest card a column may want, and the narrowest it can give way
+	// to when the width runs short.
+	need := func(nc int, narrow bool) int {
 		cw := make([]int, nc)
 		for i, c := range split(nc) {
-			cw[c] = max(cw[c], natural[places[i]])
+			v := natural[places[i]]
+			if narrow {
+				v = min(v, vMinW)
+			}
+			cw[c] = max(cw[c], v)
 		}
-		need := 4 + (nc-1)*vMinGap
+		total := 4 + (nc-1)*vMinGap
 		for _, v := range cw {
-			need += v
+			total += v
 		}
-		if need <= w {
+		return total
+	}
+	for ; nc > 1; nc-- {
+		if need(nc, false) <= w {
 			break
 		}
+	}
+	// A short map may have to split its places further: a column may not
+	// stack more cards than the map has rows. Narrower columns are only
+	// taken while they still fit the width, and only when the map is too
+	// short for the columns it would otherwise have; a tall map keeps the
+	// roomy cards it chose first.
+	unplaced := 0
+	for _, c := range cards {
+		if !c.located {
+			unplaced++
+		}
+	}
+	mostCards := func(nc int) int {
+		col := split(nc)
+		count := make([]int, nc)
+		for i := range places {
+			count[col[i]]++
+		}
+		most := 0
+		for _, n := range count {
+			most = max(most, n)
+		}
+		// A card without a place joins a column by its neighbours, so it may
+		// land in any of them; count every one against the worst column.
+		return most + unplaced
+	}
+	for nc < len(places) && (maxCols <= 0 || nc < maxCols) && mostCards(nc) > h && need(nc+1, true) <= w {
+		nc++
 	}
 	for i, c := range split(nc) {
 		places[i].col = c
