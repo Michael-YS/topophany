@@ -24,6 +24,7 @@ func DeviceByID(id string) (*Device, error) {
 }
 
 func (m *Model) simulate() *Canvas                         { return nil }
+func (m *Model) compactLayout() bool                       { return false }
 func (m *Model) deviceMouse(string) string                 { return "" }
 func (m *Model) simKey(string) (string, bool)              { return "", false }
 func (m *Model) touchKey(string) string                    { return "" }

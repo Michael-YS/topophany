@@ -86,14 +86,14 @@ func (m *Model) drawOpenCard(cv *Canvas, x, y, w, h int, r Row, band []cardRow, 
 	// A blank row under the body, where there is the room for it.
 	sh := min(room, len(band)+len(body)+3)
 	sx, sy := x+(w-sw)/2, y+(h-sh)/2
-	if m.touch.layout == layoutCompact {
+	if m.compactLayout() {
 		// A phone's page reads from the top.
 		sy = y
 	}
 	bh := sh - 2 - len(band)
 	m.Offset = min(max(m.Offset, 0), max(0, len(body)-bh))
 
-	if !m.Transparent && !m.NoColor && m.touch.layout != layoutCompact {
+	if !m.Transparent && !m.NoColor && !m.compactLayout() {
 		// A shadow, two columns to the right and one row below, lifts the
 		// card off the others; a phone shows none behind it.
 		shade := func(s Style) Style {

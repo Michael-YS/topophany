@@ -27,6 +27,9 @@ import (
 //   - regular: a tablet. The terminal's own layouts, with touch chrome: tabs
 //     a finger can hit and a toolbar in place of the key bar.
 
+// compactLayout reports whether cards are laid out for a phone's page.
+func (m *Model) compactLayout() bool { return m.touch.layout == layoutCompact }
+
 // drawScreen draws the device's screen: the TUI laid out for the page,
 // and over it what the system draws (the status bar or the clock, the
 // Dynamic Island, the home indicator).
