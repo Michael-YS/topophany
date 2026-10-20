@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Services as cards: on the Services tab, `s` shows a card for each service in
+  the server cards' uniform grid, under each application's heading. A card
+  takes the hue of the server it runs on and says who sees the service from
+  where: a row for each observer with a mark for each of its checks, a spark
+  of their recent samples, the day's median latency and share up. Then
+  tallies of its checks, endpoints and dependencies, the address it is known
+  by with the edge in front and its colos, and its memo. `Enter` lays the card
+  open with every check, endpoint, colo and cache share, the server it runs
+  on, what it depends on and what depends on it, and its runbook. The choice
+  is kept as the `service_cards` preference (`--service-cards`).
+- `topo monitor stream` and monitor templates gain `service.card`, selected
+  by `select.service`, and `services.list`: the service's card as the
+  Services tab draws it, each check with its own deadline and up to 40 recent
+  samples read from the collector's history once and extended from each
+  snapshot, and the services in that tab's order to choose from.
 - Cloudflare challenge pages are recorded as `edge_mitigation: challenge`
   from `cf-mitigated`, a closed word that survives a secret request. The
   check's evidence line reads, for example, *Cloudflare NRT · cache DYNAMIC ·

@@ -29,6 +29,10 @@ func clone(p Panel) Panel {
 		switch v := r.Value.(type) {
 		case []ServerListEntry:
 			r.Value = slices.Clone(v)
+		case []ServiceListEntry:
+			r.Value = slices.Clone(v)
+		case ServiceCard:
+			r.Value = cloneServiceCard(v)
 		case []ObserverVerdict:
 			r.Value = cloneObservers(v)
 		case AttentionList:
@@ -76,3 +80,35 @@ func clone(p Panel) Panel {
 
 // Clone returns an independently writable panel, including nested metric values.
 func (p Panel) Clone() Panel { return clone(p) }
+
+func cloneServiceCard(v ServiceCard) ServiceCard {
+	v.SeenFrom = slices.Clone(v.SeenFrom)
+	for i := range v.SeenFrom {
+		checks := slices.Clone(v.SeenFrom[i].Checks)
+		for k := range checks {
+			x := &checks[k]
+			x.SampledAt = copyPointer(x.SampledAt)
+			x.ValidUntil = copyPointer(x.ValidUntil)
+			x.Latency = copyPointer(x.Latency)
+			x.Up24h = copyPointer(x.Up24h)
+			x.Colo = copyPointer(x.Colo)
+			x.Samples.Slots = slices.Clone(x.Samples.Slots)
+			for s := range x.Samples.Slots {
+				x.Samples.Slots[s].ElapsedMS = copyPointer(x.Samples.Slots[s].ElapsedMS)
+			}
+		}
+		v.SeenFrom[i].Checks = checks
+	}
+	v.Endpoints = slices.Clone(v.Endpoints)
+	for i := range v.Endpoints {
+		v.Endpoints[i].Via = slices.Clone(v.Endpoints[i].Via)
+	}
+	if v.Answered != nil {
+		a := *v.Answered
+		a.Pops, a.Cache = slices.Clone(a.Pops), slices.Clone(a.Cache)
+		v.Answered = &a
+	}
+	v.DependsOn = slices.Clone(v.DependsOn)
+	v.UsedBy = slices.Clone(v.UsedBy)
+	return v
+}

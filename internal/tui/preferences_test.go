@@ -68,13 +68,15 @@ func TestStartupAndDefaultExpandedGroups(t *testing.T) {
 	s := preferences.Defaults()
 	s.Page = "servers"
 	s.UniformCards = true
+	s.ServiceCards = true
 	s.FullMap = true
 	s.MapMode = "network"
 	s.GroupsCollapsed = true
 	m.initializeStartup([]Startup{{Settings: s}})
-	if m.Tab != tabServers || !m.Uniform || !m.FullMap || m.MapMode != "network" {
+	if m.Tab != tabServers || !m.Uniform || !m.ServiceCards || !m.FullMap || m.MapMode != "network" {
 		t.Fatal("startup options not applied")
 	}
+	m.ServiceCards = false
 	m.setTab(tabServices)
 	if len(m.Rows()) != 1 {
 		t.Fatal("collapse preference ignored")
@@ -94,9 +96,10 @@ func TestPreferencesApplySaveResetAndCancel(t *testing.T) {
 	}
 	m.modal.form.get("Startup page").value = "servers"
 	m.modal.form.get("Uniform cards").value = "yes"
+	m.modal.form.get("Service cards").value = "yes"
 	m.modal.form.get("Nerd Font icons").value = "yes"
 	m.Key("pref:apply")
-	if m.Tab != tabServers || !m.Uniform || !m.NerdFont {
+	if m.Tab != tabServers || !m.Uniform || !m.ServiceCards || !m.NerdFont {
 		t.Fatal("apply failed")
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -109,7 +112,7 @@ func TestPreferencesApplySaveResetAndCancel(t *testing.T) {
 		t.Fatal("saving changed session")
 	}
 	s, err := preferences.Load(path)
-	if err != nil || s.Page != "checks" || !s.UniformCards || !s.NerdFontIcons {
+	if err != nil || s.Page != "checks" || !s.UniformCards || !s.ServiceCards || !s.NerdFontIcons {
 		t.Fatal(s, err)
 	}
 	m.Key(",")

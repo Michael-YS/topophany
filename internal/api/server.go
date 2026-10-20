@@ -293,6 +293,22 @@ func (s *Server) MonitorSnapshot(now time.Time) model.Snapshot {
 	return s.buildSnapshot(g, "", rows, carries, beats, now)
 }
 
+// MonitorHistory reads a check's newest samples as /v1/history answers
+// them, for a monitor panel attached to the collector.
+func (s *Server) MonitorHistory(check string, limit int) ([]model.Observation, error) {
+	s.reloadMu.RLock()
+	defer s.reloadMu.RUnlock()
+	g := s.generation()
+	if _, ok := g.checks[check]; !ok {
+		return nil, errors.New("unknown check")
+	}
+	entries := s.Store.History(check, map[string]string{check: g.contracts[check]}, g.revision, limit)
+	for i := range entries {
+		entries[i].Contract, entries[i].Revision = g.publicContracts[check], ""
+	}
+	return entries, nil
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })

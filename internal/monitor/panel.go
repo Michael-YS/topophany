@@ -19,6 +19,9 @@ type Input struct {
 	IO          ioaccount.Snapshot
 	Snapshot    model.Snapshot
 	Delivery    []model.DeliveryStatus
+	// Samples are recent samples of the checks of the services a template's
+	// cards show, by check, oldest first (SampleBook).
+	Samples     map[string][]model.Observation
 	Unavailable bool
 }
 type Panel struct {

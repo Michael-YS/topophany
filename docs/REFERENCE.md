@@ -412,9 +412,10 @@ formats fail validation.
 JSON frame per line on stdout. It creates no panel configuration, output file or
 lock. `topo monitor stream --capabilities` prints one line with protocol 1, the
 binary version, sources, visuals and the metric catalog, then exits. The catalog
-includes `servers.list`; `profiles: true` advertises saved-profile discovery.
-These additions retain protocol 1. Consumers of older binaries treat an absent
-`profiles` field as false and check the catalog before requesting `servers.list`.
+includes `servers.list`, `service.card` and `services.list`; `profiles: true`
+advertises saved-profile discovery. These additions retain protocol 1. Consumers
+of older binaries treat an absent `profiles` field as false and check the catalog
+before requesting `servers.list`, `service.card` or `services.list`.
 
 `topo monitor stream --profiles` lists saved client profiles in one JSON line,
 then exits 0:
@@ -566,6 +567,38 @@ The metric catalog includes:
   Per-node health and note changes publish immediately, even if the row's worst
   health stays the same. A readable empty topology produces `[]`; an unavailable
   source produces null with `source_unavailable`, as for other metrics.
+- `service.card` (`card`): a required `select: {"service":"ID"}` names the
+  service. Its card is the one the Services tab draws: the service's state,
+  `evidence` and `reason`, application, environment and runtime; whether any
+  check measures it (`monitored`) and, in a view scoped to one observer,
+  whether another observer's checks do (`elsewhere`), so a card can say it is
+  not seen from here rather than unmonitored; its `host`
+  with that node's place (`where`) and state; `seen_from`, its checks by
+  observer, the observer with the worst check first (at most 8, with at most 4
+  checks each), each labelled by its place, or by its name less the place where
+  two observers share one; each check's state, its own `valid_until`, the
+  median and 95th-percentile latency and share up over its 24-hour rollup, its
+  `first_byte` line, the `colo` its newest response named and its recent
+  `samples`: at most 40 slots, oldest first, each an `outcome` (`none` where no
+  sample was taken) with `elapsed_ms` when it passed, as the TUI's strip lays
+  them out; `endpoints` with what stands in front of each (`via`, with each
+  node's kind and provider); `answered_from`, the colos and cache statuses over
+  the day; `depends_on` and `used_by` (at most 16 each); `runbook` and `memo`.
+  Samples are read from the collector's history the first time a card shows a
+  check, at most four checks a fetch, then extended from each snapshot; `slots`
+  is null while none are held. At a check's own deadline its health becomes
+  unknown, its freshness stale, and its latency, share up, colo and slots are
+  null; its identity and clocks remain, and one check's deadline never expires
+  the card. The row's deadline is the earliest of the source envelope, the
+  service's, its host's and its dependencies' judgments. An unknown service
+  yields `entity_missing`.
+- `services.list` (`list`): up to 256 services in the Services tab's order,
+  each with `id`, `name`, `application` (its name), `health`, `note`,
+  `monitored`, `elsewhere` and `host` (`id`, `name`, `kind`, `provider`), matching its
+  `service.card`. Use its ID as that card's `select.service`. Cached entries
+  have unknown health; the row health is the worst listed, its text, for
+  example, `23 services`, and its deadline the earliest of the source envelope
+  and the listed services' judgments.
 - `summary.status`: complete source-view verdict, independent of which other
   rows the template displays; available to client/collector sources.
 - `local.status`: the worker's local view verdict.
@@ -585,11 +618,11 @@ The metric catalog includes:
   `storage.sync.count`, `storage.sync.duration_ms` for both local service roles.
   These are counters since process start, not remote client metrics.
 
-The six structured metrics above support client and collector sources; preview
+The eight structured metrics above support client and collector sources; preview
 uses the client capabilities. Each requires its listed visual. Existing metrics
 keep `text` and percent metrics also accept `bar`. `limit` belongs only to
-`attention.list`; `select.node` belongs only to `server.card`. Validation errors
-identify the row.
+`attention.list`; `select.node` belongs only to `server.card` and
+`select.service` only to `service.card`. Validation errors identify the row.
 
 Check metrics accept `select: {"check":"ID"}`. Delivery metrics accept
 `select: {"collector":"16-character-lowercase-hex-digest"}`. A missing selector

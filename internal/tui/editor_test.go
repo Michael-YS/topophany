@@ -386,6 +386,8 @@ func TestMouseDecodingAndClicks(t *testing.T) {
 	}
 	m.Key("mouse:0:1:1:m")
 	m.Key("mouse:2:1:1:M")
+	// Wide enough that the footer keeps the editor's keys beside s.
+	m.Width = 140
 	m.Render()
 	for _, h := range m.hits {
 		if h.key == "key:a" {

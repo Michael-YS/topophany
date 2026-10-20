@@ -31,6 +31,7 @@ type Row struct {
 }
 type Selector struct {
 	Node      string `json:"node,omitempty"`
+	Service   string `json:"service,omitempty"`
 	Check     string `json:"check,omitempty"`
 	Collector string `json:"collector,omitempty"`
 }
@@ -53,6 +54,8 @@ func Catalog() []Metric {
 		{Name: "applications.list", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
 		{Name: "server.card", Type: "object", Sources: []string{"client", "collector"}, Selector: "node", Visual: "card"},
 		{Name: "servers.list", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
+		{Name: "service.card", Type: "object", Sources: []string{"client", "collector"}, Selector: "service", Visual: "card"},
+		{Name: "services.list", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
 		{Name: "summary.status", Type: "text", Sources: []string{"client", "collector"}},
 		{Name: "local.status", Type: "text", Sources: []string{"worker"}},
 		{Name: "check.status", Type: "text", Sources: all, Selector: "check"},
@@ -119,6 +122,9 @@ func (t Template) Validate(source string) error {
 		}
 		if m.Selector == "node" && !config.ID(r.Select.Node) || r.Select.Node != "" && m.Selector != "node" {
 			return fmt.Errorf("row %s: invalid or missing node selector", r.ID)
+		}
+		if m.Selector == "service" && !config.ID(r.Select.Service) || r.Select.Service != "" && m.Selector != "service" {
+			return fmt.Errorf("row %s: invalid or missing service selector", r.ID)
 		}
 		if r.Format != "" && r.Format != m.Unit {
 			return fmt.Errorf("row %s: incompatible format", r.ID)

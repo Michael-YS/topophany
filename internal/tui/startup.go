@@ -43,6 +43,7 @@ func (m *Model) applyPreferences(s preferences.Settings) {
 	m.GroupsCollapsed = s.GroupsCollapsed
 	m.Expanded = nil
 	m.Uniform = s.UniformCards
+	m.ServiceCards = s.ServiceCards
 	m.FullMap = s.FullMap
 	m.MapMode = s.MapMode
 	m.NerdFont = s.NerdFontIcons
@@ -55,5 +56,5 @@ func (m *Model) currentPreferences() preferences.Settings {
 	if mode == "" {
 		mode = "auto"
 	}
-	return preferences.Settings{Page: preferences.Pages[m.Tab], GroupsCollapsed: m.GroupsCollapsed, UniformCards: m.Uniform, FullMap: m.FullMap, MapMode: mode, NerdFontIcons: m.NerdFont}
+	return preferences.Settings{Page: preferences.Pages[m.Tab], GroupsCollapsed: m.GroupsCollapsed, UniformCards: m.Uniform, ServiceCards: m.ServiceCards, FullMap: m.FullMap, MapMode: mode, NerdFontIcons: m.NerdFont}
 }

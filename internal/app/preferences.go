@@ -21,6 +21,7 @@ func addPreferenceFlags(f *flag.FlagSet) *preferenceFlags {
 	f.StringVar(&p.values.Page, "page", "overview", "initial page: overview, topology, servers, services, paths, checks, incidents, observers, about")
 	f.BoolVar(&p.values.GroupsCollapsed, "groups-collapsed", false, "start with groups collapsed (default expanded)")
 	f.BoolVar(&p.values.UniformCards, "uniform-cards", false, "use equal-sized Servers cards")
+	f.BoolVar(&p.values.ServiceCards, "service-cards", false, "show the Services tab as cards rather than a list")
 	f.BoolVar(&p.values.FullMap, "full-map", false, "show maps without surrounding panels on Overview/Topology")
 	f.StringVar(&p.values.MapMode, "map-mode", "auto", "initial map mode: auto, virtual, geo, network")
 	f.BoolVar(&p.values.NerdFontIcons, "nerd-font-icons", false, "draw providers' logos; needs a Nerd Font in the terminal")
@@ -63,6 +64,8 @@ func (p *preferenceFlags) resolveWith(lenient bool) (tui.Startup, error) {
 			s.GroupsCollapsed = p.values.GroupsCollapsed
 		case "uniform-cards":
 			s.UniformCards = p.values.UniformCards
+		case "service-cards":
+			s.ServiceCards = p.values.ServiceCards
 		case "full-map":
 			s.FullMap = p.values.FullMap
 		case "map-mode":
@@ -78,7 +81,7 @@ func (p *preferenceFlags) resolveWith(lenient bool) (tui.Startup, error) {
 }
 func (a *App) preferences(args []string) error {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		_, err := fmt.Fprintln(a.Out, "Usage: topo preferences show|set|reset [--preferences PATH]\nSet flags: --page PAGE --groups-collapsed=BOOL --uniform-cards=BOOL --full-map=BOOL --map-mode MODE --nerd-font-icons=BOOL")
+		_, err := fmt.Fprintln(a.Out, "Usage: topo preferences show|set|reset [--preferences PATH]\nSet flags: --page PAGE --groups-collapsed=BOOL --uniform-cards=BOOL --service-cards=BOOL --full-map=BOOL --map-mode MODE --nerd-font-icons=BOOL")
 		return err
 	}
 	command := args[0]

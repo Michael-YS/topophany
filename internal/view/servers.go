@@ -104,30 +104,41 @@ type CardLink struct {
 
 // Fleet is what the cards are built from, indexed once.
 type Fleet struct {
-	resources  map[string][]CardResource
-	Names      map[string]string // node names; the ID of a node without one
-	Nodes      map[string]model.Node
-	serviceVia map[string][]string
-	cached     bool
-	nodeState  map[string]model.EntityState
-	services   map[string][]model.Service // by node
-	svcState   map[string]model.EntityState
-	endpoints  map[string][]model.Endpoint // by node
-	fronted    map[string][]model.Endpoint // by the edge or proxy in front
-	epHealth   map[string]string
-	children   map[string][]model.Node
-	observers  map[string][]model.Observer // by node
-	obsState   map[string]model.ObserverState
-	links      map[string][]model.Link // by either end
-	regions    map[string][]string
-	pops       map[string][]string         // where each edge answered, freshly
-	popCounts  map[string]map[string]int64 // 24h colo counts by edge
+	resources   map[string][]CardResource
+	Names       map[string]string // node names; the ID of a node without one
+	Nodes       map[string]model.Node
+	serviceVia  map[string][]string
+	cached      bool
+	nodeState   map[string]model.EntityState
+	services    map[string][]model.Service // by node
+	svcState    map[string]model.EntityState
+	endpoints   map[string][]model.Endpoint // by node
+	fronted     map[string][]model.Endpoint // by the edge or proxy in front
+	epHealth    map[string]string
+	children    map[string][]model.Node
+	observers   map[string][]model.Observer // by node
+	obsState    map[string]model.ObserverState
+	links       map[string][]model.Link // by either end
+	regions     map[string][]string
+	pops        map[string][]string         // where each edge answered, freshly
+	popCounts   map[string]map[string]int64 // 24h colo counts by edge
+	topology    model.Config
+	scope       string // the observer the view is scoped to, "" for all
+	checkStates map[string]model.CheckState
+
+	// Indexed for service cards, the first time one is asked for.
+	serviceDefs  map[string]model.Service
+	dependents   map[string][]string
+	appNames     map[string]string
+	checkDefs    map[string]model.Check
+	observerDefs map[string]model.Observer
+	endpointDefs map[string]model.Endpoint
 }
 
 func (v View) Fleet() *Fleet {
 	s := v.Snapshot
 	t := s.Topology
-	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}, popCounts: map[string]map[string]int64{}}
+	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}, popCounts: map[string]map[string]int64{}, topology: t, scope: s.ViewObserver, checkStates: make(map[string]model.CheckState, len(s.Checks))}
 	for _, n := range t.Nodes {
 		f.Nodes[n.ID] = n
 		f.Names[n.ID] = n.Name
@@ -172,6 +183,7 @@ func (v View) Fleet() *Fleet {
 		target[x.ID] = x.Endpoint
 	}
 	for _, cs := range s.Checks {
+		f.checkStates[cs.ID] = cs
 		ep, ok := endpoints[target[cs.ID]]
 		if !ok {
 			continue

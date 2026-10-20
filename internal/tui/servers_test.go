@@ -150,7 +150,7 @@ func TestServersUniformGrid(t *testing.T) {
 		t.Fatalf("marks that do not fit are not counted: %q", text)
 	}
 	parts := []span{{"1 affected", Style{}}, {" · ", Style{}}, {"1 unchecked", Style{}}}
-	for n, want := range map[int]string{11: "1 affected…", 14: "1 affected…", 15: "1 affected · 1…", 24: "1 affected · 1 unchecked", 6: "1 aff…"} {
+	for n, want := range map[int]string{11: "1 affected…", 14: "1 affected…", 15: "1 affected…", 16: "1 affected…", 17: "1 affected · 1 u…", 24: "1 affected · 1 unchecked", 6: "1 aff…"} {
 		got := strings.TrimSuffix(cardText([]cardRow{{left: clipSpans(parts, n)}}), "\n")
 		if strings.TrimRight(got, " ") != want || width(got) != n {
 			t.Errorf("clipped to %d: %q, want %q", n, got, want)

@@ -152,6 +152,9 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 				members++
 			}
 		}
+		if m.serviceCards() {
+			groups = len(m.serviceGroups(rows))
+		}
 		if groups > 0 {
 			tag = "· " + plural(groups, "group") + " · " + itoa(members) + " shown"
 		}
@@ -159,7 +162,8 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 	if m.Search != "" {
 		tag += " matching “" + m.Search + "”"
 	}
-	if m.businessTab() && !m.Detail {
+	// The cards stay where they were while one lies open over them.
+	if m.businessTab() && (!m.Detail || m.serviceCards()) {
 		cv.Text(x+1, y, ellipsis(m.businessStatus()+" · b Browse", w-2), fg(cMuted), w-2)
 		m.hit(x+1, y, w-2, "key:b")
 		y++
@@ -170,7 +174,7 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		m.drawAbout(cv, ix-1, iy, iw+2, ih)
 		return
 	}
-	if m.Detail && m.Tab != tabServers {
+	if m.Detail && m.Tab != tabServers && !m.serviceCards() {
 		ix, iy, iw, ih := m.panel(cv, x, y, w, h, title+" · "+sel.Title, "Esc/Enter back · ↑↓ scroll", true)
 		m.drawDetail(cv, ix, iy, iw, ih, sel, true)
 		return
@@ -233,6 +237,13 @@ func (m *Model) body(cv *Canvas, x, y, w, h int) {
 		m.drawServers(cv, ix, iy, iw, ih, rows)
 		if m.Detail && len(rows) > 0 {
 			m.drawSheet(cv, ix-1, iy, iw+2, ih, sel)
+		}
+		return
+	case m.serviceCards():
+		ix, iy, iw, ih := m.panel(cv, x, y, w, h, title+" · cards", tag, !m.Detail)
+		m.drawServiceCards(cv, ix, iy, iw, ih, rows)
+		if m.Detail && len(rows) > 0 {
+			m.drawServiceSheet(cv, ix-1, iy, iw+2, ih, sel)
 		}
 		return
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/client"
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -98,9 +99,17 @@ func (a *App) monitor(ctx context.Context, args []string) error {
 			return e
 		}
 		defer out.Close()
+		samples := monitor.NewSampleBook(c.Template)
 		monitor.Run(ctx, c, func(ctx context.Context) (monitor.Input, error) {
-			s, _, e := cl.Snapshot(ctx, c.Observer)
-			return monitor.Input{Snapshot: s}, e
+			s, server, e := cl.Snapshot(ctx, c.Observer)
+			in := monitor.Input{Snapshot: s}
+			if e == nil {
+				in.Samples = samples.Fill(ctx, s, server+" "+s.Revision, monitor.HistoryReads, func(ctx context.Context, id string) ([]model.Observation, error) {
+					h, _, err := cl.HistoryAt(ctx, client.SnapshotHistory(s, server, id), monitor.CardSamples)
+					return h.Entries, err
+				})
+			}
+			return in, e
 		}, out, nil, func(s string) { fmt.Fprintln(a.Err, s) })
 		return nil
 	default:

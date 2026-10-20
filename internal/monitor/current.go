@@ -37,9 +37,40 @@ func Current(p Panel, now time.Time) Panel {
 			}
 			ageCard(&card, now)
 			p.Rows[i].Value = card
+		} else if r.Metric == "service.card" && r.Value != nil {
+			card, ok := r.Value.(ServiceCard)
+			if !ok {
+				raw, err := json.Marshal(r.Value)
+				if err != nil || json.Unmarshal(raw, &card) != nil {
+					p.Rows[i] = missing(r, "invalid_value")
+					continue
+				}
+			}
+			ageServiceCard(&card, now)
+			p.Rows[i].Value = card
 		}
 	}
 	return p
+}
+
+// A service card's checks expire one by one, each at its own deadline,
+// which a renewed lease never moves; the card stays.
+func ageServiceCard(card *ServiceCard, now time.Time) {
+	for i := range card.SeenFrom {
+		for k := range card.SeenFrom[i].Checks {
+			x := &card.SeenFrom[i].Checks[k]
+			skew := x.SampledAt != nil && x.SampledAt.After(now.Add(5*time.Minute)) || x.ValidUntil != nil && x.ValidUntil.After(now.Add(5*time.Minute))
+			if x.ValidUntil != nil && now.Before(*x.ValidUntil) && !skew {
+				continue
+			}
+			x.Health, x.Latency, x.Up24h, x.Colo, x.Samples.Slots = "unknown", nil, nil, nil, nil
+			if skew {
+				x.Freshness = "unavailable"
+			} else {
+				x.Freshness = "stale"
+			}
+		}
+	}
 }
 
 // Resource readings and nested observer verdicts expire independently of the

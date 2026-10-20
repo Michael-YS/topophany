@@ -94,9 +94,10 @@ topology is read-only.
 
 Startup display flags (topo, preview and edit) override the saved defaults
 for one launch: --page PAGE, --map-mode auto|virtual|geo|network,
---groups-collapsed, --uniform-cards, --full-map and --nerd-font-icons (each
-also takes =false), and --preferences PATH. In the TUI, Settings applies a
-change to this session or saves it for future launches; or, for example:
+--groups-collapsed, --uniform-cards, --service-cards, --full-map and
+--nerd-font-icons (each also takes =false), and --preferences PATH. In the
+TUI, Settings applies a change to this session or saves it for future
+launches; or, for example:
   topo preferences set --page servers --uniform-cards=true
 
 Credentials and preferences live in the OS user config directory, under

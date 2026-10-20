@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/preview"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 // The captures in docs/assets are stills of the TUI on the preview, the
@@ -33,6 +34,8 @@ var docShots = []docShot{
 	{name: "servers", tab: tabServers, selected: "app"},
 	{name: "servers-uniform", tab: tabServers, selected: "app", keys: []string{"s"}},
 	{name: "server-card", tab: tabServers, selected: "app", keys: []string{"s", "enter"}},
+	{name: "services-cards", tab: tabServices, selected: "vless-transit", keys: []string{"s"}},
+	{name: "service-card", tab: tabServices, selected: "vless-transit", keys: []string{"s", "enter"}},
 	{name: "network", tab: tabTopology, mapMode: "network", selected: "transit"},
 	{name: "incident", tab: tabIncidents},
 }
@@ -92,6 +95,11 @@ func shot(t *testing.T, c docShot, lang string) tour {
 	}
 	for _, k := range c.keys {
 		m.Key(k)
+	}
+	// As the run loop's sampler does, what is now shown reads its history.
+	for id := m.wantTrend(); id != ""; id = m.wantTrend() {
+		entries, e := r.sim.History(id, view.StripSamples, m.Now)
+		m.KeepTrend(id, entries, e)
 	}
 	r.chapter(c.name)
 	r.shoot(0)

@@ -11,15 +11,16 @@ import (
 )
 
 // A host's resources over time, which its card and evidence draw as
-// charts. Each host check keeps its newest samples: what its history held
-// when first read, then each new one a snapshot brings. Only samples under
-// the newest one's contract are kept, so a chart never joins two disks or
-// two sets of limits.
+// charts, and a service's checks' recent samples, which its card draws as
+// sparks while the Services tab shows cards. Each such check keeps its
+// newest samples: what its history held when first read, then each new
+// one a snapshot brings. Only samples under the newest one's contract are
+// kept, so a chart never joins two disks or two sets of limits.
 
-// trendKeep bounds the samples a host check keeps.
+// trendKeep bounds the samples a check keeps.
 const trendKeep = 2 * view.StripSamples
 
-// trend is a host check's samples, oldest first, cut down to what the
+// trend is a check's samples, oldest first, cut down to what the
 // charts draw; read is whether its history has been asked for.
 type trend struct {
 	samples []model.Observation
@@ -88,13 +89,14 @@ func (m *Model) keepTrend(check string, entries []model.Observation) *trend {
 	return t
 }
 
-// KeepTrend keeps what reading a host check's history returned. A failed
+// KeepTrend keeps what reading a check's history returned. A failed
 // read is not retried: the chart fills from snapshots instead.
 func (m *Model) KeepTrend(check string, entries []model.Observation, e error) {
 	m.keepTrend(check, entries).read = true
 }
 
-// wantTrend names a host check whose history the charts have not read.
+// wantTrend names a check whose history the charts have not read: a host
+// check's, then, while the Services tab shows cards, a shown service's.
 func (m *Model) wantTrend() string {
 	if m.Edit != nil {
 		return ""
@@ -104,11 +106,25 @@ func (m *Model) wantTrend() string {
 			return x.ID
 		}
 	}
+	if !m.serviceCards() {
+		return ""
+	}
+	checks := map[string][]string{}
+	for _, s := range m.Snapshot.Services {
+		checks[s.ID] = s.Checks
+	}
+	for _, r := range m.Rows() {
+		for _, id := range checks[r.ID] {
+			if t := m.trends[id]; t == nil || !t.read {
+				return id
+			}
+		}
+	}
 	return ""
 }
 
-// absorb takes each host check's newest sample from a snapshot not yet
-// taken from.
+// absorb takes the newest sample of each check that keeps samples from a
+// snapshot not yet taken from.
 func (m *Model) absorb() {
 	if g := m.Snapshot.GeneratedAt; m.Edit != nil || !g.IsZero() && g.Equal(m.absorbed) {
 		return
@@ -121,7 +137,7 @@ func (m *Model) absorb() {
 		}
 	}
 	for _, c := range m.Snapshot.Checks {
-		if host[c.ID] && c.Last != nil {
+		if (host[c.ID] || m.trends[c.ID] != nil) && c.Last != nil {
 			m.keepTrend(c.ID, []model.Observation{*c.Last})
 		}
 	}
