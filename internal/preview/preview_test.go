@@ -526,7 +526,7 @@ func TestPreviewMapPlacesTheColoTheEdgeReported(t *testing.T) {
 			if !knownOK || !n.Located || n.Place != place || n.Lat != known.Lat || n.Lon != known.Lon {
 				t.Fatalf("%s: %s placed at %q %.4f,%.4f, want %q %.4f,%.4f", lang, id, n.Place, n.Lat, n.Lon, place, known.Lat, known.Lon)
 			}
-			if view.NodeSignal(n) != "up" {
+			if view.NodeSignal(n) != "carried" {
 				t.Fatalf("%s: %s carries a passing preview check but reads %q", lang, id, view.NodeSignal(n))
 			}
 			hops := 0
@@ -548,5 +548,17 @@ func TestPreviewMapPlacesTheColoTheEdgeReported(t *testing.T) {
 				t.Fatalf("%s: %s has %d observer hops, want 1", lang, id, hops)
 			}
 		}
+	}
+}
+
+// An observer whose node has no declared location has no nearest colo. The
+// preview must not invent the first code in the sorted list.
+func TestNearestPopNeedsADeclaredPlace(t *testing.T) {
+	s := &Sim{where: map[string]*model.Location{}, nodes: map[string]model.Node{"n": {ID: "n"}}, obsNode: map[string]string{"o": "n"}}
+	if p := s.nearestPop("cloudflare", "o"); p.code != "" {
+		t.Fatalf("a locationless observer reported %q", p.code)
+	}
+	if code, loc := s.edgePop("cloudflare", "o"); code != "" || loc != nil {
+		t.Fatalf("a locationless observer got %q %v", code, loc)
 	}
 }

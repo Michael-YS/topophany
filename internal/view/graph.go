@@ -1,6 +1,9 @@
 package view
 
-import "github.com/WhitenWhiten/topophany/internal/model"
+import (
+	"github.com/WhitenWhiten/topophany/internal/adapters"
+	"github.com/WhitenWhiten/topophany/internal/model"
+)
 
 // The maps draw the topology as nodes and edges. Every edge says only what
 // the evidence lets it: declared links carry their own checks, and hops
@@ -12,11 +15,14 @@ import "github.com/WhitenWhiten/topophany/internal/model"
 // pseudo-node (Kind "colo") is not declared in the topology: it is placed by
 // a fresh check's reported edge_pop, from Cloudflare's location list.
 type MapNode struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Kind      string  `json:"kind,omitempty"`
-	Group     string  `json:"group,omitempty"`
-	Health    string  `json:"health"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind,omitempty"`
+	Group  string `json:"group,omitempty"`
+	Health string `json:"health"`
+	// Signal is what a colo pseudo-node may claim; it is not entity health.
+	// Empty for a declared node, whose Health is its signal.
+	Signal    string  `json:"signal,omitempty"`
 	Place     string  `json:"place,omitempty"`
 	Parent    string  `json:"parent,omitempty"`
 	Provider  string  `json:"provider,omitempty"`
@@ -90,6 +96,9 @@ func WorseSignal(a, b string) string {
 // NodeSignal is what a node may claim: affected when it is on a failing
 // path and its own evidence shows no failure.
 func NodeSignal(n MapNode) string {
+	if n.Signal != "" {
+		return n.Signal
+	}
 	if n.Affected && (n.Health == "up" || n.Health == "unknown") {
 		return "affected"
 	}
@@ -289,6 +298,13 @@ func (v View) Graph() ([]MapNode, []MapEdge) {
 // stops.
 const MaxColoNodes = 32
 
+// MaxColoHops bounds the observer hops one map draws. Every placement also
+// contributes one hop to its edge, so the worst case is this plus the node
+// cap. Without it, many observers on each of 32 colos would exceed the map's
+// structural edge budget; the rest of that budget stays for declared links
+// and paths.
+const MaxColoHops = 192
+
 // coloCheckSignal is what a check's health lets a reported colo claim: the
 // request carried over it when the check passed, and only that the route was
 // affected when it failed, because a failing request does not establish that
@@ -356,8 +372,8 @@ func (v View) coloNodes(index map[string]int) ([]MapNode, []MapEdge) {
 		// Vercel's lowercase region is not a colo, a malformed token is not
 		// a place, and a sample that withheld its labels must stay
 		// withheld: a worker that leaked a code anyway does not place it.
-		if code == "" || facts["peer_text"] == "withheld_secret_request" ||
-			facts["edge_provider"] == "vercel" || !model.IsColo(code) {
+		if code == "" || facts["peer_text"] == adapters.Withheld ||
+			facts["edge_provider"] != "cloudflare" || !model.IsColo(code) {
 			continue
 		}
 		ep, ok := endpoints[x.Endpoint]
@@ -426,14 +442,24 @@ func (v View) coloNodes(index map[string]int) ([]MapNode, []MapEdge) {
 	hops := make([]MapEdge, 0, 2*len(order))
 	for _, key := range order {
 		p := byKey[key]
-		if p.signal == "carried" {
-			p.node.Health = "up"
-		}
+		p.node.Signal = p.signal
 		if SignalRank(p.signal) >= SignalRank("affected") {
 			p.node.Affected = true
 		}
 		out = append(out, p.node)
+		hops = append(hops, MapEdge{
+			ID:     "colo:" + p.edge + ":" + p.code + ":to",
+			From:   p.node.ID,
+			To:     p.edge,
+			Health: "unknown",
+			Label:  "in front of " + p.edgeName,
+			Kind:   EdgeColo,
+			Signal: p.signal,
+		})
 		for _, obs := range p.observers {
+			if len(hops) >= MaxColoHops {
+				break
+			}
 			hops = append(hops, MapEdge{
 				ID:     "colo:" + p.edge + ":" + p.code + ":from:" + obs,
 				From:   obs,
@@ -444,15 +470,6 @@ func (v View) coloNodes(index map[string]int) ([]MapNode, []MapEdge) {
 				Signal: observerSignal[[2]string{key, obs}],
 			})
 		}
-		hops = append(hops, MapEdge{
-			ID:     "colo:" + p.edge + ":" + p.code + ":to",
-			From:   p.node.ID,
-			To:     p.edge,
-			Health: "unknown",
-			Label:  "in front of " + p.edgeName,
-			Kind:   EdgeColo,
-			Signal: p.signal,
-		})
 	}
 	return out, hops
 }

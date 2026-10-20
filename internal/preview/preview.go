@@ -670,19 +670,25 @@ func (s *Sim) nearestPop(provider, observer string) pop {
 	if len(list) == 0 {
 		return pop{}
 	}
-	best := list[0]
+	from := s.where[s.obsNode[observer]]
+	if from == nil {
+		// No declared place: there is no nearest colo to report, and
+		// inventing one would put a fabricated region in the evidence.
+		return pop{}
+	}
 	if code := mainlandPop[provider]; code != "" && s.china(s.obsNode[observer]) {
 		for _, p := range list {
 			if p.code == code {
 				return p
 			}
 		}
-	} else if from := s.where[s.obsNode[observer]]; from != nil {
-		far := math.Inf(1)
-		for _, p := range list {
-			if d := distance(*from, model.Location{Lat: p.lat, Lon: p.lon}); d < far {
-				best, far = p, d
-			}
+		return pop{}
+	}
+	best := list[0]
+	far := math.Inf(1)
+	for _, p := range list {
+		if d := distance(*from, model.Location{Lat: p.lat, Lon: p.lon}); d < far {
+			best, far = p, d
 		}
 	}
 	return best

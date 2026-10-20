@@ -61,8 +61,8 @@ func TestGraphPlacesTheColoAnEdgeReported(t *testing.T) {
 	if !n.Located || n.Inherited || n.Lat != 35.764702 || n.Lon != 140.386002 || n.Place != "Tokyo" {
 		t.Fatalf("colo node is not at its table coordinates: %+v", n)
 	}
-	if n.Health != "up" || NodeSignal(n) != "up" {
-		t.Fatalf("passing check did not carry the colo: %+v", n)
+	if n.Health != "unknown" || n.Signal != "carried" || NodeSignal(n) != "carried" {
+		t.Fatalf("a reported colo must claim carried, not measured up: %+v -> %s", n, NodeSignal(n))
 	}
 
 	from, ok := mapEdgeByID(edges, "colo:cf:NRT:from:win")
@@ -229,5 +229,64 @@ func TestGraphCapsColoPseudoNodes(t *testing.T) {
 	// plus the endpoint's declared via hop.
 	if want := 2*MaxColoNodes + 1; len(edges) != want {
 		t.Fatalf("the map has %d edges, want %d", len(edges), want)
+	}
+}
+
+// Cloudflare's table is not a generic IATA table. A Fastly or CloudFront
+// check also reports a three-letter edge_pop, but its code names a different
+// network's location and must not be placed with Cloudflare's coordinates.
+func TestGraphIgnoresColosFromOtherProviders(t *testing.T) {
+	for _, facts := range []map[string]string{
+		{"edge_provider": "fastly", "edge_pop": "NRT"},
+		{"edge_provider": "cloudfront", "edge_pop": "IAD"},
+		{"edge_provider": "vercel", "edge_pop": "hnd1"},
+	} {
+		_, snap := coloTopology(facts)
+		nodes, _ := (View{Snapshot: snap}).Graph()
+		for _, n := range nodes {
+			if n.Kind == "colo" {
+				t.Fatalf("%v produced a Cloudflare colo node %+v", facts, n)
+			}
+		}
+	}
+}
+
+// The node cap alone would let many observers multiply the colo hops past the
+// map's structural budget, so the observer hops are capped too.
+func TestGraphCapsColoHopsWithManyObservers(t *testing.T) {
+	c := model.Config{Schema: 1, Project: "colo", Nodes: []model.Node{{ID: "cf", Name: "Cloudflare", Kind: "edge", Provider: "cloudflare"}}, Endpoints: []model.Endpoint{{ID: "web", Node: "cf", Address: "https://www.example.test/", Network: "public", Via: []string{"cf"}}}}
+	snap := model.Snapshot{Topology: c}
+	for o := 0; o < 16; o++ {
+		obs := fmt.Sprintf("obs-%02d", o)
+		node := fmt.Sprintf("node-%02d", o)
+		c.Nodes = append(c.Nodes, model.Node{ID: node, Name: node, Kind: "host"})
+		c.Observers = append(c.Observers, model.Observer{ID: obs, Node: node})
+		for k := 0; k < 32; k++ {
+			id := fmt.Sprintf("web-%02d-%02d", o, k)
+			code := fmt.Sprintf("%c%c%c", 'A'+k/26, 'A'+(k/1)%26, 'A'+k%26)
+			c.Checks = append(c.Checks, model.Check{ID: id, Observer: obs, Endpoint: "web", Kind: "http"})
+			snap.Checks = append(snap.Checks, model.CheckState{ID: id, Observer: obs, Health: "up", Freshness: "fresh", Last: &model.Observation{Facts: map[string]string{"edge_provider": "cloudflare", "edge_pop": code}}})
+		}
+	}
+	nodes, edges := (View{Snapshot: snap}).Graph()
+	coloEdges := 0
+	for _, e := range edges {
+		if e.Kind == EdgeColo {
+			coloEdges++
+		}
+	}
+	if coloEdges > MaxColoHops+MaxColoNodes {
+		t.Fatalf("colo hops %d exceed the cap %d", coloEdges, MaxColoHops+MaxColoNodes)
+	}
+	to := map[string]bool{}
+	for _, e := range edges {
+		if e.Kind == EdgeColo && e.To == "cf" {
+			to[e.From] = true
+		}
+	}
+	for _, n := range nodes {
+		if n.Kind == "colo" && !to[n.ID] {
+			t.Fatalf("colo node %s has no hop to the edge", n.ID)
+		}
 	}
 }

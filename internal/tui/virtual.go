@@ -22,6 +22,22 @@ func (m *Model) drawVirtual(cv *Canvas, x, y, w, h int, nodes []mapNode, edges [
 		cv.Text(x+max(0, (w-width(msg))/2), y+h/2, msg, fg(cMuted).italic(), w)
 		return
 	}
+	// The primary layout is not automatically safe: a short map with more
+	// cards than rows, or one whose width cannot fund its columns, can pile
+	// cards on top of each other. Try fewer columns, and if none fits, say so
+	// rather than draw the pile.
+	if !l.fits() {
+		for cols := l.cols - 1; cols > 0; cols-- {
+			if l2 := m.layoutVirtual(w, h, cols, nodes, edges, f); l2 != nil && l2.fits() {
+				l = l2
+				break
+			}
+		}
+		if !l.fits() {
+			drawLayoutLimit(cv, x, y, w, h, len(nodes), len(edges))
+			return
+		}
+	}
 	// Routing is the costly part and between frames only the animation
 	// moves, so the wires are kept while the layout holds. When some wires
 	// find no way through, one column fewer leaves wider gaps between the
