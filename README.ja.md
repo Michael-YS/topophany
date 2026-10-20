@@ -118,6 +118,7 @@ topo --credentials ./demo/credentials.json
 
 ### アップグレード時の注意
 
+- **1.4.0 の新しいフィールドを使う前に、collector とすべての閲覧クライアントを更新してください。** 旧版は新しい Cloudflare アダプターのオプション、DNS トランスポート、秘密のリクエストヘッダー、trace と colo のアサーションを受け付けません。新しいチェックを実行する worker も更新してください。ストリームのプロトコルは 1 のままです。`service.card` と `services.list` を要求する前にメトリクスの一覧を確認してください。[1.4.0 のリリースノート](docs/releases/v1.4.0.md)に詳細があります。
 - **バンドルのインストールにはレビューの控えが必要です。** `topo install --bundle DIR --dry-run` が `bundle_sha256` を表示するので、バンドルとは別の場所に控えておき、インストール時に `--bundle-sha256` で渡してください。レビューした後にバンドルが変わっていれば、インストールは拒否されます。
 - **コレクターとワーカーにメモリの目標値が設定されます。** 既定値は `serve` が 128 MiB、`worker` が 64 MiB です。`--memory-limit` で変更でき (`0` なら `GOMEMLIMIT` に従います)、Linux では `--memory-max` でハードリミットもかけられます。詳しくは[メモリ予算](docs/MEMORY.md) (英語) を参照してください。
 - **トークンはコマンドラインに書きません。** `--credential TOKEN` は廃止されました。認証情報は `topo login` で保存してください。一時的に別のトークンを使うときは、標準入力か非公開のファイル (POSIX では `0600`、Windows では ACL を制限) から読み込みます。両方を同時には使えず、複数のサーバーを持つプロファイルでは `--server` も指定します。
@@ -139,6 +140,12 @@ topo --credentials ./demo/credentials.json
 - **読み取り専用のアダプター:** Mihomo、Tailscale、WireGuard、cloudflared、Cloudflare API。
 - **エッジとプラットフォーム:** Cloudflare (Workers と Pages を含む)、Vercel、Supabase。エッジが応答したからといって証明されるのはエッジまでで、その奥のオリジンではありません。
 
+## Cloudflare：エッジからオリジンまで
+
+Topophany 1.4.0 では、Cloudflare の公開ホスト名、オリジン、Tunnel コネクター、コントロールプレーンをまとめて確認できます。HTTP チェックはチャレンジページと Access のログインリダイレクトを識別し、エッジ接続の時間や `/cdn-cgi/trace` を読み取り、キャッシュと colo の割合を集計します。マップには応答が報告した colo が表示され、`expected_pops` と trace のアサーションで宣言したポリシーからのずれを検出できます。Access のサービス・トークンは worker の環境変数からリクエストヘッダーに渡します。ローカルの `cloudflared` チェックは Tunnel のセッションを、読み取り専用の Cloudflare API チェックは Tunnel の状態、DNS レコード、ロードバランサープールの正常性を報告します。DNS チェックは DoT と DoH にも対応しています。
+
+[Cloudflare の詳しい設定ガイド](docs/CLOUDFLARE.md)と [`examples/cloudflare.json`](examples/cloudflare.json) から始めてください。ガイドでは、オリジンへの直接チェック、Access の認証情報、コネクターのローカルメトリクス、API トークンの権限、ポリシーのアサーションを説明しています。エッジからの応答や確立済みの Tunnel セッションだけでは、オリジンのアプリケーションが動いているかは分かりません。アプリケーション自体の独立したチェックも用意してください。
+
 ## ターミナル UI
 
 タブは 9 つ: **Overview**、**Topology** (仮想地図、地図、ネットワークの 3 種類のマップ)、**Servers**、**Services**、**Paths**、**Checks**、**Incidents**、**Observers**、**About**。サービスは宣言したアプリケーションごとに、チェックは検証するサービスごとにまとまり、`b` でアプリケーション、環境、ホスト別に切り替えて見られます。
@@ -147,6 +154,8 @@ topo --credentials ./demo/credentials.json
   <img src="docs/assets/views.ja.gif" alt="大阪の MacBook から見た Overview では回線サーバーへの経路がダウンし、ニューヨークのサーバーから見ると正常。続いて Topology タブの仮想地図、全画面に広がって場所のカードと点を切り替える地図、ネットワーク図" width="100%">
   <br><sub>大阪からはダウン、ニューヨークからは正常。各観測点は自分に見えるものだけを報告します (<code>v</code>)。続いて 3 種類のマップ (<code>m</code>): 仮想地図、地図、ネットワーク。地図は全画面に広がり (<code>f</code>)、場所のカードが点に切り替わります (<code>p</code>)。</sub>
 </p>
+
+**Service card モード。** **Services** タブで `s` を押すと、アプリケーション別にサービスごとのカードを表示し、ホストの色で見分けられます。カードには観測点と各チェック、最近のサンプル、当日の遅延と稼働率、エンドポイント、依存関係、エッジの colo がまとまります。`Enter` で開くと、個々のチェック、キャッシュの割合、メモ、runbook まで確認できます。選択は `service_cards` として保存され、`topo --page services --service-cards` で直接開くこともできます。デスクトップウィジェットでも `topo monitor stream` の `service.card` と `services.list` で同じビューを利用できます。[メトリクスのリファレンス](docs/REFERENCE.md#template-and-metric-contract)を参照してください。
 
 | キー | |
 |---|---|

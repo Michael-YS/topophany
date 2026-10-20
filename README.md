@@ -118,6 +118,7 @@ The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units
 
 ### Upgrading
 
+- **Upgrade collectors and viewers before enabling 1.4.0 fields.** Older binaries reject the new Cloudflare adapter options, DNS transports, secret request headers and trace/colo assertions. Update workers before running the new checks. The stream protocol stays at 1; check the metric catalog before requesting `service.card` or `services.list`. See the [1.4.0 release notes](docs/releases/v1.4.0.md).
 - **Installing a bundle takes its review receipt.** `topo install --bundle DIR --dry-run` prints a `bundle_sha256`. Keep it outside the bundle and install with `--bundle-sha256` set to it; any change to the bundle after you reviewed it is refused.
 - **Collectors and workers have a memory target.** It defaults to 128 MiB for `serve` and 64 MiB for `worker`. Change it with `--memory-limit` (`0` keeps `GOMEMLIMIT`); on Linux, `--memory-max` adds a hard cap. See [memory budgets](docs/MEMORY.md).
 - **Tokens stay off the command line.** `--credential TOKEN` is gone. Save credentials with `topo login`; for a one-off, read the token from stdin or from a private file (`0600` on POSIX, a restricted ACL on Windows). Use one or the other, and add `--server` when the profile has several servers:
@@ -139,6 +140,12 @@ The [changelog](CHANGELOG.md) has the notes for every earlier release.
 - **Read-only adapters:** Mihomo, Tailscale, WireGuard, cloudflared, Cloudflare API.
 - **Edges and platforms:** Cloudflare (including Workers and Pages), Vercel, Supabase. An answer from the edge proves the edge, not the origin behind it.
 
+## Cloudflare, from edge to origin
+
+Topophany 1.4.0 follows a Cloudflare deployment across its public hostname, origin, Tunnel connector and control plane. HTTP checks recognize challenge pages and Access login redirects, read edge connection timing and `/cdn-cgi/trace`, and track cache and colo shares. Maps place the colos reported by responses; `expected_pops` and trace assertions flag policy drift. Access service-token headers come from the worker's environment. Local `cloudflared` checks report Tunnel sessions, and read-only Cloudflare API checks report Tunnel status, DNS records and load-balancer pool health. DNS checks also support DoT and DoH.
+
+Start with the [Cloudflare configuration guide](docs/CLOUDFLARE.md) and [`examples/cloudflare.json`](examples/cloudflare.json). The guide covers origin checks, Access credentials, local connector metrics, API token scopes and policy assertions. An edge response or an established Tunnel session leaves the origin unproven; keep a separate check of the application itself.
+
 ## The terminal UI
 
 Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and network), **Servers**, **Services**, **Paths**, **Checks**, **Incidents**, **Observers** and **About**. Services fold into the applications you declare and checks into the services they verify; `b` browses either by application, environment or host.
@@ -147,6 +154,8 @@ Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and net
   <img src="docs/assets/views.en.gif" alt="The Overview viewed from the MacBook in Seattle, where the transit path is down, then from the server in New York, where it is fine; then the Topology tab's virtual geo map, the geo map filling the screen and switching between place cards and points, and the network graph" width="100%">
   <br><sub>Down from Seattle, fine from New York: each observer reports only what it can see (<code>v</code>). Then the three maps (<code>m</code>): virtual geo, geo and network, the geo map taking the whole screen (<code>f</code>) and trading its place cards for points (<code>p</code>).</sub>
 </p>
+
+**Service card mode.** On **Services**, press `s` to show one card per service, grouped by application and colored for its host. Each card shows the observers and their checks, recent samples, daily latency and uptime, endpoints, dependencies and edge colos. `Enter` opens the full card with individual checks, cache shares, notes and runbook. The choice persists as `service_cards`; start directly with `topo --page services --service-cards`. Desktop widgets can use the same view through `service.card` and `services.list` in `topo monitor stream`; see the [metric reference](docs/REFERENCE.md#template-and-metric-contract).
 
 | Keys | |
 |---|---|

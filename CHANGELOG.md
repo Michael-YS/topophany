@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-20
+
+This release adds deeper Cloudflare support across HTTP evidence, Tunnel
+connectors, API reads, DNS and maps, and a Services card mode shared with monitor
+streams. See the [Cloudflare configuration guide](docs/CLOUDFLARE.md) and
+[release notes](docs/releases/v1.4.0.md) for setup and upgrade instructions.
+
 ### Added
 
 - Services as cards: on the Services tab, `s` shows a card for each service in
@@ -344,6 +351,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The rollup reader refuses, as corrupt, a checkpoint with a timestamp after
   the end of the year 9999, as it would otherwise make every snapshot that
   included it fail to encode.
+
+### Fixed
+
+- Service cards build without device-simulation support. TUI layout tests reuse
+  immutable fixtures, and macOS race tests have enough time to finish on shared
+  CI runners.
+- Cross-observer response evidence is indexed once per snapshot and bounded,
+  avoiding repeated scans when many checks share an endpoint.
+
+### Security
+
+- Release archives are built in fresh directories from an immutable checkout.
+  Publication verifies the exact file and archive-member manifests, rejects
+  unexpected or nonregular entries, and verifies that the tag still names the
+  source that was built before uploading downloads.
+- Credential-bearing probe and adapter responses withhold numeric values that
+  reflect a secret, as well as free text. Rich monitor rows share an output
+  budget enforced before repeated values are retained.
 
 ## [1.3.0] - 2026-10-19
 

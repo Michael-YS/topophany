@@ -118,6 +118,7 @@ topo --credentials ./demo/credentials.json
 
 ### 升级注意事项
 
+- **启用 1.4.0 新字段前，先升级 collector 和所有查看端。** 旧版本会拒绝新增的 Cloudflare 适配器选项、DNS 传输、私密请求头及 trace/机房断言；运行新检查前也要升级 worker。流协议仍为 1，使用 `service.card` 或 `services.list` 前请检查指标目录。详见 [1.4.0 发布说明](docs/releases/v1.4.0.md)。
 - **安装 bundle 需要审阅凭证。** `topo install --bundle DIR --dry-run` 会输出一个 `bundle_sha256`。把它保存在 bundle 之外，安装时用 `--bundle-sha256` 传回；审阅之后 bundle 有任何改动，安装都会被拒绝。
 - **采集器和 worker 有了内存目标。** `serve` 默认 128 MiB，`worker` 默认 64 MiB。可以用 `--memory-limit` 调整（设为 `0` 则沿用 `GOMEMLIMIT`）；在 Linux 上还可以用 `--memory-max` 加一道硬上限。详见[内存预算](docs/MEMORY.md)（英文）。
 - **令牌不再出现在命令行里。** `--credential TOKEN` 已经移除。请用 `topo login` 保存凭据；临时换用其他令牌时，从标准输入或私密文件（POSIX 上权限为 `0600`，Windows 上限制 ACL）读取。两种方式只能选一种；如果配置里有多台服务器，还要加上 `--server`：
@@ -139,6 +140,12 @@ topo --credentials ./demo/credentials.json
 - **只读适配器：** Mihomo、Tailscale、WireGuard、cloudflared、Cloudflare API。
 - **边缘与平台：** Cloudflare（包括 Workers 和 Pages）、Vercel、Supabase。边缘有应答，只能证明边缘本身没问题，证明不了它背后的源站。
 
+## Cloudflare：从边缘到源站
+
+Topophany 1.4.0 可以把 Cloudflare 部署的公网域名、源站、Tunnel 连接器和控制平面放在一起观察。HTTP 检查能识别质询页和 Access 登录重定向，读取边缘连接耗时与 `/cdn-cgi/trace`，统计缓存及机房（colo）占比；地图会标出响应报告的机房，`expected_pops` 与 trace 断言可检查是否偏离声明的策略。Access 服务令牌通过 worker 的环境变量注入请求头。本地 `cloudflared` 检查报告 Tunnel 会话，只读 Cloudflare API 检查提供 Tunnel 状态、DNS 记录及负载均衡池健康信息。DNS 检查也支持 DoT 和 DoH。
+
+从 [Cloudflare 详细配置文档](docs/CLOUDFLARE.md) 和 [`examples/cloudflare.json`](examples/cloudflare.json) 开始。文档说明了源站直连检查、Access 凭据、连接器本地指标、API 令牌权限及策略断言的配置方法。边缘有响应、Tunnel 会话已建立，都不能证明源站应用正常；请保留应用自身的独立检查。
+
 ## 终端界面
 
 九个标签页：**Overview**、**Topology**（虚拟地图、地理地图和网络图三种地图）、**Servers**、**Services**、**Paths**、**Checks**、**Incidents**、**Observers** 和 **About**。服务按你声明的应用归类，检查按它所验证的服务归类；按 `b` 可以改为按应用、环境或主机浏览。
@@ -147,6 +154,8 @@ topo --credentials ./demo/credentials.json
   <img src="docs/assets/views.zh.gif" alt="从成都的 MacBook 看 Overview，线路机那条路径已断；换到纽约的服务器看则一切正常。接着是 Topology 标签页的虚拟地图、铺满全屏并在地点卡片和圆点之间切换的地理地图，以及网络图" width="100%">
   <br><sub>从成都看已断，从纽约看正常：每个观测点只报告自己看得到的（<code>v</code>）。接着是三种地图（<code>m</code>）：虚拟地图、地理地图和网络图；地理地图铺满全屏（<code>f</code>），地点卡片换成圆点（<code>p</code>）。</sub>
 </p>
+
+**Service card 模式。** 在 **Services** 标签页按 `s`，可切换为每个服务一张卡片，按应用分组，并沿用所在主机的颜色。卡片汇总各观测点及其检查、近期采样、当天延迟与可用率、端点、依赖和边缘机房。按 `Enter` 展开完整卡片，查看逐项检查、缓存占比、备注及 runbook。选择会保存为 `service_cards`；也可以用 `topo --page services --service-cards` 直接打开。桌面小组件可通过 `topo monitor stream` 的 `service.card` 和 `services.list` 使用同一视图，详见[指标参考](docs/REFERENCE.md#template-and-metric-contract)。
 
 | 按键 | |
 |---|---|
