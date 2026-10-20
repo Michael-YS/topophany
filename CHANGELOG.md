@@ -199,9 +199,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node that saw it and one to the edge pill. The node and its hops claim what
   the check claims: carried when it passed, and only affected when it failed,
   because a failing request does not establish that the colo is down; a stale,
-  paused, cached or withheld sample, a malformed code, and Vercel's non-colo
-  region place nothing. A well-formed code the list does not know floats in
-  the "no location" tray. A map draws at most 32 colo pseudo-nodes, and they
+  paused, cached or withheld sample, a malformed code, a non-Cloudflare
+  provider and Vercel's non-colo region place nothing. A well-formed code the
+  list does not know floats unplaced (in the geo map's tray, as a pill on the
+  virtual map). A map draws at most 32 colo pseudo-nodes, and they
   count against its existing node and edge budgets; the nodes are kind `colo`
   and the hops a new `colo` edge kind in `topo show map` and its JSON. A short
   virtual map now splits places into more columns, down to the narrowest card,
