@@ -18,6 +18,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -188,6 +189,9 @@ func Open(dir string, o Options) (s *Store, err error) {
 	st, e := os.Lstat(path)
 	if e == nil && !st.Mode().IsRegular() {
 		return nil, errors.New("journal must be regular file")
+	}
+	if e == nil && runtime.GOOS != "windows" && st.Mode().Perm()&0077 != 0 {
+		return nil, errors.New("journal permissions must be 0600 or stricter")
 	}
 	created := errors.Is(e, os.ErrNotExist)
 	s.file, e = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)

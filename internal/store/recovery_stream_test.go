@@ -95,6 +95,35 @@ func TestStreamedRecoveryRefusesCorruptionBeforeJournalOpen(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsGroupReadableJournal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "journal.jsonl")
+	if err := os.WriteFile(path, []byte("kept\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := Open(dir, Options{}); err == nil {
+		s.Close()
+		t.Fatal("group-readable journal accepted")
+	} else if !strings.Contains(err.Error(), "0600") {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "kept\n" {
+		t.Fatalf("journal changed: %q %v", got, err)
+	}
+	if err = os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Truncate(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+}
+
 func TestCorruptCheckpointLeavesExistingJournalUntouched(t *testing.T) {
 	dir := t.TempDir()
 	journal := []byte("{\"kept\":true}\nnot a record\n")
