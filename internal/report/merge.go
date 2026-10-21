@@ -156,7 +156,6 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 	}
 	if epochChanged {
 		retireEpoch(&state, state.Cursor.Epoch)
-		unretireEpoch(&state, r.Epoch)
 	}
 	state.Cursor = model.ReportCursor{Mode: mode, Identity: identity, SampleID: r.SampleID, Epoch: r.Epoch, Sequence: cloneUint(r.Sequence), ObservedAt: sampledAt, TimeBasis: r.TimeBasis, Hash: hash}
 	last := model.CloneExternalReport(r)
@@ -311,13 +310,6 @@ func retireEpoch(state *model.BindingState, epoch string) {
 		retired = append([]string(nil), retired[len(retired)-model.MaxRetiredEpochs:]...)
 	}
 	state.RetiredEpochs = retired
-}
-
-func unretireEpoch(state *model.BindingState, epoch string) {
-	if epoch == "" || !slices.Contains(state.RetiredEpochs, epoch) {
-		return
-	}
-	state.RetiredEpochs = slices.DeleteFunc(append([]string(nil), state.RetiredEpochs...), func(e string) bool { return e == epoch })
 }
 
 // orderVerdict compares a not-yet-accepted identity with the cursor. Time
