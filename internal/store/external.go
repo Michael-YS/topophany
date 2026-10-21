@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/admission"
-	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/report"
 )
@@ -21,25 +20,13 @@ const maxExternalStateBytes = 4 << 20
 // local collector begins writing external observations. State for a binding
 // whose contract changed is removed instead of reused.
 func (s *Store) SetExternalContext(c model.Config) {
-	bindings := make(map[string]model.ExternalBinding)
-	sources := make(map[string]model.Source)
-	for _, source := range c.Sources {
-		sources[source.ID] = source
-	}
-	rules := make(map[string]model.ExternalRule)
-	for _, x := range c.Checks {
-		if x.Kind == "external" && x.External != nil {
-			bindings[x.ID] = *x.External
-			rules[x.ID] = model.ExternalRule{FailureThreshold: x.FailureThreshold, RecoveryThreshold: x.RecoveryThreshold, PolicyThreshold: x.PolicyThreshold}
-		}
-	}
-	contracts := config.Contracts(c)
+	ctx := ContextFromConfig(c)
 	s.commitMu.Lock()
 	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.options.Bindings, s.options.Sources, s.options.ExternalRules = bindings, sources, rules
-	s.pruneExternalLocked(contracts)
+	s.options.Bindings, s.options.Sources, s.options.ExternalRules = ctx.Bindings, ctx.Sources, ctx.ExternalRules
+	s.pruneExternalLocked(ctx.Contracts)
 	s.applyExternalRulesLocked()
 }
 
@@ -144,7 +131,13 @@ func (s *Store) mergeExternalLocked(observations []model.Observation) (*model.Ex
 		}
 		binding, ok := s.options.Bindings[v.Check]
 		if !ok {
-			return nil, 0, errors.New("external report has no declared binding")
+			// The binding may have been removed by a reload since this record
+			// was journaled. Recovery keeps the historical observation but does
+			// not invent current acceptance state for it.
+			continue
+		}
+		if _, ok := s.options.Sources[binding.Source]; !ok {
+			continue
 		}
 		state := next.Bindings[v.Check]
 		state = applyExternalRule(state, s.options.ExternalRules[v.Check])

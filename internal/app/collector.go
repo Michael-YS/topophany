@@ -108,7 +108,8 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	if e != nil {
 		return e
 	}
-	st, e := store.Open(*dir, store.Options{CheckpointBytes: *checkpointBytes, MaxJournalBytes: *maxJournalBytes, Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Observers: observerIDs(c), ObserverWeights: config.StorageWeights(c), MaxStateBytes: *stateBytes, MaxReceipts: *maxReceipts, Retention: *retention, MaxHistory: *maxHistory, RollupBytes: *rollupBytes})
+	storeOptions := store.Options{CheckpointBytes: *checkpointBytes, MaxJournalBytes: *maxJournalBytes, Observers: observerIDs(c), ObserverWeights: config.StorageWeights(c), MaxStateBytes: *stateBytes, MaxReceipts: *maxReceipts, Retention: *retention, MaxHistory: *maxHistory, RollupBytes: *rollupBytes}.WithTopology(c)
+	st, e := store.Open(*dir, storeOptions)
 	if e != nil {
 		return e
 	}

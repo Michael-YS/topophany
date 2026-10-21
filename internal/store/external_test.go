@@ -27,17 +27,9 @@ func externalStoreConfig(t testing.TB) model.Config {
 }
 
 func externalStoreOptions(c model.Config, now *time.Time) Options {
-	bindings := map[string]model.ExternalBinding{}
-	sources := map[string]model.Source{}
-	for _, s := range c.Sources {
-		sources[s.ID] = s
-	}
-	for _, x := range c.Checks {
-		if x.Kind == "external" {
-			bindings[x.ID] = *x.External
-		}
-	}
-	return Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Bindings: bindings, Sources: sources, MaxHistory: 1, Now: func() time.Time { return *now }}
+	// The same public constructor production uses: tests must not hand-build
+	// an external context the application entry point could forget.
+	return Options{MaxHistory: 1, Now: func() time.Time { return *now }}.WithTopology(c)
 }
 
 func externalStoreObservation(t testing.TB, c model.Config, sample string, value float64, seq uint64, attemptAt, sampledAt time.Time) model.Observation {
@@ -359,5 +351,43 @@ func TestExternalJournalReplayIsNotRejectedByLaterLiveClock(t *testing.T) {
 	state := reopened.ExternalView()
 	if state == nil || state.Bindings["vm-resources"].ReportSamples != 1 {
 		t.Fatalf("replayed external state = %+v", state)
+	}
+}
+
+func TestRecoverySkipsRemovedBindingAndChangedContract(t *testing.T) {
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	for name, change := range map[string]func(*model.Config){
+		"removed binding": func(c *model.Config) {
+			c.Checks = c.Checks[:len(c.Checks)-1]
+		},
+		"changed contract": func(c *model.Config) {
+			c.Checks[len(c.Checks)-1].External.MaxAgeSeconds = 120
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := externalStoreConfig(t)
+			dir := t.TempDir()
+			s := openTest(t, dir, externalStoreOptions(c, &now))
+			if err := s.Put(batch(c, externalStoreObservation(t, c, "sample-1", 30, 1, now, now))); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			next := config.Clone(c)
+			change(&next)
+			config.Defaults(&next)
+			if err := config.Validate(next); err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := Open(dir, externalStoreOptions(next, &now))
+			if err != nil {
+				t.Fatalf("old external journal blocked startup: %v", err)
+			}
+			defer reopened.Close()
+			if state := reopened.ExternalView(); state != nil && len(state.Bindings) > 0 {
+				t.Fatalf("old record entered current external state: %+v", state)
+			}
+		})
 	}
 }

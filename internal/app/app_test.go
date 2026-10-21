@@ -505,3 +505,53 @@ func TestWorkerStopsWhenNoCollectorHasRoom(t *testing.T) {
 		t.Fatal("worker went on with no collector taking its samples", e)
 	}
 }
+
+func TestServeRecoversExternalJournalBeforeAPIInstallsContext(t *testing.T) {
+	dir, c, _, _ := initialized(t)
+	c.Sources = append(c.Sources, model.Source{
+		ID: "review-source", Adapter: "synthetic-list", Observer: "demo",
+		Target: "https://source.invalid/v1/objects", IntervalSeconds: 30, TimeoutSeconds: 5, StaleSeconds: 90,
+		MaxResponseBytes: 1 << 20, MaxPages: 1, MaxObjects: 10, MaxReportBytes: 16 << 10,
+	})
+	c.Checks = append(c.Checks, model.Check{ID: "review-ext", Observer: "demo", Kind: "external", External: &model.ExternalBinding{Source: "review-source", Object: "vm/review", Report: model.ReportTypeResource, Node: "collector", MaxAgeSeconds: 60}})
+	config.Defaults(&c)
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	saveConfig(t, filepath.Join(dir, "topology.json"), c)
+
+	now := time.Now().UTC()
+	percent := 25.0
+	x, _ := config.Check(c, "review-ext")
+	report := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: x.External.Object, SampleID: "sample-1", ObservedAt: now.Add(-time.Minute), TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &percent}}}
+	obs := model.Observation{ID: "demo.boot.1", Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: "demo", Boot: "boot", Sequence: 1, SampledAt: now, Outcome: "ok", Evidence: "reported", Stage: "external_source", DurationMS: 4, PathEvidence: "external_source", External: &model.ExternalObservation{Source: "review-source", SourceGeneration: "gen-1", AttemptedAt: now, Contact: true, Report: &report}}
+	data := filepath.Join(dir, "data")
+	seeded, err := store.Open(data, store.Options{}.WithTopology(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seeded.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{obs}}); err != nil {
+		t.Fatal(err)
+	}
+	// Deliberately no Checkpoint: production must recover the journal.
+	if err := seeded.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var out, stderr bytes.Buffer
+	a := &App{In: strings.NewReader(""), Out: &out, Err: &stderr}
+	if err := a.Run(ctx, []string{"serve", "--config", filepath.Join(dir, "topology.json"), "--auth", filepath.Join(dir, "auth.json"), "--data", data, "--listen", "127.0.0.1:0"}); err != nil {
+		t.Fatalf("production serve could not reopen the external journal: %v\n%s", err, stderr.String())
+	}
+	reopened, err := store.Open(data, store.Options{}.WithTopology(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	state := reopened.ExternalView()
+	if state == nil || state.Bindings["review-ext"].ReportSamples != 1 || state.Bindings["review-ext"].Last == nil {
+		t.Fatalf("serve did not restore the external report: %+v", state)
+	}
+}

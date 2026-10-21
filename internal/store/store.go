@@ -272,6 +272,13 @@ func Open(dir string, o Options) (s *Store, err error) {
 	}
 	s.recount()
 	s.prune()
+	// A journal may predate a removed binding or an edited contract. The
+	// recovery context is installed before Open, so stale external state is
+	// pruned here rather than keeping a recovered record current.
+	if s.options.Contracts != nil {
+		s.pruneExternalLocked(s.options.Contracts)
+		s.applyExternalRulesLocked()
+	}
 	return s, nil
 }
 
