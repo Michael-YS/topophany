@@ -330,3 +330,53 @@ func TestAPIAndLocalAdmissionAgreeOnExternalTimeBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestRouteReloadInvalidatesOldExternalSnapshotsAndOutbox(t *testing.T) {
+	srv, h, b, c := externalAPIFixture(t)
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != http.StatusAccepted {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	changed := config.Clone(c)
+	changed.Paths = append(changed.Paths, model.Path{ID: "source-route", Observer: "home", Proxies: []model.Proxy{{Kind: "socks5", Address: "127.0.0.1:1080"}}})
+	changed.Sources[0].Path = "source-route"
+	if err := config.Validate(changed); err != nil {
+		t.Fatal(err)
+	}
+	if config.Contract(changed, changed.Checks[len(changed.Checks)-2]) == config.Contract(c, c.Checks[len(c.Checks)-2]) {
+		t.Fatal("test does not change the external route contract")
+	}
+	srv.Reload(changed, srv.Auth)
+	// The old report is no longer current evidence.
+	w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var snap model.Snapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range snap.External {
+		if e.Check == "vm-resources" {
+			if e.Report != nil || e.Health != "unknown" || e.Stats.Samples != 0 {
+				t.Fatalf("old route report remained current: %+v", e)
+			}
+			return
+		}
+	}
+	t.Fatal("external check missing from the reloaded snapshot")
+}
+
+func TestRouteReloadRejectsAnOldExternalOutboxBatch(t *testing.T) {
+	srv, h, b, c := externalAPIFixture(t)
+	changed := config.Clone(c)
+	changed.Paths = append(changed.Paths, model.Path{ID: "source-route", Observer: "home", Proxies: []model.Proxy{{Kind: "socks5", Address: "127.0.0.1:1080"}}})
+	changed.Sources[0].Path = "source-route"
+	if err := config.Validate(changed); err != nil {
+		t.Fatal(err)
+	}
+	srv.Reload(changed, srv.Auth)
+	w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "contract_mismatch") {
+		t.Fatalf("old outbox batch = %d %s", w.Code, w.Body.String())
+	}
+}

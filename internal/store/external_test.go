@@ -438,3 +438,27 @@ func TestExternalEpochAndRetiredEpochSurviveRestart(t *testing.T) {
 		t.Fatal("retired epoch replay changed accepted report")
 	}
 }
+
+func TestExternalStateResetsWhenOnlyTheSourceRouteChanges(t *testing.T) {
+	c := externalStoreConfig(t)
+	c.Paths = append(c.Paths, model.Path{ID: "source-route", Observer: "home", Proxies: []model.Proxy{{Kind: "socks5", Address: "127.0.0.1:1080"}}})
+	c.Sources[0].Path = "source-route"
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	s := openTest(t, t.TempDir(), externalStoreOptions(c, &now))
+	if err := s.Put(batch(c, externalStoreObservation(t, c, "sample-1", 10, 1, now, now))); err != nil {
+		t.Fatal(err)
+	}
+	changed := config.Clone(c)
+	changed.Paths[len(changed.Paths)-1].Proxies[0].Address = "127.0.0.1:1081"
+	if err := config.Validate(changed); err != nil {
+		t.Fatal(err)
+	}
+	s.SetExternalContext(changed)
+	s.SetCurrent(config.Revision(changed), config.Contracts(changed), config.Stale(changed))
+	if state := s.ExternalView(); state != nil && len(state.Bindings) > 0 {
+		t.Fatalf("route change reused external report state: %+v", state)
+	}
+}

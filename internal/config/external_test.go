@@ -258,3 +258,112 @@ func TestExternalConfigCloneDetachesBindingsAndResourceLists(t *testing.T) {
 		t.Fatal("clone shares external writable state")
 	}
 }
+
+func TestExternalContractIncludesResolvedRoute(t *testing.T) {
+	c := externalConfig(t)
+	c.Paths = append(c.Paths, model.Path{ID: "source-route", Observer: "cloud", Proxies: []model.Proxy{
+		{Kind: "socks5", Address: "127.0.0.1:1080"},
+		{Kind: "http-connect", Address: "127.0.0.1:8080", ServerName: "proxy.example"},
+	}})
+	c.Sources[0].Path = "source-route"
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	x := c.Checks[len(c.Checks)-2]
+	base := config.Contract(c, x)
+	for name, change := range map[string]func(*model.Config){
+		"proxy address": func(c *model.Config) { c.Paths[len(c.Paths)-1].Proxies[0].Address = "127.0.0.1:1081" },
+		"proxy kind":    func(c *model.Config) { c.Paths[len(c.Paths)-1].Proxies[0].Kind = "http-connect" },
+		"proxy order": func(c *model.Config) {
+			p := c.Paths[len(c.Paths)-1].Proxies
+			p[0], p[1] = p[1], p[0]
+		},
+		"proxy tls name": func(c *model.Config) { c.Paths[len(c.Paths)-1].Proxies[1].ServerName = "other.example" },
+		"proxy ca":       func(c *model.Config) { c.Paths[len(c.Paths)-1].Proxies[1].CAFile = "/private/proxy-ca.pem" },
+		"proxy user":     func(c *model.Config) { c.Paths[len(c.Paths)-1].Proxies[0].Username = "route-user" },
+		"extra hop": func(c *model.Config) {
+			c.Paths[len(c.Paths)-1].Proxies = append(c.Paths[len(c.Paths)-1].Proxies, model.Proxy{Kind: "socks5", Address: "127.0.0.1:1082"})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			next := config.Clone(c)
+			change(&next)
+			if err := config.Validate(next); err != nil {
+				t.Fatalf("changed route invalid: %v", err)
+			}
+			if got := config.Contract(next, next.Checks[len(next.Checks)-2]); got == base {
+				t.Fatal("route measurement change did not reset the external contract")
+			}
+		})
+	}
+	// A path rename with identical hops, or presentation-only metadata, is
+	// not a measurement change.
+	for name, change := range map[string]func(*model.Config){
+		"path id": func(c *model.Config) {
+			c.Paths = append(c.Paths, model.Path{ID: "renamed-route", Observer: "cloud", Proxies: append([]model.Proxy(nil), c.Paths[len(c.Paths)-1].Proxies...)})
+			c.Sources[0].Path = "renamed-route"
+		},
+		"source name": func(c *model.Config) { c.Sources[0].Name = "Renamed source" },
+		"source note": func(c *model.Config) { c.Sources[0].Notes = "reviewed" },
+		"check name":  func(c *model.Config) { c.Checks[len(c.Checks)-2].Name = "Renamed check" },
+		"check note":  func(c *model.Config) { c.Checks[len(c.Checks)-2].Notes = "reviewed" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			next := config.Clone(c)
+			change(&next)
+			if err := config.Validate(next); err != nil {
+				t.Fatalf("changed metadata invalid: %v", err)
+			}
+			if got := config.Contract(next, next.Checks[len(next.Checks)-2]); got != base {
+				t.Fatal("presentation change reset the external contract")
+			}
+		})
+	}
+}
+
+func TestExternalPublicContractUsesRedactedRouteOnly(t *testing.T) {
+	c := externalConfig(t)
+	c.Paths = append(c.Paths, model.Path{ID: "source-route", Observer: "cloud", Proxies: []model.Proxy{
+		{Kind: "socks5", Address: "127.0.0.1:1080", Username: "private-user", PasswordEnv: "PRIVATE_PASSWORD"},
+	}})
+	c.Sources[0].Path = "source-route"
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	x := c.Checks[len(c.Checks)-2]
+	private := config.Contract(c, x)
+	publicContracts := config.PublicContracts(c)
+	publicTopology := config.Public(c)
+	publicCheck, ok := config.Check(publicTopology, x.ID)
+	if !ok {
+		t.Fatal("public topology lost the external check")
+	}
+	if got := publicContracts[x.ID]; got != config.Contract(publicTopology, publicCheck) {
+		t.Fatal("public contract was not recomputed from the redacted topology")
+	}
+	if publicContracts[x.ID] == private {
+		t.Fatal("public contract reused the private measurement hash")
+	}
+	raw, err := json.Marshal(publicTopology)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"private-user", "PRIVATE_PASSWORD", "TOPH_PROBE_TOKEN", "token=secret"} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatalf("public topology leaked %q", secret)
+		}
+	}
+	// Private credential edits cannot be observed through the public digest.
+	changed := config.Clone(c)
+	changed.Paths[len(changed.Paths)-1].Proxies[0].Username = "other-private-user"
+	changed.Paths[len(changed.Paths)-1].Proxies[0].PasswordEnv = "OTHER_PRIVATE_PASSWORD"
+	if err := config.Validate(changed); err != nil {
+		t.Fatal(err)
+	}
+	if got := config.PublicContracts(changed)[x.ID]; got != publicContracts[x.ID] {
+		t.Fatal("public contract changed when only private credentials changed")
+	}
+	if got := config.Contract(changed, changed.Checks[len(changed.Checks)-2]); got == private {
+		t.Fatal("private route credential change did not start a new measurement contract")
+	}
+}

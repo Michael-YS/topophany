@@ -187,19 +187,19 @@ type externalContract struct {
 }
 
 type externalSourceContract struct {
-	ID               string `json:"id"`
-	Adapter          string `json:"adapter"`
-	Target           string `json:"target"`
-	Path             string `json:"path,omitempty"`
-	BindIP           string `json:"bind_ip,omitempty"`
-	ResolveIP        string `json:"resolve_ip,omitempty"`
-	ServerName       string `json:"server_name,omitempty"`
-	CAFile           string `json:"ca_file,omitempty"`
-	TimeoutSeconds   int    `json:"timeout_seconds"`
-	MaxResponseBytes int64  `json:"max_response_bytes"`
-	MaxPages         int    `json:"max_pages"`
-	MaxObjects       int    `json:"max_objects"`
-	MaxReportBytes   int    `json:"max_report_bytes"`
+	ID               string        `json:"id"`
+	Adapter          string        `json:"adapter"`
+	Target           string        `json:"target"`
+	Proxies          []model.Proxy `json:"proxies,omitempty"`
+	BindIP           string        `json:"bind_ip,omitempty"`
+	ResolveIP        string        `json:"resolve_ip,omitempty"`
+	ServerName       string        `json:"server_name,omitempty"`
+	CAFile           string        `json:"ca_file,omitempty"`
+	TimeoutSeconds   int           `json:"timeout_seconds"`
+	MaxResponseBytes int64         `json:"max_response_bytes"`
+	MaxPages         int           `json:"max_pages"`
+	MaxObjects       int           `json:"max_objects"`
+	MaxReportBytes   int           `json:"max_report_bytes"`
 }
 
 type externalBindingContract struct {
@@ -215,12 +215,14 @@ type externalBindingContract struct {
 func externalMeasurement(project string, c model.Config, x model.Check) string {
 	s, _ := Source(c, x.External.Source)
 	b := *x.External
-	// Values are copied by value; Assertions is immutable once the config is
-	// loaded and is hashed as JSON. CredentialEnv, names and notes are absent.
+	// The resolved ordered route is the measurement, not the path's name or
+	// ID. A path rename with the same hops, or a source/check name change,
+	// keeps the contract; changing a proxy address, kind, order or TLS field
+	// starts a new one. CredentialEnv, names and notes are absent.
 	out := externalContract{
 		Schema: 3, Project: project, Check: x.ID, Observer: x.Observer,
 		Kind: "external", Service: x.Service,
-		Source:  externalSourceContract{ID: s.ID, Adapter: s.Adapter, Target: s.Target, Path: s.Path, BindIP: s.BindIP, ResolveIP: s.ResolveIP, ServerName: s.ServerName, CAFile: s.CAFile, TimeoutSeconds: s.TimeoutSeconds, MaxResponseBytes: s.MaxResponseBytes, MaxPages: s.MaxPages, MaxObjects: s.MaxObjects, MaxReportBytes: s.MaxReportBytes},
+		Source:  externalSourceContract{ID: s.ID, Adapter: s.Adapter, Target: s.Target, Proxies: Path(c, s.Path).Proxies, BindIP: s.BindIP, ResolveIP: s.ResolveIP, ServerName: s.ServerName, CAFile: s.CAFile, TimeoutSeconds: s.TimeoutSeconds, MaxResponseBytes: s.MaxResponseBytes, MaxPages: s.MaxPages, MaxObjects: s.MaxObjects, MaxReportBytes: s.MaxReportBytes},
 		Binding: externalBindingContract{Source: b.Source, Object: b.Object, Report: b.Report, Node: b.Node, MaxAgeSeconds: b.MaxAgeSeconds, PrimaryDisk: b.PrimaryDisk, Assertions: b.Assertions},
 	}
 	raw, _ := json.Marshal(out)
