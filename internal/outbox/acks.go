@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/ioaccount"
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
@@ -86,8 +87,7 @@ func (q *Queue) applyAck(id, recipient string) {
 		return
 	}
 	v.Pending = slices.DeleteFunc(slices.Clone(v.Pending), func(r string) bool { return r == recipient })
-	v.SHA256 = itemHash(v)
-	q.account(v, q.itemSizes[id])
+	q.account(Item{ID: id, Pending: v.Pending, Batch: model.Batch{Observations: []model.Observation{{SampledAt: v.At}}}}, q.itemSizes[id])
 }
 
 func (q *Queue) logAcks(ids []string, recipient string) error {
@@ -139,7 +139,11 @@ func (q *Queue) compactAcks() (result error) {
 	// Publish every changed pending list before truncating. A crash in either
 	// phase replays ACKs idempotently and can only cause duplicate delivery.
 	for id := range q.acked {
-		if v, ok := q.items[id]; ok {
+		if _, ok := q.items[id]; ok {
+			v, err := q.loadItem(id)
+			if err != nil {
+				return err
+			}
 			if err := q.write(v); err != nil {
 				return err
 			}

@@ -39,7 +39,7 @@ func TestAckBatchSyncsOnceAndPreservesFailedItems(t *testing.T) {
 	if got := ioaccount.DirectorySync.Read().Count - before; got != 1 {
 		t.Fatalf("successful prefix synced %d times, want 1", got)
 	}
-	if got := q.Pending(rid, 0); len(got) != 3 || got[0].ID != items[1].ID {
+	if got := q.pendingIDs(rid, 0, 0); len(got) != 3 || got[0] != items[1].ID {
 		t.Fatal("failed/unattempted items lost", got)
 	}
 	if err := os.RemoveAll(bad); err != nil {
@@ -83,7 +83,7 @@ func TestAckSyncFailureRetainsBothErrors(t *testing.T) {
 func BenchmarkIndexedPendingBacklog(b *testing.B) {
 	for _, n := range []int{1000, 100000} {
 		b.Run(fmt.Sprint(n), func(b *testing.B) {
-			q := &Queue{items: map[string]Item{}, itemSizes: map[string]int64{}, recipientBytes: map[string]int64{}, pending: map[string]*pendingIndex{}}
+			q := &Queue{items: map[string]itemMeta{}, itemSizes: map[string]int64{}, recipientBytes: map[string]int64{}, pending: map[string]*pendingIndex{}}
 			now := time.Now().UTC()
 			for i := range n {
 				id := fmt.Sprint(i)
@@ -92,7 +92,7 @@ func BenchmarkIndexedPendingBacklog(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				q.PendingBytes("recipient", 100, 10000)
+				q.pendingIDs("recipient", 100, 10000)
 			}
 		})
 	}

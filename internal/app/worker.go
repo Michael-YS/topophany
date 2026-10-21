@@ -30,6 +30,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	profileName := f.String("profile", "", "credential profile (default active)")
 	dir := f.String("data", "./worker-data", "exclusive durable outbox directory")
 	budget := f.Int64("outbox-bytes", 32<<20, "hard budget for pending observations; quarantine has its own, at least as large")
+	maxRecords := f.Int("outbox-records", 20000, "hard pending record limit (1..1000000); bounds the in-memory index")
 	heartbeatInterval := f.Duration("heartbeat-interval", 15*time.Second, "idle heartbeat interval (1s..1m), capped at one third of observer stale_seconds")
 	workers := f.Int("concurrency", 4, "bounded probe concurrency (1..32)")
 	if e := parsed(f, args); e != nil {
@@ -77,7 +78,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 		return e
 	}
 	defer d.Close()
-	q, e := outbox.Open(*dir, c.Project, *budget)
+	q, e := outbox.OpenWithOptions(*dir, c.Project, outbox.Options{MaxBytes: *budget, MaxRecords: *maxRecords})
 	if e != nil {
 		return e
 	}

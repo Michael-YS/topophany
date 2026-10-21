@@ -13,12 +13,13 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
-var ErrFull = errors.New("outbox byte budget exhausted; execution must stop")
+var ErrFull = errors.New("outbox byte or record budget exhausted; execution must stop")
 
 // DegradedError reports destinations whose new evidence could not be queued.
 // Other destinations have already been durably queued; callers must continue
@@ -36,14 +37,26 @@ type Item struct {
 	Pending []string    `json:"pending"`
 	SHA256  string      `json:"sha256"`
 }
+
+// Options bounds disk use and the in-memory index independently.
+type Options struct {
+	MaxBytes   int64
+	MaxRecords int
+}
+type itemMeta struct {
+	Pending []string
+	At      time.Time
+}
+
 type Queue struct {
 	mu             sync.Mutex
 	dir            string
 	project        string
 	max            int64
+	maxRecords     int
 	used           int64
 	quarantineUsed int64
-	items          map[string]Item
+	items          map[string]itemMeta
 	pending        map[string]*pendingIndex
 	itemSizes      map[string]int64
 	recipientBytes map[string]int64
@@ -57,6 +70,17 @@ type Queue struct {
 
 func itemHash(v Item) string { v.SHA256 = ""; b, _ := json.Marshal(v); return secure.Hash(string(b)) }
 func Open(dir, project string, maxBytes int64) (*Queue, error) {
+	return OpenWithOptions(dir, project, Options{MaxBytes: maxBytes})
+}
+
+func OpenWithOptions(dir, project string, options Options) (*Queue, error) {
+	maxBytes := options.MaxBytes
+	if options.MaxRecords == 0 {
+		options.MaxRecords = 20000
+	}
+	if options.MaxRecords < 1 || options.MaxRecords > 1000000 {
+		return nil, errors.New("outbox record limit must be 1..1000000")
+	}
 	if maxBytes < 1024 {
 		return nil, errors.New("outbox budget must be at least 1024 bytes")
 	}
@@ -73,7 +97,7 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 	if e != nil {
 		return nil, e
 	}
-	q := &Queue{dir: dir, project: project, max: maxBytes, items: map[string]Item{}, pending: map[string]*pendingIndex{}, itemSizes: map[string]int64{}, recipientBytes: map[string]int64{}, unlock: unlock}
+	q := &Queue{dir: dir, project: project, max: maxBytes, maxRecords: options.MaxRecords, items: map[string]itemMeta{}, pending: map[string]*pendingIndex{}, itemSizes: map[string]int64{}, recipientBytes: map[string]int64{}, unlock: unlock}
 	ok := false
 	defer func() {
 		if !ok {
@@ -112,6 +136,9 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 			if sub == "quarantine" {
 				q.quarantineUsed += info.Size()
 				continue
+			}
+			if len(q.items) >= q.maxRecords {
+				return nil, ErrFull
 			}
 			b, e := queueRead(filepath.Join(dir, sub, entry.Name()), 2<<20)
 			if e != nil {
@@ -184,7 +211,7 @@ func (q *Queue) account(v Item, size int64) {
 	for _, r := range old.Pending {
 		q.recipientBytes[r] -= q.itemSizes[v.ID]
 		if !slices.Contains(v.Pending, r) {
-			q.indexRecipient(r, old, false)
+			q.indexRecipient(r, Item{ID: v.ID}, false)
 		}
 	}
 	for _, r := range v.Pending {
@@ -193,7 +220,11 @@ func (q *Queue) account(v Item, size int64) {
 			q.indexRecipient(r, v, true)
 		}
 	}
-	q.items[v.ID], q.itemSizes[v.ID] = v, size
+	at := time.Time{}
+	if len(v.Batch.Observations) > 0 {
+		at = v.Batch.Observations[0].SampledAt
+	}
+	q.items[v.ID], q.itemSizes[v.ID] = itemMeta{Pending: slices.Clone(v.Pending), At: at}, size
 }
 
 func (q *Queue) Add(b model.Batch, recipients []string) error {
@@ -223,6 +254,9 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 	id := secure.Hash(string(raw))
 	if _, ok := q.items[id]; ok {
 		return nil
+	}
+	if len(q.items) >= q.maxRecords {
+		return ErrFull
 	}
 	// The same immutable batch may be explicitly queued again after delivery.
 	// Remove old ACK identities durably before publishing its new record.
@@ -278,9 +312,32 @@ func (q *Queue) Pending(recipient string, limit int) []Item {
 // well as count. Always include the first item so a large record can progress.
 // Zero maxBytes preserves Pending's unrestricted diagnostic behavior.
 func (q *Queue) PendingBytes(recipient string, limit int, maxBytes int64) []Item {
+	out, _ := q.ReadPending(recipient, limit, maxBytes)
+	return out
+}
+
+// ReadPending loads only the selected, byte-bounded batch. A corrupt or missing
+// payload is an explicit local error; no delivery or ACK may consume that batch.
+func (q *Queue) ReadPending(recipient string, limit int, maxBytes int64) ([]Item, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	out := []Item{}
+	if q.closed {
+		return nil, errors.New("outbox closed")
+	}
+	ids := q.pendingIDs(recipient, limit, maxBytes)
+	out := make([]Item, 0, len(ids))
+	for _, id := range ids {
+		v, err := q.loadItem(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+func (q *Queue) pendingIDs(recipient string, limit int, maxBytes int64) []string {
+	out := []string{}
 	p := q.pending[recipient]
 	if p == nil {
 		return out
@@ -294,17 +351,27 @@ func (q *Queue) PendingBytes(recipient string, limit int, maxBytes int64) []Item
 			break
 		}
 		entries = append(entries, heap.Pop(p).(pendingEntry))
-		out = append(out, q.items[entry.id])
+		out = append(out, entry.id)
 		size += n
 	}
 	for _, entry := range entries {
 		heap.Push(p, entry)
 	}
-	for i := range out {
-		out[i].Batch = model.CloneBatch(out[i].Batch)
-		out[i].Pending = slices.Clone(out[i].Pending)
-	}
 	return out
+}
+
+func (q *Queue) loadItem(id string) (Item, error) {
+	raw, err := queueRead(q.file(id), 2<<20)
+	if err != nil {
+		return Item{}, err
+	}
+	var v Item
+	if json.Unmarshal(raw, &v) != nil || v.Schema != 1 || v.ID != id || v.SHA256 != itemHash(v) || v.Batch.Project != q.project || !validItem(v) {
+		return Item{}, errors.New("outbox payload corruption")
+	}
+	v.Pending = slices.Clone(q.items[id].Pending)
+	v.SHA256 = itemHash(v)
+	return v, nil
 }
 
 func (q *Queue) Ack(ids []string, recipient string) (err error) {
@@ -312,9 +379,6 @@ func (q *Queue) Ack(ids []string, recipient string) (err error) {
 	defer q.mu.Unlock()
 	if q.closed {
 		return errors.New("outbox closed")
-	}
-	if q.ackError != nil {
-		return q.ackError
 	}
 	if q.ackError != nil {
 		return q.ackError
@@ -371,7 +435,6 @@ func (q *Queue) ack(id, recipient string) (bool, error) {
 	if !found {
 		return false, nil
 	}
-	v.Pending = pending
 	if len(pending) == 0 {
 		st, e := queueStat(q.file(id))
 		if e != nil {
@@ -407,9 +470,13 @@ func (q *Queue) Quarantine(ids []string, recipient, reason string) (err error) {
 		reason = reason[:256]
 	}
 	for _, id := range ids {
-		v, ok := q.items[id]
-		if !ok {
+		meta, ok := q.items[id]
+		if !ok || !slices.Contains(meta.Pending, recipient) {
 			continue
+		}
+		v, e := q.loadItem(id)
+		if e != nil {
+			return e
 		}
 		file := filepath.Join(q.dir, "quarantine", id+"-"+recipient+".json")
 		b, e := json.Marshal(struct {

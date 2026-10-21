@@ -208,3 +208,9 @@ continues backfill within a bounded burst: at most four requests (each at most
 polling retains its two-second cadence. A rejection, 429, invalid acknowledgement
 or local persistence error ends the burst and preserves the normal retry policy.
 Each collector runs independently.
+
+Outbox payloads stay on disk after startup validation. The worker retains only
+record identity, first-sample timestamp, pending recipients and byte accounting;
+each send loads a batch bounded by count and encoded bytes. A missing or corrupt
+payload produces `local_read_failed`, retains the queue entry and sends no part
+of that batch. The independent `--outbox-records` limit defaults to 20,000.

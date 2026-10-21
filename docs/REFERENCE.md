@@ -945,3 +945,9 @@ decides the link. The checks that are active use documentation hostnames and
 address ranges: of the public hosts only the trace target
 (`https://www.cloudflare.com/cdn-cgi/trace`) and the `1.1.1.1` DoT resolver
 are real, and the `example.com` hosts are placeholders to replace.
+
+Worker outboxes also accept `--outbox-records` (default 20,000, range
+1–1,000,000). This independently caps the pending-record index. Reaching either
+this count or the pending byte budget stops execution explicitly; an existing
+queue above the configured count is refused at startup without deleting data.
+Use a larger explicit count to drain such a queue.

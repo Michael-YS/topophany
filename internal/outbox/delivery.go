@@ -207,7 +207,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	result = Result{Recipient: rid}
 	defer func() {
 		result.Code = dest.diagnostic
-		if result.Code == "" || dest.code == "local_ack_failed" || dest.code == "local_quarantine_failed" {
+		if result.Code == "" || dest.code == "local_ack_failed" || dest.code == "local_quarantine_failed" || dest.code == "local_read_failed" {
 			result.Code = dest.code
 		}
 		d.publish(q, dest, result)
@@ -227,7 +227,12 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	if dest.isolating {
 		itemLimit = 1
 	}
-	items := q.PendingBytes(rid, itemLimit, 1<<20)
+	items, readErr := q.ReadPending(rid, itemLimit, 1<<20)
+	if readErr != nil {
+		dest.code = "local_read_failed"
+		result.Error = "local outbox payload unavailable or corrupt"
+		return
+	}
 	if len(items) == 0 {
 		dest.isolating = false
 		dest.separateBeat = false
