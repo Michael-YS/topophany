@@ -361,6 +361,14 @@ Topophany-side JSON tests.
 
 ## Multi-probe hardening (2026-10-21)
 
+Follow-up lifecycle regressions:
+
+- `TestAutomaticCheckpointPreservesExternalStateAndFormat` and
+  `TestExternalBackgroundCheckpointPreservesConcurrentTail` preserve the
+  external cursor, counters and format through automatic checkpoints and
+  concurrent journal writes. `TestOldBinaryRefusesNewExternalData` also
+  exercises the old reader after automatic checkpoint installation.
+
 These are the review's ten reproduced failures plus the documentation check.
 Each row names the repository regression that now runs without `/tmp`
 fixtures. The store downgrade test builds the actual `74db358` reader from git

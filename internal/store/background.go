@@ -26,6 +26,7 @@ func (s *Store) startCheckpoint() {
 		rows: slices.Clone(s.rows), tails: make(map[string][]model.Observation, len(s.tails)),
 		carries: maps.Clone(s.carries), seen: maps.Clone(s.seen), beats: maps.Clone(s.beats),
 		floors: maps.Clone(s.floors), floorAt: maps.Clone(s.floorAt), rollups: s.rollups.Clone(),
+		format: s.format, external: model.CloneExternalState(s.external),
 	}
 	for k, tail := range s.tails {
 		snapshot.tails[k] = slices.Clone(tail)

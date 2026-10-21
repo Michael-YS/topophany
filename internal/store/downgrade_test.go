@@ -168,6 +168,24 @@ func TestOldBinaryRefusesNewExternalData(t *testing.T) {
 	old := buildOldFormatReader(t)
 	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 
+	t.Run("automatic checkpoint retains barrier", func(t *testing.T) {
+		c := externalStoreConfig(t)
+		opts := externalStoreOptions(c, &now)
+		opts.CheckpointBytes, opts.MaxJournalBytes = 1024, 64<<10
+		s := openTest(t, t.TempDir(), opts)
+		v := externalStoreObservation(t, c, "sample-1", 25, 1, now, now)
+		v.Detail = strings.Repeat("x", 800)
+		if err := s.Put(batch(c, v)); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if code, out := runOldReader(t, old, s.dir); code == 0 || !strings.Contains(out, "refused:") {
+			t.Fatalf("old reader did not refuse automatic checkpoint: %d %s", code, out)
+		}
+	})
+
 	t.Run("native only remains readable", func(t *testing.T) {
 		c := testkit.Config()
 		config.Defaults(&c)
