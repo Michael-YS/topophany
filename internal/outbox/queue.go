@@ -203,9 +203,7 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 	if _, ok := q.items[id]; ok {
 		return nil
 	}
-	var owned model.Batch
-	_ = json.Unmarshal(raw, &owned)
-	v := Item{Schema: 1, ID: id, Batch: owned, Pending: append([]string(nil), recipients...)}
+	v := Item{Schema: 1, ID: id, Batch: model.CloneBatch(b), Pending: append([]string(nil), recipients...)}
 	sort.Strings(v.Pending)
 	for i := 1; i < len(v.Pending); i++ {
 		if v.Pending[i] == v.Pending[i-1] {
@@ -281,10 +279,11 @@ func (q *Queue) PendingBytes(recipient string, limit int, maxBytes int64) []Item
 			size += n
 		}
 	}
-	b, _ := json.Marshal(out)
-	var detached []Item
-	_ = json.Unmarshal(b, &detached)
-	return detached
+	for i := range out {
+		out[i].Batch = model.CloneBatch(out[i].Batch)
+		out[i].Pending = slices.Clone(out[i].Pending)
+	}
+	return out
 }
 
 // pendingOrder orders items by when their first sample was taken, then by ID.

@@ -584,7 +584,7 @@ func (s *Store) advances(h model.Heartbeat, project, revision string) bool {
 // A returned success always follows fsync. An I/O error poisons the store until
 // restart, because the durability of that last transaction may be uncertain.
 func (s *Store) Put(b model.Batch) error {
-	// JSON roundtrip transfers ownership of maps/slices away from the caller.
+	// Encoding still validates the transaction and its wire budget.
 	payload, e := json.Marshal(b)
 	if e != nil {
 		return e
@@ -592,11 +592,7 @@ func (s *Store) Put(b model.Batch) error {
 	if len(payload) > 1<<20 {
 		return errors.New("transaction exceeds 1 MiB")
 	}
-	var copyBatch model.Batch
-	if e = json.Unmarshal(payload, &copyBatch); e != nil {
-		return e
-	}
-	b = copyBatch
+	b = model.CloneBatch(b)
 	// Detachment and content hashing depend only on the caller's batch; keep
 	// their encoding work out of the lock shared by readers and other writers.
 	hashes := make([]digest, len(b.Observations))
@@ -893,10 +889,10 @@ func (s *Store) View() ([]model.Observation, map[string]model.Heartbeat) {
 		beats[k] = model.CloneHeartbeat(v)
 	}
 	s.mu.Unlock()
-	b, _ := json.Marshal(rows)
-	var out []model.Observation
-	_ = json.Unmarshal(b, &out)
-	return out, beats
+	for i := range rows {
+		rows[i] = model.CloneObservation(rows[i])
+	}
+	return rows, beats
 }
 
 // History returns at most 1 MiB of newest full observations. A response may
@@ -921,8 +917,7 @@ func (s *Store) History(check string, contracts map[string]string, revision stri
 	}
 	s.mu.Unlock()
 	for i := range out {
-		out[i].Facts = maps.Clone(out[i].Facts)
-		out[i].Timings = maps.Clone(out[i].Timings)
+		out[i] = model.CloneObservation(out[i])
 	}
 	return out
 }
