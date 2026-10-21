@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +97,9 @@ func TestStreamedRecoveryRefusesCorruptionBeforeJournalOpen(t *testing.T) {
 }
 
 func TestOpenRejectsGroupReadableJournal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not enforced on Windows")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "journal.jsonl")
 	if err := os.WriteFile(path, []byte("kept\n"), 0644); err != nil {

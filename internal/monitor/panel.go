@@ -126,7 +126,7 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 	if strings.HasPrefix(r.Metric, "delivery.") {
 		return deliveryValue(v, in.Delivery, now)
 	}
-	if s.GeneratedAt.IsZero() || s.GeneratedAt.After(now.Add(5*time.Second)) || view.Expired(s, now) {
+	if s.GeneratedAt.IsZero() || s.GeneratedAt.After(now.Add(model.SampleClockAhead)) || view.Expired(s, now) {
 		v.Freshness = "stale"
 		return missing(v, "source_expired")
 	}
@@ -304,7 +304,7 @@ func ageSnapshot(s model.Snapshot, now time.Time) model.Snapshot {
 	}
 	for i := range s.Checks {
 		c := &s.Checks[i]
-		if c.Freshness == "fresh" && c.Last != nil && (c.Last.SampledAt.After(now.Add(5*time.Second)) || !now.Before(c.Last.SampledAt.Add(time.Duration(stale[c.ID])*time.Second))) {
+		if c.Freshness == "fresh" && c.Last != nil && (c.Last.SampledAt.After(now.Add(model.SampleClockAhead)) || !now.Before(c.Last.SampledAt.Add(time.Duration(stale[c.ID])*time.Second))) {
 			c.Freshness = "stale"
 			c.Health = "unknown"
 		}
@@ -313,7 +313,7 @@ func ageSnapshot(s model.Snapshot, now time.Time) model.Snapshot {
 	for i := range s.Observers {
 		o := &s.Observers[i]
 		for _, d := range s.Topology.Observers {
-			if d.ID == o.ID && o.Health == "up" && (o.LastSeen.After(now.Add(5*time.Second)) || !now.Before(o.LastSeen.Add(time.Duration(d.StaleSeconds)*time.Second))) {
+			if d.ID == o.ID && o.Health == "up" && (o.LastSeen.After(now.Add(model.SampleClockAhead)) || !now.Before(o.LastSeen.Add(time.Duration(d.StaleSeconds)*time.Second))) {
 				o.Health = "unknown"
 			}
 		}

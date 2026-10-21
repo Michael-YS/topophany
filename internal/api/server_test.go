@@ -180,6 +180,39 @@ func TestCollectorClockStepBackKeepsAdmittingWorkerTime(t *testing.T) {
 		t.Fatal("hour-ahead sample", w.Code, w.Body.String())
 	}
 }
+
+// Keep worker and monotonic time moving while the collector stays a minute behind.
+func TestCollectorRollbackContinuousAdmission(t *testing.T) {
+	srv, h, b := fixture(t)
+	start := srv.Now().UTC()
+	elapsed := time.Duration(0)
+	srv.admissionClock = func() time.Time { return start.Add(elapsed) }
+	srv.Now = func() time.Time { return start }
+	b.Observations[0].SampledAt = start
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal(w.Code, w.Body)
+	}
+	srv.Now = func() time.Time { return start.Add(elapsed - time.Minute) }
+	for i, delta := range []time.Duration{2 * time.Second, 40 * time.Second, 2 * time.Minute, 10 * time.Minute} {
+		elapsed = delta
+		at := start.Add(elapsed)
+		b.Observations = []model.Observation{testkit.Observation(srv.Config, "home-http", uint64(i+2), at, "ok")}
+		b.Heartbeat = &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: at, Delivery: []model.DeliveryStatus{{Collector: "0123456789abcdef", ReportedAt: at, LastAck: at, LastContact: at, RetryAt: at.Add(30 * time.Second)}}}
+		if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+			t.Fatalf("elapsed %s: %d %s", elapsed, w.Code, w.Body)
+		}
+	}
+	b.Heartbeat = nil
+	b.Observations = []model.Observation{testkit.Observation(srv.Config, "home-http", 99, start.Add(elapsed+time.Hour), "ok")}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 422 {
+		t.Fatal("future sample accepted", w.Code)
+	}
+	b.Observations[0].SampledAt = srv.Now().Add(-srv.MaxSampleAge - time.Second)
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 422 {
+		t.Fatal("expired sample accepted", w.Code)
+	}
+}
+
 func TestInvalidSecondObservationLeavesBatchUncommitted(t *testing.T) {
 	srv, h, b := fixture(t)
 	bad := b.Observations[0]

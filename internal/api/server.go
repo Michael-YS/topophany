@@ -102,14 +102,14 @@ type Server struct {
 	MaxSampleAge time.Duration
 	// Ingress counts TLS handshake failures the HTTP server's error log
 	// reported; nil when the collector did not wire it.
-	Ingress                   *IngressCounter
-	Now                       func() time.Time
-	mu                        sync.Mutex
-	// clockHigh is the latest collector time admission has observed. A step
-	// backward leaves it in place, so a worker whose own clock kept moving is
-	// not treated as sampling from the future. Age is still judged from the
-	// current Now.
-	clockHigh time.Time
+	Ingress *IngressCounter
+	Now     func() time.Time
+	mu      sync.Mutex
+	// Admission advances its wall-clock high-water mark by monotonic elapsed
+	// time. A backward wall-clock step therefore does not freeze admission.
+	clockHigh                 time.Time
+	clockTick                 time.Time
+	admissionClock            func() time.Time // nil uses time.Now (with its monotonic reading)
 	limits                    map[string]limit
 	slots                     chan struct{}
 	viewerSlots               chan struct{}
@@ -614,12 +614,20 @@ func (s *Server) put(a authority, b model.Batch) (int, string) {
 // treat as "now" for the future bound. The store already accepts a collector
 // step-back; this keeps that from being rejected at the API.
 func (s *Server) admissionTimes() (now, future time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	now = s.Now()
+	tick := time.Now()
+	if s.admissionClock != nil {
+		tick = s.admissionClock()
+	}
 	if now.IsZero() {
 		now = time.Now()
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if !s.clockTick.IsZero() {
+		s.clockHigh = s.clockHigh.Add(max(tick.Sub(s.clockTick), 0))
+	}
+	s.clockTick = tick
 	if now.After(s.clockHigh) {
 		s.clockHigh = now
 	}

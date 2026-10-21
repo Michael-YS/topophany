@@ -15,6 +15,13 @@ upgrade considerations and the [operations guide](docs/OPERATIONS.md) for tuning
 
 ### Changed
 
+- Exclude unused probe option blocks from measurement contracts. This changes
+  contract hashes: drain old worker queues before coordinating collector and
+  worker upgrades. Stored observations retain their old contracts and do not
+  count toward the new ones; see the release notes for the transition procedure.
+- Keep admission's future-time reference advancing with monotonic elapsed time
+  after collector clock rollback, including heartbeat delivery timestamps.
+
 - Reuse folded check evidence across collector snapshots, incident reads and
   monitor panels, including heartbeat-only updates. Each read still evaluates
   freshness and observer liveness at its own time; one-shot and worker-local

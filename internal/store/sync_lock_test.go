@@ -17,6 +17,13 @@ func TestReadersDoNotWaitForJournalSync(t *testing.T) {
 	t.Cleanup(func() { syncFile = previous })
 	started := make(chan struct{})
 	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
 	syncFile = func(f *os.File) error {
 		select {
 		case <-started:

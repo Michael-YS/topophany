@@ -348,7 +348,7 @@ func resource(v view.View, r view.CardResource) ResourceValue {
 		}
 	}
 	if !r.SampledAt.IsZero() {
-		out.ValidUntil = stamp(minTime(r.SampledAt.Add(time.Duration(def.StaleSeconds)*time.Second), v.Snapshot.GeneratedAt.Add(15*time.Second)))
+		out.ValidUntil = stamp(minTime(r.SampledAt.Add(time.Duration(def.StaleSeconds)*time.Second), v.Snapshot.GeneratedAt.Add(model.SnapshotLifetime)))
 	}
 	h := def.Host
 	if h == nil {

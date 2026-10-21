@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -24,6 +25,9 @@ func editorModel(t *testing.T) (*Model, string) {
 	return m, path
 }
 func TestEditorTightensPermissionsWhenSavingSecrets(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not enforced on Windows")
+	}
 	m, path := editorModel(t)
 	if err := os.WriteFile(path, []byte("{}\n"), 0644); err != nil {
 		t.Fatal(err)

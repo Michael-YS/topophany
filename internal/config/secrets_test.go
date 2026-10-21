@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
@@ -11,6 +12,9 @@ import (
 )
 
 func TestLiteralSecretTopologyMustBePrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not enforced on Windows")
+	}
 	c := testkit.Config()
 	if config.HasLiteralSecret(c) {
 		t.Fatal("fixture carries a literal secret")
@@ -49,6 +53,18 @@ func TestLiteralSecretTopologyMustBePrivate(t *testing.T) {
 	}
 	if _, err := config.Load(link); err == nil {
 		t.Fatal("symlink to a secret topology accepted")
+	}
+}
+
+// Secret classification and requested save modes are platform independent.
+func TestLiteralSecretClassificationAndWriteMode(t *testing.T) {
+	c := testkit.Config()
+	if config.HasLiteralSecret(c) {
+		t.Fatal("secret-free fixture")
+	}
+	c.Checks[0].HTTP.RequestHeaders = map[string]string{"X-Key": "literal"}
+	if !config.HasLiteralSecret(c) || config.WriteMode(c, 0644) != 0600 {
+		t.Fatal("literal header must request private save mode")
 	}
 	c.Checks[0].HTTP.RequestHeaders = nil
 	c.Checks[0].Target = "https://user:password@192.0.2.10/"

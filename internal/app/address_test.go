@@ -7,6 +7,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -48,7 +49,7 @@ func TestAddressChangeDryRunAndReferencedDeletion(t *testing.T) {
 		t.Fatal(e)
 	}
 	st, e := os.Stat(secretPath)
-	if e != nil || st.Mode().Perm() != 0600 {
+	if e != nil || runtime.GOOS != "windows" && st.Mode().Perm() != 0600 {
 		t.Fatal(st.Mode(), e)
 	}
 	before, _ := os.ReadFile(path)

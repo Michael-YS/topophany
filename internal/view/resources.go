@@ -74,7 +74,7 @@ func (v View) hostResource(cs model.CheckState, x model.Check, o model.Observer)
 	if cs.Last != nil {
 		r.SampledAt = cs.Last.SampledAt
 	}
-	current := !v.Cached && !v.Draft && !Expired(v.Snapshot, v.Now) && cs.Freshness == "fresh" && cs.Last != nil && !cs.Last.SampledAt.After(v.Now.Add(5*time.Second)) && v.Now.Sub(cs.Last.SampledAt) <= time.Duration(x.StaleSeconds)*time.Second
+	current := !v.Cached && !v.Draft && !Expired(v.Snapshot, v.Now) && cs.Freshness == "fresh" && cs.Last != nil && !cs.Last.SampledAt.After(v.Now.Add(model.SampleClockAhead)) && v.Now.Sub(cs.Last.SampledAt) <= time.Duration(x.StaleSeconds)*time.Second
 	if current && (cs.Last.Outcome == "ok" || cs.Last.Outcome == "policy") && cs.Last.Evidence == "reported" {
 		r.Facts = maps.Clone(cs.Last.Facts)
 	} else {

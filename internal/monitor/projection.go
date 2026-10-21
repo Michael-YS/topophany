@@ -74,10 +74,10 @@ func (p *projection) observerValues() []ObserverVerdict {
 
 func (p *projection) resolve(value Value) Value {
 	s := p.v.Snapshot
-	if s.GeneratedAt.IsZero() || s.GeneratedAt.After(p.v.Now.Add(5*time.Second)) {
+	if s.GeneratedAt.IsZero() || s.GeneratedAt.After(p.v.Now.Add(model.SampleClockAhead)) {
 		return missing(value, "source_expired")
 	}
-	if (value.Metric == "observers.verdicts" || value.Metric == "server.card") && p.all.Snapshot.GeneratedAt.After(p.v.Now.Add(5*time.Second)) {
+	if (value.Metric == "observers.verdicts" || value.Metric == "server.card") && p.all.Snapshot.GeneratedAt.After(p.v.Now.Add(model.SampleClockAhead)) {
 		return missing(value, "source_expired")
 	}
 	value = p.richValue(value)
