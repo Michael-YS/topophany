@@ -105,36 +105,37 @@ type envelope struct {
 	Payload json.RawMessage `json:"payload"`
 }
 type Store struct {
-	mu             sync.Mutex
-	version        uint64
-	dir            string
-	file           *os.File
-	unlock         func() error
-	options        Options
-	rows           []model.Observation
-	tails          map[string][]model.Observation
-	carries        map[string]engine.Carry // what samples trimmed from each tail left
-	seen           map[string]receipt
-	beats          map[string]model.Heartbeat
-	bytes          int64
-	checkpointSize int64
-	closed         bool
-	poisoned       error
-	rowSizes       map[string]int64
-	stateBytes     int64
-	beatBytes      map[string]int64
-	recent         map[string]int
-	recentHead     int
-	recentAt       time.Time
-	rowHashes      map[string]digest
-	rowObservers   map[string]string
-	scopeBytes     map[string]int64
-	scopeReceipts  map[string]int
-	floors         map[string]uint64
-	floorAt        map[string]time.Time   // when each floor's receipt was taken
-	floorQueues    map[string]*floorQueue // by observer, its floors oldest first
-	rollups        *rollup.Store
-	settled        time.Time // when the rollups last settled
+	mu              sync.Mutex
+	version         uint64
+	evidenceVersion uint64
+	dir             string
+	file            *os.File
+	unlock          func() error
+	options         Options
+	rows            []model.Observation
+	tails           map[string][]model.Observation
+	carries         map[string]engine.Carry // what samples trimmed from each tail left
+	seen            map[string]receipt
+	beats           map[string]model.Heartbeat
+	bytes           int64
+	checkpointSize  int64
+	closed          bool
+	poisoned        error
+	rowSizes        map[string]int64
+	stateBytes      int64
+	beatBytes       map[string]int64
+	recent          map[string]int
+	recentHead      int
+	recentAt        time.Time
+	rowHashes       map[string]digest
+	rowObservers    map[string]string
+	scopeBytes      map[string]int64
+	scopeReceipts   map[string]int
+	floors          map[string]uint64
+	floorAt         map[string]time.Time   // when each floor's receipt was taken
+	floorQueues     map[string]*floorQueue // by observer, its floors oldest first
+	rollups         *rollup.Store
+	settled         time.Time // when the rollups last settled
 
 	// Receipts in the order they were taken, from receiptHead on, so the
 	// expired ones are found at the front rather than by visiting them all;
@@ -420,6 +421,7 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.version++
+	s.evidenceVersion++
 	s.options.Revision = revision
 	s.options.Contracts = maps.Clone(contracts)
 	s.options.Stale = maps.Clone(stale)
@@ -549,6 +551,9 @@ func before(a, b model.Observation) bool {
 }
 func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding) error {
 	s.version++
+	if len(b.Observations) > 0 {
+		s.evidenceVersion++
+	}
 	for _, v := range b.Observations {
 		encoded, ok := prepared[v.ID]
 		if !ok {
@@ -820,6 +825,7 @@ func (s *Store) pruneHistory(cutoff time.Time) {
 	}
 	if start > 0 {
 		s.version++
+		s.evidenceVersion++
 	}
 	clear(s.rows[:start])
 	s.rows = s.rows[start:]

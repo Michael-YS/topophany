@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"testing"
 	"time"
 
@@ -41,5 +42,40 @@ func TestPreparedEvaluationReusesEvidenceAndInvalidatesOnWriteAndReload(t *testi
 	s.Reload(next, s.Auth)
 	if got := s.MonitorSnapshot(now); s.evaluation == prepared || got.Checks[0].Freshness != "paused" {
 		t.Fatal("reload retained old judgment")
+	}
+}
+
+func TestHeartbeatUpdatesLivenessWithoutRefoldingChecks(t *testing.T) {
+	s, _, b := fixture(t)
+	now := s.Now()
+	b.Observations[0].SampledAt = now.Add(-time.Minute)
+	if err := s.Store.Put(b); err != nil {
+		t.Fatal(err)
+	}
+	s.MonitorSnapshot(now)
+	evidenceVersion := s.evaluationEvidenceVersion
+	h := model.Heartbeat{Observer: "home", Boot: "next", SampledAt: now, Contracts: config.ObserverContracts(s.Config, "home")}
+	if err := s.Store.Put(model.Batch{Schema: model.BatchSchema, Project: b.Project, Revision: b.Revision, Heartbeat: &h}); err != nil {
+		t.Fatal(err)
+	}
+	snap := s.MonitorSnapshot(now)
+	if s.evaluationEvidenceVersion != evidenceVersion {
+		t.Fatal("heartbeat invalidated observation evidence")
+	}
+	rows, carries, beats, _, ev := s.Store.EvaluationView(evidenceVersion, false)
+	if rows != nil || carries != nil || ev != evidenceVersion || !beats["home"].SampledAt.Equal(now) {
+		t.Fatal("heartbeat capture scanned history")
+	}
+	for _, o := range snap.Observers {
+		if o.ID == "home" && (!o.LastSeen.Equal(now) || o.Contracts != "current") {
+			t.Fatal("heartbeat liveness stale", o)
+		}
+	}
+	// Heartbeats from the future must become ineligible again on rollback.
+	rollback := s.MonitorSnapshot(now.Add(-20 * time.Second))
+	for _, o := range rollback.Observers {
+		if o.ID == "home" && !o.LastSeen.Equal(b.Observations[0].SampledAt) {
+			t.Fatal("future heartbeat froze last seen", o)
+		}
 	}
 }

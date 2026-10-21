@@ -22,14 +22,6 @@ type Prepared struct {
 
 func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat) *Prepared {
 	e := &Prepared{plan: p, seen: map[string][]time.Time{}, reported: map[string]string{}, beats: map[string]model.Heartbeat{}}
-	for id, h := range beats {
-		if h.Project != p.config.Project {
-			continue
-		}
-		e.beats[id] = model.CloneHeartbeat(h)
-		e.seen[id] = append(e.seen[id], h.SampledAt)
-		e.reported[id] = p.reportedContract(id, h)
-	}
 	e.checks = p.foldEvidence(rows, carries, func(observer string, at time.Time) {
 		e.seen[observer] = append(e.seen[observer], at)
 	})
@@ -37,7 +29,23 @@ func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[stri
 		slices.SortFunc(stamps, time.Time.Compare)
 		e.seen[id] = slices.CompactFunc(stamps, time.Time.Equal)
 	}
-	return e
+	return e.WithHeartbeats(beats)
+}
+
+// WithHeartbeats shares immutable folded checks and observation timestamps,
+// replacing only liveness. Previously captured snapshots retain their own beats.
+func (e *Prepared) WithHeartbeats(beats map[string]model.Heartbeat) *Prepared {
+	next := *e
+	next.beats = make(map[string]model.Heartbeat, len(beats))
+	next.reported = make(map[string]string, len(beats))
+	for id, h := range beats {
+		if h.Project != e.plan.config.Project {
+			continue
+		}
+		next.beats[id] = model.CloneHeartbeat(h)
+		next.reported[id] = e.plan.reportedContract(id, h)
+	}
+	return &next
 }
 
 func (p *Plan) reportedContract(observer string, h model.Heartbeat) string {
@@ -103,6 +111,11 @@ func (e *Prepared) lastSeen(now time.Time) map[string]time.Time {
 		i := sort.Search(len(stamps), func(i int) bool { return stamps[i].After(limit) })
 		if i > 0 {
 			out[id] = stamps[i-1]
+		}
+	}
+	for id, h := range e.beats {
+		if !h.SampledAt.After(limit) && h.SampledAt.After(out[id]) {
+			out[id] = h.SampledAt
 		}
 	}
 	return out

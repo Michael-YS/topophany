@@ -102,29 +102,30 @@ type Server struct {
 	MaxSampleAge time.Duration
 	// Ingress counts TLS handshake failures the HTTP server's error log
 	// reported; nil when the collector did not wire it.
-	Ingress            *IngressCounter
-	Now                func() time.Time
-	mu                 sync.Mutex
-	limits             map[string]limit
-	slots              chan struct{}
-	viewerSlots        chan struct{}
-	inflight           map[string]int
-	snapshotMu         sync.Mutex
-	snapshotAt         time.Time
-	snapshotGen        *generation // what the cached snapshots were built under
-	evaluationMu       sync.Mutex
-	evaluationGen      *generation
-	evaluationVersion  uint64
-	evaluation         *engine.Prepared
-	snapshotEvidence   *engine.Prepared
-	snapshotStorage    store.Usage
-	snapshotCache      map[string][]byte
-	snapshotGzip       map[string][]byte
-	snapshotAvailable  map[string][]model.Availability // by check, as of snapshotAt
-	snapshotCacheBytes int
-	snapshotMisses     map[string]int
-	snapshotBuilds     int
-	preauthSlots       chan struct{}
+	Ingress                   *IngressCounter
+	Now                       func() time.Time
+	mu                        sync.Mutex
+	limits                    map[string]limit
+	slots                     chan struct{}
+	viewerSlots               chan struct{}
+	inflight                  map[string]int
+	snapshotMu                sync.Mutex
+	snapshotAt                time.Time
+	snapshotGen               *generation // what the cached snapshots were built under
+	evaluationMu              sync.Mutex
+	evaluationGen             *generation
+	evaluationVersion         uint64
+	evaluationEvidenceVersion uint64
+	evaluation                *engine.Prepared
+	snapshotEvidence          *engine.Prepared
+	snapshotStorage           store.Usage
+	snapshotCache             map[string][]byte
+	snapshotGzip              map[string][]byte
+	snapshotAvailable         map[string][]model.Availability // by check, as of snapshotAt
+	snapshotCacheBytes        int
+	snapshotMisses            map[string]int
+	snapshotBuilds            int
+	preauthSlots              chan struct{}
 }
 type authorityKey struct{}
 
@@ -252,9 +253,14 @@ func (s *Server) preparedEvidence(g *generation) *engine.Prepared {
 	s.evaluationMu.Lock()
 	version := s.Store.Version()
 	if s.evaluation == nil || s.evaluationGen != g || s.evaluationVersion != version {
-		rows, carries, beats := s.Store.StateView()
-		s.evaluation = g.engine.Prepare(rows, carries, beats)
-		s.evaluationGen, s.evaluationVersion = g, version
+		force := s.evaluation == nil || s.evaluationGen != g
+		rows, carries, beats, captured, evidenceVersion := s.Store.EvaluationView(s.evaluationEvidenceVersion, force)
+		if force || evidenceVersion != s.evaluationEvidenceVersion {
+			s.evaluation = g.engine.Prepare(rows, carries, beats)
+		} else {
+			s.evaluation = s.evaluation.WithHeartbeats(beats)
+		}
+		s.evaluationGen, s.evaluationVersion, s.evaluationEvidenceVersion = g, captured, evidenceVersion
 	}
 	evidence := s.evaluation
 	s.evaluationMu.Unlock()

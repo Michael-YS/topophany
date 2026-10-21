@@ -12,13 +12,24 @@ import (
 // hysteresis however long ago the samples that confirmed a failure were
 // taken (see engine.BuildCarried).
 func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]model.Heartbeat) {
+	rows, carries, beats, _, _ := s.EvaluationView(0, true)
+	return rows, carries, beats
+}
+
+// EvaluationView atomically captures both versions and their state. A heartbeat
+// update copies only liveness; it does not visit retained observation history.
+func (s *Store) EvaluationView(known uint64, force bool) ([]model.Observation, []engine.Carry, map[string]model.Heartbeat, uint64, uint64) {
 	s.mu.Lock()
-	count := 0
-	for _, v := range s.rows {
-		if v.Contract == "" || !s.current(v) {
-			count++
-		}
+	version, evidenceVersion := s.version, s.evidenceVersion
+	beats := make(map[string]model.Heartbeat, len(s.beats))
+	for k, v := range s.beats {
+		beats[k] = model.CloneHeartbeat(v)
 	}
+	if !force && known == evidenceVersion {
+		s.mu.Unlock()
+		return nil, nil, beats, version, evidenceVersion
+	}
+	count := len(s.rows)
 	for _, tail := range s.tails {
 		count += len(tail)
 	}
@@ -37,10 +48,6 @@ func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]mod
 	carries := make([]engine.Carry, 0, len(s.carries))
 	for _, k := range s.carries {
 		carries = append(carries, k)
-	}
-	beats := make(map[string]model.Heartbeat, len(s.beats))
-	for k, v := range s.beats {
-		beats[k] = model.CloneHeartbeat(v)
 	}
 	s.mu.Unlock()
 
@@ -69,7 +76,7 @@ func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]mod
 			v.Detail = ""
 		}
 	}
-	return out, carries, beats
+	return out, carries, beats, version, evidenceVersion
 }
 
 // Version changes whenever evidence used for state evaluation changes. It is
