@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/admission"
@@ -61,26 +62,105 @@ func (s *Store) pruneExternalLocked(contracts map[string]string) {
 	s.resizeExternalLocked()
 }
 
-// resizeExternalLocked recomputes serialized state bytes and collapses an
-// empty state to nil. Callers hold s.mu.
-func (s *Store) resizeExternalLocked() {
-	if len(s.external.Sources) == 0 && len(s.external.Bindings) == 0 {
-		s.external = nil
-		size := int64(0)
-		s.stateBytes += size - s.externalBytes
-		s.externalBytes = size
-		return
+const (
+	// externalStateOverhead covers the object braces, schema and map commas.
+	externalStateOverhead = 64
+	// When several sources share a store, no source may consume the whole
+	// external state budget: half stays available for the others. A
+	// single-source store has nobody to isolate from and may use the budget.
+	// A configuration whose retention cannot fit is refused explicitly
+	// rather than silently evicting accepted evidence.
+	maxExternalSourceBytes = maxExternalStateBytes / 2
+)
+
+func (s *Store) externalSourceLimit() int64 {
+	if len(s.options.Sources) <= 1 {
+		return maxExternalStateBytes
 	}
-	raw, err := json.Marshal(s.external)
+	return maxExternalSourceBytes
+}
+
+type externalCommit struct {
+	state       *model.ExternalState
+	size        int64
+	sizes       map[string]int64
+	sourceBytes map[string]int64
+}
+
+func externalEntrySize(key string, value any) (int64, error) {
+	raw, err := json.Marshal(value)
 	if err != nil {
-		// State came from validated values; a marshal failure means the
-		// store cannot safely continue.
+		return 0, err
+	}
+	return int64(len(key) + len(raw) + 4), nil
+}
+
+// externalAccountingLocked derives per-entry and per-source encoded sizes
+// without serializing state that did not change. Callers hold s.mu.
+func (s *Store) externalAccountingLocked() (int64, map[string]int64, map[string]int64, error) {
+	sizes := map[string]int64{}
+	bySource := map[string]int64{}
+	if s.external == nil {
+		return 0, sizes, bySource, nil
+	}
+	total := int64(externalStateOverhead)
+	for id, state := range s.external.Sources {
+		size, err := externalEntrySize(id, state)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		sizes["s:"+id] = size
+		bySource[id] += size
+		total += size
+	}
+	for check, state := range s.external.Bindings {
+		size, err := externalEntrySize(check, state)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		sizes["b:"+check] = size
+		bySource[state.Source] += size
+		total += size
+	}
+	return total, sizes, bySource, nil
+}
+
+func (s *Store) applyExternalAccountingLocked(size int64, sizes, bySource map[string]int64) {
+	if size < 0 {
+		size = 0
+	}
+	s.stateBytes += size - s.externalBytes
+	s.externalBytes = size
+	s.externalSizes = sizes
+	s.externalSourceBytes = bySource
+}
+
+// rebuildExternalAccountingLocked is used on recovery and context changes,
+// not on the write hot path.
+func (s *Store) rebuildExternalAccountingLocked() {
+	size, sizes, bySource, err := s.externalAccountingLocked()
+	if err != nil {
 		s.poisoned = fmt.Errorf("external state encoding failed: %w", err)
 		return
 	}
-	size := int64(len(raw))
-	s.stateBytes += size - s.externalBytes
-	s.externalBytes = size
+	s.applyExternalAccountingLocked(size, sizes, bySource)
+}
+
+func (s *Store) ensureExternalAccountingLocked() {
+	if s.externalSizes == nil || s.externalSourceBytes == nil {
+		s.rebuildExternalAccountingLocked()
+	}
+}
+
+// resizeExternalLocked recomputes serialized state bytes and collapses an
+// empty state to nil. Callers hold s.mu.
+func (s *Store) resizeExternalLocked() {
+	if s.external == nil || len(s.external.Sources) == 0 && len(s.external.Bindings) == 0 {
+		s.external = nil
+		s.applyExternalAccountingLocked(0, map[string]int64{}, map[string]int64{})
+		return
+	}
+	s.rebuildExternalAccountingLocked()
 }
 
 // admitExternalLocked normalizes and live-admits one external observation
@@ -112,72 +192,123 @@ func (s *Store) admitExternalLocked(v *model.Observation, now, future time.Time)
 }
 
 // mergeExternalLocked derives the next external state from the observations
-// this transaction will commit. It does not mutate the live state: Put
-// installs the result only after the journal is durable.
-func (s *Store) mergeExternalLocked(observations []model.Observation) (*model.ExternalState, int64, error) {
-	next := model.CloneExternalState(s.external)
-	if next == nil {
-		next = model.NewExternalState()
+// this transaction will commit. It copies the two top-level maps and only
+// clones the sources and bindings this transaction updates; unaffected
+// bindings keep their immutable pointers and Seen slices. It does not mutate
+// the live state or its accounting: Put installs the result only after the
+// journal is durable.
+func (s *Store) mergeExternalLocked(observations []model.Observation) (*externalCommit, error) {
+	s.ensureExternalAccountingLocked()
+	sources := map[string]model.SourceState{}
+	bindings := map[string]model.BindingState{}
+	if s.external != nil {
+		sources = maps.Clone(s.external.Sources)
+		bindings = maps.Clone(s.external.Bindings)
 	}
+	if sources == nil {
+		sources = map[string]model.SourceState{}
+	}
+	if bindings == nil {
+		bindings = map[string]model.BindingState{}
+	}
+	affectedSources := map[string]bool{}
+	affectedBindings := map[string]bool{}
 	for _, v := range observations {
 		if v.External == nil || !s.current(v) {
 			continue
 		}
 		source := v.External.Source
-		sourceState := report.MergeSource(next.Sources[source], source, v.External.AttemptedAt, v.External.Contact, v.Code, v.DurationMS)
-		next.Sources[source] = sourceState
+		if _, ok := s.options.Sources[source]; !ok {
+			// A removed source cannot be made current again by replay.
+			continue
+		}
+		affectedSources[source] = true
+		sources[source] = report.MergeSource(sources[source], source, v.External.AttemptedAt, v.External.Contact, v.Code, v.DurationMS)
 		if v.External.Report == nil {
 			continue
 		}
 		binding, ok := s.options.Bindings[v.Check]
 		if !ok {
-			// The binding may have been removed by a reload since this record
-			// was journaled. Recovery keeps the historical observation but does
-			// not invent current acceptance state for it.
 			continue
 		}
 		if _, ok := s.options.Sources[binding.Source]; !ok {
 			continue
 		}
-		state := next.Bindings[v.Check]
-		state = applyExternalRule(state, s.options.ExternalRules[v.Check])
+		if !affectedBindings[v.Check] {
+			bindings[v.Check] = model.CloneBindingState(bindings[v.Check])
+			affectedBindings[v.Check] = true
+		}
+		state := applyExternalRule(bindings[v.Check], s.options.ExternalRules[v.Check])
 		state, _ = report.MergeBinding(v.Check, v.Contract, binding, state, *v.External.Report, v.ReceivedAt)
-		next.Bindings[v.Check] = state
+		bindings[v.Check] = state
 	}
-	if len(next.Sources) > model.MaxSources || len(next.Bindings) > model.MaxExternalChecks {
-		return nil, 0, errors.New("external state entity budget exceeded")
+	if len(affectedSources) == 0 && len(affectedBindings) == 0 {
+		return nil, nil
 	}
-	// Persist thresholds even when this transaction has no report for the
-	// binding, so a later confirmation decision is reproducible.
-	for check, state := range next.Bindings {
-		next.Bindings[check] = applyExternalRule(state, s.options.ExternalRules[check])
+	if len(sources) > model.MaxSources || len(bindings) > model.MaxExternalChecks {
+		return nil, errors.New("external state entity budget exceeded")
 	}
-	// Bound the persisted map itself, not only a single report.
-	raw, err := json.Marshal(next)
-	if err != nil {
-		return nil, 0, fmt.Errorf("external state encoding failed: %w", err)
+	sizes := make(map[string]int64, len(affectedSources)+len(affectedBindings))
+	bySource := maps.Clone(s.externalSourceBytes)
+	if bySource == nil {
+		bySource = map[string]int64{}
 	}
-	if int64(len(raw)) > maxExternalStateBytes {
-		return nil, 0, errors.New("external state byte budget exceeded")
+	total := s.externalBytes
+	add := func(key, source string, value any) error {
+		size, err := externalEntrySize(key[2:], value)
+		if err != nil {
+			return fmt.Errorf("external state encoding failed: %w", err)
+		}
+		delta := size - s.externalSizes[key]
+		total += delta
+		bySource[source] += delta
+		sizes[key] = size
+		return nil
 	}
-	if len(next.Sources) == 0 && len(next.Bindings) == 0 {
-		return nil, 0, nil
+	for source := range affectedSources {
+		if err := add("s:"+source, source, sources[source]); err != nil {
+			return nil, err
+		}
 	}
-	return next, int64(len(raw)), nil
+	for check := range affectedBindings {
+		state := bindings[check]
+		if err := add("b:"+check, state.Source, state); err != nil {
+			return nil, err
+		}
+	}
+	if total > maxExternalStateBytes {
+		return nil, errors.New("external state byte budget exceeded")
+	}
+	limit := s.externalSourceLimit()
+	for source := range affectedSources {
+		if bySource[source] > limit {
+			return nil, errors.New("external source state budget exceeded")
+		}
+	}
+	next := &model.ExternalState{Schema: model.ExternalStateSchema, Sources: sources, Bindings: bindings}
+	return &externalCommit{state: next, size: total, sizes: sizes, sourceBytes: bySource}, nil
 }
 
 // installExternalLocked atomically replaces the external state after the
-// journal transaction that produced it is durable.
-func (s *Store) installExternalLocked(next *model.ExternalState, size int64) {
-	if next != nil {
-		next = model.CloneExternalState(next)
+// journal transaction that produced it is durable. The commit owns its maps;
+// unaffected binding values are immutable and may be shared with the previous
+// map, which is never mutated in place.
+func (s *Store) installExternalLocked(commit *externalCommit) {
+	if commit == nil {
+		return
 	}
-	s.external = next
-	if size < 0 {
-		size = 0
+	if commit.state == nil || len(commit.state.Sources) == 0 && len(commit.state.Bindings) == 0 {
+		s.external = nil
+		s.applyExternalAccountingLocked(0, map[string]int64{}, map[string]int64{})
+		return
 	}
-	s.stateBytes += size - s.externalBytes
-	s.externalBytes = size
+	s.external = commit.state
+	for key, size := range commit.sizes {
+		s.externalSizes[key] = size
+	}
+	s.externalSourceBytes = commit.sourceBytes
+	s.stateBytes += commit.size - s.externalBytes
+	s.externalBytes = commit.size
 }
 
 // applyExternalRulesLocked re-applies confirmation thresholds to persisted

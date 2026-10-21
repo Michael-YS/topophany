@@ -156,6 +156,12 @@ type Store struct {
 	settled         time.Time // when the rollups last settled
 	external        *model.ExternalState
 	externalBytes   int64
+	// externalSizes and externalSourceBytes are the incremental encoding
+	// accounting for the persisted state. They keep a native or single-binding
+	// write from serializing the whole external graph; keys are "b:"+check and
+	// "s:"+source.
+	externalSizes       map[string]int64
+	externalSourceBytes map[string]int64
 	// format is the durable checkpoint schema. It is monotonic: once external
 	// data has been committed the store keeps writing schema 2 even after its
 	// external state is removed, so an older binary cannot reopen and silently
@@ -198,7 +204,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes), external: model.NewExternalState(), format: 1}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes), external: model.NewExternalState(), externalSizes: map[string]int64{}, externalSourceBytes: map[string]int64{}, format: 1}
 	s.rollups.SetCurrent(s.currentKey)
 	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
@@ -213,6 +219,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e := s.readCheckpoint(filepath.Join(dir, "checkpoint.json")); e != nil && !errors.Is(e, os.ErrNotExist) {
 		return nil, e
 	}
+	s.rebuildExternalAccountingLocked()
 	path := filepath.Join(dir, "journal.jsonl")
 	st, e := os.Lstat(path)
 	if e == nil && !st.Mode().IsRegular() {
@@ -608,7 +615,7 @@ func before(a, b model.Observation) bool {
 	}
 	return a.SampledAt.Before(b.SampledAt)
 }
-func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding, external *model.ExternalState) error {
+func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding, external *externalCommit) error {
 	for i := range b.Observations {
 		if b.Observations[i].External != nil {
 			s.sawExternal = true
@@ -642,14 +649,15 @@ func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding, external *
 		fresh = append(fresh, v)
 	}
 	if external != nil {
-		raw, _ := json.Marshal(external)
-		s.installExternalLocked(external, int64(len(raw)))
-	} else if len(fresh) > 0 {
-		next, size, err := s.mergeExternalLocked(fresh)
+		s.installExternalLocked(external)
+	} else if prepared == nil && hasExternalObservation(fresh) {
+		// Journal replay has no pending encoding map; live writes were
+		// already merged before durability and must not merge twice.
+		commit, err := s.mergeExternalLocked(fresh)
 		if err != nil {
 			return err
 		}
-		s.installExternalLocked(next, size)
+		s.installExternalLocked(commit)
 	}
 	if b.Heartbeat != nil && s.advances(*b.Heartbeat, b.Project, b.Revision) {
 		h := *b.Heartbeat
@@ -792,16 +800,17 @@ func (s *Store) Put(b model.Batch) error {
 	if err := s.checkScopeCapacity(b, sizes); err != nil {
 		return err
 	}
-	var externalNext *model.ExternalState
-	var externalSize int64
-	externalChanged := len(kept) > 0
+	var externalNext *externalCommit
+	externalChanged := hasExternalObservation(kept)
 	if externalChanged {
-		next, size, e := s.mergeExternalLocked(kept)
+		commit, e := s.mergeExternalLocked(kept)
 		if e != nil {
 			return e
 		}
-		externalNext, externalSize = next, size
-		projected += externalSize - s.externalBytes
+		externalNext = commit
+		if commit != nil {
+			projected += commit.size - s.externalBytes
+		}
 	}
 	if len(s.seen)+len(pending) > s.options.MaxReceipts || projected > s.options.MaxStateBytes {
 		return ErrCapacity
@@ -840,9 +849,6 @@ func (s *Store) Put(b model.Batch) error {
 		return s.poisoned
 	}
 	s.bytes += int64(n)
-	if !externalChanged {
-		externalNext = nil
-	}
 	if e = s.apply(b, pending, externalNext); e != nil {
 		s.poisoned = e
 		return e
