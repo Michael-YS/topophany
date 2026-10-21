@@ -323,3 +323,38 @@ evidence, not portable pass/fail thresholds or production RSS measurements.
 | Outbox count limits apply to admission and cold recovery; lazy byte-bounded reads preserve full payloads, caller ownership and corruption detection | `TestOutboxRecordLimitAndLazyPayloadRecovery`, `TestDeliveryCopyHasAByteBudget` |
 | Scoped snapshots query Availability only for included checks and cache empty readings across overlapping views | `TestSnapshotAvailabilityIsLazyByView` |
 | Background checkpoints allow concurrent reads/ingest; old-WAL crash replay and replaced-WAL suffix recovery preserve observations and rollups; publication failure poisons writes | `TestBackgroundCheckpointPreservesConcurrentJournalTail`, `TestBackgroundCheckpointFailurePoisonsFutureWrites`, `TestCloneOwnsMutablePersistenceState` |
+
+## Multi-probe external observations (2026-10-21)
+
+These cases use test-only synthetic adapters injected through
+`probe.NewSourceRuntime(testkit.SyntheticSourceAdapters())`; they are never in
+`ProductionSourceAdapters`. The list, counter and status sources run through
+`runner.SourceRuntime -> outbox -> api -> store -> engine -> view -> monitor`
+against loopback listeners. They are not production-vendor tests.
+
+| Scenario and Invariant | Automated Test Evidence |
+|---|---|
+| A list read returns several machines, duplicate old samples and partial fields; only the bound stable object IDs become reports, and the newest sample per object wins | `TestSyntheticListCounterStatusThroughPublicChain`, `TestOrderedFallbackAndMissingPrimaryDisk` |
+| A realtime counter needs two reads for a rate, handles a reset without inventing 0%, and partitions series per source/epoch | `TestCounterNeedsTwoSamplesAndHandlesReset` |
+| An independent status source carries upstream status and 20ms upstream latency; a 500ms API delay never changes that latency aggregate | `TestSyntheticListCounterStatusThroughPublicChain` |
+| One source read fans out to 100 bindings; repeated reports over ten runs increase duplicates only, not report samples or confirmation | `TestSyntheticListCounterStatusThroughPublicChain`, `TestRepeatTenTimesCountsOneStatusSample` |
+| New identity with identical values is a new sample; same identity with changed content is a conflict; an older identity is late; a new epoch after restart is accepted | `TestSameValueNewListSampleIsAcceptedAndSameIdentityConflictIsNot` |
+| Unknown time is unusable rather than fresh; a future report is refused; source parse, auth, response-budget and timeout failures remain collection attempts, not target outages | `TestUnknownTimeIsNotFreshAndParseFailureIsNotOutage`, `TestAPIRejectsClockSkewAndSurvivesAuthTimeoutAndBadAck`, `TestSourceFailureIsolationAndMissingObject`, `TestSourceTimeoutIsAnAttempt`, `TestResponseBudgetIsAnAttemptNotAResource` |
+| Ordered resource checks select the primary, fall back only after it expires, recover when a new primary report arrives, and keep a missing primary disk unknown rather than borrowing a fallback volume | `TestOrderedFallbackAndMissingPrimaryDisk` |
+| A checkpoint survives history trimming and collector restart; exact outbox replay adds no report side effects; a restarted worker's new observation IDs still deduplicate the same upstream sample | `TestOutboxReplayAndCheckpointDoNotDoubleApply` |
+| One bad source does not starve a good source or native work; missing objects are successful contact with no report | `TestSourceFailureIsolationAndMissingObject`, `TestBadSourceDoesNotStarveAnotherSourceOrNativeCheck` |
+| Stream `server.card.resources.first` is the selected report, nested resource deadlines hide only numbers, and optional source/time-basis metadata is additive for the bar decoder | `TestSyntheticListCounterStatusThroughPublicChain`, `TestExternalResourceIsFirstServerCardResourceAndExpiresIndependently`, `TestServerCardResourceMetadataIsAdditiveForBar`, `TestClientReadsValidatedExternalSnapshotProjection` |
+| Schema 2 native batches/snapshots remain readable; external members require schema 3; schema 4 is refused explicitly | `TestContractSchemasTwoAndThreeRemainReadable`, `TestContractSchemaTwoCannotCarryExternalEvidence`, `TestClientStillReadsSchemaTwoNativeSnapshot`, `TestBatchValidationContract` |
+| Budgets measured, not asserted as portable thresholds: 512 external selections, 100-observation fan-out split, and a 256-ID duplicate merge | `BenchmarkSelectResources512External`, `BenchmarkSplitPrepared100`, `BenchmarkMergeBindingDuplicate256Seen` |
+
+Measured on the delivery machine (Apple M6, Go 1.26.10, arm64) with
+`go test -bench ... -benchmem -count=1`: selection of 512 external reports was
+457,562 ns/op and 1,698,998 B/op (5,197 allocs/op); splitting 100 prepared
+fan-out observations was 75,685 ns/op and 177,134 B/op (609 allocs/op); a
+duplicate merge against a 256-ID bounded seen set was 895 ns/op and 488 B/op
+(6 allocs/op). These are local comparative measurements, not production
+latency or memory guarantees. The adjacent bar comparison was read-only; its
+local Swift build could not run because the pre-existing `xcstringstool`
+helper is not executable, so compatibility is based on its explicit decoder
+keys, `resources.first` use and per-resource `valid_until` policy plus the
+Topophany-side JSON tests.

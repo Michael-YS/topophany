@@ -437,8 +437,8 @@ its existing worker budget.
 | 5 report state/statistics | `b82f42d` | complete |
 | 6 source runtime | `1e24fa2` | complete |
 | 7 unified resources | `aaada89` | complete |
-| 8 stream/bar | this commit | complete |
-| 9 end-to-end | — | pending |
+| 8 stream/bar | `2334732` | complete |
+| 9 end-to-end | this commit | complete |
 | 10 docs/full verification | — | pending |
 
 ## 12. Adjustments and limitations
@@ -579,6 +579,19 @@ Record only real changes to the frozen rules here, with the reason.
   `ReaderPolicy` applies each resource's `valid_until`. A local `swift test`
   could not build the adjacent checkout because its pre-existing
   `xcstringstool` helper is not executable; no bar file was changed.
+- Task 9 adds `internal/integration`, using loopback list/counter/status
+  sources wired with the test-only registry through the real
+  runner/outbox/API/store/engine/view/monitor chain. It covers the scenario
+  matrix in `docs/SCENARIOS.md`; the complete run is 5.4 seconds locally and
+  uses no production endpoint or real credential.
+- Budget benchmarks measured at this commit: 512 external selections
+  457,562 ns/op (1,698,998 B/op, 5,197 allocs/op); 100-observation fan-out
+  split 75,685 ns/op (177,134 B/op, 609 allocs/op); 256-ID duplicate merge
+  895 ns/op (488 B/op, 6 allocs/op). These are local comparative data points,
+  not release thresholds.
+- The first real adapter still has no implementation in this delivery. The
+  synthetic adapters live only in `internal/testkit` and `ProductionSourceAdapters`
+  remains empty; a real topology naming them fails before collecting.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters
