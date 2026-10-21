@@ -194,3 +194,10 @@ One-shot engine users, including worker-local panels and preview generation,
 use a direct build path without allocating a reusable evidence cache. Both paths
 share evidence folding and entity derivation. Compare cache hits, freshly prepared
 evidence and direct builds separately when measuring performance.
+
+The outbox stores partial recipient acknowledgements in `acks.jsonl`, separately
+from immutable observation files. Each batch needs one file sync. The journal
+has a separate 1 MiB ceiling and is compacted into pending records before it
+grows past that ceiling. Recovery discards an incomplete final append, rejects
+corrupt complete entries, and preserves at-least-once delivery. Keep this file
+with the rest of the outbox when moving or backing up a worker.

@@ -314,3 +314,5 @@ late gzip negotiation (`BenchmarkSnapshotRepresentation`), worker-local panels
 (`BenchmarkLocalPanelSnapshot`), and both prepared cache hits and preparation
 after invalidation (`BenchmarkEngineTopology`). Timing benchmarks are comparative
 evidence, not portable pass/fail thresholds or production RSS measurements.
+
+| Batched partial ACKs sync once without rewriting payloads; torn tails, compaction, identity reuse and failed journal writes preserve independent recipients | `TestPartialAckBatchOneSyncAndCrashReplay`, `TestAckFailureAndCorruptionFailClosed` |

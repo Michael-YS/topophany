@@ -49,6 +49,10 @@ type Queue struct {
 	recipientBytes map[string]int64
 	unlock         func() error
 	closed         bool
+	ackFile        *os.File
+	ackBytes       int64
+	acked          map[string]bool
+	ackError       error
 }
 
 func itemHash(v Item) string { v.SHA256 = ""; b, _ := json.Marshal(v); return secure.Hash(string(b)) }
@@ -73,6 +77,9 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 	ok := false
 	defer func() {
 		if !ok {
+			if q.ackFile != nil {
+				q.ackFile.Close()
+			}
 			unlock()
 		}
 	}()
@@ -119,6 +126,9 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 	}
 	if q.used-q.quarantineUsed > maxBytes {
 		return nil, ErrFull
+	}
+	if e := q.openAcks(); e != nil {
+		return nil, e
 	}
 	if e := q.trimQuarantine("", "", 0); e != nil {
 		return nil, e
@@ -192,6 +202,9 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 	if q.closed {
 		return errors.New("outbox closed")
 	}
+	if q.ackError != nil {
+		return q.ackError
+	}
 	if b.Project != q.project || len(b.Observations) == 0 || len(b.Observations) > 100 || len(recipients) == 0 || len(recipients) > 8 {
 		return errors.New("outbox needs matching project, observations and recipients")
 	}
@@ -210,6 +223,13 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 	id := secure.Hash(string(raw))
 	if _, ok := q.items[id]; ok {
 		return nil
+	}
+	// The same immutable batch may be explicitly queued again after delivery.
+	// Remove old ACK identities durably before publishing its new record.
+	if q.acked[id] {
+		if e := q.compactAcks(); e != nil {
+			return e
+		}
 	}
 	v := Item{Schema: 1, ID: id, Batch: model.CloneBatch(b), Pending: append([]string(nil), recipients...)}
 	sort.Strings(v.Pending)
@@ -293,6 +313,26 @@ func (q *Queue) Ack(ids []string, recipient string) (err error) {
 	if q.closed {
 		return errors.New("outbox closed")
 	}
+	if q.ackError != nil {
+		return q.ackError
+	}
+	if q.ackError != nil {
+		return q.ackError
+	}
+	// Keep each log record within the transport's 100-item batch bound.
+	for start := 0; start < len(ids); start += 100 {
+		partial := []string{}
+		seen := map[string]bool{}
+		for _, id := range ids[start:min(start+100, len(ids))] {
+			if v, ok := q.items[id]; ok && len(v.Pending) > 1 && slices.Contains(v.Pending, recipient) && !seen[id] {
+				partial = append(partial, id)
+				seen[id] = true
+			}
+		}
+		if e := q.logAcks(partial, recipient); e != nil {
+			return e
+		}
+	}
 	removed := false
 	defer func() { err = q.syncRemoved(removed, err) }()
 	for _, id := range ids {
@@ -346,13 +386,16 @@ func (q *Queue) ack(id, recipient string) (bool, error) {
 		delete(q.itemSizes, id)
 		return true, nil
 	}
-	return false, q.write(v)
+	return false, q.logAcks([]string{id}, recipient)
 }
 func (q *Queue) Quarantine(ids []string, recipient, reason string) (err error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.closed {
 		return errors.New("outbox closed")
+	}
+	if q.ackError != nil {
+		return q.ackError
 	}
 	if len(recipient) != 16 || strings.Trim(recipient, "0123456789abcdef") != "" {
 		return errors.New("invalid quarantine recipient")
@@ -405,7 +448,7 @@ func (q *Queue) Close() error {
 		return nil
 	}
 	q.closed = true
-	return q.unlock()
+	return errors.Join(q.ackFile.Close(), q.unlock())
 }
 func Recipient(url string) string { return secure.Hash(url)[:16] }
 func (q *Queue) String() string {
