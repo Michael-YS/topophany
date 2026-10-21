@@ -131,14 +131,18 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 		snap.Ledger = s.Ledger.Recent(view, s.snapshotAt)
 	}
 	if s.snapshotAvailable == nil {
-		// Every view of this moment shares one reading of the rollups.
 		s.snapshotAvailable = map[string][]model.Availability{}
-		for id, contract := range g.contracts {
-			s.snapshotAvailable[id] = s.Store.Availability(id, contract, s.snapshotAt)
-		}
 	}
+	// Read only checks present in this view. Repeated/overlapping views share
+	// each check's first rollup reading, including empty results.
 	for i := range snap.Checks {
-		snap.Checks[i].Availability = s.snapshotAvailable[snap.Checks[i].ID]
+		id := snap.Checks[i].ID
+		available, ok := s.snapshotAvailable[id]
+		if !ok {
+			available = s.Store.Availability(id, g.contracts[id], s.snapshotAt)
+			s.snapshotAvailable[id] = available
+		}
+		snap.Checks[i].Availability = available
 	}
 	// The engine plan has already detached and redacted this generation's
 	// topology and supplied its public revision and check contracts.

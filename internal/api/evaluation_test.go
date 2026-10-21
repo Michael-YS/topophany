@@ -79,3 +79,34 @@ func TestHeartbeatUpdatesLivenessWithoutRefoldingChecks(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapshotAvailabilityIsLazyByView(t *testing.T) {
+	s, _, _ := fixture(t)
+	g := s.generation()
+	if _, status, code := s.cachedSnapshot(g, "home", "viewer"); status != 200 {
+		t.Fatal(status, code)
+	}
+	want := map[string]bool{}
+	for _, c := range s.Config.Checks {
+		if c.Observer == "home" {
+			want[c.ID] = true
+		}
+	}
+	if len(want) == 0 || len(want) == len(s.Config.Checks) {
+		t.Fatal("fixture needs scoped checks")
+	}
+	if len(s.snapshotAvailable) != len(want) {
+		t.Fatal("read rollups outside requested view", len(s.snapshotAvailable))
+	}
+	for id := range s.snapshotAvailable {
+		if !want[id] {
+			t.Fatal("unrequested rollup", id)
+		}
+	}
+	if _, status, code := s.cachedSnapshot(g, "", "viewer"); status != 200 {
+		t.Fatal(status, code)
+	}
+	if len(s.snapshotAvailable) != len(s.Config.Checks) {
+		t.Fatal("global view omitted rollups")
+	}
+}
