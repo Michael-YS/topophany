@@ -240,28 +240,32 @@ func summaryPublicJSON(s model.Snapshot) ([]byte, error) {
 		}
 	}
 	raw, err := json.Marshal(s)
+	within := func() bool { return err == nil && len(raw) <= model.MaxSnapshotBytes && secure.JSONBudget(raw) == nil }
 	if err != nil {
 		return nil, err
 	}
-	// Over budget, availability goes first, as rollups can be read on
-	// their own; then the last observations, as history can.
-	if len(raw) > model.MaxSnapshotBytes || secure.JSONBudget(raw) != nil {
-		for i := range s.Checks {
-			s.Checks[i].Availability = nil
-		}
-		raw, err = json.Marshal(s)
+	if within() {
+		return raw, nil
 	}
-	if err == nil && (len(raw) > model.MaxSnapshotBytes || secure.JSONBudget(raw) != nil) {
-		for i := range s.Checks {
-			s.Checks[i].Last = nil
-			s.Checks[i].Reason = "summary budget reached; consult check history"
-		}
-		raw, err = json.Marshal(s)
+	for i := range s.Checks {
+		s.Checks[i].Availability = nil
 	}
+	raw, err = json.Marshal(s)
 	if err != nil {
 		return nil, err
 	}
-	if len(raw) > model.MaxSnapshotBytes || secure.JSONBudget(raw) != nil {
+	if within() {
+		return raw, nil
+	}
+	for i := range s.Checks {
+		s.Checks[i].Last = nil
+		s.Checks[i].Reason = "summary budget reached; consult check history"
+	}
+	raw, err = json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	if !within() {
 		return nil, errSnapshotBudget
 	}
 	return raw, nil
