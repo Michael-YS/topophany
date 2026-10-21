@@ -47,7 +47,7 @@ func (s *Server) release(scope, role string) {
 
 func (s *Server) writeSnapshot(w http.ResponseWriter, r *http.Request, g *generation, view, principal string) {
 	compressed := acceptsGzip(r.Header.Get("Accept-Encoding"))
-	raw, status, code := s.snapshotRepresentation(g, view, principal, compressed)
+	raw, status, code := s.snapshotRepresentation(g, view, principal, compressed, r.URL.Query().Get("topology_revision"))
 	if status != http.StatusOK {
 		if status == 429 || code == "topology_reloaded" {
 			w.Header().Set("Retry-After", "1")
@@ -68,10 +68,10 @@ func (s *Server) writeSnapshot(w http.ResponseWriter, r *http.Request, g *genera
 // cachedSnapshot is the snapshot of view under g, the generation its
 // request was admitted under.
 func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, int, string) {
-	return s.snapshotRepresentation(g, view, principal, false)
+	return s.snapshotRepresentation(g, view, principal, false, "")
 }
 
-func (s *Server) snapshotRepresentation(g *generation, view, principal string, compressed bool) ([]byte, int, string) {
+func (s *Server) snapshotRepresentation(g *generation, view, principal string, compressed bool, knownRevision string) ([]byte, int, string) {
 	// Reload takes this lock before changing any snapshot dependency. Refuse
 	// an old authority before reading storage or ledger metadata, even on a
 	// cache hit, and keep the generation stable until capture is complete.
@@ -101,9 +101,14 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 		s.snapshotMisses = map[string]int{}
 		s.snapshotBuilds = 0
 	}
-	if raw, ok := s.snapshotCache[view]; ok {
+	key := view
+	omitTopology := knownRevision == g.publicRevision
+	if omitTopology {
+		key += "\x00dynamic"
+	}
+	if raw, ok := s.snapshotCache[key]; ok {
 		if compressed {
-			if zipped := s.snapshotGzip[view]; zipped != nil {
+			if zipped := s.snapshotGzip[key]; zipped != nil {
 				return zipped, http.StatusOK, ""
 			}
 		}
@@ -139,6 +144,10 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	}
 	// The engine plan has already detached and redacted this generation's
 	// topology and supplied its public revision and check contracts.
+	if omitTopology {
+		snap.Topology = model.Config{}
+		snap.TopologyOmitted = true
+	}
 	raw, err := summaryPublicJSON(snap)
 	if err != nil {
 		return nil, 503, "snapshot_budget_exceeded"
@@ -161,8 +170,8 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 		s.snapshotCacheBytes -= len(old) + len(s.snapshotGzip[key])
 		delete(s.snapshotGzip, key)
 	}
-	s.snapshotCache[view] = raw
-	s.snapshotGzip[view] = zipped
+	s.snapshotCache[key] = raw
+	s.snapshotGzip[key] = zipped
 	s.snapshotCacheBytes += len(raw) + len(zipped)
 	if compressed && zipped != nil {
 		return zipped, http.StatusOK, ""

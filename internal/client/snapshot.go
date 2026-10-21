@@ -24,12 +24,13 @@ func (e errSchema) Error() string {
 // decodeSnapshot reads a schema 2 snapshot. Fields it does not know are
 // ignored, so a later release can add some without breaking this one;
 // everything it knows is checked.
-func decodeSnapshot(raw []byte, s *model.Snapshot) error {
+func decodeSnapshot(raw []byte, s *model.Snapshot, known ...cachedTopology) error {
 	if err := secure.JSONBudget(raw); err != nil {
 		return err
 	}
 	var head struct {
-		Schema int `json:"schema"`
+		Schema   int             `json:"schema"`
+		Topology json.RawMessage `json:"topology"`
 	}
 	if err := json.Unmarshal(raw, &head); err != nil {
 		return err
@@ -41,7 +42,13 @@ func decodeSnapshot(raw []byte, s *model.Snapshot) error {
 	if err := d.Decode(s); err != nil {
 		return err
 	}
-	if err := config.ValidatePublic(s.Topology); err != nil {
+	if s.TopologyOmitted {
+		if len(head.Topology) != 0 || len(known) != 1 || known[0].revision == "" || s.Revision != known[0].revision {
+			return errors.New("snapshot omitted an uncached topology")
+		}
+		s.Topology = config.Clone(known[0].topology)
+		s.TopologyOmitted = false
+	} else if err := config.ValidatePublic(s.Topology); err != nil {
 		return err
 	}
 	if !config.ID(s.Instance) || len(s.Revision) != 64 {

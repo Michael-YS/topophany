@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
@@ -111,6 +112,8 @@ func (p Profile) Validate() error {
 }
 
 type Client struct {
+	topologyMu sync.Mutex
+	topologies map[string]cachedTopology
 	profile    Profile
 	transports []*http.Client
 	Now        func() time.Time
@@ -202,7 +205,7 @@ func (c *Client) SourcedViews(ctx context.Context, observer string) (model.Snaps
 			if ep.URL != endpoint {
 				continue
 			}
-			pinned := &Client{profile: Profile{Project: c.profile.Project, Servers: []Endpoint{ep}}, transports: []*http.Client{c.transports[i]}, Now: c.Now}
+			pinned := &Client{topologies: map[string]cachedTopology{ep.URL: c.knownTopology(ep.URL)}, profile: Profile{Project: c.profile.Project, Servers: []Endpoint{ep}}, transports: []*http.Client{c.transports[i]}, Now: c.Now}
 			var all model.Snapshot
 			all, _, err = pinned.Snapshot(ctx, "")
 			if err == nil {
@@ -226,7 +229,12 @@ func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) 
 	var missed misses
 	busy := false
 	for i, ep := range c.profile.Servers {
-		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/snapshot", url.Values{"observer": {observer}}), nil)
+		known := c.knownTopology(ep.URL)
+		query := url.Values{"observer": {observer}}
+		if known.revision != "" {
+			query.Set("topology_revision", known.revision)
+		}
+		req, e := http.NewRequestWithContext(ctx, "GET", endpointURL(ep, "/v1/snapshot", query), nil)
 		if e != nil {
 			return empty, "", errors.New("invalid request")
 		}
@@ -274,7 +282,7 @@ func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) 
 			return empty, "", errors.New("snapshot budget exceeded")
 		}
 		var snap model.Snapshot
-		if e = decodeSnapshot(b, &snap); e != nil {
+		if e = decodeSnapshot(b, &snap, known); e != nil {
 			// During a rolling upgrade another collector may already
 			// speak this client's schema; a malformed snapshot is refused.
 			var schema errSchema
@@ -299,6 +307,7 @@ func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) 
 			missed.add(ep, "snapshot not current — are both clocks right?")
 			continue
 		}
+		c.rememberTopology(ep.URL, snap)
 		return snap, ep.URL, nil
 	}
 	if busy && retryBusy {

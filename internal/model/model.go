@@ -494,23 +494,24 @@ type Snapshot struct {
 	Storage *StorageUsage `json:"storage,omitempty"`
 	Ingress *Ingress      `json:"ingress,omitempty"`
 
-	DetailsOmitted bool            `json:"details_omitted,omitempty"`
-	Schema         int             `json:"schema"`
-	Version        string          `json:"version"`
-	Project        string          `json:"project"`
-	Instance       string          `json:"instance"`
-	Revision       string          `json:"revision"`
-	GeneratedAt    time.Time       `json:"generated_at"`
-	ViewObserver   string          `json:"view_observer,omitempty"`
-	Topology       Config          `json:"topology"`
-	Checks         []CheckState    `json:"checks"`
-	Nodes          []EntityState   `json:"nodes"`
-	Endpoints      []EntityState   `json:"endpoints"`
-	Services       []EntityState   `json:"services"`
-	Paths          []EntityState   `json:"paths"`
-	Links          []EntityState   `json:"links"`
-	Observers      []ObserverState `json:"observers"`
-	Incidents      []Incident      `json:"incidents"`
+	TopologyOmitted bool            `json:"topology_omitted,omitempty"`
+	DetailsOmitted  bool            `json:"details_omitted,omitempty"`
+	Schema          int             `json:"schema"`
+	Version         string          `json:"version"`
+	Project         string          `json:"project"`
+	Instance        string          `json:"instance"`
+	Revision        string          `json:"revision"`
+	GeneratedAt     time.Time       `json:"generated_at"`
+	ViewObserver    string          `json:"view_observer,omitempty"`
+	Topology        Config          `json:"topology,omitzero"`
+	Checks          []CheckState    `json:"checks"`
+	Nodes           []EntityState   `json:"nodes"`
+	Endpoints       []EntityState   `json:"endpoints"`
+	Services        []EntityState   `json:"services"`
+	Paths           []EntityState   `json:"paths"`
+	Links           []EntityState   `json:"links"`
+	Observers       []ObserverState `json:"observers"`
+	Incidents       []Incident      `json:"incidents"`
 	// Ledger is what the collector remembers of the incidents in the view:
 	// those open, then those closed in the last day, newest first.
 	Ledger []IncidentRecord `json:"ledger,omitempty"`
