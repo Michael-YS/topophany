@@ -1,6 +1,7 @@
 package report_test
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -202,5 +203,95 @@ func TestMergeStatusConfirmationOnlyFromNewValidReports(t *testing.T) {
 	state, _ = report.MergeBinding("check", "contract", b, state, up("u2", at.Add(3*time.Second)), at.Add(3*time.Second))
 	if state.ConfirmedDown || state.UpRun != 2 {
 		t.Fatalf("recovery did not confirm: %+v", state)
+	}
+}
+
+func acceptedState(s model.BindingState) model.BindingState {
+	s = model.CloneBindingState(s)
+	s.Duplicates, s.Late, s.Conflicts, s.Unusable = 0, 0, 0, 0
+	s.LastResult, s.LastCode = "", ""
+	return s
+}
+
+func TestMergeRejectedVerdictsPreserveAcceptedState(t *testing.T) {
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	cpu := 90.0
+	binding := model.ExternalBinding{Source: "source", Object: "vm/one", Report: model.ReportTypeResource, MaxAgeSeconds: 60, Assertions: &model.ResourceAssertions{CPUPercentMax: f(80)}}
+	base := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", SampleID: "p1", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &cpu, Basis: "original"}}}
+	initial := model.BindingState{PolicyThreshold: 2}
+	state, got := report.MergeBinding("check", "contract", binding, initial, base, at)
+	if got.Verdict != report.VerdictNew || state.PolicyRun != 1 || state.PolicyConfirmed {
+		t.Fatalf("first accepted policy report = %+v %+v", got, state)
+	}
+	second := base
+	second.SampleID = "p2"
+	second.ObservedAt = at.Add(time.Second)
+	state, _ = report.MergeBinding("check", "contract", binding, state, second, at.Add(time.Second))
+	if state.PolicyRun != 2 || !state.PolicyConfirmed {
+		t.Fatalf("policy did not confirm: %+v", state)
+	}
+
+	makeConflict := func() model.ExternalReport {
+		r := model.CloneExternalReport(base)
+		r.Resource.CPU.Basis = "different"
+		return r
+	}
+	makeLate := func() model.ExternalReport {
+		r := model.CloneExternalReport(base)
+		r.SampleID = "p0"
+		r.ObservedAt = at.Add(-time.Second)
+		r.Resource.CPU.Basis = "different"
+		return r
+	}
+	makeUnusable := func() model.ExternalReport {
+		r := model.CloneExternalReport(base)
+		r.TimeBasis = model.TimeBasisUnknown
+		r.ObservedAt = time.Time{}
+		r.Resource.CPU.Basis = "different"
+		return r
+	}
+	for name, tc := range map[string]struct {
+		r       model.ExternalReport
+		verdict report.Verdict
+	}{
+		"duplicate": {base, report.VerdictDuplicate},
+		"conflict":  {makeConflict(), report.VerdictConflict},
+		"late":      {makeLate(), report.VerdictLate},
+		"unusable":  {makeUnusable(), report.VerdictUnusable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			before := model.CloneBindingState(state)
+			input := model.CloneBindingState(state)
+			after, result := report.MergeBinding("check", "contract", binding, input, tc.r, at.Add(2*time.Second))
+			if result.Verdict != tc.verdict {
+				t.Fatalf("verdict = %+v", result)
+			}
+			if result.BasisChanged {
+				t.Fatal("rejected report claimed an accepted basis change")
+			}
+			if !reflect.DeepEqual(input, before) {
+				t.Fatal("MergeBinding mutated its input state")
+			}
+			if !reflect.DeepEqual(acceptedState(after), acceptedState(before)) {
+				t.Fatalf("rejected %s changed accepted state:\nbefore=%+v\nafter=%+v", name, before, after)
+			}
+			if after.LastResult != string(tc.verdict) {
+				t.Fatalf("diagnostic result = %q, want %q", after.LastResult, tc.verdict)
+			}
+		})
+	}
+
+	// A new, valid report under a different basis is the only path that may
+	// reset the runs; the first sample of the new basis is then counted.
+	changed := model.CloneExternalReport(base)
+	changed.SampleID = "p3"
+	changed.ObservedAt = at.Add(2 * time.Second)
+	changed.Resource.CPU.Basis = "different"
+	after, result := report.MergeBinding("check", "contract", binding, state, changed, at.Add(2*time.Second))
+	if result.Verdict != report.VerdictNew || !result.BasisChanged {
+		t.Fatalf("valid basis change = %+v %+v", result, after)
+	}
+	if after.PolicyRun != 1 || after.PolicyConfirmed || after.ResourceSamples != 3 || after.ReportSamples != 3 {
+		t.Fatalf("basis reset did not re-count the first new sample: %+v", after)
 	}
 }

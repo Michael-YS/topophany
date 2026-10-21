@@ -100,8 +100,11 @@ func BasisSignature(r model.ExternalReport) string {
 
 // MergeBinding applies one normalized report to a binding's persisted state.
 // It is pure and deterministic: replay with the same state and report yields
-// the same verdict. Duplicate/late/conflict/unusable paths never advance the
-// cursor, last report, deadline, confirmation or latency counters.
+// the same verdict. Every identity, content, order, time and usability
+// decision is made before accepted state changes. Duplicate, late, conflict
+// and unusable paths advance only their diagnostic counters and last-result
+// fields; they never change the cursor, last report, deadline, basis,
+// confirmation runs or accepted-sample statistics.
 func MergeBinding(check, contract string, binding model.ExternalBinding, state model.BindingState, r model.ExternalReport, receivedAt time.Time) (model.BindingState, MergeResult) {
 	failure, recovery := state.FailureThreshold, state.RecoveryThreshold
 	if failure < 1 {
@@ -118,41 +121,12 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 	mode, identity, identityOK := SampleIdentity(r, sampledAt)
 	if !timeKnown || !identityOK {
 		state.Unusable = addCount(state.Unusable)
+		state.LastResult, state.LastCode = string(VerdictUnusable), "unknown_report_time"
 		return state, MergeResult{Verdict: VerdictUnusable, Code: "unknown_report_time"}
 	}
 	hash := ContentHash(r)
-	basis := BasisSignature(r)
-	basisChanged := state.Basis != "" && state.Basis != basis
-	if basisChanged {
-		state.UpRun, state.DownRun, state.PolicyRun = 0, 0, 0
-		state.ConfirmedDown, state.PolicyConfirmed = false, false
-	}
-	// A previously seen sample ID is definitive even after the cursor moved.
-	for _, seen := range state.Seen {
-		if seen.ID != r.SampleID || r.SampleID == "" {
-			continue
-		}
-		if seen.Hash == hash {
-			state.Duplicates = addCount(state.Duplicates)
-			state.LastResult, state.LastCode = string(VerdictDuplicate), "seen_sample"
-			return state, MergeResult{Verdict: VerdictDuplicate, Code: "seen_sample", BasisChanged: basisChanged}
-		}
-		state.Conflicts = addCount(state.Conflicts)
-		state.LastResult, state.LastCode = string(VerdictConflict), "same_sample_different_content"
-		return state, MergeResult{Verdict: VerdictConflict, Code: "same_sample_different_content", BasisChanged: basisChanged}
-	}
-	cursor := state.Cursor
-	if cursor.Identity != "" && cursor.Identity == identity {
-		if cursor.Hash == hash {
-			state.Duplicates = addCount(state.Duplicates)
-			state.LastResult, state.LastCode = string(VerdictDuplicate), "same_identity"
-			return state, MergeResult{Verdict: VerdictDuplicate, Code: "same_identity", BasisChanged: basisChanged}
-		}
-		state.Conflicts = addCount(state.Conflicts)
-		state.LastResult, state.LastCode = string(VerdictConflict), "same_identity_different_content"
-		return state, MergeResult{Verdict: VerdictConflict, Code: "same_identity_different_content", BasisChanged: basisChanged}
-	}
-	if verdict, code := orderVerdict(cursor, mode, sampledAt, r); verdict != VerdictNew {
+	verdict, code := classifyReport(state, r, hash, mode, identity, sampledAt)
+	if verdict != VerdictNew {
 		switch verdict {
 		case VerdictDuplicate:
 			state.Duplicates = addCount(state.Duplicates)
@@ -164,7 +138,13 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 			state.Unusable = addCount(state.Unusable)
 		}
 		state.LastResult, state.LastCode = string(verdict), code
-		return state, MergeResult{Verdict: verdict, Code: code, BasisChanged: basisChanged}
+		return state, MergeResult{Verdict: verdict, Code: code}
+	}
+
+	basis := BasisSignature(r)
+	basisChanged := state.Basis != "" && state.Basis != basis
+	if basisChanged {
+		resetContinuity(&state)
 	}
 	state.Cursor = model.ReportCursor{Mode: mode, Identity: identity, SampleID: r.SampleID, Epoch: r.Epoch, Sequence: cloneUint(r.Sequence), ObservedAt: sampledAt, TimeBasis: r.TimeBasis, Hash: hash}
 	last := model.CloneExternalReport(r)
@@ -177,10 +157,14 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 	state.LastAcceptedAt = receivedAt
 	state.ReportSamples = addCount(state.ReportSamples)
 	if r.SampleID != "" {
-		state.Seen = append(state.Seen, model.SeenSample{ID: r.SampleID, Hash: hash})
-		if len(state.Seen) > model.MaxSourceReportIDs {
-			state.Seen = append([]model.SeenSample(nil), state.Seen[len(state.Seen)-model.MaxSourceReportIDs:]...)
+		// Own the slice: a caller's backing array must not be written past its
+		// current length, and the bound keeps the replay memory finite.
+		seen := append([]model.SeenSample(nil), state.Seen...)
+		seen = append(seen, model.SeenSample{ID: r.SampleID, Hash: hash})
+		if len(seen) > model.MaxSourceReportIDs {
+			seen = append([]model.SeenSample(nil), seen[len(seen)-model.MaxSourceReportIDs:]...)
 		}
+		state.Seen = seen
 	}
 	switch {
 	case r.Resource != nil:
@@ -191,7 +175,7 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 		case PolicyViolation:
 			state.PolicyRun = addCount(state.PolicyRun)
 			state.PolicyViolations = addCount(state.PolicyViolations)
-			state.PolicyConfirmed = state.PolicyRun >= int64(policyThreshold)
+			state.PolicyConfirmed = state.PolicyConfirmed || state.PolicyRun >= int64(policyThreshold)
 		case PolicyUnknown:
 			state.PolicyRun = 0
 			state.PolicyUnknowns = addCount(state.PolicyUnknowns)
@@ -242,6 +226,36 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 	}
 	state.LastResult, state.LastCode = string(VerdictNew), ""
 	return state, MergeResult{Verdict: VerdictNew, BasisChanged: basisChanged}
+}
+
+// classifyReport returns the verdict without mutating accepted state.
+func classifyReport(state model.BindingState, r model.ExternalReport, hash, mode, identity string, sampledAt time.Time) (Verdict, string) {
+	// A previously seen sample ID is definitive even after the cursor moved.
+	if r.SampleID != "" {
+		for _, seen := range state.Seen {
+			if seen.ID != r.SampleID {
+				continue
+			}
+			if seen.Hash == hash {
+				return VerdictDuplicate, "seen_sample"
+			}
+			return VerdictConflict, "same_sample_different_content"
+		}
+	}
+	if state.Cursor.Identity != "" && state.Cursor.Identity == identity {
+		if state.Cursor.Hash == hash {
+			return VerdictDuplicate, "same_identity"
+		}
+		return VerdictConflict, "same_identity_different_content"
+	}
+	return orderVerdict(state.Cursor, mode, sampledAt, r)
+}
+
+// resetContinuity starts a new consecutive-confirmation lifecycle. Historical
+// accepted-sample counters are deliberately untouched.
+func resetContinuity(state *model.BindingState) {
+	state.UpRun, state.DownRun, state.PolicyRun = 0, 0, 0
+	state.ConfirmedDown, state.PolicyConfirmed = false, false
 }
 
 // orderVerdict compares a not-yet-accepted identity with the cursor. Time
