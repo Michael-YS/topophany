@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"strings"
 	"sync"
@@ -212,4 +213,90 @@ func TestRowOwnershipThroughAllocationAndContractChanges(t *testing.T) {
 	}
 	s = openTest(t, dir, options)
 	checkAccounting(t, s)
+}
+
+func TestRecentRateAcrossExpiryRollbackAndRestart(t *testing.T) {
+	c := testkit.Config()
+	clock := time.Now().UTC()
+	start := clock
+	dir := t.TempDir()
+	o := Options{Now: func() time.Time { return clock }, Retention: time.Hour}
+	s := openTest(t, dir, o)
+	put := func(seq uint64) {
+		t.Helper()
+		if err := s.Put(batch(c, testkit.Observation(c, "home-http", seq, clock, "ok"))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(want int) {
+		t.Helper()
+		for range 3 {
+			if got := s.Usage().Observers[0].LastHour; got != want {
+				t.Fatalf("at %s: recent=%d want %d", clock.Sub(start), got, want)
+			}
+		}
+		checkAccounting(t, s)
+	}
+	put(1)
+	clock = start.Add(time.Hour)
+	check(1) // The inclusive hour boundary is preserved exactly.
+	clock = clock.Add(time.Nanosecond)
+	check(0)
+	clock = start.Add(30 * time.Minute)
+	check(1)
+	put(2)
+	clock = start.Add(20 * time.Minute)
+	put(3) // New receipts after a rollback remain ordered for both cursors.
+	check(3)
+	clock = start.Add(85 * time.Minute)
+	check(1)
+	if err := s.Checkpoint(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = openTest(t, dir, o)
+	check(1)
+	clock = start.Add(4 * time.Hour)
+	check(0)
+}
+
+func TestHeartbeatByteAccountingTracksReplacements(t *testing.T) {
+	c := testkit.Config()
+	clock := time.Now().UTC()
+	s := openTest(t, t.TempDir(), Options{Now: func() time.Time { return clock }})
+	for i := range 8 {
+		h := model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: clock}
+		if i%2 == 0 {
+			h.Delivery = []model.DeliveryStatus{{Collector: "0123456789abcdef", ReportedAt: clock}}
+		}
+		b := batch(c)
+		b.Heartbeat = &h
+		if err := s.Put(b); err != nil {
+			t.Fatal(err)
+		}
+		checkAccounting(t, s)
+		clock = clock.Add(2 * time.Second)
+	}
+}
+
+func BenchmarkUsageRetainedReceipts(b *testing.B) {
+	for _, n := range []int{1000, 100000} {
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			now := time.Now().UTC()
+			s := &Store{options: Options{Now: func() time.Time { return now }}, seen: map[string]receipt{}}
+			for i := range n {
+				id := fmt.Sprint(i)
+				s.seen[id] = receipt{At: now, Observer: "home"}
+				s.receiptQueue = append(s.receiptQueue, id)
+			}
+			s.recountRecent(now)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				s.Usage()
+			}
+		})
+	}
 }

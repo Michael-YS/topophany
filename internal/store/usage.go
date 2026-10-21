@@ -21,20 +21,10 @@ func (s *Store) Usage() Usage {
 	defer s.mu.Unlock()
 	now := s.options.Now()
 	u := Usage{Receipts: len(s.seen), MaxReceipts: s.options.MaxReceipts, StateBytes: s.stateBytes, MaxStateBytes: s.options.MaxStateBytes, Hours: (s.options.Retention + receiptGrace).Hours()}
-	// The queue is in the order receipts were taken: the last hour's are at
-	// its end.
-	recent := map[string]int{}
+	s.advanceRecent(now)
 	total := 0
-	for i := len(s.receiptQueue) - 1; i >= s.receiptHead; i-- {
-		r, ok := s.seen[s.receiptQueue[i]]
-		if !ok {
-			continue
-		}
-		if r.At.Before(now.Add(-time.Hour)) {
-			break
-		}
-		recent[r.Observer]++
-		total++
+	for _, count := range s.recent {
+		total += count
 	}
 	// A share fills when its receipts settle beyond it, or beyond its bytes
 	// once the rows and floors it holds are counted; it fills at the rate
@@ -66,7 +56,7 @@ func (s *Store) Usage() Usage {
 	}
 
 	for _, id := range s.options.Observers {
-		u.Observers = append(u.Observers, share(ObserverUsage{Observer: id, Receipts: s.scopeReceipts[id], ReceiptLimit: int(s.options.share(int64(s.options.MaxReceipts), id)), Bytes: s.scopeBytes[id], ByteLimit: s.options.byteShare(id)}, recent[id]))
+		u.Observers = append(u.Observers, share(ObserverUsage{Observer: id, Receipts: s.scopeReceipts[id], ReceiptLimit: int(s.options.share(int64(s.options.MaxReceipts), id)), Bytes: s.scopeBytes[id], ByteLimit: s.options.byteShare(id)}, s.recent[id]))
 	}
 	sort.Slice(u.Observers, func(i, j int) bool { return u.Observers[i].Observer < u.Observers[j].Observer })
 	return u

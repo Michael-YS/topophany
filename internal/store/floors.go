@@ -46,6 +46,9 @@ func (q *floorQueue) Pop() any {
 
 // raiseFloor binds boot's IDs up to seq, from a receipt taken at at.
 func (s *Store) raiseFloor(boot string, seq uint64, at time.Time) {
+	if _, held := s.floors[boot]; !held {
+		s.adjustBytes(receiptObserver(boot+".0"), floorBytes)
+	}
 	s.floors[boot] = max(s.floors[boot], seq)
 	if at.After(s.floorAt[boot]) {
 		s.floorAt[boot] = at
@@ -106,6 +109,7 @@ func (s *Store) shedFloors(observer string, n int) {
 	for ; n > 0 && q.Len() > 0; n-- {
 		f := heap.Pop(q).(heldFloor)
 		delete(s.floors, f.boot)
+		s.adjustBytes(observer, -floorBytes)
 		delete(s.floorAt, f.boot)
 	}
 	if q.Len() == 0 {

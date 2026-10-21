@@ -119,6 +119,10 @@ type Store struct {
 	poisoned      error
 	rowSizes      map[string]int64
 	stateBytes    int64
+	beatBytes     map[string]int64
+	recent        map[string]int
+	recentHead    int
+	recentAt      time.Time
 	rowHashes     map[string]digest
 	rowObservers  map[string]string
 	scopeBytes    map[string]int64
@@ -160,7 +164,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
 	s.rollups.SetCurrent(s.currentKey)
 	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
@@ -277,14 +281,27 @@ func (s *Store) recount() {
 		}
 	}
 	s.historyDirty = true
+	s.recountBytes()
+	s.recountRecent(s.options.Now())
 }
 
 // receive records the receipt of a sample.
 func (s *Store) receive(id string, r receipt) {
 	r.Observer = s.strings.intern(r.Observer)
+	s.advanceRecent(s.options.Now())
 	s.seen[id] = r
+	s.recent[r.Observer]++
+	s.adjustBytes(r.Observer, 512)
 	s.scopeReceipts[r.Observer]++
-	s.receiptQueue = append(s.receiptQueue, id)
+	// Usually append. A collector clock rollback inserts before later receipts
+	// so expiry cursors remain valid without rescanning on ordinary reads.
+	i := len(s.receiptQueue)
+	if i > s.receiptHead && r.At.Before(s.seen[s.receiptQueue[i-1]].At) {
+		i = s.receiptHead + sort.Search(i-s.receiptHead, func(j int) bool {
+			return !s.seen[s.receiptQueue[s.receiptHead+j]].At.Before(r.At)
+		})
+	}
+	s.receiptQueue = slices.Insert(s.receiptQueue, i, id)
 }
 func wrap(v any) ([]byte, error) {
 	p, e := json.Marshal(v)
@@ -423,6 +440,7 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	for key := range s.carries {
 		if _, ok := s.tails[key]; !ok {
 			delete(s.carries, key)
+			s.stateBytes -= carryBytes
 		}
 	}
 	s.prune()
@@ -469,6 +487,7 @@ func (s *Store) indexEncodedRow(v model.Observation, encoded *rowEncoding) {
 		s.rowSizes[v.ID] = encoded.Bytes
 		s.rowHashes[v.ID] = encoded.Hash
 		s.rowObservers[v.ID] = v.Observer
+		s.adjustBytes(v.Observer, s.rowSizes[v.ID])
 		s.rowBytes += s.rowSizes[v.ID]
 		s.rowScope[v.Observer] += s.rowSizes[v.ID]
 	}
@@ -500,6 +519,9 @@ func (s *Store) trim(key string, tail []model.Observation) []model.Observation {
 		}
 	}
 	if !k.At.IsZero() {
+		if _, held := s.carries[key]; !held {
+			s.stateBytes += carryBytes
+		}
 		s.carries[key] = k
 	}
 	kept := tail[len(tail)-tailLength:]
@@ -545,7 +567,7 @@ func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding) error {
 	if b.Heartbeat != nil && s.advances(*b.Heartbeat, b.Project, b.Revision) {
 		h := *b.Heartbeat
 		h.Project, h.Revision = b.Project, b.Revision
-		s.beats[h.Observer] = h
+		s.replaceBeat(h)
 	}
 	return nil
 }
@@ -652,10 +674,7 @@ func (s *Store) Put(b model.Batch) error {
 	if b.Heartbeat != nil {
 		raw, _ := json.Marshal(b.Heartbeat)
 		projected += int64(len(raw)) + 1024
-		if old, ok := s.beats[b.Heartbeat.Observer]; ok {
-			raw, _ := json.Marshal(old)
-			projected -= int64(len(raw)) + 1024
-		}
+		projected -= s.beatBytes[b.Heartbeat.Observer]
 	}
 	if err := s.checkScopeCapacity(b, sizes); err != nil {
 		return err
@@ -707,6 +726,7 @@ func (s *Store) Put(b model.Batch) error {
 	return nil
 }
 func (s *Store) prune() {
+	s.advanceRecent(s.options.Now())
 	cutoff := s.options.Now().Add(-s.options.Retention)
 	if !s.rowsOrdered {
 		sort.Slice(s.rows, func(i, j int) bool { return before(s.rows[i], s.rows[j]) })
@@ -735,12 +755,14 @@ func (s *Store) prune() {
 		if boot, seq, parsed := bootOf(id); ok && parsed {
 			s.raiseFloor(boot, seq, r.At)
 			delete(s.seen, id)
+			s.adjustBytes(r.Observer, -512)
 			if s.scopeReceipts[r.Observer]--; s.scopeReceipts[r.Observer] == 0 {
 				delete(s.scopeReceipts, r.Observer)
 			}
 		}
 	}
 	if s.receiptHead > 1024 && s.receiptHead > len(s.receiptQueue)/2 {
+		s.recentHead = max(0, s.recentHead-s.receiptHead)
 		s.receiptQueue = append([]string(nil), s.receiptQueue[s.receiptHead:]...)
 		s.receiptHead = 0
 	}
@@ -749,21 +771,6 @@ func (s *Store) prune() {
 		if q.Len() > limit {
 			s.shedFloors(o, q.Len()-limit)
 		}
-	}
-	s.scopeBytes = make(map[string]int64, len(s.scopeReceipts)+len(s.rowScope))
-	for id, n := range s.scopeReceipts {
-		s.scopeBytes[id] += int64(n) * 512
-	}
-	for o, q := range s.floorQueues {
-		s.scopeBytes[o] += int64(q.Len()) * floorBytes
-	}
-	for id, size := range s.rowScope {
-		s.scopeBytes[id] += size
-	}
-	s.stateBytes = 1024 + int64(len(s.seen))*512 + int64(len(s.floors))*floorBytes + int64(len(s.carries))*carryBytes + s.rowBytes
-	for _, h := range s.beats {
-		raw, _ := json.Marshal(h)
-		s.stateBytes += int64(len(raw)) + 1024
 	}
 	if now := s.options.Now(); now.Sub(s.settled) >= time.Minute || now.Before(s.settled) {
 		s.rollups.Settle(now)
@@ -960,6 +967,7 @@ func (s *Store) releaseRow(id string) {
 	}
 	delete(s.rowRefs, id)
 	size, observer := s.rowSizes[id], s.rowObservers[id]
+	s.adjustBytes(observer, -size)
 	s.rowBytes -= size
 	s.rowScope[observer] -= size
 	if s.rowScope[observer] == 0 {
