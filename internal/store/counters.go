@@ -25,7 +25,7 @@ func (s *Store) replaceBeat(h model.Heartbeat) {
 
 // Recovery reconstructs counters once; live writes update only changed owners.
 func (s *Store) recountBytes() {
-	s.stateBytes = 1024 + int64(len(s.carries))*carryBytes
+	s.stateBytes = 1024 + int64(len(s.carries))*carryBytes + s.externalBytes
 	s.scopeBytes = map[string]int64{}
 	for id, n := range s.scopeReceipts {
 		s.adjustBytes(id, int64(n)*512)

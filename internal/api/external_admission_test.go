@@ -32,7 +32,7 @@ func externalAPIFixture(t testing.TB) (*Server, http.Handler, model.Batch, model
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	s, err := store.Open(t.TempDir(), store.Options{Revision: config.Revision(c), Now: func() time.Time { return now }})
+	s, err := store.Open(t.TempDir(), store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +97,10 @@ func TestExternalObservationAdmissionAndNormalization(t *testing.T) {
 	}
 	if rows[0].External.Report.Resource.CPU.Percent == nil || *rows[0].External.Report.Resource.CPU.Percent != 25 {
 		t.Fatal("normalized report lost its value")
+	}
+	state := srv.Store.ExternalView()
+	if state == nil || state.Bindings["vm-resources"].ReportSamples != 1 || state.Sources["probe-api"].LastContact.IsZero() {
+		t.Fatalf("admitted report did not persist collector state: %+v", state)
 	}
 	if rows[0].External.AttemptedAt != b.Observations[0].External.AttemptedAt || rows[0].ReceivedAt.IsZero() {
 		t.Fatal("attempt time or collector receive time changed")

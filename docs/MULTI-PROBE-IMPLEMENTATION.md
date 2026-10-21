@@ -432,8 +432,8 @@ its existing worker budget.
 | 0 base/design freeze | `7f5ebaa` | complete |
 | 1 typed model/config | `87d82a4` | complete |
 | 2 report normalization | `4a1de5c` | complete |
-| 3 collector admission | this commit | complete |
-| 4 persistence/dedup | — | pending |
+| 3 collector admission | `99c533c` | complete |
+| 4 persistence/dedup | this commit | complete |
 | 5 report state/statistics | — | pending |
 | 6 source runtime | — | pending |
 | 7 unified resources | — | pending |
@@ -474,6 +474,27 @@ Record only real changes to the frozen rules here, with the reason.
   external check until task 6 wires source jobs, and a client-supplied external
   observation is subject to the new admission checks. This deliberately keeps
   the intermediate commit from claiming a report that no source runtime read.
+- Task 4 persists source contact and binding cursors in the checkpoint. The
+  checkpoint is schema 1 while no external state exists and schema 2 once it
+  does; a schema 1 checkpoint carrying `external` is refused, and an old
+  reader refuses schema 2 instead of appending behind unrecognized state. The
+  external-state member has its own schema 1 and a 4 MiB byte budget, included
+  in the store's state accounting.
+- Task 4 source contact advances on any newer successful read, including a
+  duplicate report, but never on a failed or older attempt. The report cursor,
+  last report, raw deadline, source-contact deadline inputs and confirmation
+  runs are independent of raw sample retention. A replay of the same
+  observation ID is receipt deduplication and does not count as a duplicate
+  report or source read.
+- Task 4's merge treats a different sample at the *same* upstream timestamp as
+  ambiguous (`conflict`) when no sequence distinguishes it. This is the
+  declared same-timestamp revision policy: same identity/content duplicate,
+  same identity/different content conflict, different identity/same time
+  conflict, newer time new, older time late.
+- The existing recovery corruption test was changed from rejecting checkpoint
+  state schema 2 to rejecting schema 3, because schema 2 is now the valid
+  external-state checkpoint. This is the intended format upgrade, not a
+  relaxation of corruption checks.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters

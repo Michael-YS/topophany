@@ -60,9 +60,10 @@ func TestStreamedRecoveryRefusesCorruptionBeforeJournalOpen(t *testing.T) {
 		`{"sha256":"` + hashBytes([]byte(valid)) + `","payload":` + valid + `} {}`,
 	}
 	for _, payload := range []string{
-		`{"schema":2,"seen":{},"beats":{}}`,
+		`{"schema":3,"seen":{},"beats":{}}`,
 		`{"schema":1,"seen":null,"beats":{}}`,
 		`{"schema":1,"seen":{},"beats":null}`,
+		`{"schema":1,"seen":{},"beats":{},"external":{"schema":1,"sources":{},"bindings":{}}}`,
 		`{"schema":1,"seen":{},"beats":{},"rows":{}}`,
 		`{"schema":1,"seen":{},"beats":{},"rows":[]`,
 	} {

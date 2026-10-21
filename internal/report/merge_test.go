@@ -1,0 +1,174 @@
+package report_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/report"
+)
+
+func mergeFixture() (model.ExternalBinding, model.BindingState, model.ExternalReport, time.Time) {
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	b := model.ExternalBinding{Source: "source", Object: "vm/one", Report: model.ReportTypeStatus, MaxAgeSeconds: 60}
+	r := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", SampleID: "s1", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: "up"}}
+	return b, model.BindingState{}, r, at
+}
+
+func TestMergeNewDuplicateSameValueAndDeadline(t *testing.T) {
+	b, state, r, at := mergeFixture()
+	state, got := report.MergeBinding("check", "contract", b, state, r, at)
+	if got.Verdict != report.VerdictNew || state.ReportSamples != 1 || state.UpRun != 1 || !state.DataDeadline.Equal(at.Add(time.Minute)) {
+		t.Fatalf("new = %+v %+v", got, state)
+	}
+	deadline, accepted, up := state.DataDeadline, state.LastAcceptedAt, state.UpRun
+	// A replayed observation with a new receive time but the same upstream
+	// sample is a duplicate: no deadline, confirmation or latency movement.
+	state, got = report.MergeBinding("check", "contract", b, state, r, at.Add(10*time.Second))
+	if got.Verdict != report.VerdictDuplicate || !state.DataDeadline.Equal(deadline) || !state.LastAcceptedAt.Equal(accepted) || state.UpRun != up || state.ReportSamples != 1 {
+		t.Fatalf("duplicate advanced state: %+v %+v", got, state)
+	}
+	if state.Duplicates != 1 || state.LastResult != "duplicate" {
+		t.Fatalf("duplicate diagnostics = %+v", state)
+	}
+	// A new identity with the same values is still a new sample.
+	r.SampleID = "s2"
+	r.ObservedAt = at.Add(time.Second)
+	state, got = report.MergeBinding("check", "contract", b, state, r, at.Add(11*time.Second))
+	if got.Verdict != report.VerdictNew || state.ReportSamples != 2 || state.UpRun != 2 || !state.DataDeadline.Equal(at.Add(time.Minute+time.Second)) {
+		t.Fatalf("same-value new sample = %+v %+v", got, state)
+	}
+}
+
+func TestMergeConflictLateUnusable(t *testing.T) {
+	b, state, r, at := mergeFixture()
+	state, _ = report.MergeBinding("check", "contract", b, state, r, at)
+	late := r
+	late.SampleID = "s0"
+	late.ObservedAt = at.Add(-time.Second)
+	state, got := report.MergeBinding("check", "contract", b, state, late, at)
+	if got.Verdict != report.VerdictLate || state.Late != 1 || state.ReportSamples != 1 || !state.DataDeadline.Equal(at.Add(time.Minute)) {
+		t.Fatalf("late = %+v %+v", got, state)
+	}
+	conflict := r
+	conflict.Status = &model.StatusReport{Status: "down"}
+	state, got = report.MergeBinding("check", "contract", b, state, conflict, at)
+	if got.Verdict != report.VerdictConflict || state.Conflicts != 1 || state.ReportSamples != 1 || state.StatusDown != 0 {
+		t.Fatalf("conflict = %+v %+v", got, state)
+	}
+	// A different sample ID at the same timestamp is not a licence to
+	// overwrite the current report.
+	sameTime := r
+	sameTime.SampleID = "s-other"
+	state, got = report.MergeBinding("check", "contract", b, state, sameTime, at)
+	if got.Verdict != report.VerdictConflict || state.ReportSamples != 1 {
+		t.Fatalf("same-time conflict = %+v %+v", got, state)
+	}
+	unknown := r
+	unknown.SampleID = "unknown"
+	unknown.TimeBasis = model.TimeBasisUnknown
+	unknown.ObservedAt = time.Time{}
+	state, got = report.MergeBinding("check", "contract", b, state, unknown, at)
+	if got.Verdict != report.VerdictUnusable || state.Unusable != 1 || state.ReportSamples != 1 {
+		t.Fatalf("unusable = %+v %+v", got, state)
+	}
+}
+
+func TestMergeSequenceEpochOrderingAndBasisReset(t *testing.T) {
+	b := model.ExternalBinding{Source: "source", Object: "vm/one", Report: model.ReportTypeStatus, MaxAgeSeconds: 60}
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	seq := func(n uint64) *uint64 { return &n }
+	r := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", Epoch: "boot-a", Sequence: seq(10), ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: "down"}}
+	state := model.BindingState{}
+	state, got := report.MergeBinding("check", "contract", b, state, r, at)
+	if got.Verdict != report.VerdictNew || state.DownRun != 1 {
+		t.Fatalf("sequence new = %+v %+v", got, state)
+	}
+	older := r
+	older.Sequence = seq(9)
+	state, got = report.MergeBinding("check", "contract", b, state, older, at)
+	if got.Verdict != report.VerdictLate {
+		t.Fatalf("older sequence = %+v", got)
+	}
+	// A new epoch with a later time starts a new series, but confirmation
+	// runs reset rather than inheriting a clean or failing run.
+	nextEpoch := r
+	nextEpoch.Epoch = "boot-b"
+	nextEpoch.Sequence = seq(1)
+	nextEpoch.ObservedAt = at.Add(time.Minute)
+	nextEpoch.Status = &model.StatusReport{Status: "up"}
+	state, got = report.MergeBinding("check", "contract", b, state, nextEpoch, at.Add(time.Minute))
+	if got.Verdict != report.VerdictNew || state.UpRun != 1 || state.DownRun != 0 {
+		t.Fatalf("new epoch = %+v %+v", got, state)
+	}
+	// A different basis resets runs. The report is still new and accepted.
+	oldBasis := nextEpoch
+	oldBasis.SampleID = "basis-2"
+	oldBasis.ObservedAt = at.Add(2 * time.Minute)
+	oldBasis.Status = &model.StatusReport{Status: "up"}
+	state, got = report.MergeBinding("check", "contract", b, state, oldBasis, at.Add(2*time.Minute))
+	if got.BasisChanged || state.UpRun != 2 {
+		t.Fatalf("first basis = %+v %+v", got, state)
+	}
+	state.Basis = "manual-old"
+	changed := oldBasis
+	changed.SampleID = "basis-3"
+	changed.ObservedAt = at.Add(3 * time.Minute)
+	state, got = report.MergeBinding("check", "contract", b, state, changed, at.Add(3*time.Minute))
+	if !got.BasisChanged || state.UpRun != 1 {
+		t.Fatalf("basis reset = %+v %+v", got, state)
+	}
+}
+
+func TestMergePolicyStatsAndLatencyAreNewSamplesOnly(t *testing.T) {
+	b := model.ExternalBinding{Source: "source", Object: "vm/one", Report: model.ReportTypeResource, MaxAgeSeconds: 60, PrimaryDisk: "root", Assertions: &model.ResourceAssertions{CPUPercentMax: f(80)}}
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	cpu := 90.0
+	r := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", SampleID: "r1", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &cpu}}}
+	state := model.BindingState{}
+	state, got := report.MergeBinding("check", "contract", b, state, r, at)
+	if got.Verdict != report.VerdictNew || state.PolicyRun != 1 || state.PolicyViolations != 1 || state.ResourceSamples != 1 {
+		t.Fatalf("policy new = %+v %+v", got, state)
+	}
+	state, _ = report.MergeBinding("check", "contract", b, state, r, at.Add(time.Second))
+	if state.PolicyRun != 1 || state.PolicyViolations != 1 || state.ResourceSamples != 1 {
+		t.Fatalf("duplicate advanced policy stats: %+v", state)
+	}
+	latency := int64(42)
+	statusBinding := model.ExternalBinding{Source: "source", Object: "svc", Report: model.ReportTypeStatus, MaxAgeSeconds: 60}
+	sr := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "svc", SampleID: "st1", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: "up", UpstreamLatencyMS: &latency}}
+	state = model.BindingState{}
+	state, _ = report.MergeBinding("status", "contract", statusBinding, state, sr, at)
+	state, _ = report.MergeBinding("status", "contract", statusBinding, state, sr, at.Add(time.Second))
+	if state.UpstreamLatencySamples != 1 || state.UpstreamLatencySumMS != 42 || state.StatusUp != 1 || state.ReportSamples != 1 {
+		t.Fatalf("latency duplicate counted: %+v", state)
+	}
+	sr.SampleID = "st2"
+	sr.Status.UpstreamLatencyMS = nil
+	sr.ObservedAt = at.Add(time.Minute)
+	state, _ = report.MergeBinding("status", "contract", statusBinding, state, sr, at.Add(time.Minute))
+	if state.UpstreamLatencySamples != 1 || state.UpstreamLatencySumMS != 42 {
+		t.Fatal("missing latency was treated as zero")
+	}
+}
+
+func TestMergeSourceContactAndFailures(t *testing.T) {
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	state := report.MergeSource(model.SourceState{}, "source", at, true, "", 5)
+	if state.LastContact != at || state.LastResult != "ok" {
+		t.Fatalf("contact = %+v", state)
+	}
+	state = report.MergeSource(state, "source", at.Add(time.Minute), false, "timeout", 2000)
+	if !state.LastContact.Equal(at) || state.LastResult != "error" || state.LastCode != "timeout" {
+		t.Fatalf("failure moved contact or lost diagnostics: %+v", state)
+	}
+	// An older successful replay cannot move contact.
+	state = report.MergeSource(state, "source", at, true, "", 5)
+	if !state.LastContact.Equal(at) || state.LastResult != "error" {
+		t.Fatalf("older replay changed contact: %+v", state)
+	}
+	state = report.MergeSource(state, "source", at.Add(2*time.Minute), true, "", 7)
+	if !state.LastContact.Equal(at.Add(2*time.Minute)) || state.LastResult != "ok" || state.LastAttemptAt != at.Add(2*time.Minute) {
+		t.Fatalf("new contact = %+v", state)
+	}
+}

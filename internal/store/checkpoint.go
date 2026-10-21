@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"slices"
+	"strconv"
 
 	"github.com/WhitenWhiten/topophany/internal/ioaccount"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -25,7 +26,11 @@ func (s *Store) writeCheckpoint(path string) error {
 		h := sha256.New()
 		w := bufio.NewWriterSize(io.MultiWriter(f, h), 64<<10)
 		out := checkpointJSON{w: w, left: (256 << 20) - int64(len(prefix)+64+len(`","payload":`)+1)}
-		out.text(`{"schema":1,"rows":[`)
+		schema := 1
+		if s.external != nil && (len(s.external.Sources) > 0 || len(s.external.Bindings) > 0) {
+			schema = 2
+		}
+		out.text(`{"schema":` + strconv.Itoa(schema) + `,"rows":[`)
 		// Raw history is already unique. Only tails that outlive it need deduping.
 		held := make(map[string]bool, len(s.rows))
 		for i, v := range s.rows {
@@ -71,6 +76,10 @@ func (s *Store) writeCheckpoint(path string) error {
 		}
 		out.text(`,"carries":`)
 		out.value(s.carries)
+		if schema == 2 {
+			out.text(`,"external":`)
+			out.value(s.external)
+		}
 		out.text("}")
 		if out.err != nil {
 			return out.err

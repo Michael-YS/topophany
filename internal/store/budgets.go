@@ -12,6 +12,8 @@ import (
 func storageOptions(o Options) (Options, error) {
 	o.Observers = append([]string(nil), o.Observers...)
 	o.ObserverWeights = maps.Clone(o.ObserverWeights)
+	o.Bindings = maps.Clone(o.Bindings)
+	o.Sources = maps.Clone(o.Sources)
 	if o.MaxHistory == 0 {
 		o.MaxHistory = 20000
 	}
@@ -39,6 +41,9 @@ func storageOptions(o Options) (Options, error) {
 	}
 	if o.RollupBytes == 0 {
 		o.RollupBytes = 32 << 20
+	}
+	if len(o.Bindings) > model.MaxExternalChecks || len(o.Sources) > model.MaxSources {
+		return o, errors.New("external binding/source budget exceeded")
 	}
 	if o.MaxHistory < 1 || o.MaxReceipts < 1 || o.Retention < time.Minute || o.CheckpointBytes < 1024 || o.CheckpointBytes > 128<<20 || o.MaxJournalBytes < o.CheckpointBytes || o.MaxJournalBytes > 128<<20 || o.MaxStateBytes < 1024 || o.MaxStateBytes > 128<<20 || o.RollupBytes < rollup.MinLimit || o.RollupBytes > rollup.MaxLimit {
 		return o, errors.New("invalid storage limits")

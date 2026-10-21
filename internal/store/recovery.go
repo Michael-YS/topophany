@@ -12,6 +12,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/report"
 )
 
 const maxCheckpointBytes = 256 << 20
@@ -150,6 +151,17 @@ func (s *Store) readCheckpointState(d *json.Decoder) error {
 			if err = d.Decode(&raw); err == nil && !bytes.Equal(raw, []byte("null")) {
 				err = s.rollups.UnmarshalJSON(raw)
 			}
+		case "external":
+			var state *model.ExternalState
+			if err = d.Decode(&state); err == nil && state != nil {
+				if e := validateExternalState(*state); e != nil {
+					err = e
+				} else {
+					s.external = state
+					raw, _ := json.Marshal(state)
+					s.externalBytes = int64(len(raw))
+				}
+			}
 		default:
 			err = skipJSONValue(d, 0)
 		}
@@ -160,8 +172,11 @@ func (s *Store) readCheckpointState(d *json.Decoder) error {
 	if err := expectDelimiter(d, '}'); err != nil {
 		return err
 	}
-	if schema != 1 || !fields["seen"] || !fields["beats"] || s.beats == nil {
+	if schema != 1 && schema != 2 || !fields["seen"] || !fields["beats"] || s.beats == nil {
 		return errors.New("invalid checkpoint state")
+	}
+	if schema == 1 && fields["external"] {
+		return errors.New("checkpoint schema 1 cannot carry external state")
 	}
 	return nil
 }
@@ -275,4 +290,39 @@ func skipJSONValue(d *json.Decoder, depth int) error {
 		close = '}'
 	}
 	return expectDelimiter(d, close)
+}
+
+// validateExternalState bounds persisted cursors before they influence
+// admission. The checkpoint checksum catches corruption, but a valid file
+// written by a newer or hand-edited implementation must still fit the schema.
+func validateExternalState(state model.ExternalState) error {
+	if state.Schema != model.ExternalStateSchema || len(state.Sources) > model.MaxSources || len(state.Bindings) > model.MaxExternalChecks {
+		return errors.New("invalid external state schema or entity budget")
+	}
+	for id, s := range state.Sources {
+		if id == "" || s.ID != id || len(id) > 96 || (s.LastResult != "" && s.LastResult != "ok" && s.LastResult != "error") || len(s.LastCode) > 96 || s.LastDurationMS < 0 {
+			return errors.New("invalid external source state")
+		}
+	}
+	for check, b := range state.Bindings {
+		if check == "" || b.Check != check || len(b.Contract) > 64 || b.MaxAgeSeconds < 0 || b.MaxAgeSeconds > 604800 || len(b.Seen) > model.MaxSourceReportIDs || len(b.LastResult) > 16 || len(b.LastCode) > 96 {
+			return errors.New("invalid external binding state")
+		}
+		if b.ReportType != model.ReportTypeResource && b.ReportType != model.ReportTypeStatus {
+			return errors.New("invalid external binding report type")
+		}
+		if b.Last != nil {
+			if _, err := report.Normalize(*b.Last, model.MaxReportBytes); err != nil {
+				return errors.New("invalid persisted external report")
+			}
+		}
+		if b.ReportSamples < 0 || b.ResourceSamples < 0 || b.StatusSamples < 0 || b.StatusUp < 0 || b.StatusDegraded < 0 || b.StatusDown < 0 || b.StatusUnknown < 0 || b.UpstreamLatencySamples < 0 || b.UpstreamLatencySumMS < 0 || b.UpstreamLatencyMaxMS < 0 || b.Duplicates < 0 || b.Late < 0 || b.Conflicts < 0 || b.Unusable < 0 || b.UpRun < 0 || b.DownRun < 0 || b.PolicyRun < 0 || b.PolicyViolations < 0 || b.PolicyUnknowns < 0 {
+			return errors.New("invalid persisted external counters")
+		}
+	}
+	raw, err := json.Marshal(state)
+	if err != nil || len(raw) > maxExternalStateBytes {
+		return errors.New("external state budget exceeded")
+	}
+	return nil
 }

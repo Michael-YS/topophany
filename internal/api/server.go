@@ -156,6 +156,7 @@ func New(c model.Config, instance string, s *store.Store, a Auth) *Server {
 	}
 	if s != nil {
 		s.SetAllocation(ids, config.StorageWeights(c))
+		s.SetExternalContext(c)
 	}
 	server := &Server{Config: c, Instance: instance, Store: s, Auth: a, MaxSampleAge: 24 * time.Hour, Now: time.Now, limits: map[string]limit{}, preauthSlots: make(chan struct{}, 16), slots: make(chan struct{}, 48), viewerSlots: make(chan struct{}, 16), inflight: map[string]int{}}
 	if _, e := rand.Read(server.ingressSalt[:]); e != nil {
@@ -243,6 +244,7 @@ func (s *Server) ReloadWith(c model.Config, a Auth, configure func()) {
 			ids = append(ids, o.ID)
 		}
 		s.Store.SetAllocation(ids, config.StorageWeights(c))
+		s.Store.SetExternalContext(c)
 		s.Store.SetCurrent(g.revision, g.contracts, config.Stale(c))
 	}
 	s.snapshotMu.Lock()

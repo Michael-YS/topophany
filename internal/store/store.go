@@ -64,7 +64,13 @@ type Options struct {
 	MaxJournalBytes int64 // adaptive checkpoint ceiling; bounds restart replay work
 	MaxStateBytes   int64
 	RollupBytes     int64
-	Now             func() time.Time
+	// Bindings and Sources describe external evidence admitted by this store.
+	// Direct collectors (local checks) and the API use the same merge. A
+	// store with no context refuses external observations instead of
+	// guessing a binding's age or subject.
+	Bindings map[string]model.ExternalBinding
+	Sources  map[string]model.Source
+	Now      func() time.Time
 }
 
 // receiptGrace is how long a receipt outlives the ingestion window.
@@ -100,6 +106,7 @@ type diskState struct {
 	FloorsAt map[string]time.Time       `json:"floors_at,omitempty"`
 	Rollups  *rollup.Store              `json:"rollups,omitempty"`
 	Carries  map[string]engine.Carry    `json:"carries,omitempty"`
+	External *model.ExternalState       `json:"external,omitempty"`
 }
 type envelope struct {
 	SHA256  string          `json:"sha256"`
@@ -146,6 +153,8 @@ type Store struct {
 	floorQueues     map[string]*floorQueue // by observer, its floors oldest first
 	rollups         *rollup.Store
 	settled         time.Time // when the rollups last settled
+	external        *model.ExternalState
+	externalBytes   int64
 
 	// Receipts in the order they were taken, from receiptHead on, so the
 	// expired ones are found at the front rather than by visiting them all;
@@ -178,7 +187,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes)}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes), external: model.NewExternalState()}
 	s.rollups.SetCurrent(s.currentKey)
 	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
@@ -247,7 +256,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 		if e = json.Unmarshal(payload, &batch); e != nil {
 			return nil, errors.New("invalid journal transaction")
 		}
-		if e = s.apply(batch, nil); e != nil {
+		if e = s.apply(batch, nil, nil); e != nil {
 			return nil, e
 		}
 		offset += int64(len(line))
@@ -440,6 +449,7 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	s.options.Revision = revision
 	s.options.Contracts = maps.Clone(contracts)
 	s.options.Stale = maps.Clone(stale)
+	s.pruneExternalLocked(s.options.Contracts)
 	rows := s.allRows()
 	oldTails := s.tails
 	s.tails = map[string][]model.Observation{}
@@ -564,11 +574,12 @@ func before(a, b model.Observation) bool {
 	}
 	return a.SampledAt.Before(b.SampledAt)
 }
-func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding) error {
+func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding, external *model.ExternalState) error {
 	s.version++
 	if len(b.Observations) > 0 {
 		s.evidenceVersion++
 	}
+	fresh := make([]model.Observation, 0, len(b.Observations))
 	for _, v := range b.Observations {
 		encoded, ok := prepared[v.ID]
 		if !ok {
@@ -588,6 +599,17 @@ func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding) error {
 		s.receive(v.ID, receipt{Hash: h, At: v.ReceivedAt, Observer: v.Observer})
 		s.addEncodedRow(v, &encoded)
 		s.roll(v)
+		fresh = append(fresh, v)
+	}
+	if external != nil {
+		raw, _ := json.Marshal(external)
+		s.installExternalLocked(external, int64(len(raw)))
+	} else if len(fresh) > 0 {
+		next, size, err := s.mergeExternalLocked(fresh)
+		if err != nil {
+			return err
+		}
+		s.installExternalLocked(next, size)
 	}
 	if b.Heartbeat != nil && s.advances(*b.Heartbeat, b.Project, b.Revision) {
 		h := *b.Heartbeat
@@ -618,16 +640,23 @@ func (s *Store) Put(b model.Batch) error {
 		return errors.New("transaction exceeds 1 MiB")
 	}
 	b = model.CloneBatch(b)
-	// Detachment and content hashing depend only on the caller's batch; keep
-	// their encoding work out of the lock shared by readers and other writers.
-	hashes := make([]digest, len(b.Observations))
-	for i, v := range b.Observations {
-		hashes[i] = observationHash(v)
-	}
 	s.commitMu.Lock()
 	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// External observations are normalized against the installed bindings
+	// before identity hashing. API and local collectors thus use the same
+	// admission shape, and an unnormalized direct writer cannot poison the
+	// persisted cursor.
+	for i := range b.Observations {
+		if e := s.admitExternalLocked(&b.Observations[i]); e != nil {
+			return e
+		}
+	}
+	hashes := make([]digest, len(b.Observations))
+	for i, v := range b.Observations {
+		hashes[i] = observationHash(v)
+	}
 	if s.bytes >= s.options.MaxJournalBytes {
 		s.waitDurable()
 	}
@@ -705,6 +734,17 @@ func (s *Store) Put(b model.Batch) error {
 	if err := s.checkScopeCapacity(b, sizes); err != nil {
 		return err
 	}
+	var externalNext *model.ExternalState
+	var externalSize int64
+	externalChanged := len(kept) > 0
+	if externalChanged {
+		next, size, e := s.mergeExternalLocked(kept)
+		if e != nil {
+			return e
+		}
+		externalNext, externalSize = next, size
+		projected += externalSize - s.externalBytes
+	}
 	if len(s.seen)+len(pending) > s.options.MaxReceipts || projected > s.options.MaxStateBytes {
 		return ErrCapacity
 	}
@@ -742,7 +782,10 @@ func (s *Store) Put(b model.Batch) error {
 		return s.poisoned
 	}
 	s.bytes += int64(n)
-	if e = s.apply(b, pending); e != nil {
+	if !externalChanged {
+		externalNext = nil
+	}
+	if e = s.apply(b, pending, externalNext); e != nil {
 		s.poisoned = e
 		return e
 	}
