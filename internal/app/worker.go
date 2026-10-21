@@ -30,9 +30,13 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	profileName := f.String("profile", "", "credential profile (default active)")
 	dir := f.String("data", "./worker-data", "exclusive durable outbox directory")
 	budget := f.Int64("outbox-bytes", 32<<20, "hard budget for pending observations; quarantine has its own, at least as large")
+	heartbeatInterval := f.Duration("heartbeat-interval", 15*time.Second, "idle heartbeat interval (1s..1m), capped at one third of observer stale_seconds")
 	workers := f.Int("concurrency", 4, "bounded probe concurrency (1..32)")
 	if e := parsed(f, args); e != nil {
 		return e
+	}
+	if *heartbeatInterval < time.Second || *heartbeatInterval > time.Minute {
+		return errors.New("heartbeat-interval must be 1s..1m")
 	}
 	stopMemory, e := memory.apply()
 	if e != nil {
@@ -90,6 +94,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	defer stopPanel()
 	// The checks under a topology; a reload replaces them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
+		d.SetHeartbeatInterval(idleHeartbeatInterval(c, *observer, *heartbeatInterval))
 		revision := config.Revision(c)
 		return runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
 			if panel != nil {
@@ -176,4 +181,15 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 			heartbeat()
 		}
 	}
+}
+
+// Preserve at least three opportunities to report liveness per stale window.
+// Delivery still wakes every two seconds to send new samples promptly.
+func idleHeartbeatInterval(c model.Config, observer string, requested time.Duration) time.Duration {
+	for _, o := range c.Observers {
+		if o.ID == observer {
+			return min(requested, time.Duration(o.StaleSeconds)*time.Second/3)
+		}
+	}
+	return requested
 }

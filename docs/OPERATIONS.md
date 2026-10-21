@@ -177,3 +177,7 @@ New observations with the same result still persist and count as monitoring
 evidence. Queue batching and checkpoint policy changes are intentionally deferred
 until these measurements justify them; acknowledgement remains after durable
 storage and reliable worker enqueue is unchanged.
+
+### Idle worker heartbeats
+
+`worker --heartbeat-interval` defaults to `15s` (allowed `1s`–`1m`). The worker caps it at one third of its observer's `stale_seconds`, recalculating on topology reload. Delivery continues every two seconds for queued samples; sample uploads always carry current liveness when their schema and revision permit it. Empty rounds send only when the idle deadline is due. A new boot, contracts digest, revision, or backward clock step sends liveness on the next eligible round. Retry backoff remains in force after transport failures. Storage backpressure still permits independent heartbeats, at the same idle cadence. Heartbeats never extend the validity of check measurements. Delivery telemetry may therefore update less often while idle.

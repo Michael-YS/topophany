@@ -28,12 +28,14 @@ type destination struct {
 	// that finds it invalid, as when the clocks disagree. The request goes
 	// again without it (probing) before any sample is blamed, and if that
 	// is accepted, heartbeats go without it until bareUntil.
-	probing              bool
-	bareUntil            time.Time
-	code                 string
-	diagnostic           string
-	lastAck, lastContact time.Time
-	quarantined          int64
+	probing                               bool
+	bareUntil                             time.Time
+	code                                  string
+	diagnostic                            string
+	lastAck, lastContact                  time.Time
+	lastBeat                              time.Time
+	beatRevision, beatBoot, beatContracts string
+	quarantined                           int64
 }
 
 // bareFor is how long heartbeats go without delivery telemetry once a
@@ -42,12 +44,13 @@ type destination struct {
 const bareFor = time.Hour
 
 type Delivery struct {
-	destinations []destination
-	Now          func() time.Time
-	Project      string
-	mu           sync.Mutex
-	reports      map[string]model.DeliveryStatus
-	revision     string // what the worker runs; a reload changes it mid-round
+	destinations      []destination
+	Now               func() time.Time
+	Project           string
+	mu                sync.Mutex
+	reports           map[string]model.DeliveryStatus
+	heartbeatInterval time.Duration
+	revision          string // what the worker runs; a reload changes it mid-round
 }
 type Result struct {
 	Code        string // stable diagnostic code for logs; retained during retry backoff
@@ -91,6 +94,28 @@ func (d *Delivery) SetRevision(revision string) {
 	defer d.mu.Unlock()
 	d.revision = revision
 }
+
+// SetHeartbeatInterval bounds idle heartbeat traffic independently of sample
+// delivery. Zero preserves a heartbeat on every round for embedded callers.
+func (d *Delivery) SetHeartbeatInterval(interval time.Duration) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.heartbeatInterval = max(interval, 0)
+}
+
+func (d *Delivery) beatDue(dest *destination, revision string, hb *model.Heartbeat, now time.Time) bool {
+	d.mu.Lock()
+	interval := d.heartbeatInterval
+	d.mu.Unlock()
+	return dest.lastBeat.IsZero() || now.Before(dest.lastBeat) || now.Sub(dest.lastBeat) >= interval ||
+		dest.beatRevision != revision || dest.beatBoot != hb.Boot || dest.beatContracts != hb.Contracts
+}
+
+func (d *Delivery) keptBeat(dest *destination, revision string, hb *model.Heartbeat) {
+	dest.lastBeat = d.Now()
+	dest.beatRevision, dest.beatBoot, dest.beatContracts = revision, hb.Boot, hb.Contracts
+}
+
 func (d *Delivery) currentRevision() string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -174,6 +199,9 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		dest.isolating = false
 		dest.separateBeat = false
 	}
+	if len(items) == 0 && hb != nil && !d.beatDue(dest, revision, hb, now) {
+		return
+	}
 	batch := model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: revision, Observations: []model.Observation{}}
 	ids := []string{}
 	if len(items) > 0 {
@@ -216,6 +244,9 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 	e := client.PostBatch(ctx, dest.http, dest.endpoint, batch)
 	if e == nil {
 		dest.lastContact = d.Now()
+		if batch.Heartbeat != nil {
+			d.keptBeat(dest, revision, batch.Heartbeat)
+		}
 		dest.code = ""
 		dest.diagnostic = ""
 	} else {
@@ -305,10 +336,14 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 // heartbeat consumes no pending item and never acknowledges observations.
 // It always describes the current worker, even while old samples wait.
 func (d *Delivery) heartbeat(ctx context.Context, dest *destination, revision string, hb *model.Heartbeat) error {
+	if !d.beatDue(dest, revision, hb, d.Now()) {
+		return nil
+	}
 	h := d.beat(dest, hb, d.Now())
 	err := client.PostBatch(ctx, dest.http, dest.endpoint, model.Batch{Schema: model.BatchSchema, Project: d.Project, Revision: revision, Heartbeat: &h})
 	if err == nil {
 		dest.lastContact = d.Now()
+		d.keptBeat(dest, revision, &h)
 	}
 	return err
 }

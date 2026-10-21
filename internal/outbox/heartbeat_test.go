@@ -2,6 +2,8 @@ package outbox
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
@@ -74,4 +76,60 @@ func TestStorageBackpressureDoesNotStopHeartbeats(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIdleCadenceKeepsSamplesPromptAndLivenessIndependent(t *testing.T) {
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		var b model.Batch
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			t.Error(err)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]any{"project": b.Project, "revision": b.Revision, "accepted": len(b.Observations)})
+	}))
+	defer srv.Close()
+	d, err := NewDelivery(client.Profile{Project: "lab", Servers: []client.Endpoint{{URL: srv.URL, Token: workerToken}}}, makeBatch(1).Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	d.SetHeartbeatInterval(15 * time.Second)
+	q := queue(t)
+	now := time.Now().UTC()
+	d.Now = func() time.Time { return now }
+	hb := &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: now}
+	round := func(want int64) {
+		t.Helper()
+		hb.SampledAt = now
+		if got := d.Tick(context.Background(), q, hb); got[0].Error != "" {
+			t.Fatal(got)
+		}
+		if got := calls.Load(); got != want {
+			t.Fatalf("requests=%d want %d", got, want)
+		}
+	}
+	round(1)
+	for range 7 {
+		now = now.Add(2 * time.Second)
+		round(1)
+	}
+	if err := q.Add(makeBatch(1), d.Recipients()); err != nil {
+		t.Fatal(err)
+	}
+	round(2) // A sample never waits for the idle heartbeat deadline.
+	now = now.Add(14 * time.Second)
+	round(2) // Piggybacked liveness restarts the idle deadline.
+	now = now.Add(time.Second)
+	round(3)
+	hb.Boot = "restarted"
+	round(4)
+	hb.Contracts = "changed"
+	round(5)
+	d.SetRevision("new revision")
+	round(6)
+	now = now.Add(-time.Minute)
+	round(7) // A clock rollback must not silence liveness until it catches up.
 }
