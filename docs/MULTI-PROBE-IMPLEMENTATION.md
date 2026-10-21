@@ -435,8 +435,8 @@ its existing worker budget.
 | 3 collector admission | `99c533c` | complete |
 | 4 persistence/dedup | `7820cda` | complete |
 | 5 report state/statistics | `b82f42d` | complete |
-| 6 source runtime | this commit | complete |
-| 7 unified resources | — | pending |
+| 6 source runtime | `1e24fa2` | complete |
+| 7 unified resources | this commit | complete |
 | 8 stream/bar | — | pending |
 | 9 end-to-end | — | pending |
 | 10 docs/full verification | — | pending |
@@ -537,6 +537,29 @@ Record only real changes to the frozen rules here, with the reason.
   external sources fails explicitly in worker/serve/once until the first
   adapter is statically registered. Synthetic test adapters are injected only
   by tests and never enter `ProductionSourceAdapters`.
+- Task 7 adds `view.SelectResources`, returning one ordered decision per node
+  with the selected report, source, upstream object, data/contact/view
+  deadlines, current flag and selection reason. TUI cards, CLI rows and the
+  monitor's server-card fleet consume `ResourceCards`, which is derived from
+  that selection. No caller re-filters by `kind == host` or `observer.Node`.
+- Native host observations are converted to the common `CardResource` shape
+  with the old fact keys, so existing cards, facts and thresholds keep their
+  behavior. When a node has only native host checks and no explicit
+  `resource_checks`, every host reading is still shown and the first current
+  one is selected; the selected reading is moved first.
+- External resource candidates use only the binding's declared
+  `primary_disk`. A missing disk leaves disk values unknown; no other volume
+  is substituted. Partial CPU/memory/disk fields are displayed independently
+  and never trigger a fallback by themselves. An ordered fallback is used only
+  when the primary report is absent/expired, and only one report is exposed in
+  `All` for explicit/external selection.
+- `ResourceOptions` maps external assertions to display limits without turning
+  a missing assertion field into a passing test. TUI's process row is omitted
+  for external reports, which carry no process inventory.
+- The monitor's generic root-disk reorder was removed: selection order is
+  authoritative. Task 8 will expose the optional source/object/time-basis
+  metadata in the stream JSON and refresh the frozen stream goldens for those
+  additive fields.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters

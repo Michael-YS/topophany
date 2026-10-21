@@ -130,7 +130,7 @@ func (m *Model) detailBody(r Row, w int) []vline {
 	// A node's local resources are drawn as charts in place of their lines.
 	var resources []view.CardResource
 	if r.Kind == "node" {
-		resources = m.view().HostResources()[r.ID]
+		resources = m.view().ResourceCards()[r.ID]
 	}
 	charted := false
 	for _, raw := range r.Details {
@@ -139,7 +139,7 @@ func (m *Model) detailBody(r Row, w int) []vline {
 			continue
 		}
 		charted = false
-		if len(resources) > 0 && strings.HasPrefix(l, "Local resources: ") {
+		if len(resources) > 0 && (strings.HasPrefix(l, "Local resources: ") || strings.HasPrefix(l, "Reported resources: ")) {
 			blank()
 			out = append(out, m.nodeResources(resources[0], w)...)
 			resources, charted = resources[1:], true

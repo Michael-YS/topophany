@@ -36,11 +36,7 @@ func metrics(h model.HostOptions) []metric {
 func (m *Model) hostCheck(id string) (model.Check, model.HostOptions) {
 	for _, x := range m.Snapshot.Topology.Checks {
 		if x.ID == id {
-			h := model.HostOptions{}
-			if x.Host != nil {
-				h = *x.Host
-			}
-			return x, h
+			return x, view.ResourceOptions(x)
 		}
 	}
 	return model.Check{ID: id, IntervalSeconds: 60}, model.HostOptions{}
@@ -119,11 +115,13 @@ func (m *Model) resourceRows(rs []view.CardResource, w int) []cardRow {
 			continue
 		}
 		rows = append(rows, panel...)
-		named, total := processes(r.Facts, h)
-		if named == nil {
-			named, total = []span{{total, fg(cMuted)}}, ""
+		if !r.External {
+			named, total := processes(r.Facts, h)
+			if named == nil {
+				named, total = []span{{total, fg(cMuted)}}, ""
+			}
+			rows = append(rows, cardRow{left: named, right: []span{{total, fg(cFaint)}}, hit: hit})
 		}
-		rows = append(rows, cardRow{left: named, right: []span{{total, fg(cFaint)}}, hit: hit})
 	}
 	return rows
 }
@@ -201,11 +199,15 @@ func (m *Model) lastRead(r view.CardResource) string {
 		at = s[len(s)-1].SampledAt
 	}
 	why := r.Freshness
-	switch {
-	case why == "fresh":
-		why = "no reading"
-	case why == "never" && !at.IsZero():
-		why = "stale"
+	if r.External && r.Reason != "" {
+		why = r.Reason
+	} else {
+		switch {
+		case why == "fresh":
+			why = "no reading"
+		case why == "never" && !at.IsZero():
+			why = "stale"
+		}
 	}
 	if at.IsZero() {
 		return why
@@ -306,7 +308,11 @@ func (m *Model) checkCharts(x model.Check, s view.Strip, entries []model.Observa
 // then the processes.
 func (m *Model) nodeResources(r view.CardResource, w int) []vline {
 	x, h := m.hostCheck(r.Check)
-	head := vline{{"LOCAL RESOURCES", fg(Mix(cAccent, cMuted, .35)).bold()}, {"  " + r.Observer.Name + " · " + r.Check, fg(cFaint)}}
+	title := "LOCAL RESOURCES"
+	if r.External {
+		title = "REPORTED RESOURCES"
+	}
+	head := vline{{title, fg(Mix(cAccent, cMuted, .35)).bold()}, {"  " + r.Observer.Name + " · " + r.Check, fg(cFaint)}}
 	out := []vline{head}
 	if r.Facts == nil {
 		out = append(out, vline{{m.lastRead(r), fg(cWarn)}})
@@ -323,6 +329,9 @@ func (m *Model) nodeResources(r view.CardResource, w int) []vline {
 	}
 	use = append(pad, use...)
 	out = append(out, m.resourceCharts(h, use, r.Facts, time.Duration(n*max(1, x.IntervalSeconds))*time.Second)...)
+	if r.External {
+		return out
+	}
 	return append(out, processLine(r.Facts, h))
 }
 

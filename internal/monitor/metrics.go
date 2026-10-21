@@ -3,7 +3,6 @@ package monitor
 import (
 	"fmt"
 	"math"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,13 +71,18 @@ type ApplicationValue struct {
 	Unmonitored int            `json:"unmonitored"`
 }
 type ResourceValue struct {
-	Check      string     `json:"check"`
-	Observer   string     `json:"observer"`
-	Health     string     `json:"health"`
-	Freshness  string     `json:"freshness"`
-	SampledAt  *time.Time `json:"sampled_at"`
-	ValidUntil *time.Time `json:"valid_until"`
-	CPU        struct {
+	Check           string     `json:"check"`
+	Observer        string     `json:"observer"`
+	Health          string     `json:"health"`
+	Freshness       string     `json:"freshness"`
+	SampledAt       *time.Time `json:"sampled_at"`
+	ValidUntil      *time.Time `json:"valid_until"`
+	Source          string     `json:"-"`
+	Object          string     `json:"-"`
+	TimeBasis       string     `json:"-"`
+	SelectionReason string     `json:"-"`
+	Selected        bool       `json:"-"`
+	CPU             struct {
 		Percent *float64 `json:"percent"`
 		Limit   *float64 `json:"limit"`
 		Logical *uint64  `json:"logical"`
@@ -339,7 +343,7 @@ func threshold(n float64) *float64 {
 	return &n
 }
 func resource(v view.View, r view.CardResource) ResourceValue {
-	out := ResourceValue{Check: r.Check, Observer: r.Observer.ID, Health: r.Health, Freshness: r.Freshness, SampledAt: stamp(r.SampledAt)}
+	out := ResourceValue{Check: r.Check, Observer: r.Observer.ID, Health: r.Health, Freshness: r.Freshness, SampledAt: stamp(r.SampledAt), Source: r.Source, Object: r.Object, TimeBasis: r.TimeBasis, SelectionReason: r.Reason, Selected: r.Selected}
 	var def model.Check
 	for _, c := range v.Snapshot.Topology.Checks {
 		if c.ID == r.Check {
@@ -347,22 +351,24 @@ func resource(v view.View, r view.CardResource) ResourceValue {
 			break
 		}
 	}
-	if !r.SampledAt.IsZero() {
+	if !r.ValidUntil.IsZero() {
+		out.ValidUntil = stamp(r.ValidUntil)
+	} else if !r.SampledAt.IsZero() {
 		out.ValidUntil = stamp(minTime(r.SampledAt.Add(time.Duration(def.StaleSeconds)*time.Second), v.Snapshot.GeneratedAt.Add(model.SnapshotLifetime)))
 	}
-	h := def.Host
-	if h == nil {
-		h = &model.HostOptions{}
+	h := view.ResourceOptions(def)
+	out.Disk.Path = r.DiskPath
+	if out.Disk.Path == "" {
+		out.Disk.Path = h.DiskPath
 	}
-	out.Disk.Path = h.DiskPath
 	if out.Disk.Path == "" {
 		out.Disk.Path = "/"
 	}
-	if h.ProcessName != "" {
+	if !r.External && h.ProcessName != "" {
 		out.Process = &ProcessValue{Name: h.ProcessName}
 	}
-	// Facts are the view's authority on readable, fresh local telemetry.
-	if r.Freshness != "fresh" || r.Facts == nil {
+	// Facts are the view's authority on readable, fresh resource telemetry.
+	if r.Freshness != "fresh" || r.Facts == nil || !r.Current {
 		return out
 	}
 	f := r.Facts
@@ -439,16 +445,8 @@ func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) 
 	for _, r := range card.Resources {
 		out.Resources = append(out.Resources, resource(v, r))
 	}
-	// A primary-root filesystem precedes additional volumes.
-	slices.SortStableFunc(out.Resources, func(a, b ResourceValue) int {
-		if (a.Disk.Path == "/") != (b.Disk.Path == "/") {
-			if a.Disk.Path == "/" {
-				return -1
-			}
-			return 1
-		}
-		return 0
-	})
+	// Selection order is authoritative: an explicit primary disk or source
+	// must not be reordered by a generic root-path preference.
 	sampled, until := p.evidence().times(ids, false)
 	for _, r := range out.Resources {
 		// Resource deadlines govern only their numeric payloads.

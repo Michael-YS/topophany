@@ -99,7 +99,7 @@ func newRowBuilder(v View, tab int) *rowBuilder {
 	nodeStates, endpointStates, linkStates := indexEntityStates(s.Nodes), indexEntityStates(s.Endpoints), indexEntityStates(s.Links)
 	resources := map[string][]CardResource{}
 	if tab == Servers || tab == Topology || tab == Overview {
-		resources = v.HostResources()
+		resources = v.ResourceCards()
 	}
 	opened := map[string]*model.IncidentRecord{}
 	for k, r := range s.Ledger {
@@ -181,7 +181,17 @@ func (rb *rowBuilder) nodeRow(n model.Node) Row {
 	}
 	details := []string{"", "Node identity: " + n.ID, "Group: " + n.Group, "Kind: " + n.Kind, "Provider: " + ProviderName(n.Provider), "Parent: " + n.Parent, place, "", n.Notes}
 	for _, r := range rb.resources[n.ID] {
-		details = append(details, "", "Local resources: "+r.Observer.Name+" · "+r.Health+" · "+r.Freshness, "Resource check: "+r.Check, "Sampled: "+Stamp(v.Now, r.SampledAt))
+		heading := "Local resources: "
+		if r.External {
+			heading = "Reported resources: "
+		}
+		details = append(details, "", heading+r.Observer.Name+" · "+r.Health+" · "+r.Freshness, "Resource check: "+r.Check, "Source: "+r.Source, "Sampled: "+Stamp(v.Now, r.SampledAt))
+		if !r.ValidUntil.IsZero() {
+			details = append(details, "Valid until: "+Stamp(v.Now, r.ValidUntil))
+		}
+		if r.Reason != "" {
+			details = append(details, "Selection: "+r.Reason)
+		}
 		for _, pair := range ResourceValues(r) {
 			details = append(details, pair[0]+": "+pair[1])
 		}

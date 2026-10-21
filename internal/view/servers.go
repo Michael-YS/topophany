@@ -241,7 +241,7 @@ func (v View) Fleet() *Fleet {
 	for at := range f.pops {
 		sort.Strings(f.pops[at])
 	}
-	f.resources = v.HostResources()
+	f.resources = v.ResourceCards()
 	return f
 }
 
