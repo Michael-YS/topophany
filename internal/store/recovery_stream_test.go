@@ -95,6 +95,34 @@ func TestStreamedRecoveryRefusesCorruptionBeforeJournalOpen(t *testing.T) {
 	}
 }
 
+func TestCorruptCheckpointLeavesExistingJournalUntouched(t *testing.T) {
+	dir := t.TempDir()
+	journal := []byte("{\"kept\":true}\nnot a record\n")
+	path := filepath.Join(dir, "journal.jsonl")
+	if err := os.WriteFile(path, journal, 0600); err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"sha256":"wrong","payload":{"schema":1,"seen":{},"beats":{}}}`)
+	if err := os.WriteFile(filepath.Join(dir, "checkpoint.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := Open(dir, Options{}); err == nil {
+		s.Close()
+		t.Fatal("corrupt checkpoint accepted")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, journal) {
+		t.Fatalf("journal changed: %q", got)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Size() != int64(len(journal)) {
+		t.Fatal(info, err)
+	}
+}
+
 func TestStreamedRecoveryCarriesPrecedeTailRebuilding(t *testing.T) {
 	c, _ := flappingConfig()
 	now := time.Now().UTC()
