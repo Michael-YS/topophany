@@ -35,7 +35,13 @@ func (p *Plan) currentExternal(x model.Check, ext *model.ExternalState, now time
 	if ss, ok := ext.Sources[state.Source]; ok {
 		view.SourceState = externalSourceView(ss)
 	}
-	view.Report = state.Last
+	if state.Last != nil {
+		// A snapshot is a public, mutable value. Prepared's external state is
+		// the reusable cache, so the projection must own its report rather
+		// than hand out a pointer into that cache.
+		report := model.CloneExternalReport(*state.Last)
+		view.Report = &report
+	}
 	view.Stats = externalStats(state)
 	view.TimeBasis = state.Cursor.TimeBasis
 	if state.Last != nil {

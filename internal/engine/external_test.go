@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -187,5 +188,96 @@ func TestUpstreamLatencyIsNotCollectionDuration(t *testing.T) {
 	}
 	if e.Stats.Samples != 1 || e.Stats.StatusSamples != 1 {
 		t.Fatalf("status sample stats = %+v", e.Stats)
+	}
+}
+
+func richResourceReport(at time.Time) model.ExternalReport {
+	cpu, memory, disk := 25.0, 50.0, 20.0
+	total, used := uint64(1024), uint64(512)
+	diskTotal, diskUsed := uint64(4096), uint64(1024)
+	sequence := uint64(7)
+	return model.ExternalReport{
+		ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/dmit", SampleID: "rich-1", Epoch: "boot-a", Sequence: &sequence, ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample, Fields: map[string]string{"cpu.percent": model.FieldKnown, "disk.root.percent": model.FieldKnown}},
+		Resource: &model.ResourceReport{
+			CPU:    &model.CPUReport{Percent: &cpu, Basis: "guest_cpu"},
+			Memory: &model.MemoryReport{TotalBytes: &total, UsedBytes: &used, Percent: &memory, Basis: "available"},
+			Disks:  []model.DiskReport{{ID: "root", Path: "/", TotalBytes: &diskTotal, UsedBytes: &diskUsed, Percent: &disk, Basis: "free"}},
+		},
+	}
+}
+
+func TestExternalSnapshotOwnsEveryMutableReportMember(t *testing.T) {
+	c := externalEngineConfig(t, model.ReportTypeResource, nil)
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	at := now.Add(-10 * time.Second)
+	ext := externalState(t, c, at, richResourceReport(at), at)
+	prepared := NewPlan(c).PrepareExternal(nil, nil, map[string]model.Heartbeat{}, ext)
+
+	first := prepared.Build("test", "", now)
+	if len(first.External) != 1 || first.External[0].Report == nil {
+		t.Fatalf("first snapshot = %+v", first.External)
+	}
+	report := first.External[0].Report
+	*report.Resource.CPU.Percent = 99
+	report.Resource.CPU.Basis = "mutated"
+	*report.Resource.Memory.UsedBytes = 1
+	*report.Resource.Memory.Percent = 99
+	*report.Resource.Disks[0].Percent = 99
+	report.Resource.Disks[0].Path = "/mutated"
+	report.Fields["cpu.percent"] = model.FieldMissing
+	*report.Sequence = 42
+	*report.Resource.Memory.TotalBytes = 1
+	*report.Resource.Disks[0].TotalBytes = 1
+
+	second := prepared.Build("test", "", now)
+	secondReport := second.External[0].Report
+	if *secondReport.Resource.CPU.Percent != 25 || secondReport.Resource.CPU.Basis != "guest_cpu" {
+		t.Fatalf("CPU alias = %+v", secondReport.Resource.CPU)
+	}
+	if *secondReport.Resource.Memory.UsedBytes != 512 || *secondReport.Resource.Memory.Percent != 50 || secondReport.Fields["cpu.percent"] != model.FieldKnown {
+		t.Fatalf("memory/fields alias = %+v %+v", secondReport.Resource.Memory, secondReport.Fields)
+	}
+	if secondReport.Resource.Disks[0].Path != "/" || *secondReport.Resource.Disks[0].Percent != 20 {
+		t.Fatalf("disk alias = %+v", secondReport.Resource.Disks[0])
+	}
+	if secondReport.Sequence == nil || *secondReport.Sequence != 7 {
+		t.Fatalf("sequence alias = %+v", secondReport.Sequence)
+	}
+	if persisted := ext.Bindings["external-check"].Last; persisted == nil || *persisted.Resource.CPU.Percent != 25 || persisted.Resource.Disks[0].Path != "/" {
+		t.Fatalf("persisted state was mutated through a snapshot: %+v", persisted)
+	}
+
+	// Heartbeat refreshes clone the prepared external state rather than
+	// dropping ownership at a second boundary.
+	refreshed := prepared.WithHeartbeats(nil)
+	third := refreshed.Build("test", "", now)
+	third.External[0].Report.Resource.Disks[0].ID = "changed"
+	if got := refreshed.Build("test", "", now).External[0].Report.Resource.Disks[0].ID; got != "root" {
+		t.Fatalf("heartbeat snapshot aliased its cache: %q", got)
+	}
+}
+
+func TestExternalSnapshotBuildConcurrentMutation(t *testing.T) {
+	c := externalEngineConfig(t, model.ReportTypeResource, nil)
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	at := now.Add(-10 * time.Second)
+	ext := externalState(t, c, at, richResourceReport(at), at)
+	prepared := NewPlan(c).PrepareExternal(nil, nil, map[string]model.Heartbeat{}, ext)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				snap := prepared.Build("test", "", now)
+				*snap.External[0].Report.Resource.CPU.Percent = 99
+				snap.External[0].Report.Fields["cpu.percent"] = model.FieldMissing
+			}
+		}()
+	}
+	wg.Wait()
+	final := prepared.Build("test", "", now)
+	if *final.External[0].Report.Resource.CPU.Percent != 25 || final.External[0].Report.Fields["cpu.percent"] != model.FieldKnown {
+		t.Fatalf("concurrent snapshot mutation corrupted the cache: %+v", final.External[0].Report)
 	}
 }
