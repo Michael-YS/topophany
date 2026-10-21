@@ -182,25 +182,40 @@ Numbers are stable references used by the regression cases in
 
 ## Verification record
 
-Baseline focused tests on `28c3f70` passed, while the reviewer's overlay tests
-failed for R1-R11 and the README check failed for R12. After the fixes:
+The follow-up review of `4fd2136` invalidated its all-passed claim: automatic
+checkpoints omitted external state, migration could race a background
+checkpoint, unchanged thresholds could alter confirmation, API/store clocks
+diverged on rollback, and the new startup test had a diagnostic-buffer race.
+The previously referenced `.verify-build/verification/summary.json` described
+`279b74a`, not that hardening commit, and is not evidence for this delivery.
+
+The complete verification below ran against clean code commit `dc8cbd9349a5c32445fb0fd3492374299c44eb07`,
+using `go version go1.26.10 darwin/arm64`. Its before/after source fingerprints match.
+The subsequent documentation-only update is checked separately by the Python
+documentation/source-boundary tests; it does not change the tested Go code.
 
 | Check | Result |
 | --- | --- |
-| `gofmt -l cmd internal` | empty (all formatted) |
-| `go vet ./...` | pass |
-| `go test ./...` | pass, all packages |
-| `go test -race -count=1 -timeout=15m ./...` | pass, exit 0 (all packages) |
-| `python3 scripts/test_readme.py` | 3 tests pass |
-| `python3 -m unittest discover -s scripts -p 'test_*.py'` | 58 tests pass |
-| `go test ./internal/report -run '^$' -fuzz=FuzzNormalize -fuzztime=10s` | pass, 4,441,754 executions, no panic |
-| `go test ./internal/store -run 'TestOldBinaryRefusesNewExternalData|TestExternalFormatBarrierFailureLeavesNoAck|TestLegacyExternalJournalUpgradesBeforeNextAck'` | pass; the old reader is built from git commit `74db358` |
-| `make site` | regenerated six generated pages; binaries remain ignored |
-| `python3 scripts/verify.py` | pass on this commit; detailed ignored build output is `.verify-build/verification/summary.json` |
+| `python3 scripts/verify.py --output .verify-build/multi-probe-followup-final` | pass; `53` commands, no quality-gate failures |
+| Format, module integrity and `go vet ./...` | pass |
+| Full Go tests with coverage | 3796 passing test events, 0 failures, 6 skips; 86.2% statement coverage |
+| `go test -race -count=1 -timeout=15m ./...` | pass |
+| `go test -count=3 -timeout=10m ./...` | pass |
+| Python source/documentation tests | 58 tests pass |
+| Bounded fuzz suites | 17 targets pass at 25000 executions per target, including `FuzzNormalize` |
+| Native and linux/darwin/windows amd64/arm64 builds | pass; cross-builds are compilation checks, not deployment tests |
+| Actual `74db358` downgrade reader | pass, including after automatic checkpoint installation |
+| `make site`, `make site-check` | pass; browser assets rebuilt, no tracked site changes |
+
+The authoritative detailed results are the ignored
+`.verify-build/multi-probe-followup-final/summary.json`, `results.json` and
+per-command logs. Linux-only process/privilege checks remain skipped on this
+macOS host; no production endpoint or credential was exercised.
 
 ### Performance comparison
 
-Same local machine (Apple M6, arm64, Go 1.26.10), `-benchmem -count=1`.
+The original hardening measurements are retained for comparison. Same local
+machine (Apple M6, arm64, Go 1.26.10), `-benchmem -count=1`.
 Timings include local filesystem fsync for `Store.Put`; they are comparative,
 not a portable gate.
 
@@ -214,6 +229,17 @@ not a portable gate.
 B/op is allocated bytes per operation, not resident memory. The remaining
 external-merge growth with binding count is the top-level map copy; it no
 longer copies each binding's bounded Seen history.
+
+### Follow-up performance
+
+The validated review fixture, with CPU/memory/disk fields and 512 nodes, was
+rerun with `-benchmem -benchtime=500ms -count=3 -cpu=1`. The median 128-row
+frame was 1.28 ms and 3,789,124 B/op, below the 16 MiB engineering target;
+these are allocated bytes, not RSS. Final-code store benchmarks at 0/512
+bindings retained 31 allocations per native write and approximately 8–11 KB/op,
+including journal fsync (median 2.66/2.88 ms). The earlier follow-up scaling run
+at 128 bindings showed the same bounded allocation behavior. The bounded
+external top-level map copy remains. Timing is machine/filesystem dependent.
 
 ### Security, upgrade and rollback
 
@@ -251,13 +277,25 @@ longer copies each binding's bounded Seen history.
 - `scripts/verify.py` runs loopback-only acceptance; production monitoring and
   deployment were not accessed.
 
+### Follow-up audit fixes
+
+| Issue | Fix and repository regression | Commit |
+| --- | --- | --- |
+| Automatic checkpoint lost state/format | Capture an owned external state and format; `TestAutomaticCheckpointPreservesExternalStateAndFormat`, `TestExternalBackgroundCheckpointPreservesConcurrentTail`, old-reader automatic checkpoint case | `bfa8c92` |
+| First external write raced an older checkpoint | Wait before preparing/admitting the transaction; `TestExternalMigrationWaitsForNativeBackgroundCheckpoint` | `0d5f12b` |
+| Duplicate/restart cleared confirmed policy after a gap | Rejudge only changed effective thresholds; `TestRejectedReportsPreserveConfirmedPolicyAfterGap`, `TestPolicyConfirmationSurvivesRestartAndUnchangedRules` | `98313c2` |
+| API/local rollback windows diverged | Share the collector clock under the store lock; `TestExternalAPIAndStoreShareRollbackClock`, `TestLocalExternalAdmissionAdvancesDuringRollback` | `cfcad5c` |
+| Startup regression used a racy log buffer | Use synchronized diagnostic writers; existing production-startup test passed five race-instrumented repetitions | `763934d` |
+| Wall-clock comparisons could use monotonic annotations | Store the wall bound as UTC and use ticks only for elapsed time; `TestClockRollbackAdvancesWithoutDoubleCounting` | `dc8cbd9` |
+
 ### Merge readiness
 
-The ten reproduced code failures and the README failure now have repository
-regressions. The remaining limits above are documented constraints; they do
-not block merging the hardening branch. The final `scripts/verify.py` run is
-required to be green on the committed tree before merge; it is recorded in
-the ignored `.verify-build/verification/` directory and summarized here.
+The full suite on `dc8cbd9` passed, including the previously failing race
+test and the new lifecycle regressions. The five follow-up review reproductions
+also pass. The deliberately unsupported production-vendor and platform ranges
+above remain unchanged. Future changes require verification against their own
+source revision; the older generic verification directory must not be reused
+as evidence for this branch.
 
 ## Commit log
 
@@ -277,6 +315,6 @@ the ignored `.verify-build/verification/` directory and summarized here.
 | 10a | `5f8b5dd` | External state charged to observer quotas |
 | 11 | `e0c4f6c` | Per-frame resource selection cache |
 | 12 | `e86d22a` | Scenarios, replay idempotence and multi-report identity |
-| 13 | _this commit_ | README links, records and generated site |
+| 13 | `4fd2136` | README links and initial records; verification superseded above |
 | 14 | `74afa41` | Collector clock step-back during a source read |
 | 15 | `b1113b6` | Remove unreachable epoch revival helper |

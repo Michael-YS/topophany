@@ -444,28 +444,23 @@ its existing worker budget.
 | 7 unified resources | `aaada89` | complete |
 | 8 stream/bar | `2334732` | complete |
 | 9 end-to-end | `8a434ee` | complete |
-| 10 docs/full verification | this commit | complete |
+| 10 docs/full verification | `28c3f70` | verification superseded by section 12 |
 
 ## 12. Verification record
 
-All checks were run on 2026-10-21 from the branch worktree after the code and
-generated-site changes were present.
+The implementation-stage all-passed claim was superseded by two reviews. The
+first found admission, recovery, identity and performance defects; the second
+found automatic-checkpoint and migration gaps, confirmation changes on replay,
+clock-window divergence and a race in the startup test. These failures and
+their repository regressions are recorded in
+[the remediation record](MULTI-PROBE-REMEDIATION.md#follow-up-audit-fixes).
 
-| Check | Result |
-|---|---|
-| `gofmt -l .` / `make fmt-check` | clean |
-| `go vet ./...` | pass |
-| `go test -race -count=1 ./...` | pass (all packages, including integration, probe and stream) |
-| `python3 scripts/verify.py` | pass: 3682 passed, 0 failed, 6 skipped, 86.2% coverage; all fuzz targets at 25,000 executions; native and linux/darwin/windows cross-builds passed |
-| `make site` | regenerated six live/demo pages and the WASM assets; committed with this task |
-| `make site-check` | repeated after the generated-site commit |
-| `go run ./cmd/topo validate --config examples/multi-probe.template.json` | valid: 2 checks, 2 nodes |
-| adjacent `topophany-bar` | read-only review only; its `swift test` build is blocked by the pre-existing non-executable `xcstringstool` helper. No bar file was modified. |
-
-The integration test package itself completed in 5.4 seconds before the race
-run and 8.6 seconds under `-race`; the full repository verification is the
-authority. Benchmarks and their measured values are recorded in
-[SCENARIOS.md](SCENARIOS.md).
+The complete follow-up suite passed against clean code commit `dc8cbd9349a5c32445fb0fd3492374299c44eb07`.
+See [the verification record](MULTI-PROBE-REMEDIATION.md#verification-record)
+for commands, source identity, results, performance measurements and skipped
+platform ranges. Its artifact directory is
+`.verify-build/multi-probe-followup-final/`; the old
+`.verify-build/verification/` report describes a different commit.
 
 ## 13. Adjustments and limitations
 
@@ -734,8 +729,8 @@ registered in this delivery.
 | 10a observer quota accounting | `5f8b5dd` | complete |
 | 11 per-frame resource selection | `e0c4f6c` | complete |
 | 12 regression/scenario maintenance | `e86d22a` | complete |
-| 13 docs/final verification | _this commit_ | complete |
+| 13 docs/final verification | `4fd2136` | verification superseded by section 12 |
 
-The verification record for this branch is in section 12 of
-MULTI-PROBE-REMEDIATION.md; it replaces the pre-review "all passed" statement
-with the exact commands, results and unverified ranges.
+The [verification record](MULTI-PROBE-REMEDIATION.md#verification-record)
+replaces the pre-review all-passed statements with the tested source revision,
+commands, results and unverified ranges.
