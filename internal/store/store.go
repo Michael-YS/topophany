@@ -156,6 +156,12 @@ type Store struct {
 	settled         time.Time // when the rollups last settled
 	external        *model.ExternalState
 	externalBytes   int64
+	// format is the durable checkpoint schema. It is monotonic: once external
+	// data has been committed the store keeps writing schema 2 even after its
+	// external state is removed, so an older binary cannot reopen and silently
+	// rewrite the directory with its narrower model.
+	format      int
+	sawExternal bool
 	// admissionHigh is the wall-clock high-water mark used for live external
 	// admission. A collector step-back must not make a previously valid
 	// attempt look like it came from the future.
@@ -192,7 +198,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes), external: model.NewExternalState()}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes), external: model.NewExternalState(), format: 1}
 	s.rollups.SetCurrent(s.currentKey)
 	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
@@ -278,6 +284,15 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if s.options.Contracts != nil {
 		s.pruneExternalLocked(s.options.Contracts)
 		s.applyExternalRulesLocked()
+	}
+	// Data written before the barrier existed is upgraded now, before the
+	// store can accept another record. The checkpoint is installed through the
+	// same atomic write/fsync path as every other checkpoint.
+	if s.sawExternal && s.format < 2 {
+		s.format = 2
+		if e := s.checkpoint(); e != nil {
+			return nil, fmt.Errorf("external checkpoint format upgrade: %w", e)
+		}
 	}
 	return s, nil
 }
@@ -594,6 +609,12 @@ func before(a, b model.Observation) bool {
 	return a.SampledAt.Before(b.SampledAt)
 }
 func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding, external *model.ExternalState) error {
+	for i := range b.Observations {
+		if b.Observations[i].External != nil {
+			s.sawExternal = true
+			break
+		}
+	}
 	s.version++
 	if len(b.Observations) > 0 {
 		s.evidenceVersion++
@@ -739,6 +760,17 @@ func (s *Store) Put(b model.Batch) error {
 	if b.Heartbeat != nil {
 		b.Heartbeat.ReceivedAt = now
 	}
+	// No external record may enter the journal before a checkpoint schema an
+	// older binary refuses to read is durable. The existing checkpoint path
+	// performs the atomic replacement, file sync and directory sync; a failure
+	// leaves the transaction unacknowledged and requires restart.
+	if hasExternalObservation(kept) && s.format < 2 {
+		s.format = 2
+		if e := s.checkpoint(); e != nil {
+			s.poisoned = fmt.Errorf("external checkpoint format barrier: %w", e)
+			return s.poisoned
+		}
+	}
 	// Bound bytes as well as row counts. Otherwise valid large facts can
 	// create a checkpoint larger than the restart decoder can ever read.
 	projected := s.stateBytes
@@ -821,6 +853,15 @@ func (s *Store) Put(b model.Batch) error {
 	}
 	return nil
 }
+func hasExternalObservation(observations []model.Observation) bool {
+	for i := range observations {
+		if observations[i].External != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) prune() {
 	s.advanceRecent(s.options.Now())
 	cutoff := s.options.Now().Add(-s.options.Retention)

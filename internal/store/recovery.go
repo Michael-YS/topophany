@@ -175,6 +175,7 @@ func (s *Store) readCheckpointState(d *json.Decoder) error {
 	if schema != 1 && schema != 2 || !fields["seen"] || !fields["beats"] || s.beats == nil {
 		return errors.New("invalid checkpoint state")
 	}
+	s.format = schema
 	if schema == 1 && fields["external"] {
 		return errors.New("checkpoint schema 1 cannot carry external state")
 	}

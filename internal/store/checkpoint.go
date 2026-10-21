@@ -18,7 +18,7 @@ import (
 // and generated several simultaneous copies of the checkpoint.
 func (s *Store) writeCheckpoint(path string) error {
 	var size int64
-	err := secure.AtomicWriteStreamMeasured(path, 0600, &ioaccount.Checkpoint, func(f io.WriteSeeker) error {
+	err := installCheckpoint(path, func(f io.WriteSeeker) error {
 		const prefix = `{"sha256":"`
 		if _, err := io.WriteString(f, prefix+string(makeChecksumPlaceholder())+`","payload":`); err != nil {
 			return err
@@ -27,8 +27,9 @@ func (s *Store) writeCheckpoint(path string) error {
 		w := bufio.NewWriterSize(io.MultiWriter(f, h), 64<<10)
 		out := checkpointJSON{w: w, left: (256 << 20) - int64(len(prefix)+64+len(`","payload":`)+1)}
 		schema := 1
-		if s.external != nil && (len(s.external.Sources) > 0 || len(s.external.Bindings) > 0) {
+		if s.format >= 2 || s.external != nil && (len(s.external.Sources) > 0 || len(s.external.Bindings) > 0) {
 			schema = 2
+			s.format = 2
 		}
 		out.text(`{"schema":` + strconv.Itoa(schema) + `,"rows":[`)
 		// Raw history is already unique. Only tails that outlive it need deduping.
@@ -101,6 +102,12 @@ func (s *Store) writeCheckpoint(path string) error {
 		s.checkpointSize = size
 	}
 	return err
+}
+
+// installCheckpoint is the one durable checkpoint installer. Tests replace it
+// to prove that a failed barrier leaves no acknowledged external record.
+var installCheckpoint = func(path string, write func(io.WriteSeeker) error) error {
+	return secure.AtomicWriteStreamMeasured(path, 0600, &ioaccount.Checkpoint, write)
 }
 
 // Rewriting a large checkpoint for every small journal wastes I/O. Let the
