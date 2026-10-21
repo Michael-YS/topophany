@@ -12,10 +12,8 @@ func (q *Queue) deliveryStats(recipient string) (int, int64, int64) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	n := 0
-	for _, item := range q.items {
-		if slices.Contains(item.Pending, recipient) {
-			n++
-		}
+	if p := q.pending[recipient]; p != nil {
+		n = p.Len()
 	}
 	return n, q.recipientBytes[recipient], q.quarantineUsed
 }

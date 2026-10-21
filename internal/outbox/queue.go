@@ -3,6 +3,7 @@
 package outbox
 
 import (
+	"container/heap"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +44,7 @@ type Queue struct {
 	used           int64
 	quarantineUsed int64
 	items          map[string]Item
+	pending        map[string]*pendingIndex
 	itemSizes      map[string]int64
 	recipientBytes map[string]int64
 	unlock         func() error
@@ -67,7 +69,7 @@ func Open(dir, project string, maxBytes int64) (*Queue, error) {
 	if e != nil {
 		return nil, e
 	}
-	q := &Queue{dir: dir, project: project, max: maxBytes, items: map[string]Item{}, itemSizes: map[string]int64{}, recipientBytes: map[string]int64{}, unlock: unlock}
+	q := &Queue{dir: dir, project: project, max: maxBytes, items: map[string]Item{}, pending: map[string]*pendingIndex{}, itemSizes: map[string]int64{}, recipientBytes: map[string]int64{}, unlock: unlock}
 	ok := false
 	defer func() {
 		if !ok {
@@ -171,9 +173,15 @@ func (q *Queue) account(v Item, size int64) {
 	old := q.items[v.ID]
 	for _, r := range old.Pending {
 		q.recipientBytes[r] -= q.itemSizes[v.ID]
+		if !slices.Contains(v.Pending, r) {
+			q.indexRecipient(r, old, false)
+		}
 	}
 	for _, r := range v.Pending {
 		q.recipientBytes[r] += size
+		if !slices.Contains(old.Pending, r) {
+			q.indexRecipient(r, v, true)
+		}
 	}
 	q.items[v.ID], q.itemSizes[v.ID] = v, size
 }
@@ -240,9 +248,8 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 }
 
 // Pending is the earliest sampled items still owed to recipient, at most
-// limit of them (all when limit is not positive). It keeps the earliest as
-// it finds them rather than sorting the whole backlog, which a long outage
-// can make tens of thousands of items, every round.
+// limit of them (all when limit is not positive). Per-recipient ordered indexes
+// bound each round's work to the selected items rather than the whole backlog.
 func (q *Queue) Pending(recipient string, limit int) []Item {
 	return q.PendingBytes(recipient, limit, 0)
 }
@@ -254,30 +261,24 @@ func (q *Queue) PendingBytes(recipient string, limit int, maxBytes int64) []Item
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	out := []Item{}
-	for _, v := range q.items {
-		switch {
-		case !slices.Contains(v.Pending, recipient):
-		case limit <= 0:
-			out = append(out, v)
-		case len(out) < limit || pendingOrder(v, out[limit-1]) < 0:
-			i, _ := slices.BinarySearchFunc(out, v, pendingOrder)
-			out = slices.Insert(out, i, v)
-			out = out[:min(len(out), limit)]
-		}
+	p := q.pending[recipient]
+	if p == nil {
+		return out
 	}
-	if limit <= 0 {
-		slices.SortFunc(out, pendingOrder)
-	}
-	if maxBytes > 0 {
-		var size int64
-		for i, item := range out {
-			n := q.itemSizes[item.ID]
-			if i > 0 && size+n > maxBytes {
-				out = out[:i]
-				break
-			}
-			size += n
+	var size int64
+	entries := []pendingEntry{}
+	for p.Len() > 0 && (limit <= 0 || len(out) < limit) {
+		entry := p.entries[0]
+		n := q.itemSizes[entry.id]
+		if maxBytes > 0 && len(out) > 0 && size+n > maxBytes {
+			break
 		}
+		entries = append(entries, heap.Pop(p).(pendingEntry))
+		out = append(out, q.items[entry.id])
+		size += n
+	}
+	for _, entry := range entries {
+		heap.Push(p, entry)
 	}
 	for i := range out {
 		out[i].Batch = model.CloneBatch(out[i].Batch)
@@ -286,30 +287,37 @@ func (q *Queue) PendingBytes(recipient string, limit int, maxBytes int64) []Item
 	return out
 }
 
-// pendingOrder orders items by when their first sample was taken, then by ID.
-func pendingOrder(a, b Item) int {
-	if c := a.Batch.Observations[0].SampledAt.Compare(b.Batch.Observations[0].SampledAt); c != 0 {
-		return c
-	}
-	return strings.Compare(a.ID, b.ID)
-}
-func (q *Queue) Ack(ids []string, recipient string) error {
+func (q *Queue) Ack(ids []string, recipient string) (err error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.closed {
 		return errors.New("outbox closed")
 	}
+	removed := false
+	defer func() { err = q.syncRemoved(removed, err) }()
 	for _, id := range ids {
-		if e := q.ack(id, recipient); e != nil {
+		deleted, e := q.ack(id, recipient)
+		removed = removed || deleted
+		if e != nil {
 			return e
 		}
 	}
 	return nil
 }
-func (q *Queue) ack(id, recipient string) error {
+
+// Sync even after a later deletion fails. A sync failure can replay already
+// acknowledged samples after restart; collector deduplication makes that safe.
+func (q *Queue) syncRemoved(removed bool, err error) error {
+	if removed {
+		return errors.Join(err, secure.SyncDir(filepath.Join(q.dir, "pending")))
+	}
+	return err
+}
+
+func (q *Queue) ack(id, recipient string) (bool, error) {
 	v, ok := q.items[id]
 	if !ok {
-		return nil
+		return false, nil
 	}
 	pending := []string{}
 	found := false
@@ -321,26 +329,26 @@ func (q *Queue) ack(id, recipient string) error {
 		}
 	}
 	if !found {
-		return nil
+		return false, nil
 	}
 	v.Pending = pending
 	if len(pending) == 0 {
 		st, e := queueStat(q.file(id))
 		if e != nil {
-			return e
+			return false, e
 		}
 		if e = queueRemove(q.file(id)); e != nil {
-			return e
+			return false, e
 		}
 		q.used -= st.Size()
 		q.account(Item{ID: id}, 0)
 		delete(q.items, id)
 		delete(q.itemSizes, id)
-		return secure.SyncDir(filepath.Join(q.dir, "pending"))
+		return true, nil
 	}
-	return q.write(v)
+	return false, q.write(v)
 }
-func (q *Queue) Quarantine(ids []string, recipient, reason string) error {
+func (q *Queue) Quarantine(ids []string, recipient, reason string) (err error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.closed {
@@ -349,6 +357,8 @@ func (q *Queue) Quarantine(ids []string, recipient, reason string) error {
 	if len(recipient) != 16 || strings.Trim(recipient, "0123456789abcdef") != "" {
 		return errors.New("invalid quarantine recipient")
 	}
+	removed := false
+	defer func() { err = q.syncRemoved(removed, err) }()
 	reason = secure.Text(reason)
 	if len(reason) > 256 {
 		reason = reason[:256]
@@ -379,7 +389,9 @@ func (q *Queue) Quarantine(ids []string, recipient, reason string) error {
 		}
 		q.used = q.used - old + int64(len(b))
 		q.quarantineUsed += int64(len(b)) - old
-		if e = q.ack(id, recipient); e != nil {
+		deleted, e := q.ack(id, recipient)
+		removed = removed || deleted
+		if e != nil {
 			return e
 		}
 	}
