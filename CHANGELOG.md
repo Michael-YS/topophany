@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-21
+
+This patch reduces collector and worker CPU, memory, snapshot traffic and disk
+synchronization overhead. See the [release notes](docs/releases/v1.4.1.md) for
+upgrade considerations and the [operations guide](docs/OPERATIONS.md) for tuning.
+
+### Changed
+
+- Reuse folded check evidence across collector snapshots, incident reads and
+  monitor panels, including heartbeat-only updates. Each read still evaluates
+  freshness and observer liveness at its own time; one-shot and worker-local
+  views avoid preparing an unused cache.
+- Negotiate gzip snapshots on demand, retain useful encodings within the existing
+  cache budget, and bound native clients' compressed and decoded input. Viewers
+  cache a validated public topology per collector and request only dynamic state
+  while its revision matches; older peers continue to exchange full snapshots.
+  Snapshot encodings are validated once per capture, and availability history is
+  loaded only for checks included in the requested view.
+- Maintain store usage and byte counters incrementally. Automatic checkpoints
+  adapt to the previous checkpoint's size between `--checkpoint-bytes` (default
+  16 MiB) and `--max-journal-bytes` (default 128 MiB), then stream a detached
+  capture in the background while ingestion continues in the live journal.
+  Publication preserves the journal suffix and crash replay; explicit checkpoints
+  and shutdown wait for durability, and persistence failures stop further writes.
+- Keep worker outbox payloads on disk and load byte-bounded delivery batches from
+  bounded recipient indexes. `--outbox-records` defaults to 20,000 and independently
+  limits pending records; a queue already above the configured limit is refused
+  at startup without deleting data.
+- Batch durable outbox cleanup and journal partial recipient acknowledgements in
+  `acks.jsonl`, reducing file rewrites and synchronization while preserving
+  independent recipients and at-least-once delivery. Keep the ACK journal with
+  the outbox during backups and moves.
+- Pace idle worker heartbeats with `--heartbeat-interval` (default 15 seconds,
+  capped at one third of the observer's freshness window). Queued delivery keeps
+  its two-second polling cadence; successful backfill continues within bounded,
+  paced bursts of up to four requests. Errors and throttling retain retry backoff.
+- Refresh browser artifact cache versions for the updated source and toolchain.
+
+### Fixed
+
+- Refresh cached snapshot captures after a backward clock step so future samples
+  and heartbeats are not kept active by a stale capture; reuse gzip buffers.
+- Detach batches, diagnostics and mutable snapshot data with explicit deep copies
+  so returned values cannot mutate cached evidence or another recipient's data.
+- Make private-route probe assertions collision-safe and account for Windows'
+  directory synchronization behavior in outbox regression tests.
+
+### Security
+
+- Require Go 1.26.10 for source builds and run `govulncheck` in the release
+  workflow before building or publishing archives.
+
 ## [1.4.0] - 2026-10-20
 
 This release adds deeper Cloudflare support across HTTP evidence, Tunnel
@@ -1640,7 +1692,9 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/WhitenWhiten/topophany/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/WhitenWhiten/topophany/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/WhitenWhiten/topophany/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/WhitenWhiten/topophany/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/WhitenWhiten/topophany/compare/v1.1.0...v1.1.1
