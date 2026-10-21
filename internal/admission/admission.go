@@ -82,10 +82,15 @@ func External(v model.Observation, x model.Check, s model.Source, w Window) (*mo
 			if at.Year() < 1970 || !w.containsReport(at) {
 				return nil, refuse("external_report_time_out_of_range")
 			}
-			// A report cannot claim to have been observed after the read that
-			// returned it. The allowance is explicit so a normal clock step
-			// during one collection is not turned into a target outage.
-			if at.After(v.External.AttemptedAt.Add(w.Skew)) {
+			// A report cannot claim to have been observed after the collection
+			// that returned it. Use the later of the attempt finish and the
+			// envelope start so a collector clock step-back during one read does
+			// not turn the same observation into a target outage.
+			finished := v.External.AttemptedAt
+			if v.SampledAt.After(finished) {
+				finished = v.SampledAt
+			}
+			if at.After(finished.Add(w.Skew)) {
 				return nil, refuse("external_report_time_out_of_range")
 			}
 			if normalized.TimeBasis == model.TimeBasisLiveRead && at.Before(v.SampledAt.Add(-w.Skew)) {

@@ -82,6 +82,10 @@ func TestExternalAdmissionTimeRelations(t *testing.T) {
 			v.External.AttemptedAt = now.Add(20 * time.Second)
 			v.External.Report.ObservedAt = now.Add(-time.Minute)
 		}, ""},
+		"collector rollback during read": {func(v *model.Observation, _ *model.Check) {
+			v.External.AttemptedAt = now.Add(-time.Minute)
+			v.External.Report.ObservedAt = now.Add(-10 * time.Second)
+		}, ""},
 		"historical report is stored": {func(v *model.Observation, _ *model.Check) {
 			v.External.Report.ObservedAt = now.Add(-48 * time.Hour)
 		}, ""},
