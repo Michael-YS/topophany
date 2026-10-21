@@ -112,6 +112,83 @@ Press `x` for CPU saturation on the application host, memory pressure on the rel
 
 Custom topologies such as `topo preview --config examples/host-resources.json` also simulate host checks. Outcomes use the same counter accounting and configured assertions as real host probes, and appear in Overview, Incidents and preview history. No machine resources or configured filesystem paths are read. Observations carry `simulation: host_resources`, stable per-host simulated OS/CPU/capacity metadata and `memory_basis: synthetic_available`. `--lang zh` or `--lang ja` localizes scenario names and descriptions.
 
+### External source bindings
+
+External probes are disabled by default because no production adapter is
+implemented yet. The configuration and storage formats are versioned now; see
+[EXTERNAL-ADAPTERS.md](EXTERNAL-ADAPTERS.md) for the authoring and upgrade
+guide. Synthetic adapters used by tests are never production adapters.
+
+A topology may declare bounded `sources` and external checks. A source owns one
+observer, target, transport, credential reference, schedule and collection
+budgets. A binding names one stable upstream object and the topology subject it
+is evidence about; a response cannot create a node, service, check or binding.
+
+| `sources` field | Meaning |
+|---|---|
+| `id`, `name`, `notes` | Stable source identity and bounded presentation text. |
+| `adapter` | Lowercase static adapter type; must be registered explicitly in the build. No dynamic loading. |
+| `observer` | Sole executor allowed to collect and submit this source. Every bound check must use the same observer. |
+| `target` | Adapter address. Credentials, query and fragment are redacted from public topology. HTTPS is required when credentials or a query are present; literal loopback HTTP is the local-test exception. |
+| `credential_env` | Environment variable name read at collection time, never the value. |
+| `path`, `bind_ip`, `resolve_ip`, `server_name`, `ca_file` | Optional proxy route and explicit dial/TLS policy. Ambient proxies, redirects and compression are not used. |
+| `interval_seconds` | Source cadence; defaults to 60. One read is fanned out to every binding. |
+| `timeout_seconds` | Whole-source collection deadline; defaults to 8. |
+| `stale_seconds` | Successful-contact freshness window; defaults to three intervals. A failed read never extends it. |
+| `max_response_bytes` | Per-page encoded response budget, 1024..8388608; defaults to 1 MiB. |
+| `max_pages` | 1..20 pages per read; defaults to 1. |
+| `max_objects` | 1..10000 parser objects; defaults to 10000. |
+| `max_report_bytes` | 1024..65536 encoded bytes per normalized report; defaults to 64 KiB. |
+
+An `external` check carries no HTTP, DNS, host, adapter, target, path or dial
+options. Its schedule and timeout are inherited from the source; an explicit
+different value is refused, as are a missing source, a different observer and
+multiple resource providers for one node without an explicit order.
+
+| `external` field | Meaning |
+|---|---|
+| `source` | Source ID that collects the report. |
+| `object` | Stable upstream object ID (1..256 safe characters). |
+| `report` | `resource` or `status`. |
+| `node` | Topology node this evidence is about. Required. |
+| `max_age_seconds` | 1..604800; expiry of the upstream data. |
+| `primary_disk` | Stable upstream disk ID for resource selection; optional, but no other disk is guessed if absent. Required by `disk_percent_max`. |
+| `assertions` | Optional `cpu_percent_max`, `memory_percent_max`, `disk_percent_max` in 0..100. A missing asserted field is unknown, not a pass. |
+
+A status binding has no disk or assertions and may name a `service` on its
+node. It remains `reported` evidence: it is exposed in `snapshot.external` and
+the external check state, but does not enter measured service, node, path, link
+or incident aggregation in this phase. A successful source read is not proof
+that the target is online, and a source auth/transport/parse failure is never
+turned into target downtime.
+
+Resource reports use bytes, milliseconds and 0..100 percent. Every numeric
+field may be missing; missing is not zero. CPU reports percent, logical cores,
+sample window and basis; memory reports total/used/available bytes, percent and
+basis; disks carry a stable ID, optional display path, total/used/free bytes,
+percent and basis. `primary_disk` selects one disk; there is no cross-source
+stitching, averaging or automatic root-disk fallback.
+
+Report identity prefers `sample_id`, then `epoch` + `sequence`, then a known
+`observed_at`. `time_basis` is `upstream_sample`, `live_read` or `unknown`.
+`unknown` may be retained diagnostically but cannot refresh a deadline, count a
+status sample, confirm a failure/recovery or enter latency statistics. Duplicate
+identity and content is ignored; same identity and different content is a
+conflict; older identity is late; a different sample at the same upstream time
+is a conflict unless a sequence distinguishes it. Late reports are not
+backfilled into history or rollups. A new identity with unchanged values is a
+new sample. `data_deadline` is observed time + `max_age`; `contact_deadline` is
+the last successful read + source `stale_seconds`; `valid_until` is the minimum
+of those and the snapshot deadline.
+
+Resource selection order is explicit `node.resource_checks`, primary first.
+A fallback is used only when the primary report is absent or expired, not when
+one field is missing. Root-disk sorting never overrides it. Native-only
+topologies keep their previous all-host-check presentation and facts. Monitor
+`resource.*` metrics select by node through this same order; `host.*` remains
+scoped to a native host check.
+
+
 ### HTTP Probe Specifications
 
 `http.method` supports `GET` and `HEAD` (defaults to `GET`). `status` accepts an array of expected HTTP status codes; defaults to 2xx when omitted. `contains`, `body_regex`, and `headers` define response body and header assertions. `request_headers` defines static non-sensitive headers, each named once whatever its case; `Host` (a host or `host:port`) sets the Host the request carries, for a virtual host the URL does not name, while TLS still names the URL's host unless `server_name` says otherwise; `Authorization` and `Cookie` headers are prohibited; bearer tokens must be referenced via `bearer_env`. A query in an `http` check's URL is taken for a credential, as a service's token often travels in one: it is sent only over HTTPS or to a direct literal loopback address, like `bearer_env`, and what the peer answers is kept as for a secret (above). Use `bearer_env` where the service takes one.
@@ -269,7 +346,7 @@ configuration/auth reloads.
 | Method / Path | Role | Description |
 |---|---|---|
 | `GET /healthz` | Unauthenticated | Indicates collector HTTP daemon is running; does not indicate observation freshness |
-| `GET /v1/snapshot?observer=observer-local-01` | `viewer` | Returns current topology, evidence states (checks with their public contracts, nodes, endpoints, services, paths, links), observer liveness with whether each measures the current topology, and incidents; `observer` query param is optional |
+| `GET /v1/snapshot?observer=observer-local-01` | `viewer` | Returns current topology, evidence states (checks with their public contracts, nodes, endpoints, services, paths, links), observer liveness with whether each measures the current topology, and incidents; `observer` query param is optional; current snapshots are schema 3 and external bindings appear in `external` without entering measured aggregates |
 | `GET /v1/config` | `viewer` | Returns deep-copied sanitized topology and revision hash: endpoint addresses and check targets lose their user information and fragment and have any query replaced by `redacted`, and secret references, request headers, CA files and proxy credentials are removed, an SSH hop's `ssh_user`, identity and known-hosts files among them |
 | `GET /v1/history?check=ID&limit=100` | `viewer` | Returns the check's raw observation samples under its current contract, newest first (limit: 1..500), with the public revision and contract; `topo history` reads it |
 | `GET /v1/rollups?check=ID&step=1h&span=7d` | `viewer` | Returns the check's long-term rollups under its current contract in `slots`, oldest first, with their `total`, `since` (the earliest moment the collector holds) and the public revision and contract; see [rollups](#rollups); `topo history --step` reads it |
@@ -289,7 +366,7 @@ restarts the interval at the new time instead of refusing heartbeats until the
 clock catches up. Observation quotas still reserve
 one liveness slot per observer.
 
-Batches are schema 2 (`"schema": 2`). The batch's `revision` is the SHA-256 of the sender's normalized topology and only describes the sender; the acknowledgement echoes it. Each observation carries the `contract` of its check, which must equal the collector's contract for that check, or the batch is refused with `409 contract_mismatch`. A check's contract is the SHA-256 of what it measures: project, check ID, observer, kind, target (the endpoint's address when `target` is empty), timeout, `bind_ip`, `resolve_ip`, `server_name`, `ca_file`, the `http`, `dns` and `adapter` options (except `provider_reference.settle_seconds`, which only defers confirmation), and the proxies of its path in wire order. Nothing else enters it: names, notes, locations, intervals, staleness and confirmation thresholds, `disabled` and `maintenance`, what the check is attributed to (endpoint, service, path, link) and every other check can change without disturbing its samples, its history or the ID of an incident it is part of. `topo validate` prints every contract. Viewers see public contracts, computed over the redacted topology like the public revision, so they permit no guess at hidden fields.
+Current batches are schema 3 (`"schema": 3`) and may carry normalized external reports. A collector still accepts a schema 2 batch as native-only; a schema 2 observation carrying external evidence is refused, not silently stripped. The batch's `revision` is the SHA-256 of the sender's normalized topology and only describes the sender; the acknowledgement echoes it. Each observation carries the `contract` of its check, which must equal the collector's contract for that check, or the batch is refused with `409 contract_mismatch`. A check's contract is the SHA-256 of what it measures: project, check ID, observer, kind, target (the endpoint's address when `target` is empty), timeout, `bind_ip`, `resolve_ip`, `server_name`, `ca_file`, the `http`, `dns` and `adapter` options (except `provider_reference.settle_seconds`, which only defers confirmation), and the proxies of its path in wire order. Nothing else enters it: names, notes, locations, intervals, staleness and confirmation thresholds, `disabled` and `maintenance`, what the check is attributed to (endpoint, service, path, link) and every other check can change without disturbing its samples, its history or the ID of an incident it is part of. `topo validate` prints every contract. Viewers see public contracts, computed over the redacted topology like the public revision, so they permit no guess at hidden fields.
 
 A snapshot from a collector that saw TLS handshake failures also carries
 `ingress`: `window_seconds`, `failures`, `source_count`, `last`, and up to
@@ -312,7 +389,7 @@ offline); start the collector with `--expose-ingress-sources` to include the
 raw addresses, an explicitly privacy-sensitive choice. `topo status` prints the same summary as
 `Collector ingress` when the window holds any failure.
 
-A collector also accepts a schema 1 batch (no `schema`, observations with `revision` and no `contract`) from a worker not yet upgraded, as long as its `revision` is the collector's own; such samples count until the topology changes in any way. Upgrade collectors before workers: a 0.3 collector refuses schema 2 batches, and the worker quarantines them. Snapshots are schema 2 as well. Besides the contracts, a schema 2 snapshot carries `endpoints`, the state of each endpoint from the checks that target it, and for each observer `contracts`: `current` when its executor last reported measuring what the collector counts, `outdated` when it measures an older topology (its samples of changed checks are refused until it reloads), or absent when it has not said. Workers report this in their heartbeats as a digest of their observer's contracts. A snapshot also carries `ledger`, what the collector's incident ledger remembers of the incidents in its view: the records open (`state` `open` or `recovering`), then at most 50 closed in the last day (`state` `closed`, with `closed` and `ended`: `recovered`, `unconfirmed`, `paused` or `changed`), newest first. Each record has the incident's `id`, `scope`, `summary` and failed `checks`, `since` (the earliest failure the ledger saw), `opened` (when the collector first counted it) and `previous`, the earlier records of the same incident it holds. Clients read a record as what the collector concluded, not as evidence. A schema 2 client ignores fields it does not know, so later releases can add some without breaking it; it passes over a collector serving another schema, and says so if no collector serves its own. 0.8 clients therefore read only 0.8 collectors.
+A collector also accepts a schema 1 batch (no `schema`, observations with `revision` and no `contract`) from a worker not yet upgraded, as long as its `revision` is the collector's own; such samples count until the topology changes in any way. Upgrade collectors before workers: a 0.3 collector refuses schema 2 batches, and the worker quarantines them. Current snapshots are schema 3 and carry `external` views when external state exists. A current client reads schema 2 native snapshots as well; a schema 2 reader refuses a schema 3 external snapshot rather than silently omitting evidence. External sources and report state require the upgrade guide in [EXTERNAL-ADAPTERS.md](EXTERNAL-ADAPTERS.md). Besides the contracts, a schema 3 snapshot carries `endpoints`, the state of each endpoint from the checks that target it, and `external`, the bounded reported views for external bindings, and for each observer `contracts`: `current` when its executor last reported measuring what the collector counts, `outdated` when it measures an older topology (its samples of changed checks are refused until it reloads), or absent when it has not said. Workers report this in their heartbeats as a digest of their observer's contracts. A snapshot also carries `ledger`, what the collector's incident ledger remembers of the incidents in its view: the records open (`state` `open` or `recovering`), then at most 50 closed in the last day (`state` `closed`, with `closed` and `ended`: `recovered`, `unconfirmed`, `paused` or `changed`), newest first. Each record has the incident's `id`, `scope`, `summary` and failed `checks`, `since` (the earliest failure the ledger saw), `opened` (when the collector first counted it) and `previous`, the earlier records of the same incident it holds. Clients read a record as what the collector concluded, not as evidence. A schema 2 client ignores fields it does not know, so later releases can add some without breaking it; it passes over a collector serving another schema, and says so if no collector serves its own. 0.8 clients therefore read only 0.8 collectors.
 
 HTTP `202 Accepted` indicates successful storage and returns confirmed batch count. HTTP `409 Conflict` indicates project, contract (or, for schema 1, revision), or content mismatch. HTTP `403 Forbidden` indicates unauthorized observer scope or role. HTTP `422 Unprocessable Entity` indicates sample timestamps falling outside the ingestion window. HTTP `429` and `503` are retryable. Validation errors reject the entire batch without partial commits. External custom workers must adhere to `model.Batch` and `model.Observation` field schemas and budgets; `topo once` terminal output does not imply ingestion into a collector.
 

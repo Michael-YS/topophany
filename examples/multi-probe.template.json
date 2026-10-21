@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "project": "multi-probe-example",
+  "nodes": [
+    {"id": "collector", "name": "Collector", "kind": "host"},
+    {"id": "vm-1", "name": "VM 1", "kind": "host", "resource_checks": ["vm-1-resources"]}
+  ],
+  "endpoints": [],
+  "services": [
+    {"id": "app", "name": "Application", "node": "vm-1"}
+  ],
+  "observers": [
+    {"id": "cloud", "name": "Cloud observer", "node": "collector", "context": "runs the reviewed source adapter"}
+  ],
+  "paths": [],
+  "sources": [
+    {
+      "id": "probe-api",
+      "name": "External probe API",
+      "adapter": "example-api",
+      "observer": "cloud",
+      "target": "https://probe.example.com/api/objects",
+      "credential_env": "TOPO_PROBE_TOKEN",
+      "interval_seconds": 30,
+      "timeout_seconds": 8,
+      "stale_seconds": 90,
+      "max_response_bytes": 1048576,
+      "max_pages": 2,
+      "max_objects": 1000,
+      "max_report_bytes": 65536
+    }
+  ],
+  "checks": [
+    {
+      "id": "vm-1-resources",
+      "name": "VM 1 resources",
+      "observer": "cloud",
+      "kind": "external",
+      "external": {
+        "source": "probe-api",
+        "object": "vm/vm-1",
+        "report": "resource",
+        "node": "vm-1",
+        "max_age_seconds": 120,
+        "primary_disk": "root",
+        "assertions": {"cpu_percent_max": 90, "memory_percent_max": 90, "disk_percent_max": 85}
+      }
+    },
+    {
+      "id": "vm-1-app-status",
+      "name": "VM 1 app status",
+      "observer": "cloud",
+      "kind": "external",
+      "service": "app",
+      "external": {
+        "source": "probe-api",
+        "object": "service/app",
+        "report": "status",
+        "node": "vm-1",
+        "max_age_seconds": 60
+      }
+    }
+  ]
+}

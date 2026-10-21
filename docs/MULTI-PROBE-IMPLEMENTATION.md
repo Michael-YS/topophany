@@ -438,10 +438,31 @@ its existing worker budget.
 | 6 source runtime | `1e24fa2` | complete |
 | 7 unified resources | `aaada89` | complete |
 | 8 stream/bar | `2334732` | complete |
-| 9 end-to-end | this commit | complete |
-| 10 docs/full verification | — | pending |
+| 9 end-to-end | `8a434ee` | complete |
+| 10 docs/full verification | this commit | complete |
 
-## 12. Adjustments and limitations
+## 12. Verification record
+
+All checks were run on 2026-10-21 from the branch worktree after the code and
+generated-site changes were present.
+
+| Check | Result |
+|---|---|
+| `gofmt -l .` / `make fmt-check` | clean |
+| `go vet ./...` | pass |
+| `go test -race -count=1 ./...` | pass (all packages, including integration, probe and stream) |
+| `python3 scripts/verify.py` | pass: 3682 passed, 0 failed, 6 skipped, 86.2% coverage; all fuzz targets at 25,000 executions; native and linux/darwin/windows cross-builds passed |
+| `make site` | regenerated six live/demo pages and the WASM assets; committed with this task |
+| `make site-check` | repeated after the generated-site commit |
+| `go run ./cmd/topo validate --config examples/multi-probe.template.json` | valid: 2 checks, 2 nodes |
+| adjacent `topophany-bar` | read-only review only; its `swift test` build is blocked by the pre-existing non-executable `xcstringstool` helper. No bar file was modified. |
+
+The integration test package itself completed in 5.4 seconds before the race
+run and 8.6 seconds under `-race`; the full repository verification is the
+authority. Benchmarks and their measured values are recorded in
+[SCENARIOS.md](SCENARIOS.md).
+
+## 13. Adjustments and limitations
 
 Record only real changes to the frozen rules here, with the reason.
 
@@ -597,3 +618,24 @@ Record only real changes to the frozen rules here, with the reason.
 - No production vendor adapter is added in this delivery. Synthetic adapters
   are test-only and are injected explicitly by tests; production startup
   refuses a config whose sources have no explicitly wired adapter.
+
+
+## 14. First real adapter: files and wiring
+
+Only these areas should change when the first real adapter is added:
+
+1. `internal/adapters/<vendor>/` — config/version validation, response parsing,
+   field mapping, fixtures, README and local-listener tests.
+2. `internal/model/` and `internal/config/` only if the vendor needs typed
+   options beyond the generic source fields; cloning/redaction/contract tests
+   follow the existing pattern.
+3. `internal/probe/source.go:ProductionSourceAdapters` — add the adapter to the
+   explicit static map; this is the only production registration point.
+4. `internal/config/external_test.go` / the new adapter package tests — endpoint
+   and fixture coverage.
+5. `docs/SCENARIOS.md` and the adapter README — named compatibility cases.
+
+No change should be needed in `report.MergeBinding`, store cursor persistence,
+engine confirmation, `view.SelectResources`, monitor resource rendering or the
+bar numeric schema. If a proposed adapter needs one of those, treat it as a new
+common capability with its own design review rather than a vendor-specific edit.

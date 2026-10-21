@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Multi-probe external observation infrastructure: typed `sources` and
+  `external` check bindings, normalized resource/status reports, persisted
+  report cursors and contact state, bounded source-level collection with
+  fan-out, reported-only snapshot projection, unified resource selection and
+  optional stream metadata. Existing host checks and measurement contracts are
+  unchanged; no vendor adapter is included. See
+  [`docs/MULTI-PROBE-IMPLEMENTATION.md`](docs/MULTI-PROBE-IMPLEMENTATION.md) and
+  [`docs/EXTERNAL-ADAPTERS.md`](docs/EXTERNAL-ADAPTERS.md).
+
+### Changed
+
+- Wire schemas: batches and snapshots are schema 3. A collector still accepts
+  schema 2 native batches and a client still reads schema 2 native snapshots.
+  External reports and their snapshot projection require schema 3 and fail
+  explicitly on a schema 2 reader. The on-disk checkpoint becomes schema 2 once
+  external state exists; an older binary refuses it instead of ignoring state.
+
 ## [1.4.1] - 2026-10-21
 
 This patch reduces collector and worker CPU, memory, snapshot traffic and disk
