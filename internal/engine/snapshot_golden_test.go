@@ -16,10 +16,12 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
-// Captured from a056b9a, before Prepared existed. Each line hashes fifteen
-// newline-terminated snapshots: five evaluation times, each in three views.
-// Only Version is normalized. Do not regenerate these from the implementation
-// under test: a shared judgment bug would then change both sides of the test.
+// Captured from a056b9a, before Prepared existed, and recaptured when a
+// check's contract stopped hashing option blocks that kind does not execute.
+// Each line hashes fifteen newline-terminated snapshots: five evaluation
+// times, each in three views. Only Version is normalized. Do not regenerate
+// these from the implementation under test: a shared judgment bug would then
+// change both sides of the test.
 //
 //go:embed testdata/snapshot-a056b9a.sha256
 var snapshotGolden string
