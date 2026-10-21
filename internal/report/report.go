@@ -120,22 +120,43 @@ func Normalize(r model.ExternalReport, maxBytes int) (model.ExternalReport, erro
 func normalizeResource(r *model.ResourceReport) error {
 	empty := true
 	if c := r.CPU; c != nil {
-		empty = false
-		if c.Percent != nil && (!finite(*c.Percent) || *c.Percent < 0 || *c.Percent > 100) {
-			return refuse("invalid_percent", "cpu.percent must be 0..100")
+		if c.Percent != nil {
+			empty = false
+			if !finite(*c.Percent) || *c.Percent < 0 || *c.Percent > 100 {
+				return refuse("invalid_percent", "cpu.percent must be 0..100")
+			}
 		}
-		if c.LogicalCores != nil && (*c.LogicalCores < 1 || *c.LogicalCores > 65536) {
-			return refuse("invalid_cpu_cores", "cpu.logical_cores must be 1..65536")
+		if c.LogicalCores != nil {
+			empty = false
+			if *c.LogicalCores < 1 || *c.LogicalCores > 65536 {
+				return refuse("invalid_cpu_cores", "cpu.logical_cores must be 1..65536")
+			}
 		}
-		if c.SampleWindowMS != nil && (*c.SampleWindowMS < 1 || *c.SampleWindowMS > 3600000) {
-			return refuse("invalid_sample_window", "cpu.sample_window_ms must be 1..3600000")
+		if c.SampleWindowMS != nil {
+			empty = false
+			if *c.SampleWindowMS < 1 || *c.SampleWindowMS > 3600000 {
+				return refuse("invalid_sample_window", "cpu.sample_window_ms must be 1..3600000")
+			}
+		}
+		if c.Basis != "" {
+			empty = false
 		}
 		if !safeBasis(c.Basis) {
 			return refuse("invalid_basis", "cpu.basis is unsafe or too long")
 		}
 	}
 	if m := r.Memory; m != nil {
-		empty = false
+		for _, p := range []*uint64{m.TotalBytes, m.UsedBytes, m.AvailableBytes} {
+			if p != nil {
+				empty = false
+			}
+		}
+		if m.Percent != nil {
+			empty = false
+		}
+		if m.Basis != "" {
+			empty = false
+		}
 		if m.TotalBytes != nil && *m.TotalBytes == 0 {
 			return refuse("invalid_capacity", "memory.total_bytes must be positive")
 		}
@@ -274,26 +295,49 @@ func fieldPresence(r model.ExternalReport) map[string]bool {
 	return p
 }
 
+// knownFieldKey is a payload-specific allowlist. A status report cannot
+// carry resource fields and a resource report cannot carry status fields,
+// even though field_status is a plain map on the shared envelope. Disk
+// fields are accepted only for a declared disk ID of this resource payload.
 func knownFieldKey(key string, r model.ExternalReport) bool {
-	switch key {
-	case "cpu.percent", "cpu.logical_cores", "cpu.sample_window_ms", "cpu.basis",
-		"memory.total_bytes", "memory.used_bytes", "memory.available_bytes", "memory.percent", "memory.basis",
-		"status", "status.latency_ms", "status.observation_point", "disks":
-		return true
-	}
-	if !strings.HasPrefix(key, "disk.") {
+	switch {
+	case r.Status != nil:
+		switch key {
+		case "status", "status.latency_ms", "status.observation_point":
+			return true
+		}
 		return false
-	}
-	for _, d := range r.Resource.Disks {
-		prefix := "disk." + d.ID + "."
-		switch strings.TrimPrefix(key, prefix) {
+	case r.Resource != nil:
+		switch key {
+		case "cpu.percent", "cpu.logical_cores", "cpu.sample_window_ms", "cpu.basis",
+			"memory.total_bytes", "memory.used_bytes", "memory.available_bytes", "memory.percent", "memory.basis":
+			return true
+		}
+		if !strings.HasPrefix(key, "disk.") {
+			return false
+		}
+		// Disk IDs may contain dots; the field suffix is what follows the
+		// last one.
+		rest := strings.TrimPrefix(key, "disk.")
+		i := strings.LastIndexByte(rest, '.')
+		if i <= 0 {
+			return false
+		}
+		diskID, field := rest[:i], rest[i+1:]
+		switch field {
 		case "total_bytes", "used_bytes", "free_bytes", "percent", "basis", "path":
-			if strings.HasPrefix(key, prefix) {
+		default:
+			return false
+		}
+		for _, d := range r.Resource.Disks {
+			if d.ID == diskID {
 				return true
 			}
 		}
+		return false
+	default:
+		return false
 	}
-	return false
 }
 
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }

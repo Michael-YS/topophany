@@ -77,6 +77,18 @@ func TestRuntimeCollectStampsObjectNormalizesAndIgnoresUnboundObjects(t *testing
 	}
 }
 
+func TestRuntimeRejectsForeignPayloadFieldWithoutPanic(t *testing.T) {
+	c := sourceConfig()
+	src, _ := config.Source(c, "probe-api")
+	reading := statusReading("svc")
+	reading.Report.Fields = map[string]string{"disk.root.percent": model.FieldMissing}
+	a := &fakeAdapter{readings: []source.Reading{reading}}
+	rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return &fakeIO{}, nil }}
+	if _, err := rt.Collect(context.Background(), c, src, []string{"svc"}); err == nil || source.Code(err) != "unknown_field" {
+		t.Fatalf("foreign status field accepted or lost its code: %v", err)
+	}
+}
+
 func TestRuntimeCollectRefusesDuplicateBudgetAndPages(t *testing.T) {
 	c := sourceConfig()
 	src, _ := config.Source(c, "probe-api")

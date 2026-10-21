@@ -1,6 +1,7 @@
 package report_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"testing"
@@ -249,4 +250,119 @@ func TestCounterSeriesFirstResetWindowIsolationAndLimit(t *testing.T) {
 	if _, ok := report.CounterPercent(report.CounterRate{Valid: true, Seconds: 2, RatePerSecond: 1}, report.CounterRate{Valid: true, Seconds: 3, RatePerSecond: 2}); ok {
 		t.Fatal("different intervals were combined")
 	}
+}
+
+func TestNormalizeFieldStatusIsPayloadSpecific(t *testing.T) {
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	status := model.ExternalReport{
+		ReportMeta: meta("service/web", model.TimeBasisUpstreamSample, at),
+		Status:     &model.StatusReport{Status: "up"},
+	}
+	for _, field := range []string{"disk.root.percent", "disk.root.used_bytes", "cpu.percent", "cpu.basis", "memory.total_bytes", "disks", "gpu.percent"} {
+		r := status
+		r.Fields = map[string]string{field: model.FieldMissing}
+		_, err := report.Normalize(r, 4096)
+		if err == nil || report.Code(err) != "unknown_field" {
+			t.Fatalf("status payload accepted %q: %v", field, err)
+		}
+	}
+	// A status payload's own field status vocabulary remains valid.
+	known := status
+	known.Fields = map[string]string{"status": model.FieldKnown, "status.latency_ms": model.FieldMissing, "status.observation_point": model.FieldUnsupported}
+	if _, err := report.Normalize(known, 4096); err != nil {
+		t.Fatalf("valid status field statuses refused: %v", err)
+	}
+
+	cpu := 10.0
+	resource := model.ExternalReport{
+		ReportMeta: meta("vm/one", model.TimeBasisUpstreamSample, at),
+		Resource:   &model.ResourceReport{CPU: &model.CPUReport{Percent: &cpu}},
+	}
+	for _, field := range []string{"status", "status.latency_ms", "status.observation_point", "disks"} {
+		r := resource
+		r.Fields = map[string]string{field: model.FieldMissing}
+		_, err := report.Normalize(r, 4096)
+		if err == nil || report.Code(err) != "unknown_field" {
+			t.Fatalf("resource payload accepted %q: %v", field, err)
+		}
+	}
+	withDisk := resource
+	withDisk.Resource = &model.ResourceReport{CPU: &model.CPUReport{Percent: &cpu}, Disks: []model.DiskReport{{ID: "root.disk", Percent: &cpu}}}
+	withDisk.Fields = map[string]string{"disk.root.disk.percent": model.FieldKnown}
+	if _, err := report.Normalize(withDisk, 4096); err != nil {
+		t.Fatalf("declared disk field refused: %v", err)
+	}
+	wrongDisk := withDisk
+	wrongDisk.Fields = map[string]string{"disk.other.percent": model.FieldMissing}
+	if _, err := report.Normalize(wrongDisk, 4096); err == nil || report.Code(err) != "unknown_field" {
+		t.Fatalf("undeclared disk field accepted: %v", err)
+	}
+}
+
+func TestNormalizeMalformedPayloadsDoNotPanic(t *testing.T) {
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	cases := map[string]model.ExternalReport{
+		"empty":          {ReportMeta: meta("vm/one", model.TimeBasisUpstreamSample, at)},
+		"double":         {ReportMeta: meta("vm/one", model.TimeBasisUpstreamSample, at), Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: f(1)}}, Status: &model.StatusReport{Status: "up"}},
+		"empty resource": {ReportMeta: meta("vm/one", model.TimeBasisUpstreamSample, at), Resource: &model.ResourceReport{CPU: &model.CPUReport{}}},
+		"empty status":   {ReportMeta: meta("vm/one", model.TimeBasisUpstreamSample, at), Status: &model.StatusReport{}},
+		"nil disk id":    {ReportMeta: meta("vm/one", model.TimeBasisUpstreamSample, at), Resource: &model.ResourceReport{Disks: []model.DiskReport{{Percent: f(1)}}}},
+		"field only":     {ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample, Fields: map[string]string{"disk.root.percent": model.FieldMissing}}},
+	}
+	for name, r := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := report.Normalize(r, 4096); err == nil || report.Code(err) == "" {
+				t.Fatalf("malformed report accepted or lost its code: %v", err)
+			}
+		})
+	}
+	bad := model.ExternalReport{
+		ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample, Fields: map[string]string{"cpu.percent": "maybe"}},
+		Resource:   &model.ResourceReport{CPU: &model.CPUReport{Percent: f(1)}},
+	}
+	if _, err := report.Normalize(bad, 4096); report.Code(err) != "invalid_field_status" {
+		t.Fatalf("field status vocabulary not enforced: %v", err)
+	}
+}
+
+func FuzzNormalize(fz *testing.F) {
+	validResource, _ := json.Marshal(model.ExternalReport{
+		ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", SampleID: "s1", ObservedAt: time.Unix(1, 0).UTC(), TimeBasis: model.TimeBasisUpstreamSample},
+		Resource:   &model.ResourceReport{CPU: &model.CPUReport{Percent: f(25)}, Disks: []model.DiskReport{{ID: "root", Percent: f(10)}}},
+	})
+	validStatus, _ := json.Marshal(model.ExternalReport{
+		ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "service/web", ObservedAt: time.Unix(1, 0).UTC(), TimeBasis: model.TimeBasisLiveRead, Fields: map[string]string{"status": model.FieldKnown}},
+		Status:     &model.StatusReport{Status: "up"},
+	})
+	fz.Add(validResource)
+	fz.Add(validStatus)
+	fz.Add([]byte(`{"schema":1,"object":"service/web","observed_at":"2026-10-21T12:00:00Z","time_basis":"upstream_sample","field_status":{"disk.root.percent":"missing"},"status":{"status":"up"}}`))
+	fz.Add([]byte(`{"schema":1,"object":"vm/one","resource":{},"status":{"status":"up"}}`))
+	fz.Add([]byte{})
+	fz.Fuzz(func(t *testing.T, raw []byte) {
+		if len(raw) > model.MaxReportBytes*2 {
+			return
+		}
+		var r model.ExternalReport
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return
+		}
+		out, err := report.Normalize(r, model.MaxReportBytes)
+		if err != nil {
+			if report.Code(err) == "" {
+				t.Fatalf("bounded refusal has no code: %v", err)
+			}
+			return
+		}
+		if out.Schema != model.ReportSchema || out.PayloadCount() != 1 {
+			t.Fatalf("accepted report violates model: %+v", out)
+		}
+		again, err := report.Normalize(out, model.MaxReportBytes)
+		if err != nil {
+			t.Fatalf("accepted report does not re-normalize: %v", err)
+		}
+		if !report.EqualContent(out, again) {
+			t.Fatal("normalization is not idempotent")
+		}
+	})
 }

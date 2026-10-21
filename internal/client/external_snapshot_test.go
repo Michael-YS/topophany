@@ -82,3 +82,36 @@ func TestClientStillReadsSchemaTwoNativeSnapshot(t *testing.T) {
 		t.Fatalf("schema 2 snapshot changed: %+v", got)
 	}
 }
+
+func TestClientRejectsForeignPayloadFieldInExternalSnapshotWithoutPanic(t *testing.T) {
+	c := testkit.Config()
+	c.Sources = []model.Source{{ID: "probe-api", Adapter: "synthetic-status", Observer: "home", Target: "https://probe.invalid/status", IntervalSeconds: 30, TimeoutSeconds: 5, StaleSeconds: 90, MaxResponseBytes: 1 << 20, MaxPages: 1, MaxObjects: 100, MaxReportBytes: 16 << 10}}
+	c.Checks = append(c.Checks, model.Check{ID: "web-status", Observer: "home", Kind: "external", External: &model.ExternalBinding{Source: "probe-api", Object: "service/web", Report: model.ReportTypeStatus, Node: "dmit", MaxAgeSeconds: 120}})
+	config.Defaults(&c)
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	at := now.Add(-10 * time.Second)
+	r := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "service/web", SampleID: "s1", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: "up"}}
+	x, _ := config.Check(c, "web-status")
+	ext := model.NewExternalState()
+	ext.Sources["probe-api"] = report.MergeSource(model.SourceState{}, "probe-api", at, true, "", 4)
+	state, _ := report.MergeBinding(x.ID, config.Contract(c, x), *x.External, model.BindingState{}, r, at)
+	ext.Bindings[x.ID] = state
+	snap := engine.NewPlan(c).PrepareExternal(nil, nil, nil, ext).Build("fixture", "", now)
+	if len(snap.External) != 1 || snap.External[0].Report == nil {
+		t.Fatalf("status projection lost: %+v", snap.External)
+	}
+	// A field_status entry from the other payload is a malformed snapshot,
+	// not a panic in the decoder.
+	snap.External[0].Report.Fields = map[string]string{"disk.root.percent": model.FieldMissing}
+	raw, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got model.Snapshot
+	if err := decodeSnapshot(raw, &got); err == nil {
+		t.Fatal("foreign payload field in a snapshot was accepted")
+	}
+}

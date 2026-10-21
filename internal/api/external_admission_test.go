@@ -143,6 +143,7 @@ func TestExternalAdmissionRejectsForgedEvidenceAndSchema(t *testing.T) {
 		"wrong report type": {func(b *model.Batch, c model.Config) {
 			latency := int64(1)
 			b.Observations[0].External.Report.Resource = nil
+			b.Observations[0].External.Report.Fields = nil
 			b.Observations[0].External.Report.Status = &model.StatusReport{Status: "up", UpstreamLatencyMS: &latency}
 		}, 400, "external_report_type_mismatch"},
 		"no attempt": {func(b *model.Batch, c model.Config) { b.Observations[0].External = nil }, 400, "external_attempt_required"},
@@ -159,6 +160,12 @@ func TestExternalAdmissionRejectsForgedEvidenceAndSchema(t *testing.T) {
 			b.Observations[0].SampledAt = time.Now().Add(-time.Minute)
 		}, 422, "external_attempt_time_out_of_range"},
 		"report schema": {func(b *model.Batch, c model.Config) { b.Observations[0].External.Report.Schema = 2 }, 400, "unsupported_report_schema"},
+		"foreign status field": {func(b *model.Batch, c model.Config) {
+			x, _ := config.Check(c, "web-status")
+			v := &b.Observations[0]
+			v.Check, v.Contract = x.ID, config.Contract(c, x)
+			v.External.Report = &model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: x.External.Object, ObservedAt: v.SampledAt, TimeBasis: model.TimeBasisUpstreamSample, Fields: map[string]string{"disk.root.percent": model.FieldMissing}}, Status: &model.StatusReport{Status: "up"}}
+		}, 400, "unknown_field"},
 		"report too large": {func(b *model.Batch, c model.Config) {
 			disks := make([]model.DiskReport, 20)
 			for i := range disks {
