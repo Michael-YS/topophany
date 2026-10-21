@@ -70,6 +70,12 @@ type BindingState struct {
 	LastResult      string          `json:"last_result,omitempty"` // new, duplicate, late, conflict, unusable
 	LastCode        string          `json:"last_code,omitempty"`
 
+	FailureThreshold  int  `json:"failure_threshold,omitempty"`
+	RecoveryThreshold int  `json:"recovery_threshold,omitempty"`
+	PolicyThreshold   int  `json:"policy_threshold,omitempty"`
+	ConfirmedDown     bool `json:"confirmed_down,omitempty"`
+	PolicyConfirmed   bool `json:"policy_confirmed,omitempty"`
+
 	UpRun     int64 `json:"up_run,omitempty"`
 	DownRun   int64 `json:"down_run,omitempty"`
 	PolicyRun int64 `json:"policy_run,omitempty"`
@@ -125,4 +131,13 @@ func CloneBindingState(in BindingState) BindingState {
 	}
 	out.Seen = append([]SeenSample(nil), in.Seen...)
 	return out
+}
+
+// ExternalRule carries the non-measurement thresholds that govern an
+// external binding's confirmation. They are not part of its measurement
+// contract, so editing them preserves history but re-applies to stored runs.
+type ExternalRule struct {
+	FailureThreshold  int
+	RecoveryThreshold int
+	PolicyThreshold   int
 }

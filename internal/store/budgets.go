@@ -14,6 +14,7 @@ func storageOptions(o Options) (Options, error) {
 	o.ObserverWeights = maps.Clone(o.ObserverWeights)
 	o.Bindings = maps.Clone(o.Bindings)
 	o.Sources = maps.Clone(o.Sources)
+	o.ExternalRules = maps.Clone(o.ExternalRules)
 	if o.MaxHistory == 0 {
 		o.MaxHistory = 20000
 	}

@@ -18,10 +18,17 @@ type Prepared struct {
 	seen     map[string][]time.Time
 	reported map[string]string
 	beats    map[string]model.Heartbeat
+	external *model.ExternalState
 }
 
 func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat) *Prepared {
-	e := &Prepared{plan: p, seen: map[string][]time.Time{}, reported: map[string]string{}, beats: map[string]model.Heartbeat{}}
+	return p.PrepareExternal(rows, carries, beats, nil)
+}
+
+// PrepareExternal also folds persisted external acceptance state. APIs with
+// external checks use it; Prepare remains the native-only entry point.
+func (p *Plan) PrepareExternal(rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat, external *model.ExternalState) *Prepared {
+	e := &Prepared{plan: p, seen: map[string][]time.Time{}, reported: map[string]string{}, beats: map[string]model.Heartbeat{}, external: model.CloneExternalState(external)}
 	e.checks = p.foldEvidence(rows, carries, func(observer string, at time.Time) {
 		e.seen[observer] = append(e.seen[observer], at)
 	})
@@ -36,6 +43,7 @@ func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[stri
 // replacing only liveness. Previously captured snapshots retain their own beats.
 func (e *Prepared) WithHeartbeats(beats map[string]model.Heartbeat) *Prepared {
 	next := *e
+	next.external = model.CloneExternalState(e.external)
 	next.beats = make(map[string]model.Heartbeat, len(beats))
 	next.reported = make(map[string]string, len(beats))
 	for id, h := range beats {
@@ -90,6 +98,10 @@ func (p *Plan) foldEvidence(rows []model.Observation, carries []Carry, seen func
 	}
 	states := make(map[string]model.CheckState, len(p.checks))
 	for _, x := range p.config.Checks {
+		if x.Kind == "external" {
+			states[x.ID] = p.externalBaseState(x)
+			continue
+		}
 		st := evaluateEvidence(x, carried[x.ID], histories[x.ID])
 		st.Contract = p.publicContracts[x.ID]
 		if st.Last != nil {

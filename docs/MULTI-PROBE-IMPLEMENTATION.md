@@ -433,8 +433,8 @@ its existing worker budget.
 | 1 typed model/config | `87d82a4` | complete |
 | 2 report normalization | `4a1de5c` | complete |
 | 3 collector admission | `99c533c` | complete |
-| 4 persistence/dedup | this commit | complete |
-| 5 report state/statistics | — | pending |
+| 4 persistence/dedup | `7820cda` | complete |
+| 5 report state/statistics | this commit | complete |
 | 6 source runtime | — | pending |
 | 7 unified resources | — | pending |
 | 8 stream/bar | — | pending |
@@ -495,6 +495,27 @@ Record only real changes to the frozen rules here, with the reason.
   state schema 2 to rejecting schema 3, because schema 2 is now the valid
   external-state checkpoint. This is the intended format upgrade, not a
   relaxation of corruption checks.
+- Task 5 adds `snapshot.external`, the sanitized binding projection. A
+  `CheckState` for an external binding carries reported health and reason but
+  no `Last` observation: raw collection attempts remain in history, and
+  report evidence lives in the external projection. This prevents a
+  successful source read from being read as a successful target response.
+- External status/resource checks are excluded from measured endpoint, path,
+  link, node, service and incident aggregation. Their own `snapshot.external`
+  view carries health, policy, source contact and statistics. This is the
+  first-phase meaning of "does not enter the measured connectivity vote".
+- Status confirmation (`confirmed_down`) and resource policy confirmation are
+  persisted in binding state and use the check's failure/recovery/policy
+  thresholds. Threshold edits re-apply to stored runs without changing the
+  measurement contract. Only new accepted reports update runs.
+- The report observation span and upstream-latency samples/avg/max are
+  separate. Missing upstream latency stays null. Collection duration never
+  enters the upstream latency aggregate.
+- External observations are excluded from native rollups and carries at store
+  time, so history/availability cannot turn a resource read into service
+  availability or a collection attempt into a probe latency.
+- Snapshot schema 3 now carries this projection. The client validates it and
+  still reads native-only schema 2 snapshots.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters

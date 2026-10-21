@@ -103,8 +103,16 @@ func BasisSignature(r model.ExternalReport) string {
 // the same verdict. Duplicate/late/conflict/unusable paths never advance the
 // cursor, last report, deadline, confirmation or latency counters.
 func MergeBinding(check, contract string, binding model.ExternalBinding, state model.BindingState, r model.ExternalReport, receivedAt time.Time) (model.BindingState, MergeResult) {
+	failure, recovery := state.FailureThreshold, state.RecoveryThreshold
+	if failure < 1 {
+		failure = 3
+	}
+	if recovery < 1 {
+		recovery = 2
+	}
+	policyThreshold := max(state.PolicyThreshold, 1)
 	if state.Check == "" || state.Contract != contract || state.Source != binding.Source || state.Object != binding.Object || state.ReportType != binding.Report || state.MaxAgeSeconds != binding.MaxAgeSeconds {
-		state = model.BindingState{Check: check, Contract: contract, Source: binding.Source, Object: binding.Object, ReportType: binding.Report, MaxAgeSeconds: binding.MaxAgeSeconds}
+		state = model.BindingState{Check: check, Contract: contract, Source: binding.Source, Object: binding.Object, ReportType: binding.Report, MaxAgeSeconds: binding.MaxAgeSeconds, FailureThreshold: failure, RecoveryThreshold: recovery, PolicyThreshold: state.PolicyThreshold}
 	}
 	sampledAt, timeKnown := SampleAt(r)
 	mode, identity, identityOK := SampleIdentity(r, sampledAt)
@@ -117,6 +125,7 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 	basisChanged := state.Basis != "" && state.Basis != basis
 	if basisChanged {
 		state.UpRun, state.DownRun, state.PolicyRun = 0, 0, 0
+		state.ConfirmedDown, state.PolicyConfirmed = false, false
 	}
 	// A previously seen sample ID is definitive even after the cursor moved.
 	for _, seen := range state.Seen {
@@ -182,11 +191,14 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 		case PolicyViolation:
 			state.PolicyRun = addCount(state.PolicyRun)
 			state.PolicyViolations = addCount(state.PolicyViolations)
+			state.PolicyConfirmed = state.PolicyRun >= int64(policyThreshold)
 		case PolicyUnknown:
 			state.PolicyRun = 0
 			state.PolicyUnknowns = addCount(state.PolicyUnknowns)
+			state.PolicyConfirmed = false
 		default:
 			state.PolicyRun = 0
+			state.PolicyConfirmed = false
 		}
 	case r.Status != nil:
 		state.StatusSamples = addCount(state.StatusSamples)
@@ -196,15 +208,23 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 			state.UpRun = addCount(state.UpRun)
 			state.DownRun = 0
 			state.StatusUp = addCount(state.StatusUp)
+			if state.ConfirmedDown && state.UpRun >= int64(recovery) {
+				state.ConfirmedDown = false
+			}
 		case "down":
 			state.DownRun = addCount(state.DownRun)
 			state.UpRun = 0
 			state.StatusDown = addCount(state.StatusDown)
+			if state.DownRun >= int64(failure) {
+				state.ConfirmedDown = true
+			}
 		case "degraded":
 			state.UpRun, state.DownRun = 0, 0
+			state.ConfirmedDown = false
 			state.StatusDegraded = addCount(state.StatusDegraded)
 		default:
 			state.UpRun, state.DownRun = 0, 0
+			state.ConfirmedDown = false
 			state.StatusUnknown = addCount(state.StatusUnknown)
 		}
 		if r.Status.UpstreamLatencyMS != nil {

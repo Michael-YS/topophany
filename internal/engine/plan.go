@@ -17,6 +17,7 @@ type Plan struct {
 	publicContracts map[string]string
 	observers       map[string]string
 	checks          map[string]model.Check
+	sources         map[string]model.Source
 	endpoints       map[string]model.Endpoint
 	paths           map[string]model.Path
 	services        map[string]model.Service
@@ -36,13 +37,16 @@ func NewPlan(c model.Config) *Plan {
 		config: c, public: public,
 		revision: config.Revision(c), publicRevision: config.Revision(public),
 		contracts: config.Contracts(c), publicContracts: config.Contracts(public),
-		checks: map[string]model.Check{}, endpoints: map[string]model.Endpoint{},
+		checks: map[string]model.Check{}, sources: map[string]model.Source{}, endpoints: map[string]model.Endpoint{},
 		paths: map[string]model.Path{}, services: map[string]model.Service{},
 		nodeChecks: map[string][]string{}, endpointChecks: map[string][]string{},
 		pathChecks: map[string][]string{}, linkChecks: map[string][]string{}, serviceChecks: map[string][]string{},
 		linkPaths: map[string][]string{}, incidents: map[string]string{},
 	}
 	p.observers = config.ObserverDigests(c, p.contracts)
+	for _, source := range c.Sources {
+		p.sources[source.ID] = source
+	}
 	for _, e := range c.Endpoints {
 		p.endpoints[e.ID] = e
 	}
@@ -58,6 +62,12 @@ func NewPlan(c model.Config) *Plan {
 	measured := map[string][]string{}
 	for _, x := range c.Checks {
 		p.checks[x.ID] = x
+		// External resources/status are reported evidence, not measured
+		// connectivity. They never vote in endpoint, path, link, node or
+		// service measured aggregation; their own projection carries them.
+		if x.Kind == "external" {
+			continue
+		}
 		p.endpointChecks[x.Endpoint] = append(p.endpointChecks[x.Endpoint], x.ID)
 		p.pathChecks[x.Path] = append(p.pathChecks[x.Path], x.ID)
 		p.linkChecks[x.Link] = append(p.linkChecks[x.Link], x.ID)

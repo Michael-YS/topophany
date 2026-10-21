@@ -12,13 +12,20 @@ import (
 // hysteresis however long ago the samples that confirmed a failure were
 // taken (see engine.BuildCarried).
 func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]model.Heartbeat) {
-	rows, carries, beats, _, _ := s.EvaluationView(0, true)
+	rows, carries, beats, _, _, _ := s.EvaluationViewWithExternal(0, true)
 	return rows, carries, beats
 }
 
 // EvaluationView atomically captures both versions and their state. A heartbeat
 // update copies only liveness; it does not visit retained observation history.
 func (s *Store) EvaluationView(known uint64, force bool) ([]model.Observation, []engine.Carry, map[string]model.Heartbeat, uint64, uint64) {
+	rows, carries, beats, _, version, evidenceVersion := s.EvaluationViewWithExternal(known, force)
+	return rows, carries, beats, version, evidenceVersion
+}
+
+// EvaluationViewWithExternal is EvaluationView plus the persisted external
+// acceptance state needed to judge reported evidence independently.
+func (s *Store) EvaluationViewWithExternal(known uint64, force bool) ([]model.Observation, []engine.Carry, map[string]model.Heartbeat, *model.ExternalState, uint64, uint64) {
 	s.mu.Lock()
 	version, evidenceVersion := s.version, s.evidenceVersion
 	beats := make(map[string]model.Heartbeat, len(s.beats))
@@ -26,9 +33,11 @@ func (s *Store) EvaluationView(known uint64, force bool) ([]model.Observation, [
 		beats[k] = model.CloneHeartbeat(v)
 	}
 	if !force && known == evidenceVersion {
+		external := model.CloneExternalState(s.external)
 		s.mu.Unlock()
-		return nil, nil, beats, version, evidenceVersion
+		return nil, nil, beats, external, version, evidenceVersion
 	}
+	external := model.CloneExternalState(s.external)
 	count := len(s.rows)
 	for _, tail := range s.tails {
 		count += len(tail)
@@ -76,7 +85,7 @@ func (s *Store) EvaluationView(known uint64, force bool) ([]model.Observation, [
 			v.Detail = ""
 		}
 	}
-	return out, carries, beats, version, evidenceVersion
+	return out, carries, beats, external, version, evidenceVersion
 }
 
 // Version changes whenever evidence used for state evaluation changes. It is

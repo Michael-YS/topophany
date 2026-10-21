@@ -24,9 +24,11 @@ func (s *Store) SetExternalContext(c model.Config) {
 	for _, source := range c.Sources {
 		sources[source.ID] = source
 	}
+	rules := make(map[string]model.ExternalRule)
 	for _, x := range c.Checks {
 		if x.Kind == "external" && x.External != nil {
 			bindings[x.ID] = *x.External
+			rules[x.ID] = model.ExternalRule{FailureThreshold: x.FailureThreshold, RecoveryThreshold: x.RecoveryThreshold, PolicyThreshold: x.PolicyThreshold}
 		}
 	}
 	contracts := config.Contracts(c)
@@ -34,8 +36,9 @@ func (s *Store) SetExternalContext(c model.Config) {
 	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.options.Bindings, s.options.Sources = bindings, sources
+	s.options.Bindings, s.options.Sources, s.options.ExternalRules = bindings, sources, rules
 	s.pruneExternalLocked(contracts)
+	s.applyExternalRulesLocked()
 }
 
 // ExternalView returns a detached copy of persisted external acceptance
@@ -141,11 +144,18 @@ func (s *Store) mergeExternalLocked(observations []model.Observation) (*model.Ex
 		if !ok {
 			return nil, 0, errors.New("external report has no declared binding")
 		}
-		state, _ := report.MergeBinding(v.Check, v.Contract, binding, next.Bindings[v.Check], *v.External.Report, v.ReceivedAt)
+		state := next.Bindings[v.Check]
+		state = applyExternalRule(state, s.options.ExternalRules[v.Check])
+		state, _ = report.MergeBinding(v.Check, v.Contract, binding, state, *v.External.Report, v.ReceivedAt)
 		next.Bindings[v.Check] = state
 	}
 	if len(next.Sources) > model.MaxSources || len(next.Bindings) > model.MaxExternalChecks {
 		return nil, 0, errors.New("external state entity budget exceeded")
+	}
+	// Persist thresholds even when this transaction has no report for the
+	// binding, so a later confirmation decision is reproducible.
+	for check, state := range next.Bindings {
+		next.Bindings[check] = applyExternalRule(state, s.options.ExternalRules[check])
 	}
 	// Bound the persisted map itself, not only a single report.
 	raw, err := json.Marshal(next)
@@ -173,4 +183,41 @@ func (s *Store) installExternalLocked(next *model.ExternalState, size int64) {
 	}
 	s.stateBytes += size - s.externalBytes
 	s.externalBytes = size
+}
+
+// applyExternalRulesLocked re-applies confirmation thresholds to persisted
+// runs when the topology reloads. Thresholds are not measurement identity, so
+// this changes judgment without discarding the runs or report.
+func (s *Store) applyExternalRulesLocked() {
+	if s.external == nil {
+		return
+	}
+	for check, state := range s.external.Bindings {
+		s.external.Bindings[check] = applyExternalRule(state, s.options.ExternalRules[check])
+	}
+	s.resizeExternalLocked()
+}
+
+// applyExternalRule sets the thresholds and resolves what the already
+// persisted runs mean under them. It never increments a run.
+func applyExternalRule(state model.BindingState, rule model.ExternalRule) model.BindingState {
+	failure, recovery, policy := rule.FailureThreshold, rule.RecoveryThreshold, rule.PolicyThreshold
+	if failure < 1 {
+		failure = 3
+	}
+	if recovery < 1 {
+		recovery = 2
+	}
+	if policy < 0 {
+		policy = 0
+	}
+	state.FailureThreshold, state.RecoveryThreshold, state.PolicyThreshold = failure, recovery, policy
+	if state.ConfirmedDown {
+		state.ConfirmedDown = state.UpRun < int64(recovery)
+	} else {
+		state.ConfirmedDown = state.DownRun >= int64(failure)
+	}
+	threshold := max(policy, 1)
+	state.PolicyConfirmed = state.PolicyRun >= int64(threshold)
+	return state
 }

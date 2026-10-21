@@ -262,9 +262,9 @@ func (s *Server) preparedEvidence(g *generation) *engine.Prepared {
 	version := s.Store.Version()
 	if s.evaluation == nil || s.evaluationGen != g || s.evaluationVersion != version {
 		force := s.evaluation == nil || s.evaluationGen != g
-		rows, carries, beats, captured, evidenceVersion := s.Store.EvaluationView(s.evaluationEvidenceVersion, force)
+		rows, carries, beats, external, captured, evidenceVersion := s.Store.EvaluationViewWithExternal(s.evaluationEvidenceVersion, force)
 		if force || evidenceVersion != s.evaluationEvidenceVersion {
-			s.evaluation = g.engine.Prepare(rows, carries, beats)
+			s.evaluation = g.engine.PrepareExternal(rows, carries, beats, external)
 		} else {
 			s.evaluation = s.evaluation.WithHeartbeats(beats)
 		}

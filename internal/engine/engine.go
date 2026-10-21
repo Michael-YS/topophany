@@ -170,6 +170,10 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 	}
 	states := p.foldEvidence(rows, carries, seen)
 	for _, x := range p.config.Checks {
+		if x.Kind == "external" {
+			states[x.ID], _ = p.currentExternal(x, nil, now)
+			continue
+		}
 		states[x.ID] = currentState(x, states[x.ID], now)
 	}
 	return p.buildSnapshot(instance, view, now, states, lastSeen, reported, beats)
@@ -180,7 +184,16 @@ func (p *Plan) Build(instance, view string, rows []model.Observation, carries []
 func (e *Prepared) Build(instance, view string, now time.Time) model.Snapshot {
 	p := e.plan
 	states := make(map[string]model.CheckState, len(p.checks))
+	external := []model.ExternalBindingView{}
 	for _, x := range p.config.Checks {
+		if x.Kind == "external" {
+			st, ext := p.currentExternal(x, e.external, now)
+			states[x.ID] = st
+			if view == "" || view == x.Observer {
+				external = append(external, ext)
+			}
+			continue
+		}
 		st := currentState(x, e.checks[x.ID], now)
 		if st.Last != nil {
 			last := model.CloneObservation(*st.Last)
@@ -188,7 +201,9 @@ func (e *Prepared) Build(instance, view string, now time.Time) model.Snapshot {
 		}
 		states[x.ID] = st
 	}
-	return p.buildSnapshot(instance, view, now, states, e.lastSeen(now), e.reported, e.beats)
+	snap := p.buildSnapshot(instance, view, now, states, e.lastSeen(now), e.reported, e.beats)
+	snap.External = external
+	return snap
 }
 
 // Both entry points supply owned check states. Entity derivation and public
@@ -378,7 +393,7 @@ func (p *Plan) buildSnapshot(instance, view string, now time.Time, allStates map
 	edgeStatuses := map[string][]edgeStatus{}
 	edgeChecks, incidentChecks := map[string]int{}, map[string]int{}
 	for _, x := range c.Checks {
-		if !relevant(x) {
+		if !relevant(x) || x.Kind == "external" {
 			continue
 		}
 		s := allStates[x.ID]

@@ -112,6 +112,60 @@ func decodeSnapshot(raw []byte, s *model.Snapshot, known ...cachedTopology) erro
 			return errors.New("incomplete snapshot checks")
 		}
 	}
+	if len(s.External) > 0 && !externalAllowed {
+		return errors.New("schema 2 snapshot carries external state")
+	}
+	externalSeen := map[string]bool{}
+	for _, e := range s.External {
+		def, ok := checks[e.Check]
+		if !ok || def.Kind != "external" || def.External == nil || externalSeen[e.Check] || s.ViewObserver != "" && def.Observer != s.ViewObserver {
+			return errors.New("invalid external snapshot view")
+		}
+		if e.Source != def.External.Source || e.Object != def.External.Object || e.ReportType != def.External.Report || e.Node != def.External.Node || e.Service != def.Service || e.Evidence != "reported" {
+			return errors.New("external snapshot identity mismatch")
+		}
+		source, ok := sources[e.Source]
+		if !ok {
+			return errors.New("external snapshot source missing")
+		}
+		externalSeen[e.Check] = true
+		switch e.Health {
+		case "up", "degraded", "down", "unknown":
+		default:
+			return errors.New("invalid external snapshot health")
+		}
+		switch e.Freshness {
+		case "fresh", "stale", "never", "paused", "maintenance", "cached":
+		default:
+			return errors.New("invalid external snapshot freshness")
+		}
+		if e.Stats.Samples < 0 || e.Stats.ResourceSamples < 0 || e.Stats.StatusSamples < 0 || e.Stats.Duplicates < 0 || e.Stats.Late < 0 || e.Stats.Conflicts < 0 || e.Stats.Unusable < 0 || e.Stats.UpstreamLatencySamples < 0 || e.Stats.ObservedForSeconds < 0 {
+			return errors.New("invalid external snapshot statistics")
+		}
+		if e.Stats.UpstreamLatencySamples == 0 && (e.Stats.UpstreamLatencyAvgMS != nil || e.Stats.UpstreamLatencyMaxMS != nil) || e.Stats.UpstreamLatencyMaxMS != nil && *e.Stats.UpstreamLatencyMaxMS < 0 || e.Stats.UpstreamLatencyAvgMS != nil && *e.Stats.UpstreamLatencyAvgMS < 0 {
+			return errors.New("external latency summary without samples")
+		}
+		if e.Report == nil {
+			if e.Health != "unknown" || e.Stats.Samples != 0 {
+				return errors.New("external snapshot without a report claims evidence")
+			}
+			continue
+		}
+		if normalized, err := report.Normalize(*e.Report, source.MaxReportBytes); err != nil || !report.EqualContent(normalized, *e.Report) {
+			return errors.New("invalid external snapshot report")
+		}
+		if e.Report.Object != def.External.Object || (def.External.Report == model.ReportTypeResource) != (e.Report.Resource != nil) {
+			return errors.New("external snapshot report mismatch")
+		}
+		if at, ok := report.SampleAt(*e.Report); ok && e.SampledAt.IsZero() || ok && !at.Equal(e.SampledAt) {
+			return errors.New("external snapshot sample time mismatch")
+		}
+	}
+	for id, def := range checks {
+		if def.Kind == "external" && (s.ViewObserver == "" || def.Observer == s.ViewObserver) && !externalSeen[id] {
+			return errors.New("incomplete snapshot external state")
+		}
+	}
 	validate := func(states []model.EntityState, ids map[string]bool) error {
 		if len(states) != len(ids) {
 			return errors.New("incomplete snapshot entities")

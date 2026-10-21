@@ -68,9 +68,10 @@ type Options struct {
 	// Direct collectors (local checks) and the API use the same merge. A
 	// store with no context refuses external observations instead of
 	// guessing a binding's age or subject.
-	Bindings map[string]model.ExternalBinding
-	Sources  map[string]model.Source
-	Now      func() time.Time
+	Bindings      map[string]model.ExternalBinding
+	Sources       map[string]model.Source
+	ExternalRules map[string]model.ExternalRule
+	Now           func() time.Time
 }
 
 // receiptGrace is how long a receipt outlives the ingestion window.
@@ -413,6 +414,12 @@ func (s *Store) currentKey(key string) bool {
 // is the one place rollups drop the Vercel colo, because its reported
 // region is not a physical colo.
 func (s *Store) roll(v model.Observation) {
+	// External reports have their own report statistics. Their collection
+	// outcome must not become native availability or their collection
+	// duration a probe latency.
+	if v.External != nil {
+		return
+	}
 	s.rollups.Add(s.rollKey(v), v.Observer, v.SampledAt, v.Outcome, v.DurationMS, s.options.Stale[v.Check], s.options.Now(), rollup.ExtraOf(v))
 }
 
@@ -450,6 +457,7 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	s.options.Contracts = maps.Clone(contracts)
 	s.options.Stale = maps.Clone(stale)
 	s.pruneExternalLocked(s.options.Contracts)
+	s.applyExternalRulesLocked()
 	rows := s.allRows()
 	oldTails := s.tails
 	s.tails = map[string][]model.Observation{}
@@ -545,7 +553,7 @@ func (s *Store) trim(key string, tail []model.Observation) []model.Observation {
 	k := s.carries[key]
 	for _, v := range tail[:len(tail)-tailLength] {
 		s.releaseRow(v.ID)
-		if v.Contract != "" && !k.Holds(v) {
+		if v.Contract != "" && v.External == nil && !k.Holds(v) {
 			k.Fold(v, s.options.Stale[v.Check])
 		}
 	}

@@ -232,3 +232,47 @@ func TestContractSchemaTwoCannotCarryExternalEvidence(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func TestExternalStateAppearsInVersionedSnapshotAndNativeAggregatesIgnoreIt(t *testing.T) {
+	srv, h, b, _ := externalAPIFixture(t)
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != http.StatusAccepted {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w := request(h, "GET", "/v1/snapshot", viewerToken, "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var snap model.Snapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+		t.Fatal(err)
+	}
+	if snap.Schema != model.SnapshotSchema || len(snap.External) != 2 {
+		t.Fatalf("snapshot external schema = %d, views = %+v", snap.Schema, snap.External)
+	}
+	var e model.ExternalBindingView
+	for _, view := range snap.External {
+		if view.Check == "vm-resources" {
+			e = view
+		}
+	}
+	if e.Check != "vm-resources" || e.Health != "up" || e.Report == nil || e.Report.Resource == nil || e.Stats.Samples != 1 || e.DataDeadline.IsZero() || e.ContactDeadline.IsZero() || e.ValidUntil.IsZero() {
+		t.Fatalf("external view = %+v", e)
+	}
+	for _, cs := range snap.Checks {
+		if cs.ID == "vm-resources" {
+			if cs.Evidence != "reported" || cs.Last != nil || len(cs.Availability) != 0 {
+				t.Fatalf("external check state = %+v", cs)
+			}
+		}
+	}
+	// The external resource binding is attributed to dmit but not to the
+	// measured service web.
+	for _, service := range snap.Services {
+		for _, id := range service.Checks {
+			if id == "vm-resources" {
+				t.Fatal("external resource entered measured service aggregation")
+			}
+		}
+	}
+	_ = srv
+}

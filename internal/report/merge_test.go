@@ -172,3 +172,35 @@ func TestMergeSourceContactAndFailures(t *testing.T) {
 		t.Fatalf("new contact = %+v", state)
 	}
 }
+
+func TestMergeStatusConfirmationOnlyFromNewValidReports(t *testing.T) {
+	b := model.ExternalBinding{Source: "source", Object: "svc", Report: model.ReportTypeStatus, MaxAgeSeconds: 60}
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	state := model.BindingState{Check: "check", Contract: "contract", Source: b.Source, Object: b.Object, ReportType: b.Report, MaxAgeSeconds: b.MaxAgeSeconds, FailureThreshold: 2, RecoveryThreshold: 2}
+	down := func(id string, at time.Time) model.ExternalReport {
+		return model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "svc", SampleID: id, ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: "down"}}
+	}
+	state, _ = report.MergeBinding("check", "contract", b, state, down("d1", at), at)
+	if state.ConfirmedDown || state.DownRun != 1 {
+		t.Fatalf("confirmed too early: %+v", state)
+	}
+	state, _ = report.MergeBinding("check", "contract", b, state, down("d2", at.Add(time.Second)), at.Add(time.Second))
+	if !state.ConfirmedDown || state.DownRun != 2 {
+		t.Fatalf("not confirmed at threshold: %+v", state)
+	}
+	state, _ = report.MergeBinding("check", "contract", b, state, down("d2", at.Add(time.Second)), at.Add(2*time.Second))
+	if !state.ConfirmedDown || state.DownRun != 2 || state.Duplicates != 1 {
+		t.Fatalf("duplicate advanced confirmation: %+v", state)
+	}
+	up := func(id string, at time.Time) model.ExternalReport {
+		return model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "svc", SampleID: id, ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: "up"}}
+	}
+	state, _ = report.MergeBinding("check", "contract", b, state, up("u1", at.Add(2*time.Second)), at.Add(2*time.Second))
+	if !state.ConfirmedDown || state.UpRun != 1 || state.DownRun != 0 {
+		t.Fatalf("recovered too early: %+v", state)
+	}
+	state, _ = report.MergeBinding("check", "contract", b, state, up("u2", at.Add(3*time.Second)), at.Add(3*time.Second))
+	if state.ConfirmedDown || state.UpRun != 2 {
+		t.Fatalf("recovery did not confirm: %+v", state)
+	}
+}

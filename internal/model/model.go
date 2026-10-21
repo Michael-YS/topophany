@@ -542,4 +542,7 @@ type Snapshot struct {
 	// Ledger is what the collector remembers of the incidents in the view:
 	// those open, then those closed in the last day, newest first.
 	Ledger []IncidentRecord `json:"ledger,omitempty"`
+	// External is the sanitized accepted report state of external bindings in
+	// this view. It is absent in schema 2 snapshots.
+	External []ExternalBindingView `json:"external,omitempty"`
 }
