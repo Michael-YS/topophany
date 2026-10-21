@@ -45,7 +45,7 @@ func receiptObserver(id string) string {
 	return strings.Join(parts[:len(parts)-2], ".")
 }
 
-func (s *Store) checkScopeCapacity(b model.Batch, sizes map[string]int64) error {
+func (s *Store) checkScopeCapacity(b model.Batch, sizes, externalDelta map[string]int64) error {
 	n := len(s.options.Observers)
 	if n == 0 {
 		return nil
@@ -67,7 +67,7 @@ func (s *Store) checkScopeCapacity(b model.Batch, sizes map[string]int64) error 
 	for id, count := range counts {
 		byteLimit := s.options.byteShare(id)
 		receiptLimit := int(s.options.share(int64(s.options.MaxReceipts), id))
-		if s.scopeReceipts[id]+count > receiptLimit || s.scopeBytes[id]+sizes[id] > byteLimit {
+		if s.scopeReceipts[id]+count > receiptLimit || s.scopeBytes[id]+sizes[id]+externalDelta[id] > byteLimit {
 			return ErrScopeCapacity
 		}
 	}

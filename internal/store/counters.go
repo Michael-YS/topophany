@@ -27,6 +27,8 @@ func (s *Store) replaceBeat(h model.Heartbeat) {
 func (s *Store) recountBytes() {
 	s.stateBytes = 1024 + int64(len(s.carries))*carryBytes + s.externalBytes
 	s.scopeBytes = map[string]int64{}
+	externalObservers := s.externalObserverBytes
+	s.externalObserverBytes = map[string]int64{}
 	for id, n := range s.scopeReceipts {
 		s.adjustBytes(id, int64(n)*512)
 	}
@@ -40,6 +42,9 @@ func (s *Store) recountBytes() {
 	for _, h := range s.beats {
 		s.replaceBeat(h)
 	}
+	// External state is paid for by the source's observer; rebuild the map
+	// from the durable state rather than trusting the prior live accounting.
+	s.setExternalObserverBytesLocked(externalObservers)
 }
 
 func (s *Store) recountRecent(now time.Time) {

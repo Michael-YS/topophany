@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -75,7 +76,7 @@ func TestExternalMergeClonesOnlyAffectedState(t *testing.T) {
 	if s.external.Bindings["a"].ReportSamples != 1 || s.external.Bindings["b"].Last != beforeB {
 		t.Fatalf("installed state = %+v", s.external.Bindings)
 	}
-	total, _, _, err := s.externalAccountingLocked()
+	total, _, _, _, err := s.externalAccountingLocked()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,5 +203,32 @@ func TestNativePutDoesNotCloneExternalState(t *testing.T) {
 	// receipt cost regardless of the external Seen total.
 	if allocs > 300 {
 		t.Fatalf("native Put allocated %.0f objects with external state present", allocs)
+	}
+}
+
+func TestExternalReportStateIsChargedToObserverQuota(t *testing.T) {
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	opts, err := storageOptions(Options{Observers: []string{"home"}, MaxStateBytes: 4 << 10, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts.Sources = map[string]model.Source{"source": {ID: "source", Observer: "home"}}
+	s := &Store{
+		options:       opts,
+		externalSizes: map[string]int64{}, externalSourceBytes: map[string]int64{}, externalObserverBytes: map[string]int64{},
+		scopeBytes: map[string]int64{},
+	}
+	s.external = model.NewExternalState()
+	s.external.Sources["source"] = model.SourceState{ID: "source"}
+	s.external.Bindings["a"] = incrementalBinding("a", "obj-a", "contract-a", now.Add(-time.Minute), 256)
+	s.rebuildExternalAccountingLocked()
+	if s.externalObserverBytes["home"] <= opts.byteShare("home") {
+		t.Fatalf("fixture does not exceed observer share: %d <= %d", s.externalObserverBytes["home"], opts.byteShare("home"))
+	}
+	percent := 30.0
+	report := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "obj-a", SampleID: "new-a", ObservedAt: now, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &percent}}}
+	obs := model.Observation{ID: "home.boot.2", Contract: "contract-a", Check: "a", External: &model.ExternalObservation{Source: "source", AttemptedAt: now, Contact: true, Report: &report}}
+	if _, err := s.mergeExternalLocked([]model.Observation{obs}); !errors.Is(err, ErrScopeCapacity) {
+		t.Fatalf("external state escaped the observer quota: %v", err)
 	}
 }

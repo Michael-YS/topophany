@@ -160,8 +160,9 @@ type Store struct {
 	// accounting for the persisted state. They keep a native or single-binding
 	// write from serializing the whole external graph; keys are "b:"+check and
 	// "s:"+source.
-	externalSizes       map[string]int64
-	externalSourceBytes map[string]int64
+	externalSizes         map[string]int64
+	externalSourceBytes   map[string]int64
+	externalObserverBytes map[string]int64
 	// format is the durable checkpoint schema. It is monotonic: once external
 	// data has been committed the store keeps writing schema 2 even after its
 	// external state is removed, so an older binary cannot reopen and silently
@@ -204,7 +205,7 @@ func Open(dir string, o Options) (s *Store, err error) {
 	if e != nil {
 		return nil, e
 	}
-	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes), external: model.NewExternalState(), externalSizes: map[string]int64{}, externalSourceBytes: map[string]int64{}, format: 1}
+	s = &Store{dir: dir, unlock: unlock, options: o, tails: map[string][]model.Observation{}, carries: map[string]engine.Carry{}, seen: map[string]receipt{}, beats: map[string]model.Heartbeat{}, rowSizes: map[string]int64{}, rowRefs: map[string]int{}, rowHashes: map[string]digest{}, rowObservers: map[string]string{}, floors: map[string]uint64{}, floorAt: map[string]time.Time{}, floorQueues: map[string]*floorQueue{}, stateBytes: 1024, scopeBytes: map[string]int64{}, beatBytes: map[string]int64{}, scopeReceipts: map[string]int{}, rowScope: map[string]int64{}, rollups: rollup.New(o.RollupBytes), external: model.NewExternalState(), externalSizes: map[string]int64{}, externalSourceBytes: map[string]int64{}, externalObserverBytes: map[string]int64{}, format: 1}
 	s.rollups.SetCurrent(s.currentKey)
 	s.rollups.SetReorderWindow(o.Retention + 30*time.Second)
 	opened := s
@@ -797,10 +798,8 @@ func (s *Store) Put(b model.Batch) error {
 		projected += int64(len(raw)) + 1024
 		projected -= s.beatBytes[b.Heartbeat.Observer]
 	}
-	if err := s.checkScopeCapacity(b, sizes); err != nil {
-		return err
-	}
 	var externalNext *externalCommit
+	var externalScopeDelta map[string]int64
 	externalChanged := hasExternalObservation(kept)
 	if externalChanged {
 		commit, e := s.mergeExternalLocked(kept)
@@ -810,7 +809,18 @@ func (s *Store) Put(b model.Batch) error {
 		externalNext = commit
 		if commit != nil {
 			projected += commit.size - s.externalBytes
+			externalScopeDelta = make(map[string]int64)
+			for observer, size := range commit.observerBytes {
+				if delta := size - s.externalObserverBytes[observer]; delta != 0 {
+					externalScopeDelta[observer] = delta
+				}
+			}
 		}
+	}
+	// checkScopeCapacity runs after the external merge so the observer share
+	// includes this transaction's report state as well as its raw samples.
+	if err := s.checkScopeCapacity(b, sizes, externalScopeDelta); err != nil {
+		return err
 	}
 	if len(s.seen)+len(pending) > s.options.MaxReceipts || projected > s.options.MaxStateBytes {
 		return ErrCapacity

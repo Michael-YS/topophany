@@ -81,10 +81,11 @@ func (s *Store) externalSourceLimit() int64 {
 }
 
 type externalCommit struct {
-	state       *model.ExternalState
-	size        int64
-	sizes       map[string]int64
-	sourceBytes map[string]int64
+	state         *model.ExternalState
+	size          int64
+	sizes         map[string]int64
+	sourceBytes   map[string]int64
+	observerBytes map[string]int64
 }
 
 func externalEntrySize(key string, value any) (int64, error) {
@@ -97,35 +98,74 @@ func externalEntrySize(key string, value any) (int64, error) {
 
 // externalAccountingLocked derives per-entry and per-source encoded sizes
 // without serializing state that did not change. Callers hold s.mu.
-func (s *Store) externalAccountingLocked() (int64, map[string]int64, map[string]int64, error) {
+func (s *Store) externalAccountingLocked() (int64, map[string]int64, map[string]int64, map[string]int64, error) {
 	sizes := map[string]int64{}
 	bySource := map[string]int64{}
+	byObserver := map[string]int64{}
 	if s.external == nil {
-		return 0, sizes, bySource, nil
+		return 0, sizes, bySource, byObserver, nil
 	}
 	total := int64(externalStateOverhead)
 	for id, state := range s.external.Sources {
 		size, err := externalEntrySize(id, state)
 		if err != nil {
-			return 0, nil, nil, err
+			return 0, nil, nil, nil, err
 		}
 		sizes["s:"+id] = size
 		bySource[id] += size
+		byObserver[s.sourceObserverLocked(id)] += size
 		total += size
 	}
 	for check, state := range s.external.Bindings {
 		size, err := externalEntrySize(check, state)
 		if err != nil {
-			return 0, nil, nil, err
+			return 0, nil, nil, nil, err
 		}
 		sizes["b:"+check] = size
 		bySource[state.Source] += size
+		byObserver[s.sourceObserverLocked(state.Source)] += size
 		total += size
 	}
-	return total, sizes, bySource, nil
+	return total, sizes, bySource, byObserver, nil
 }
 
-func (s *Store) applyExternalAccountingLocked(size int64, sizes, bySource map[string]int64) {
+func (s *Store) sourceObserverLocked(source string) string {
+	if state, ok := s.options.Sources[source]; ok {
+		return state.Observer
+	}
+	return ""
+}
+
+// setExternalObserverBytesLocked applies only the per-observer share of an
+// accounting change. The global stateBytes delta is handled separately, so
+// this must not call adjustBytes.
+func (s *Store) setExternalObserverBytesLocked(next map[string]int64) {
+	if s.scopeBytes == nil {
+		s.scopeBytes = map[string]int64{}
+	}
+	if next == nil {
+		next = map[string]int64{}
+	}
+	for observer, size := range next {
+		if delta := size - s.externalObserverBytes[observer]; delta != 0 {
+			s.scopeBytes[observer] += delta
+			if s.scopeBytes[observer] == 0 {
+				delete(s.scopeBytes, observer)
+			}
+		}
+	}
+	for observer, size := range s.externalObserverBytes {
+		if _, ok := next[observer]; !ok {
+			s.scopeBytes[observer] -= size
+			if s.scopeBytes[observer] == 0 {
+				delete(s.scopeBytes, observer)
+			}
+		}
+	}
+	s.externalObserverBytes = next
+}
+
+func (s *Store) applyExternalAccountingLocked(size int64, sizes, bySource, byObserver map[string]int64) {
 	if size < 0 {
 		size = 0
 	}
@@ -133,21 +173,22 @@ func (s *Store) applyExternalAccountingLocked(size int64, sizes, bySource map[st
 	s.externalBytes = size
 	s.externalSizes = sizes
 	s.externalSourceBytes = bySource
+	s.setExternalObserverBytesLocked(byObserver)
 }
 
 // rebuildExternalAccountingLocked is used on recovery and context changes,
 // not on the write hot path.
 func (s *Store) rebuildExternalAccountingLocked() {
-	size, sizes, bySource, err := s.externalAccountingLocked()
+	size, sizes, bySource, byObserver, err := s.externalAccountingLocked()
 	if err != nil {
 		s.poisoned = fmt.Errorf("external state encoding failed: %w", err)
 		return
 	}
-	s.applyExternalAccountingLocked(size, sizes, bySource)
+	s.applyExternalAccountingLocked(size, sizes, bySource, byObserver)
 }
 
 func (s *Store) ensureExternalAccountingLocked() {
-	if s.externalSizes == nil || s.externalSourceBytes == nil {
+	if s.externalSizes == nil || s.externalSourceBytes == nil || s.externalObserverBytes == nil {
 		s.rebuildExternalAccountingLocked()
 	}
 }
@@ -157,7 +198,7 @@ func (s *Store) ensureExternalAccountingLocked() {
 func (s *Store) resizeExternalLocked() {
 	if s.external == nil || len(s.external.Sources) == 0 && len(s.external.Bindings) == 0 {
 		s.external = nil
-		s.applyExternalAccountingLocked(0, map[string]int64{}, map[string]int64{})
+		s.applyExternalAccountingLocked(0, map[string]int64{}, map[string]int64{}, map[string]int64{})
 		return
 	}
 	s.rebuildExternalAccountingLocked()
@@ -248,10 +289,21 @@ func (s *Store) mergeExternalLocked(observations []model.Observation) (*external
 	if len(sources) > model.MaxSources || len(bindings) > model.MaxExternalChecks {
 		return nil, errors.New("external state entity budget exceeded")
 	}
+	touchedSources := map[string]bool{}
+	for source := range affectedSources {
+		touchedSources[source] = true
+	}
+	for check := range affectedBindings {
+		touchedSources[bindings[check].Source] = true
+	}
 	sizes := make(map[string]int64, len(affectedSources)+len(affectedBindings))
 	bySource := maps.Clone(s.externalSourceBytes)
 	if bySource == nil {
 		bySource = map[string]int64{}
+	}
+	byObserver := maps.Clone(s.externalObserverBytes)
+	if byObserver == nil {
+		byObserver = map[string]int64{}
 	}
 	total := s.externalBytes
 	add := func(key, source string, value any) error {
@@ -262,6 +314,7 @@ func (s *Store) mergeExternalLocked(observations []model.Observation) (*external
 		delta := size - s.externalSizes[key]
 		total += delta
 		bySource[source] += delta
+		byObserver[s.sourceObserverLocked(source)] += delta
 		sizes[key] = size
 		return nil
 	}
@@ -280,13 +333,23 @@ func (s *Store) mergeExternalLocked(observations []model.Observation) (*external
 		return nil, errors.New("external state byte budget exceeded")
 	}
 	limit := s.externalSourceLimit()
-	for source := range affectedSources {
+	for source := range touchedSources {
 		if bySource[source] > limit {
 			return nil, errors.New("external source state budget exceeded")
 		}
 	}
+	// External state is charged to the observer that owns the source. When
+	// observers are configured, one observer's report state cannot silently
+	// consume another's share of the global state budget.
+	if len(s.options.Observers) > 0 {
+		for observer, size := range byObserver {
+			if size > s.options.byteShare(observer) {
+				return nil, fmt.Errorf("%w: external report state", ErrScopeCapacity)
+			}
+		}
+	}
 	next := &model.ExternalState{Schema: model.ExternalStateSchema, Sources: sources, Bindings: bindings}
-	return &externalCommit{state: next, size: total, sizes: sizes, sourceBytes: bySource}, nil
+	return &externalCommit{state: next, size: total, sizes: sizes, sourceBytes: bySource, observerBytes: byObserver}, nil
 }
 
 // installExternalLocked atomically replaces the external state after the
@@ -299,7 +362,7 @@ func (s *Store) installExternalLocked(commit *externalCommit) {
 	}
 	if commit.state == nil || len(commit.state.Sources) == 0 && len(commit.state.Bindings) == 0 {
 		s.external = nil
-		s.applyExternalAccountingLocked(0, map[string]int64{}, map[string]int64{})
+		s.applyExternalAccountingLocked(0, map[string]int64{}, map[string]int64{}, map[string]int64{})
 		return
 	}
 	s.external = commit.state
@@ -307,6 +370,7 @@ func (s *Store) installExternalLocked(commit *externalCommit) {
 		s.externalSizes[key] = size
 	}
 	s.externalSourceBytes = commit.sourceBytes
+	s.setExternalObserverBytesLocked(commit.observerBytes)
 	s.stateBytes += commit.size - s.externalBytes
 	s.externalBytes = commit.size
 }
