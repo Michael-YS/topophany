@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"unicode"
@@ -57,12 +58,28 @@ func Decode(r io.Reader) (model.Config, error) {
 	return c, Validate(c)
 }
 func Load(path string) (model.Config, error) {
+	st, e := os.Lstat(path)
+	if e != nil {
+		return model.Config{}, e
+	}
 	f, e := os.Open(path)
 	if e != nil {
 		return model.Config{}, e
 	}
 	defer f.Close()
-	return Decode(f)
+	c, e := Decode(f)
+	if e != nil {
+		return c, e
+	}
+	if HasLiteralSecret(c) {
+		if !st.Mode().IsRegular() {
+			return model.Config{}, errors.New("topology with secrets must be a regular non-symlink file")
+		}
+		if runtime.GOOS != "windows" && st.Mode().Perm()&0077 != 0 {
+			return model.Config{}, errors.New("topology with secrets must be 0600 or stricter")
+		}
+	}
+	return c, nil
 }
 func Defaults(c *model.Config) {
 	for i := range c.Observers {
