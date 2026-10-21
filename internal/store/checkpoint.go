@@ -16,7 +16,8 @@ import (
 // at a time. Whole-state json.Marshal also retained large pooled encode buffers
 // and generated several simultaneous copies of the checkpoint.
 func (s *Store) writeCheckpoint(path string) error {
-	return secure.AtomicWriteStreamMeasured(path, 0600, &ioaccount.Checkpoint, func(f io.WriteSeeker) error {
+	var size int64
+	err := secure.AtomicWriteStreamMeasured(path, 0600, &ioaccount.Checkpoint, func(f io.WriteSeeker) error {
 		const prefix = `{"sha256":"`
 		if _, err := io.WriteString(f, prefix+string(makeChecksumPlaceholder())+`","payload":`); err != nil {
 			return err
@@ -80,12 +81,25 @@ func (s *Store) writeCheckpoint(path string) error {
 		if _, err := io.WriteString(f, "}"); err != nil {
 			return err
 		}
+		size = maxCheckpointBytes - out.left
 		if _, err := f.Seek(int64(len(prefix)), io.SeekStart); err != nil {
 			return err
 		}
 		_, err := io.WriteString(f, hex.EncodeToString(h.Sum(nil)))
 		return err
 	})
+	if err == nil {
+		s.checkpointSize = size
+	}
+	return err
+}
+
+// Rewriting a large checkpoint for every small journal wastes I/O. Let the
+// journal grow to the last durable checkpoint size, between the configured
+// floor and ceiling. One additional bounded transaction can cross the ceiling;
+// even at 128 MiB this remains below the 256 MiB recovery budget.
+func (s *Store) checkpointThreshold() int64 {
+	return min(max(s.options.CheckpointBytes, s.checkpointSize), s.options.MaxJournalBytes)
 }
 
 func makeChecksumPlaceholder() []byte {

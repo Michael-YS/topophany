@@ -60,6 +60,7 @@ type Options struct {
 	MaxReceipts     int
 	Retention       time.Duration
 	CheckpointBytes int64
+	MaxJournalBytes int64 // adaptive checkpoint ceiling; bounds restart replay work
 	MaxStateBytes   int64
 	RollupBytes     int64
 	Now             func() time.Time
@@ -104,34 +105,35 @@ type envelope struct {
 	Payload json.RawMessage `json:"payload"`
 }
 type Store struct {
-	mu            sync.Mutex
-	dir           string
-	file          *os.File
-	unlock        func() error
-	options       Options
-	rows          []model.Observation
-	tails         map[string][]model.Observation
-	carries       map[string]engine.Carry // what samples trimmed from each tail left
-	seen          map[string]receipt
-	beats         map[string]model.Heartbeat
-	bytes         int64
-	closed        bool
-	poisoned      error
-	rowSizes      map[string]int64
-	stateBytes    int64
-	beatBytes     map[string]int64
-	recent        map[string]int
-	recentHead    int
-	recentAt      time.Time
-	rowHashes     map[string]digest
-	rowObservers  map[string]string
-	scopeBytes    map[string]int64
-	scopeReceipts map[string]int
-	floors        map[string]uint64
-	floorAt       map[string]time.Time   // when each floor's receipt was taken
-	floorQueues   map[string]*floorQueue // by observer, its floors oldest first
-	rollups       *rollup.Store
-	settled       time.Time // when the rollups last settled
+	mu             sync.Mutex
+	dir            string
+	file           *os.File
+	unlock         func() error
+	options        Options
+	rows           []model.Observation
+	tails          map[string][]model.Observation
+	carries        map[string]engine.Carry // what samples trimmed from each tail left
+	seen           map[string]receipt
+	beats          map[string]model.Heartbeat
+	bytes          int64
+	checkpointSize int64
+	closed         bool
+	poisoned       error
+	rowSizes       map[string]int64
+	stateBytes     int64
+	beatBytes      map[string]int64
+	recent         map[string]int
+	recentHead     int
+	recentAt       time.Time
+	rowHashes      map[string]digest
+	rowObservers   map[string]string
+	scopeBytes     map[string]int64
+	scopeReceipts  map[string]int
+	floors         map[string]uint64
+	floorAt        map[string]time.Time   // when each floor's receipt was taken
+	floorQueues    map[string]*floorQueue // by observer, its floors oldest first
+	rollups        *rollup.Store
+	settled        time.Time // when the rollups last settled
 
 	// Receipts in the order they were taken, from receiptHead on, so the
 	// expired ones are found at the front rather than by visiting them all;
@@ -713,7 +715,7 @@ func (s *Store) Put(b model.Batch) error {
 		return e
 	}
 	s.prune()
-	if s.bytes >= s.options.CheckpointBytes {
+	if s.bytes >= s.checkpointThreshold() {
 		if e = s.checkpoint(); e != nil {
 			s.poisoned = e
 			return e

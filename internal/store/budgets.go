@@ -23,6 +23,13 @@ func storageOptions(o Options) (Options, error) {
 	}
 	if o.CheckpointBytes == 0 {
 		o.CheckpointBytes = 16 << 20
+		if o.MaxJournalBytes == 0 {
+			o.MaxJournalBytes = 128 << 20
+		}
+	}
+	// Explicit old-style thresholds remain fixed unless a ceiling is supplied.
+	if o.MaxJournalBytes == 0 {
+		o.MaxJournalBytes = o.CheckpointBytes
 	}
 	if o.Now == nil {
 		o.Now = time.Now
@@ -33,7 +40,7 @@ func storageOptions(o Options) (Options, error) {
 	if o.RollupBytes == 0 {
 		o.RollupBytes = 32 << 20
 	}
-	if o.MaxHistory < 1 || o.MaxReceipts < 1 || o.Retention < time.Minute || o.CheckpointBytes < 1024 || o.CheckpointBytes > 128<<20 || o.MaxStateBytes < 1024 || o.MaxStateBytes > 128<<20 || o.RollupBytes < rollup.MinLimit || o.RollupBytes > rollup.MaxLimit {
+	if o.MaxHistory < 1 || o.MaxReceipts < 1 || o.Retention < time.Minute || o.CheckpointBytes < 1024 || o.CheckpointBytes > 128<<20 || o.MaxJournalBytes < o.CheckpointBytes || o.MaxJournalBytes > 128<<20 || o.MaxStateBytes < 1024 || o.MaxStateBytes > 128<<20 || o.RollupBytes < rollup.MinLimit || o.RollupBytes > rollup.MaxLimit {
 		return o, errors.New("invalid storage limits")
 	}
 
