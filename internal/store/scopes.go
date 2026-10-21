@@ -19,6 +19,8 @@ func (s *Store) SetObservers(ids []string) {
 
 // SetAllocation installs weights from an already validated topology.
 func (s *Store) SetAllocation(ids []string, weights map[string]int) {
+	s.commitMu.Lock()
+	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.historyDirty = true

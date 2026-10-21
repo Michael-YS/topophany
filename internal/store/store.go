@@ -105,7 +105,15 @@ type envelope struct {
 	SHA256  string          `json:"sha256"`
 	Payload json.RawMessage `json:"payload"`
 }
+
+// syncFile is the journal durability hook. Tests replace it to prove a
+// reader does not wait for the sync; production calls ioaccount.Sync.
+var syncFile = func(f *os.File) error { return ioaccount.Sync(f) }
+
 type Store struct {
+	// commitMu serializes writers. mu is what readers take; durability IO
+	// holds commitMu and not mu, so a slow sync does not stall reads.
+	commitMu        sync.Mutex
 	mu              sync.Mutex
 	version         uint64
 	evidenceVersion uint64
@@ -423,6 +431,8 @@ func (s *Store) expired(id string) bool {
 // again are rebuilt from the history still held. Rollups of series no
 // longer counted are kept, and shed first when the rollups are full.
 func (s *Store) SetCurrent(revision string, contracts map[string]string, stale map[string]time.Duration) {
+	s.commitMu.Lock()
+	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.version++
@@ -614,10 +624,12 @@ func (s *Store) Put(b model.Batch) error {
 	for i, v := range b.Observations {
 		hashes[i] = observationHash(v)
 	}
+	s.commitMu.Lock()
+	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.bytes >= s.options.MaxJournalBytes {
-		s.waitCheckpoint()
+		s.waitDurable()
 	}
 	if s.closed {
 		return errors.New("store closed")
@@ -712,6 +724,9 @@ func (s *Store) Put(b model.Batch) error {
 		return e
 	}
 	record = append(record, '\n')
+	// Readers may proceed while this record is made durable. commitMu still
+	// keeps the next writer, and the checkpoint installer, off this file.
+	s.mu.Unlock()
 	started := time.Now()
 	n, e := s.file.Write(record)
 	ioaccount.Journal.Add(n, time.Since(started), e)
@@ -719,8 +734,9 @@ func (s *Store) Put(b model.Batch) error {
 		e = io.ErrShortWrite
 	}
 	if e == nil {
-		e = ioaccount.Sync(s.file)
+		e = syncFile(s.file)
 	}
+	s.mu.Lock()
 	if e != nil {
 		s.poisoned = fmt.Errorf("journal durability failure; restart required: %w", e)
 		return s.poisoned
@@ -884,9 +900,11 @@ func (s *Store) checkpoint() error {
 	return nil
 }
 func (s *Store) Checkpoint() error {
+	s.commitMu.Lock()
+	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.waitCheckpoint()
+	s.waitDurable()
 	if s.closed {
 		return errors.New("store closed")
 	}
@@ -959,13 +977,15 @@ func (s *Store) Rollups(check, contract string, from time.Time, step time.Durati
 }
 
 func (s *Store) Close() error {
+	s.commitMu.Lock()
+	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil
 	}
 	s.closed = true
-	s.waitCheckpoint()
+	s.waitDurable()
 	var e error
 	if s.file != nil {
 		e = s.file.Close()

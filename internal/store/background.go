@@ -35,8 +35,8 @@ func (s *Store) startCheckpoint() {
 	s.checkpointDone = done
 	go func() {
 		err := snapshot.writeCheckpoint(filepath.Join(s.dir, "checkpoint.json"))
+		s.commitMu.Lock()
 		s.mu.Lock()
-		defer s.mu.Unlock()
 		if err == nil {
 			s.checkpointSize = snapshot.checkpointSize
 			err = s.retainJournalTail(boundary)
@@ -46,6 +46,8 @@ func (s *Store) startCheckpoint() {
 		}
 		s.checkpointDone = nil
 		close(done)
+		s.mu.Unlock()
+		s.commitMu.Unlock()
 	}()
 }
 
@@ -88,13 +90,26 @@ func (s *Store) retainJournalTail(boundary int64) error {
 	return err
 }
 
-// Wait without holding the store lock. Put uses this only at the journal
-// ceiling; explicit checkpoints and Close also wait for in-flight publication.
+// Wait without holding the store lock. Called with mu held and commitMu not
+// held: the finisher takes commitMu before mu, so releasing mu lets it finish.
 func (s *Store) waitCheckpoint() {
 	for s.checkpointDone != nil {
 		done := s.checkpointDone
 		s.mu.Unlock()
 		<-done
+		s.mu.Lock()
+	}
+}
+
+// waitDurable is waitCheckpoint for a caller that already holds commitMu.
+// The finisher needs that lock, so both are released until it is done.
+func (s *Store) waitDurable() {
+	for s.checkpointDone != nil {
+		done := s.checkpointDone
+		s.mu.Unlock()
+		s.commitMu.Unlock()
+		<-done
+		s.commitMu.Lock()
 		s.mu.Lock()
 	}
 }
