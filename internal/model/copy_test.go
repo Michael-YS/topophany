@@ -8,9 +8,11 @@ import (
 )
 
 func TestCloneBatchOwnership(t *testing.T) {
+	percent := 25.0
 	original := Batch{Schema: BatchSchema, Project: "project", Revision: "revision",
-		Observations: []Observation{{ID: "observer.boot.1", SampledAt: time.Now(), Facts: map[string]string{"proof": "yes"}, Timings: map[string]int64{"connect": 12}}},
-		Heartbeat:    &Heartbeat{Observer: "observer", Delivery: []DeliveryStatus{{Collector: "0123456789abcdef"}}},
+		Observations: []Observation{{ID: "observer.boot.1", SampledAt: time.Now(), Facts: map[string]string{"proof": "yes"}, Timings: map[string]int64{"connect": 12},
+			External: &ExternalObservation{Source: "source", AttemptedAt: time.Now(), Contact: true, Report: &ExternalReport{ReportMeta: ReportMeta{Schema: ReportSchema, Object: "vm", TimeBasis: TimeBasisUpstreamSample, Fields: map[string]string{"cpu.percent": FieldKnown}}, Resource: &ResourceReport{CPU: &CPUReport{Percent: &percent}}}}}},
+		Heartbeat: &Heartbeat{Observer: "observer", Delivery: []DeliveryStatus{{Collector: "0123456789abcdef"}}},
 	}
 	before, err := json.Marshal(original)
 	if err != nil {
@@ -24,6 +26,8 @@ func TestCloneBatchOwnership(t *testing.T) {
 	cloned.Observations[0].ID = "changed"
 	cloned.Observations[0].Facts["proof"] = "changed"
 	cloned.Observations[0].Timings["connect"] = 99
+	cloned.Observations[0].External.Report.Resource.CPU.Percent = ptr(99.0)
+	cloned.Observations[0].External.Report.Fields["cpu.percent"] = "changed"
 	cloned.Heartbeat.Observer = "changed"
 	cloned.Heartbeat.Delivery[0].Collector = "changed"
 	unchanged, _ := json.Marshal(original)
@@ -32,8 +36,11 @@ func TestCloneBatchOwnership(t *testing.T) {
 	}
 	original.Observations[0].Facts["proof"] = "input changed"
 	original.Heartbeat.Delivery[0].Collector = "input changed"
-	if cloned.Observations[0].Facts["proof"] != "changed" || cloned.Heartbeat.Delivery[0].Collector != "changed" {
+	if cloned.Observations[0].Facts["proof"] != "changed" || cloned.Heartbeat.Delivery[0].Collector != "changed" || *cloned.Observations[0].External.Report.Resource.CPU.Percent != 99 {
 		t.Fatal("input aliases clone")
+	}
+	if *original.Observations[0].External.Report.Resource.CPU.Percent != 25 || original.Observations[0].External.Report.Fields["cpu.percent"] != FieldKnown {
+		t.Fatal("clone aliases external report")
 	}
 }
 
@@ -67,3 +74,5 @@ func BenchmarkCloneBatch(b *testing.B) {
 		}
 	})
 }
+
+func ptr(v float64) *float64 { return &v }

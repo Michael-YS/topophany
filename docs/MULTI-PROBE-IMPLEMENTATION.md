@@ -431,8 +431,8 @@ its existing worker budget.
 |---|---|---|
 | 0 base/design freeze | `7f5ebaa` | complete |
 | 1 typed model/config | `87d82a4` | complete |
-| 2 report normalization | this commit | complete |
-| 3 collector admission | — | pending |
+| 2 report normalization | `4a1de5c` | complete |
+| 3 collector admission | this commit | complete |
 | 4 persistence/dedup | — | pending |
 | 5 report state/statistics | — | pending |
 | 6 source runtime | — | pending |
@@ -463,6 +463,17 @@ Record only real changes to the frozen rules here, with the reason.
 - Raw `model.ExternalReport` normalization does not itself decide sample
   acceptance; that is the task 4 merge step. Time-unknown reports normalize
   for diagnosis, but `SampleAt`/`DataDeadline` refuse to make them evidence.
+- Task 3 bumps the wire batch and snapshot schemas to 3. The collector still
+  accepts contracts-bearing schema 2 native batches; schema 2 refuses an
+  external member. The new client reads schema 2 native snapshots and schema
+  3. The engine's frozen judgment oracle now normalizes only the advertised
+  wire schema to its historical value, so all prior digests still verify the
+  judgments; a separate assertion checks that schema 3 is advertised. This is
+  a deliberate version normalization, not a regenerated oracle.
+- Task 3 has no valid external producer yet: the native scheduler rejects an
+  external check until task 6 wires source jobs, and a client-supplied external
+  observation is subject to the new admission checks. This deliberately keeps
+  the intermediate commit from claiming a report that no source runtime read.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters

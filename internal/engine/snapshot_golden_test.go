@@ -77,6 +77,12 @@ func TestSnapshotPathsMatchPreOptimizationGolden(t *testing.T) {
 							snap = plan.Build("review", view, rows, carries, beats, start.Add(offset))
 						}
 						snap.Version = "fixture"
+						// The wire schema is versioned independently of the judgments
+						// this oracle freezes. Schema 3 adds a new member but no
+						// native semantics; hash under the historical schema so a
+						// version bump cannot hide a judgment change. The current
+						// advertised schema is asserted separately.
+						snap.Schema = model.BatchSchemaContracts
 						if err := encoder.Encode(snap); err != nil {
 							t.Fatal(err)
 						}
@@ -87,5 +93,13 @@ func TestSnapshotPathsMatchPreOptimizationGolden(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestSnapshotAdvertisesCurrentSchema(t *testing.T) {
+	c := testkit.Config()
+	snap := NewPlan(c).Build("test", "", nil, nil, nil, time.Now())
+	if snap.Schema != model.SnapshotSchema || model.SnapshotSchema != 3 {
+		t.Fatalf("snapshot schema = %d", snap.Schema)
 	}
 }

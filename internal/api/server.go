@@ -22,6 +22,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/report"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
@@ -644,12 +645,17 @@ func (g *generation) validateBatch(b model.Batch, observer string, now, future t
 		return "project_mismatch", 409
 	}
 	// A schema 1 batch counts only under the very topology it was taken
-	// with; a schema 2 observation, under its check's contract.
+	// with. Schemas 2 and 3 carry each observation's contract; only schema 3
+	// has the external-report member. Unknown schemas fail explicitly rather
+	// than being read without their new semantics.
 	revision := g.revision
 	legacy := b.Schema == 0 || b.Schema == 1
 	switch {
-	case !legacy && b.Schema != model.BatchSchema:
+	case legacy, b.Schema == model.BatchSchemaContracts, b.Schema == model.BatchSchema:
+	default:
 		return "unsupported_batch_schema", 400
+	}
+	switch {
 	case len(b.Revision) != 64 || strings.Trim(b.Revision, "0123456789abcdef") != "":
 		return "invalid_batch_revision", 400
 	case legacy && b.Revision != revision:
@@ -661,7 +667,8 @@ func (g *generation) validateBatch(b model.Batch, observer string, now, future t
 	validTime := func(t time.Time) bool {
 		return !t.IsZero() && !t.After(future.Add(30*time.Second)) && !t.Before(now.Add(-maxAge))
 	}
-	for _, v := range b.Observations {
+	for i := range b.Observations {
+		v := &b.Observations[i]
 		x, ok := g.checks[v.Check]
 		if !ok || x.Observer != observer || v.Observer != observer {
 			return "observer_scope_violation", 403
@@ -692,13 +699,40 @@ func (g *generation) validateBatch(b model.Batch, observer string, now, future t
 		}
 		expected := "measured"
 		switch x.Kind {
-		case "mihomo", "tailscale", "wireguard", "host", "cloudflared", "cloudflare":
+		case "mihomo", "tailscale", "wireguard", "host", "cloudflared", "cloudflare", "external":
 			expected = "reported"
 		}
 		if v.Evidence != expected {
 			return "evidence_kind_mismatch", 400
 		}
-		if code := config.ObservationBounds(v, time.Duration(x.TimeoutSeconds+5)*time.Second); code != "" {
+		if x.Kind == "external" || v.External != nil {
+			if b.Schema != model.BatchSchema {
+				return "external_requires_schema_3", 400
+			}
+			if x.External == nil {
+				return "external_binding_mismatch", 400
+			}
+			s, ok := config.Source(g.config, x.External.Source)
+			if !ok {
+				return "external_binding_mismatch", 409
+			}
+			normalized, e := report.ValidateExternalObservation(*v, x, s)
+			if e != nil {
+				return report.Code(e), 400
+			}
+			if v.External != nil {
+				if !validTime(v.External.AttemptedAt) {
+					return "external_attempt_time_out_of_range", 422
+				}
+				v.External.Report = normalized
+				if normalized != nil {
+					if at, known := report.SampleAt(*normalized); known && (at.Year() < 1970 || at.After(future.Add(30*time.Second))) {
+						return "external_report_time_out_of_range", 422
+					}
+				}
+			}
+		}
+		if code := config.ObservationBounds(*v, time.Duration(x.TimeoutSeconds+5)*time.Second); code != "" {
 			return code, 400
 		}
 	}

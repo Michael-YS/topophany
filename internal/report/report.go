@@ -90,7 +90,7 @@ func Normalize(r model.ExternalReport, maxBytes int) (model.ExternalReport, erro
 	if len(r.Fields) > model.MaxReportFields {
 		return model.ExternalReport{}, refuse("report_fields_budget", "more than %d field statuses", model.MaxReportFields)
 	}
-	out := clone(r)
+	out := model.CloneExternalReport(r)
 	switch {
 	case r.Resource != nil:
 		if err := normalizeResource(out.Resource); err != nil {
@@ -115,87 +115,6 @@ func Normalize(r model.ExternalReport, maxBytes int) (model.ExternalReport, erro
 		return model.ExternalReport{}, refuse("report_too_large", "%d encoded bytes exceed %d", len(raw), maxBytes)
 	}
 	return out, nil
-}
-
-func clone(r model.ExternalReport) model.ExternalReport {
-	out := r
-	out.Fields = cloneMap(r.Fields)
-	if r.Resource != nil {
-		res := *r.Resource
-		if r.Resource.CPU != nil {
-			cpu := *r.Resource.CPU
-			cpu.Percent = cloneFloat(cpu.Percent)
-			cpu.LogicalCores = cloneInt(cpu.LogicalCores)
-			cpu.SampleWindowMS = cloneInt64(cpu.SampleWindowMS)
-			res.CPU = &cpu
-		}
-		if r.Resource.Memory != nil {
-			memory := *r.Resource.Memory
-			memory.TotalBytes = cloneUint(memory.TotalBytes)
-			memory.UsedBytes = cloneUint(memory.UsedBytes)
-			memory.AvailableBytes = cloneUint(memory.AvailableBytes)
-			memory.Percent = cloneFloat(memory.Percent)
-			res.Memory = &memory
-		}
-		res.Disks = slices.Clone(r.Resource.Disks)
-		for i := range res.Disks {
-			d := &res.Disks[i]
-			d.TotalBytes = cloneUint(d.TotalBytes)
-			d.UsedBytes = cloneUint(d.UsedBytes)
-			d.FreeBytes = cloneUint(d.FreeBytes)
-			d.Percent = cloneFloat(d.Percent)
-		}
-		out.Resource = &res
-	}
-	if r.Status != nil {
-		status := *r.Status
-		status.UpstreamLatencyMS = cloneInt64(status.UpstreamLatencyMS)
-		out.Status = &status
-	}
-	return out
-}
-
-func cloneMap(m map[string]string) map[string]string {
-	if m == nil {
-		return nil
-	}
-	out := make(map[string]string, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneFloat(v *float64) *float64 {
-	if v == nil {
-		return nil
-	}
-	n := *v
-	return &n
-}
-
-func cloneInt(v *int) *int {
-	if v == nil {
-		return nil
-	}
-	n := *v
-	return &n
-}
-
-func cloneInt64(v *int64) *int64 {
-	if v == nil {
-		return nil
-	}
-	n := *v
-	return &n
-}
-
-func cloneUint(v *uint64) *uint64 {
-	if v == nil {
-		return nil
-	}
-	n := *v
-	return &n
 }
 
 func normalizeResource(r *model.ResourceReport) error {
@@ -625,3 +544,78 @@ func Zero(v *float64) bool { return v == nil || *v == 0 }
 // EqualContent compares canonical reports for duplicate/conflict detection.
 // It is equality of normalized content, not sample identity.
 func EqualContent(a, b model.ExternalReport) bool { return reflect.DeepEqual(a, b) }
+
+// ValidateExternalObservation checks the collector-independent shape of one
+// external attempt. It refuses a native observation that carries external
+// data and an external observation without its declared report identity. The
+// returned report is normalized and owned; a failed source attempt has none.
+func ValidateExternalObservation(v model.Observation, x model.Check, s model.Source) (*model.ExternalReport, error) {
+	if x.Kind != "external" || x.External == nil {
+		if v.External != nil {
+			return nil, refuse("external_binding_mismatch", "native check %q carries external evidence", x.ID)
+		}
+		return nil, nil
+	}
+	e := v.External
+	if e == nil {
+		return nil, refuse("external_attempt_required", "external check %q has no collection attempt", x.ID)
+	}
+	if e.Source != x.External.Source || e.Source != s.ID {
+		return nil, refuse("external_source_mismatch", "source is not the declared binding source")
+	}
+	if v.Observer != s.Observer {
+		return nil, refuse("external_observer_mismatch", "observer is not the source executor")
+	}
+	if v.Evidence != "reported" {
+		return nil, refuse("external_evidence_mismatch", "external evidence must be reported, not %q", v.Evidence)
+	}
+	if v.Connectivity {
+		return nil, refuse("external_connectivity_claim", "an external report cannot claim measured connectivity")
+	}
+	if e.AttemptedAt.IsZero() {
+		return nil, refuse("external_attempt_time_missing", "collection attempt has no time")
+	}
+	if len(e.SourceGeneration) > 64 || (e.SourceGeneration != "" && !safeToken(e.SourceGeneration, 64)) {
+		return nil, refuse("external_generation_invalid", "source generation is unsafe or too long")
+	}
+	switch v.Outcome {
+	case "ok", "error", "unknown":
+	default:
+		return nil, refuse("external_attempt_outcome", "external attempt outcome must be ok, error or unknown")
+	}
+	if e.Report == nil {
+		if v.Outcome == "ok" {
+			return nil, refuse("external_report_missing", "a successful source read must not silently have no report")
+		}
+		if v.Code == "" {
+			return nil, refuse("external_attempt_code_missing", "an attempt without a report needs a bounded diagnostic code")
+		}
+		return nil, nil
+	}
+	if !e.Contact {
+		return nil, refuse("external_report_without_contact", "a report requires a successful source read")
+	}
+	if v.Outcome != "ok" {
+		return nil, refuse("external_report_outcome", "a source read with a report is a successful collection attempt")
+	}
+	normalized, err := Normalize(*e.Report, s.MaxReportBytes)
+	if err != nil {
+		return nil, err
+	}
+	if normalized.Object != x.External.Object {
+		return nil, refuse("external_object_mismatch", "report object is not the bound object")
+	}
+	switch x.External.Report {
+	case model.ReportTypeResource:
+		if normalized.Resource == nil || normalized.Status != nil {
+			return nil, refuse("external_report_type_mismatch", "binding expects a resource report")
+		}
+	case model.ReportTypeStatus:
+		if normalized.Status == nil || normalized.Resource != nil {
+			return nil, refuse("external_report_type_mismatch", "binding expects a status report")
+		}
+	default:
+		return nil, refuse("external_report_type", "binding has an invalid report type")
+	}
+	return &normalized, nil
+}

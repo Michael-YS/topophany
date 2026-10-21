@@ -110,7 +110,7 @@ func TestBatchValidationContract(t *testing.T) {
 		status int
 	}{
 		{"project", func(b *model.Batch) { b.Project = "other" }, 409}, {"revision_format", func(b *model.Batch) { b.Revision = "old" }, 400},
-		{"schema", func(b *model.Batch) { b.Schema = 3 }, 400}, {"contract", func(b *model.Batch) { b.Observations[0].Contract = strings.Repeat("0", 64) }, 409},
+		{"schema", func(b *model.Batch) { b.Schema = 4 }, 400}, {"contract", func(b *model.Batch) { b.Observations[0].Contract = strings.Repeat("0", 64) }, 409},
 		{"contract_with_revision", func(b *model.Batch) { b.Observations[0].Revision = b.Revision }, 409},
 		{"legacy_revision", func(b *model.Batch) {
 			b.Schema, b.Revision = 0, strings.Repeat("a", 64)

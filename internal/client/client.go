@@ -296,7 +296,7 @@ func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) 
 		if snap.Project != c.profile.Project || snap.Topology.Project != c.profile.Project {
 			return empty, "", ErrProjectMismatch
 		}
-		if snap.Schema != model.SnapshotSchema || snap.GeneratedAt.IsZero() {
+		if (snap.Schema != model.BatchSchemaContracts && snap.Schema != model.SnapshotSchema) || snap.GeneratedAt.IsZero() {
 			return empty, "", errors.New("unsupported snapshot contract")
 		}
 		if snap.ViewObserver != observer {

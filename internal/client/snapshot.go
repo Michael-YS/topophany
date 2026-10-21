@@ -10,6 +10,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/report"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
@@ -18,12 +19,12 @@ import (
 type errSchema struct{ schema int }
 
 func (e errSchema) Error() string {
-	return fmt.Sprintf("a collector serves snapshot schema %d, and this client reads schema %d; upgrade them to the same release", e.schema, model.SnapshotSchema)
+	return fmt.Sprintf("a collector serves snapshot schema %d, and this client reads schemas 2 and %d; upgrade them to the same release", e.schema, model.SnapshotSchema)
 }
 
-// decodeSnapshot reads a schema 2 snapshot. Fields it does not know are
-// ignored, so a later release can add some without breaking this one;
-// everything it knows is checked.
+// decodeSnapshot reads a schema 2 or 3 snapshot. Schema 2 is native-only;
+// schema 3 adds external report state. Fields this release does not know are
+// ignored, but every known field, including external identity, is checked.
 func decodeSnapshot(raw []byte, s *model.Snapshot, known ...cachedTopology) error {
 	if err := secure.JSONBudget(raw); err != nil {
 		return err
@@ -35,9 +36,10 @@ func decodeSnapshot(raw []byte, s *model.Snapshot, known ...cachedTopology) erro
 	if err := json.Unmarshal(raw, &head); err != nil {
 		return err
 	}
-	if head.Schema != model.SnapshotSchema {
+	if head.Schema != model.BatchSchemaContracts && head.Schema != model.SnapshotSchema {
 		return errSchema{head.Schema}
 	}
+	externalAllowed := head.Schema >= model.SnapshotSchema
 	d := json.NewDecoder(bytes.NewReader(raw))
 	if err := d.Decode(s); err != nil {
 		return err
@@ -55,8 +57,12 @@ func decodeSnapshot(raw []byte, s *model.Snapshot, known ...cachedTopology) erro
 		return errors.New("invalid snapshot identity")
 	}
 	checks := map[string]model.Check{}
+	sources := map[string]model.Source{}
 	for _, c := range s.Topology.Checks {
 		checks[c.ID] = c
+	}
+	for _, source := range s.Topology.Sources {
+		sources[source.ID] = source
 	}
 	seen := map[string]bool{}
 	for _, c := range s.Checks {
@@ -68,8 +74,29 @@ func decodeSnapshot(raw []byte, s *model.Snapshot, known ...cachedTopology) erro
 		if len(c.Contract) != 64 {
 			return errors.New("invalid snapshot check contract")
 		}
-		if v := c.Last; v != nil && (v.Check != c.ID || v.Observer != c.Observer || v.Project != s.Project || v.Contract != c.Contract || v.Revision != "" || !validEvidence(*v)) {
-			return errors.New("invalid snapshot observation")
+		if v := c.Last; v != nil {
+			if v.Check != c.ID || v.Observer != c.Observer || v.Project != s.Project || v.Contract != c.Contract || v.Revision != "" || !validEvidence(*v) {
+				return errors.New("invalid snapshot observation")
+			}
+			if v.External != nil && !externalAllowed {
+				return errors.New("schema 2 snapshot carries external evidence")
+			}
+			if def.Kind == "external" || v.External != nil {
+				if !externalAllowed || def.External == nil {
+					return errors.New("invalid external snapshot evidence")
+				}
+				source, ok := sources[def.External.Source]
+				if !ok {
+					return errors.New("external snapshot source missing")
+				}
+				normalized, err := report.ValidateExternalObservation(*v, def, source)
+				if err != nil {
+					return fmt.Errorf("invalid external snapshot evidence: %w", err)
+				}
+				if normalized != nil && (v.External.Report == nil || !report.EqualContent(*normalized, *v.External.Report)) {
+					return errors.New("snapshot external report is not normalized")
+				}
+			}
 		}
 		if len(c.Availability) > 8 {
 			return errors.New("invalid snapshot availability")

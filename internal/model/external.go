@@ -172,3 +172,88 @@ func (r ExternalReport) PayloadCount() int {
 	}
 	return n
 }
+
+// ExternalObservation separates one source collection attempt from the
+// optional upstream report it produced. Contact says the source was read;
+// it never says the bound target is healthy.
+type ExternalObservation struct {
+	Source           string          `json:"source"`
+	SourceGeneration string          `json:"source_generation,omitempty"`
+	AttemptedAt      time.Time       `json:"attempted_at,omitzero"`
+	Contact          bool            `json:"contact"`
+	Report           *ExternalReport `json:"report,omitempty"`
+}
+
+// CloneExternalReport detaches every mutable member of a report.
+func CloneExternalReport(r ExternalReport) ExternalReport {
+	out := r
+	out.Fields = nil
+	if r.Fields != nil {
+		out.Fields = make(map[string]string, len(r.Fields))
+		for k, v := range r.Fields {
+			out.Fields[k] = v
+		}
+	}
+	out.Sequence = nil
+	if r.Sequence != nil {
+		v := *r.Sequence
+		out.Sequence = &v
+	}
+	if r.Resource != nil {
+		res := *r.Resource
+		if r.Resource.CPU != nil {
+			cpu := *r.Resource.CPU
+			if cpu.Percent != nil {
+				v := *cpu.Percent
+				cpu.Percent = &v
+			}
+			if cpu.LogicalCores != nil {
+				v := *cpu.LogicalCores
+				cpu.LogicalCores = &v
+			}
+			if cpu.SampleWindowMS != nil {
+				v := *cpu.SampleWindowMS
+				cpu.SampleWindowMS = &v
+			}
+			res.CPU = &cpu
+		}
+		if r.Resource.Memory != nil {
+			m := *r.Resource.Memory
+			for _, v := range []**uint64{&m.TotalBytes, &m.UsedBytes, &m.AvailableBytes} {
+				if *v != nil {
+					n := **v
+					*v = &n
+				}
+			}
+			if m.Percent != nil {
+				v := *m.Percent
+				m.Percent = &v
+			}
+			res.Memory = &m
+		}
+		res.Disks = append([]DiskReport(nil), r.Resource.Disks...)
+		for i := range res.Disks {
+			d := &res.Disks[i]
+			for _, v := range []**uint64{&d.TotalBytes, &d.UsedBytes, &d.FreeBytes} {
+				if *v != nil {
+					n := **v
+					*v = &n
+				}
+			}
+			if d.Percent != nil {
+				v := *d.Percent
+				d.Percent = &v
+			}
+		}
+		out.Resource = &res
+	}
+	if r.Status != nil {
+		s := *r.Status
+		if s.UpstreamLatencyMS != nil {
+			v := *s.UpstreamLatencyMS
+			s.UpstreamLatencyMS = &v
+		}
+		out.Status = &s
+	}
+	return out
+}

@@ -29,9 +29,17 @@ const SnapshotLifetime = 15 * time.Second
 // a schema 1 batch, whose observations carry the revision, while that
 // revision is its own.
 const (
-	ConfigSchema   = 1
-	BatchSchema    = 2
-	SnapshotSchema = 2
+	ConfigSchema = 1
+	// BatchSchema 3 adds optional external reports. A schema 2 batch is
+	// native-only and remains readable; a schema 2 observation carrying an
+	// external report is refused rather than ignored.
+	BatchSchema = 3
+	// BatchSchemaContracts is the previous contract-bearing batch schema.
+	// It has no external report member.
+	BatchSchemaContracts = 2
+	// SnapshotSchema 3 carries external binding state. A schema 2 snapshot is
+	// native-only and remains readable by this client.
+	SnapshotSchema = 3
 )
 
 // Version is what this binary reports: a version injected with -ldflags -X,
@@ -319,6 +327,10 @@ type Observation struct {
 	Connectivity bool              `json:"connectivity"`
 	PathEvidence string            `json:"path_evidence,omitempty"`
 	Facts        map[string]string `json:"facts,omitempty"`
+	// External is present exactly on an external check's collection attempt.
+	// The attempt and the upstream report are separate: a failed read has no
+	// report, and a report may say the upstream target is down.
+	External *ExternalObservation `json:"external,omitempty"`
 }
 
 // Heartbeat says an executor is alive. Contracts digests the contracts of

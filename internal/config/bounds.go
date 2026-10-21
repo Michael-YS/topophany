@@ -110,6 +110,22 @@ func TargetQuery(c model.Config, x model.Check) bool {
 // text. Its identity and its place are checked by whoever reads it.
 func ObservationBounds(v model.Observation, took time.Duration) string {
 	limit := took.Milliseconds()
+	if v.External != nil {
+		if v.External.Source == "" || len(v.External.Source) > 96 || secure.Text(v.External.Source) != v.External.Source {
+			return "invalid_external_source"
+		}
+		if v.External.AttemptedAt.IsZero() || len(v.External.SourceGeneration) > 64 || secure.Text(v.External.SourceGeneration) != v.External.SourceGeneration {
+			return "invalid_external_attempt"
+		}
+		if e := v.External.Report; e != nil {
+			if len(e.Fields) > model.MaxReportFields || e.Resource != nil && len(e.Resource.Disks) > model.MaxReportDisks {
+				return "external_report_budget"
+			}
+			if raw, err := json.Marshal(e); err != nil || len(raw) > model.MaxReportBytes {
+				return "external_report_budget"
+			}
+		}
+	}
 	switch v.Outcome {
 	case "ok", "fail", "unknown", "error", "policy":
 	default:
