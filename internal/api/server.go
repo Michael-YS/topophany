@@ -699,7 +699,7 @@ func (g *generation) validateBatch(b model.Batch, observer string, now, future t
 		if len(encodedHeartbeat) > model.MaxHeartbeatBytes {
 			return "heartbeat_limit_exceeded", 400
 		}
-		if !model.ValidDelivery(h.Delivery, now) {
+		if !model.ValidDelivery(h.Delivery, future) {
 			return "invalid_delivery_status", 400
 		}
 		if h.Observer != observer {
