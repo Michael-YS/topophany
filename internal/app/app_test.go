@@ -540,7 +540,8 @@ func TestServeRecoversExternalJournalBeforeAPIInstallsContext(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	var out, stderr bytes.Buffer
+	// Startup and storage diagnostics are written by different goroutines.
+	var out, stderr lockedWriter
 	a := &App{In: strings.NewReader(""), Out: &out, Err: &stderr}
 	if err := a.Run(ctx, []string{"serve", "--config", filepath.Join(dir, "topology.json"), "--auth", filepath.Join(dir, "auth.json"), "--data", data, "--listen", "127.0.0.1:0"}); err != nil {
 		t.Fatalf("production serve could not reopen the external journal: %v\n%s", err, stderr.String())

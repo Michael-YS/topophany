@@ -363,6 +363,10 @@ Topophany-side JSON tests.
 
 Follow-up lifecycle regressions:
 
+- `TestServeRecoversExternalJournalBeforeAPIInstallsContext` uses synchronized
+  diagnostic writers while exercising the real collector startup, allowing
+  the recovery test to run under the race detector without a buffer race.
+
 - `TestExternalAPIAndStoreShareRollbackClock` and
   `TestLocalExternalAdmissionAdvancesDuringRollback` advance the same
   collector-owned monotonic high-water mark during wall-clock rollback.
