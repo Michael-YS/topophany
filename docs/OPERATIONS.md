@@ -214,3 +214,12 @@ record identity, first-sample timestamp, pending recipients and byte accounting;
 each send loads a batch bounded by count and encoded bytes. A missing or corrupt
 payload produces `local_read_failed`, retains the queue entry and sends no part
 of that batch. The independent `--outbox-records` limit defaults to 20,000.
+
+Automatic collector checkpoints capture state and a WAL byte boundary, then
+stream and sync the checkpoint in one background task. Ingestion keeps syncing
+the live WAL. After publication, a bounded lock-held operation atomically
+replaces the journal with the suffix appended after that boundary. Recovery
+accepts either the old journal (deduplicated against the checkpoint) or this
+suffix. At the journal ceiling, writers wait for the active checkpoint; reads
+remain available during the main checkpoint write. Explicit checkpoints and
+shutdown wait for publication, and persistence failure stops further writes.

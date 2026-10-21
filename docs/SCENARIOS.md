@@ -315,8 +315,11 @@ late gzip negotiation (`BenchmarkSnapshotRepresentation`), worker-local panels
 after invalidation (`BenchmarkEngineTopology`). Timing benchmarks are comparative
 evidence, not portable pass/fail thresholds or production RSS measurements.
 
+| Scenario | Regression coverage |
+|---|---|
 | Batched partial ACKs sync once without rewriting payloads; torn tails, compaction, identity reuse and failed journal writes preserve independent recipients | `TestPartialAckBatchOneSyncAndCrashReplay`, `TestAckFailureAndCorruptionFailClosed` |
 | Heartbeat-only writes update liveness and contract status without reading or refolding history; clock rollback excludes future beats | `TestHeartbeatUpdatesLivenessWithoutRefoldingChecks` |
 | Backfill continues after successful ACKs within paced request/byte/time budgets, and stops immediately on 429 without bypassing backoff | `TestBacklogDrainsWithinRequestBudgetAndStopsOn429` |
 | Outbox count limits apply to admission and cold recovery; lazy byte-bounded reads preserve full payloads, caller ownership and corruption detection | `TestOutboxRecordLimitAndLazyPayloadRecovery`, `TestDeliveryCopyHasAByteBudget` |
 | Scoped snapshots query Availability only for included checks and cache empty readings across overlapping views | `TestSnapshotAvailabilityIsLazyByView` |
+| Background checkpoints allow concurrent reads/ingest; old-WAL crash replay and replaced-WAL suffix recovery preserve observations and rollups; publication failure poisons writes | `TestBackgroundCheckpointPreservesConcurrentJournalTail`, `TestBackgroundCheckpointFailurePoisonsFutureWrites`, `TestCloneOwnsMutablePersistenceState` |

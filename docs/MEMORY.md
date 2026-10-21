@@ -137,3 +137,10 @@ CI runs this kernel OOM test on Linux. Cross-compilation and filesystem-backed
 unit tests do not demonstrate kernel enforcement. The synthetic storage soak
 covers a fixed workload and cannot establish that every adapter, client, or
 operating-system path is leak-free.
+
+Automatic checkpoints hold at most one detached capture. Observation strings
+and diagnostic maps are immutable and shared; row containers, receipt and floor
+indexes, and mutable rollups are copied. Size memory limits for this temporary
+index/rollup overhead as well as live state. Checkpoint encoding remains streamed.
+Workers keep outbox payloads on disk, load only a byte-bounded delivery batch,
+and cap index size independently with `--outbox-records` (default 20,000).

@@ -119,6 +119,7 @@ type Store struct {
 	beats           map[string]model.Heartbeat
 	bytes           int64
 	checkpointSize  int64
+	checkpointDone  chan struct{}
 	closed          bool
 	poisoned        error
 	rowSizes        map[string]int64
@@ -611,6 +612,9 @@ func (s *Store) Put(b model.Batch) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.bytes >= s.options.MaxJournalBytes {
+		s.waitCheckpoint()
+	}
 	if s.closed {
 		return errors.New("store closed")
 	}
@@ -724,10 +728,7 @@ func (s *Store) Put(b model.Batch) error {
 	}
 	s.prune()
 	if s.bytes >= s.checkpointThreshold() {
-		if e = s.checkpoint(); e != nil {
-			s.poisoned = e
-			return e
-		}
+		s.startCheckpoint()
 	}
 	return nil
 }
@@ -881,6 +882,7 @@ func (s *Store) checkpoint() error {
 func (s *Store) Checkpoint() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.waitCheckpoint()
 	if s.closed {
 		return errors.New("store closed")
 	}
@@ -959,7 +961,12 @@ func (s *Store) Close() error {
 		return nil
 	}
 	s.closed = true
-	e := s.file.Close()
+	s.waitCheckpoint()
+	var e error
+	if s.file != nil {
+		e = s.file.Close()
+	}
+	e = errors.Join(e, s.poisoned)
 	ue := s.unlock()
 	if e != nil {
 		return e
