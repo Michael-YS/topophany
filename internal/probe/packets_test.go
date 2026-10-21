@@ -387,3 +387,54 @@ func FuzzICMPChecksum(f *testing.F) {
 		}
 	})
 }
+
+// blockingPacket stays inside ReadFrom until Close. A deadline alone does
+// not unblock it, so this fails if cancellation no longer closes the socket.
+type blockingPacket struct {
+	closed    chan struct{}
+	started   chan struct{}
+	startOnce sync.Once
+	closeOnce sync.Once
+}
+
+func (p *blockingPacket) ReadFrom([]byte) (int, net.Addr, error) {
+	p.startOnce.Do(func() { close(p.started) })
+	<-p.closed
+	return 0, nil, net.ErrClosed
+}
+func (p *blockingPacket) WriteTo(b []byte, _ net.Addr) (int, error) { return len(b), nil }
+func (p *blockingPacket) Close() error {
+	p.closeOnce.Do(func() { close(p.closed) })
+	return nil
+}
+func (p *blockingPacket) LocalAddr() net.Addr              { return &net.IPAddr{IP: net.IPv4zero} }
+func (p *blockingPacket) SetDeadline(time.Time) error      { return nil }
+func (p *blockingPacket) SetReadDeadline(time.Time) error  { return nil }
+func (p *blockingPacket) SetWriteDeadline(time.Time) error { return nil }
+
+func TestICMPCancelUnblocksBlockedRead(t *testing.T) {
+	x := httpCheck("")
+	x.Kind = "icmp"
+	x.Target = "127.0.0.1"
+	x.TimeoutSeconds = 30
+	conn := &blockingPacket{closed: make(chan struct{}), started: make(chan struct{})}
+	r := Runner{ListenPacket: func(string, string) (net.PacketConn, error) { return conn, nil }}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan model.Observation, 1)
+	go func() { done <- r.Run(ctx, testkit.Config(), x) }()
+	select {
+	case <-conn.started:
+	case <-time.After(time.Second):
+		t.Fatal("read never blocked")
+	}
+	cancel()
+	select {
+	case o := <-done:
+		if o.Outcome == "" {
+			t.Fatal(o)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancel left ICMP blocked in ReadFrom")
+	}
+}
