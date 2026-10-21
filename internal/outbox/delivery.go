@@ -152,17 +152,50 @@ func (d *Delivery) Run(ctx context.Context, q *Queue, interval time.Duration, be
 					return
 				case <-t.C:
 				}
-				r := d.send(ctx, q, i, beat())
-				if ctx.Err() != nil {
-					return
-				}
-				mu.Lock()
-				report(r)
-				mu.Unlock()
+				d.drain(ctx, q, i, beat, func(r Result) {
+					mu.Lock()
+					defer mu.Unlock()
+					report(r)
+				})
 			}
 		})
 	}
 	wg.Wait()
+}
+
+// A successful round can drain up to four 1 MiB requests. Continuations are
+// paced at ten requests/second and limited to a one-second window. Failures,
+// including 429, leave send's existing destination-specific backoff intact.
+// Tick deliberately remains a single round for diagnostic/embedded callers.
+func (d *Delivery) drain(ctx context.Context, q *Queue, i int, beat func() *model.Heartbeat, report func(Result)) {
+	r := d.send(ctx, q, i, beat())
+	if ctx.Err() != nil {
+		return
+	}
+	report(r)
+	window, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	for requests := 1; requests < 4; requests++ {
+		if r.Error != "" || r.Accepted == 0 {
+			return
+		}
+		count, _, _ := q.deliveryStats(r.Recipient)
+		if count == 0 {
+			return
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-window.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		r = d.send(window, q, i, beat())
+		if ctx.Err() != nil {
+			return
+		}
+		report(r)
+	}
 }
 
 // send delivers one round to destination i: what is pending for it, with

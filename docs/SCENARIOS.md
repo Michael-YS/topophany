@@ -317,3 +317,4 @@ evidence, not portable pass/fail thresholds or production RSS measurements.
 
 | Batched partial ACKs sync once without rewriting payloads; torn tails, compaction, identity reuse and failed journal writes preserve independent recipients | `TestPartialAckBatchOneSyncAndCrashReplay`, `TestAckFailureAndCorruptionFailClosed` |
 | Heartbeat-only writes update liveness and contract status without reading or refolding history; clock rollback excludes future beats | `TestHeartbeatUpdatesLivenessWithoutRefoldingChecks` |
+| Backfill continues after successful ACKs within paced request/byte/time budgets, and stops immediately on 429 without bypassing backoff | `TestBacklogDrainsWithinRequestBudgetAndStopsOn429` |

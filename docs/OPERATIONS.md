@@ -201,3 +201,10 @@ has a separate 1 MiB ceiling and is compacted into pending records before it
 grows past that ceiling. Recovery discards an incomplete final append, rejects
 corrupt complete entries, and preserves at-least-once delivery. Keep this file
 with the rest of the outbox when moving or backing up a worker.
+
+After a successful delivery, a worker with more pending records immediately
+continues backfill within a bounded burst: at most four requests (each at most
+1 MiB), 100 ms between requests, and a one-second continuation window. Idle
+polling retains its two-second cadence. A rejection, 429, invalid acknowledgement
+or local persistence error ends the burst and preserves the normal retry policy.
+Each collector runs independently.
