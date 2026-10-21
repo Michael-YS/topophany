@@ -693,6 +693,20 @@ func (s *Store) Put(b model.Batch) error {
 	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A format migration installs a synchronous checkpoint. Finish any old
+	// background snapshot before preparing this transaction: otherwise that
+	// snapshot could overwrite the new barrier or retain a stale WAL boundary.
+	// waitDurable releases both locks, so admission and receipt checks must
+	// happen only after it returns under the current store/context state.
+	if s.bytes >= s.options.MaxJournalBytes || hasExternalObservation(b.Observations) && s.format < 2 {
+		s.waitDurable()
+	}
+	if s.closed {
+		return errors.New("store closed")
+	}
+	if s.poisoned != nil {
+		return s.poisoned
+	}
 	now := s.options.Now().UTC()
 	if now.After(s.admissionHigh) {
 		s.admissionHigh = now
@@ -714,16 +728,6 @@ func (s *Store) Put(b model.Batch) error {
 	for i, v := range b.Observations {
 		hashes[i] = observationHash(v)
 	}
-	if s.bytes >= s.options.MaxJournalBytes {
-		s.waitDurable()
-	}
-	if s.closed {
-		return errors.New("store closed")
-	}
-	if s.poisoned != nil {
-		return s.poisoned
-	}
-
 	// A heartbeat that would change nothing, such as one sent again, is
 	// not written: it would cost a journal write and an fsync, under the
 	// lock every observer's ingestion waits on, for nothing apply keeps.

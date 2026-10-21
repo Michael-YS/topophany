@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
 func TestAutomaticCheckpointPreservesExternalStateAndFormat(t *testing.T) {
@@ -42,6 +44,71 @@ func TestAutomaticCheckpointPreservesExternalStateAndFormat(t *testing.T) {
 	got := reopened.ExternalView().Bindings["vm-resources"]
 	if got.ReportSamples != 1 || got.Duplicates != 1 {
 		t.Fatalf("automatic checkpoint lost deduplication: %+v", got)
+	}
+}
+
+func TestExternalMigrationWaitsForNativeBackgroundCheckpoint(t *testing.T) {
+	c := externalStoreConfig(t)
+	now := time.Now().UTC()
+	opts := externalStoreOptions(c, &now)
+	opts.CheckpointBytes, opts.MaxJournalBytes = 1024, 64<<10
+	s := openTest(t, t.TempDir(), opts)
+	original := installCheckpoint
+	paused, release := make(chan struct{}), make(chan struct{})
+	var first atomic.Bool
+	installCheckpoint = func(path string, write func(io.WriteSeeker) error) error {
+		if first.CompareAndSwap(false, true) {
+			close(paused)
+			<-release
+		}
+		return original(path, write)
+	}
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+		_ = s.Close()
+		installCheckpoint = original
+	}()
+	native := testkit.Observation(c, "home-http", 1, now, "ok")
+	native.Detail = strings.Repeat("x", 800)
+	if err := s.Put(batch(c, native)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-paused:
+	case <-time.After(5 * time.Second):
+		t.Fatal("native background checkpoint did not start")
+	}
+	finished := make(chan error, 1)
+	go func() {
+		finished <- s.Put(batch(c, externalStoreObservation(t, c, "sample-1", 90, 2, now, now)))
+	}()
+	select {
+	case err := <-finished:
+		t.Fatalf("migration did not wait for the older checkpoint: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	released = true
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("migration failed to resume")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if schema, _ := checkpointSchema(t, s.dir); schema != 2 {
+		t.Fatalf("older checkpoint overwrote barrier: schema %d", schema)
+	}
+	reopened := openTest(t, s.dir, opts)
+	if state := reopened.ExternalView(); state == nil || state.Bindings["vm-resources"].ReportSamples != 1 {
+		t.Fatalf("migration lost acknowledged report: %+v", state)
 	}
 }
 

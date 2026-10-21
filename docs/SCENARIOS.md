@@ -363,6 +363,11 @@ Topophany-side JSON tests.
 
 Follow-up lifecycle regressions:
 
+- `TestExternalMigrationWaitsForNativeBackgroundCheckpoint` pauses a native
+  background checkpoint while the first external transaction arrives. The
+  transaction waits, installs the format barrier, and survives restart without
+  a stale journal boundary or an older snapshot overwriting the barrier.
+
 - `TestAutomaticCheckpointPreservesExternalStateAndFormat` and
   `TestExternalBackgroundCheckpointPreservesConcurrentTail` preserve the
   external cursor, counters and format through automatic checkpoints and
