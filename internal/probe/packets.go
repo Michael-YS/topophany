@@ -278,29 +278,21 @@ func dnsOverHTTPS(ctx context.Context, x model.Check, target string, q []byte, b
 	var tlsMS, firstMS atomic.Int64
 	var gotTLS, gotFirst atomic.Bool
 	requestStart := time.Now()
-	tr := &http.Transport{
-		Proxy:                  nil,
-		DisableKeepAlives:      true,
-		DisableCompression:     true,
-		TLSClientConfig:        tc,
-		ForceAttemptHTTP2:      false,
-		MaxResponseHeaderBytes: 32768,
-		ResponseHeaderTimeout:  time.Duration(x.TimeoutSeconds) * time.Second,
-		DialTLSContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			raw, e := d.DialContext(ctx, network, pinned(address, x.ResolveIP))
-			if e != nil {
-				return nil, fail("dns_transport", e)
-			}
-			conn := tls.Client(raw, tc)
-			handshake := time.Now()
-			if e = conn.HandshakeContext(ctx); e != nil {
-				raw.Close()
-				return nil, fail("dns_transport", e)
-			}
-			tlsMS.Store(time.Since(handshake).Milliseconds())
-			gotTLS.Store(true)
-			return conn, nil
-		},
+	tr := restrictedTransport(tc, time.Duration(x.TimeoutSeconds)*time.Second)
+	tr.DialTLSContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		raw, e := d.DialContext(ctx, network, pinned(address, x.ResolveIP))
+		if e != nil {
+			return nil, fail("dns_transport", e)
+		}
+		conn := tls.Client(raw, tc)
+		handshake := time.Now()
+		if e = conn.HandshakeContext(ctx); e != nil {
+			raw.Close()
+			return nil, fail("dns_transport", e)
+		}
+		tlsMS.Store(time.Since(handshake).Milliseconds())
+		gotTLS.Store(true)
+		return conn, nil
 	}
 	defer tr.CloseIdleConnections()
 	client := http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}

@@ -230,9 +230,10 @@ func (r Runner) http(ctx context.Context, d Dialer, x model.Check, target string
 	// gzip members without end, for as long as the check may take while
 	// the body budget never filled. Undecoded, the budget counts what the
 	// peer sends.
-	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, ForceAttemptHTTP2: false, MaxResponseHeaderBytes: 32768, ResponseHeaderTimeout: time.Duration(x.TimeoutSeconds) * time.Second, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
+	tr := restrictedTransport(tc, time.Duration(x.TimeoutSeconds)*time.Second)
+	tr.DialContext = func(ctx context.Context, n, a string) (net.Conn, error) {
 		return d.DialContext(ctx, n, pinned(a, x.ResolveIP))
-	}}
+	}
 	defer tr.CloseIdleConnections()
 	client := http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	var mu sync.Mutex

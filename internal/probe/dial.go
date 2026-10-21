@@ -92,6 +92,21 @@ func TLSConfig(name, caFile string) (*tls.Config, error) {
 	return c, nil
 }
 
+// restrictedTransport is a probe HTTP client: no environment proxy, no
+// compression, no keep-alive and no HTTP/2. A zero headerTimeout leaves the
+// request context as the only deadline. Callers set DialContext or DialTLSContext.
+func restrictedTransport(tc *tls.Config, headerTimeout time.Duration) *http.Transport {
+	return &http.Transport{
+		Proxy:                  nil,
+		DisableKeepAlives:      true,
+		DisableCompression:     true,
+		TLSClientConfig:        tc,
+		ForceAttemptHTTP2:      false,
+		MaxResponseHeaderBytes: 32768,
+		ResponseHeaderTimeout:  headerTimeout,
+	}
+}
+
 type Dialer struct {
 	Proxies []model.Proxy
 	BindIP  string

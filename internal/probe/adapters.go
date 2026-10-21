@@ -31,9 +31,10 @@ func (r Runner) mihomo(ctx context.Context, d Dialer, x model.Check, target stri
 		if err != nil {
 			return nil, nil, err
 		}
-		tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, MaxResponseHeaderBytes: 32768, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
+		tr := restrictedTransport(tc, 0)
+		tr.DialContext = func(ctx context.Context, n, a string) (net.Conn, error) {
 			return d.DialContext(ctx, n, pinned(a, x.ResolveIP))
-		}}
+		}
 		return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
 	}, Proxied: len(d.Proxies) > 0, ProxyCredentials: proxyCredentials(d.Proxies)}, x, target, o)
 }
@@ -57,9 +58,10 @@ func (r Runner) cloudflare(ctx context.Context, d Dialer, x model.Check, target 
 		if err != nil {
 			return nil, nil, err
 		}
-		tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, MaxResponseHeaderBytes: 32768, DialContext: func(ctx context.Context, n, a string) (net.Conn, error) {
+		tr := restrictedTransport(tc, 0)
+		tr.DialContext = func(ctx context.Context, n, a string) (net.Conn, error) {
 			return d.DialContext(ctx, n, pinned(a, x.ResolveIP))
-		}}
+		}
 		return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
 	}}, x, target, o)
 }
@@ -88,7 +90,8 @@ func cloudflaredClient(x model.Check, target string) (*http.Client, func(), erro
 	if err != nil {
 		return nil, nil, err
 	}
-	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, DisableCompression: true, TLSClientConfig: tc, ForceAttemptHTTP2: false, MaxResponseHeaderBytes: 32768, DialContext: loopbackDial}
+	tr := restrictedTransport(tc, 0)
+	tr.DialContext = loopbackDial
 	return &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, tr.CloseIdleConnections, nil
 }
 
