@@ -37,8 +37,11 @@ func TestMetricsAgreeWithView(t *testing.T) {
 			sim.SetScenario(sc, now.Add(-30*time.Minute))
 			snap, err := sim.Snapshot("", now)
 			if err != nil {
-				return
-			} // collector outage has no readable snapshot
+				if name == "collector-unreachable" {
+					return
+				}
+				t.Fatal(err)
+			}
 			v := view.View{Snapshot: snap, Now: now}
 			p := Build(Config{Name: "stream", Source: "preview", Template: richTemplate()}, Input{Snapshot: snap}, now)
 			summary := p.Rows[0].Value.(SummaryVerdict)
