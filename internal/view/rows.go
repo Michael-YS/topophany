@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
 )
 
@@ -282,7 +283,7 @@ func (rb *rowBuilder) checksRows(attentionOnly bool) []Row {
 		if fared := AvailabilityDetails(e.Availability); fared != nil {
 			details = append(append(details, fared...), "")
 		}
-		details = append(details, "Path: "+d.Path, "Target: "+d.Target, "Endpoint: "+d.Endpoint, "Service: "+d.Service, "Failure / recovery threshold: "+fmt.Sprint(d.FailureThreshold)+" / "+fmt.Sprint(d.RecoveryThreshold), "Policy confirmation samples: "+fmt.Sprint(max(d.PolicyThreshold, 1)))
+		details = append(details, "Path: "+d.Path, "Target: "+d.Target, "Endpoint: "+d.Endpoint, "Service: "+d.Service, "Failure / recovery threshold: "+fmt.Sprint(d.FailureThreshold)+" / "+fmt.Sprint(d.RecoveryThreshold), "Policy confirmation samples: "+fmt.Sprint(engine.ConfirmationSamples(d, e.Last)))
 		if s.DetailsOmitted {
 			details = append(details, "", "Summary diagnostics; full evidence is available in check history.")
 		}

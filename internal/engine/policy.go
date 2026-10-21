@@ -48,6 +48,16 @@ func knownRuntimePolicy(a model.AdapterOptions, facts map[string]string) bool {
 	return false
 }
 
+// ConfirmationSamples is how many consecutive policy samples count as
+// confirmed for the evidence in last. While that evidence is still inside
+// a provider reference's settle window, the count covers the window.
+func ConfirmationSamples(x model.Check, last *model.Observation) int {
+	if last == nil {
+		return policyThreshold(x, false)
+	}
+	return policyThreshold(x, providerSettling(x, *last))
+}
+
 // policyThreshold is how many consecutive policy samples a check needs
 // before it opens an incident. Carry retains the run across restarts and
 // publications, so repeated publications cannot postpone confirmation forever.

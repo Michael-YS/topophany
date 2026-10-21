@@ -386,8 +386,8 @@ func (p *Plan) buildSnapshot(instance, view string, now time.Time, allStates map
 			continue
 		}
 		policy := s.Last.Outcome == "policy"
-		// A policy violation opens an incident only once it has stood for the
-		// check's failure threshold; see evaluate. Until then it is a warning.
+		// A policy violation opens an incident only once ConfirmationSamples
+		// says it has stood long enough; see evaluate. Until then it is a warning.
 		if s.Health != "down" && !(policy && s.PolicyConfirmed) {
 			continue
 		}
