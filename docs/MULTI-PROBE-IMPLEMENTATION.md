@@ -1,6 +1,7 @@
 # Multi-probe ingestion: implementation contract and record
 
-Status: in progress. Branch: `codex/multi-probe-infrastructure`.
+Status: complete for the reviewed delivery. Hardening branch:
+`codex/multi-probe-hardening`; reviewed commit: `28c3f70`.
 This document is the design freeze and the delivery record for the external
 observation work. It is updated by every task commit. A later change to a
 frozen rule needs a recorded reason here, not a silent change in code.
@@ -239,17 +240,21 @@ inside a possibly current report. Missing fields never become zero.
 - Snapshot schema becomes 3. The new client reads schema 2 (native-only) and
   schema 3, validating each shape; an old client refuses schema 3. External
   fields are absent in schema 2 snapshots and validated when present.
-- The store checkpoint writes on-disk state schema 1 while no external state
-  exists. As soon as external report/source state exists it writes schema 2,
-  including that state. The new reader accepts both. An old binary refuses
-  schema 2 instead of ignoring state and appending behind it. Rollback to an
-  old binary therefore requires restoring a matching pre-upgrade backup, as
-  documented in task 10.
+- The store checkpoint writes on-disk state schema 1 while no external data
+  exists. Before the first external journal record is acknowledged it installs
+  a schema 2 checkpoint through the existing atomic write/fsync path, even
+  before any external state exists. Schema 2 is monotonic: removing sources or
+  all external state keeps writing schema 2. The new reader accepts both
+  schemas. An old binary refuses schema 2 instead of ignoring state and
+  appending behind it. Rollback to an old binary therefore requires restoring a
+  matching pre-upgrade backup; there is no supported in-place downgrade.
 - Measurement contracts for native checks are unchanged. External contract
   identity includes the binding and the source's measured configuration
-  (adapter, target after redaction, route/TLS, budgets, object, report type,
-  max age, primary disk and assertions). Display names, notes and credential
-  variable names are excluded. Credential values never enter any contract.
+  (adapter, private target, resolved ordered proxy chain and TLS fields,
+  budgets, object, report type, max age, primary disk and assertions). Public
+  contracts are recomputed from the redacted topology; display names, notes
+  and credential variable names are excluded. Credential values never enter
+  any contract.
 - Report schema 1 is additive within the delivery. Unknown report schema or
   report type is refused, not silently parsed.
 
@@ -639,3 +644,98 @@ No change should be needed in `report.MergeBinding`, store cursor persistence,
 engine confirmation, `view.SelectResources`, monitor resource rendering or the
 bar numeric schema. If a proposed adapter needs one of those, treat it as a new
 common capability with its own design review rather than a vendor-specific edit.
+
+
+## 13. Hardening corrections after review (2026-10-21)
+
+The review of `28c3f70` reproduced ten code failures and two README-link
+failures. The fixes and named regressions are recorded in
+[MULTI-PROBE-REMEDIATION.md](MULTI-PROBE-REMEDIATION.md) and
+[SCENARIOS.md](SCENARIOS.md). The following rules supersede any earlier
+sentence that is now narrower:
+
+- **Recovery before context**: production builds `store.Options` with
+  `WithTopology` before `Store.Open`, so bindings, sources, contracts and
+  confirmation thresholds exist during journal replay. Records under a removed
+  binding or changed contract stay historical; they neither block startup nor
+  become current.
+- **Format barrier**: schema 2 is persisted before the first external journal
+  ACK and never falls back to schema 1. A downgrade restores the pre-upgrade
+  backup; it does not let the old binary silently rewrite accepted state. The
+  downgrade test builds the real `74db358` reader from git in a temporary
+  directory.
+- **Live admission**: API and local collector call
+  `internal/admission.External` with an explicit wall clock, monotonic
+  high-water mark, `max_age` and skew. Envelope, attempt, report and
+  `live_read` times share one decision. Journal replay is reconstructed from
+  persisted values and is not re-judged as a live read.
+- **Payload fields**: `field_status` is checked against the report's payload.
+  Status reports cannot name resource/disk fields and resource reports cannot
+  name status fields. Bounded fuzzing covers normalization without a
+  `recover` wrapper around collection.
+- **Confirmation lifecycle**: a newly accepted epoch resets up/down/policy runs
+  and confirmed flags before its first report is counted; retired epochs are
+  bounded and cannot switch current state back. An accepted report at or after
+  the previous report's exclusive data deadline restarts consecutive runs.
+  Confirmed flags survive an evidence gap until a valid accepted report
+  changes them, so an expired or failed source cannot fabricate recovery.
+  Historical accepted-sample counters are never rewound.
+- **Route identity**: external contracts include the resolved ordered proxy
+  chain. A path rename with identical hops or a name/notes change does not
+  reset measurement. A route reload invalidates old reports and old outbox
+  batches by contract.
+- **Multiple report types**: one object may be bound as both resource and
+  status. Requests and result indexes are keyed by `(object, report_type)`;
+  one source read fans out to both bindings. Duplicate same-type results,
+  unexpected types and missing types are explicit attempts, never new
+  entities. Limits are separate: unique objects, report count, encoded result
+  bytes (16 MiB) and per-report bytes.
+- **Snapshot ownership**: public snapshot reports are cloned at the
+  `engine.Prepared` boundary; mutating a snapshot cannot alter the prepared
+  cache, persisted state or a later/heartbeat-refreshed build.
+- **Write cost**: native transactions skip external merge entirely. External
+  transactions copy top-level maps, clone only affected source/binding values
+  and update encoded-byte accounting by delta. The shared external state budget
+  is 4 MiB and is charged both globally and to the source observer's storage
+  share. When several sources are configured, one source may use half so it
+  cannot silently displace the others. A configuration whose retention cannot
+  fit these fixed budgets, or an observer whose report state exceeds its share,
+  is refused explicitly rather than evicted.
+- **Frame cost**: the monitor computes one `SelectResources` result per frame
+  and shares it by node between scalar `resource.*` and `server.card`. The
+  selection is not cached across frames.
+- **Performance record**: on the delivery machine, a complete native
+  `Store.Put` with 0/128/512 external bindings and 64 Seen IDs each stayed at
+  about 6.8-6.9 KiB and 31-32 allocations (the review measured 5.35 MiB in the
+  merge step alone). A 512-node/128-row monitor frame fell from the review's
+  261 MB to about 3.2 MB, below the 16 MiB engineering target. These are
+  comparative local measurements, not portable thresholds.
+
+The remaining deliberate limits are: late reports are not backfilled into
+historical rollups; external state has no per-observer dynamic quota beyond the
+global 4 MiB / multi-source per-source cap; and no production vendor adapter is
+registered in this delivery.
+
+## 14. Hardening task record
+
+| Task | Commit | Status |
+|---|---|---|
+| 0 baseline/remediation plan | `976dd18` | complete |
+| 1 payload-specific field validation | `f518ec3` | complete |
+| 2 shared live admission | `3e0a766` | complete |
+| 3 production journal recovery | `a669541` | complete |
+| 4 durable format barrier | `d07192a` | complete |
+| 5 accepted-state isolation | `18879eb` | complete |
+| 6 epoch/gap lifecycle | `a12a885` | complete |
+| 7 resolved route contracts | `7811a42` | complete |
+| 8 multi-report objects | `c4d007f` | complete |
+| 9 snapshot ownership | `00a7855` | complete |
+| 10 incremental external state | `15928d9` | complete |
+| 10a observer quota accounting | `5f8b5dd` | complete |
+| 11 per-frame resource selection | `e0c4f6c` | complete |
+| 12 regression/scenario maintenance | `e86d22a` | complete |
+| 13 docs/final verification | _this commit_ | complete |
+
+The verification record for this branch is in section 12 of
+MULTI-PROBE-REMEDIATION.md; it replaces the pre-review "all passed" statement
+with the exact commands, results and unverified ranges.

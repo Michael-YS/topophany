@@ -162,11 +162,121 @@ Numbers are stable references used by the regression cases in
 - Acceptance: both translated READMEs list the same documentation entries and
   `scripts/test_readme.py` passes.
 
-## Commit log
+## Resolutions
 
-Each row is a complete, tested change. The final verification refresh is in
-the last row.
+| Issue | Implementation | Commit | Named regressions |
+| --- | --- | --- | --- |
+| R1 | Payload-specific field allowlist; empty nested sections refused; bounded normalization fuzz | `f518ec3` | `TestNormalizeFieldStatusIsPayloadSpecific`, `TestNormalizeMalformedPayloadsDoNotPanic`, `FuzzNormalize`, `TestRuntimeRejectsForeignPayloadFieldWithoutPanic`, `TestClientRejectsForeignPayloadFieldInExternalSnapshotWithoutPanic` |
+| R2 | New `internal/admission` live window shared by API and `Store.Put`; replay remains reconstruction | `3e0a766` | `TestExternalAdmissionTimeRelations`, `TestLocalCollectorRejectsFutureReportWithoutMovingCursor`, `TestExternalJournalReplayIsNotRejectedByLaterLiveClock`, `TestAPIAndLocalAdmissionAgreeOnExternalTimeBounds` |
+| R3 | `Options.WithTopology` installs recovery context before `Open`; stale contracts/bindings are skipped and pruned | `a669541` | `TestServeRecoversExternalJournalBeforeAPIInstallsContext`, `TestRecoverySkipsRemovedBindingAndChangedContract` |
+| R4 | Schema 2 barrier checkpoint before first external journal ACK; monotonic format; legacy journal upgrade | `d07192a` | `TestOldBinaryRefusesNewExternalData`, `TestExternalFormatBarrierFailureLeavesNoAck`, `TestLegacyExternalJournalUpgradesBeforeNextAck` |
+| R5 | Classify first, mutate accepted state only on `new`; rejected diagnostics only; owned Seen slice | `18879eb` | `TestMergeRejectedVerdictsPreserveAcceptedState`, `TestMergeStatusConfirmationOnlyFromNewValidReports`, `TestMergeDuplicateReplayIsIdempotent` |
+| R6 | Epoch transitions, retired epochs, exclusive data-deadline gaps and continuity reset | `a12a885` | `TestMergeNewEpochResetsFailureAndRecoveryConfirmation`, `TestMergeEvidenceGapRestartsConfirmationWithoutFakeRecovery`, `TestMergePolicyGapAndEpochLifecycle`, `TestExternalEpochAndRetiredEpochSurviveRestart` |
+| R7 | Resolved ordered proxy chain in private external contract; public contracts recomputed redacted | `7811a42` | `TestExternalContractIncludesResolvedRoute`, `TestExternalPublicContractUsesRedactedRouteOnly`, `TestRouteReloadInvalidatesOldExternalSnapshotsAndOutbox`, `TestRouteReloadRejectsAnOldExternalOutboxBatch` |
+| R8 | Typed `source.Request`; `(object, report_type)` result keys; object/report/byte budgets | `c4d007f` | `TestRuntimeCollectsResourceAndStatusForOneObject`, `TestRuntimeRejectsAmbiguousReportRequestsAndResults`, `TestSourceSameObjectResourceAndStatusShareOneRead`, `TestSameObjectResourceAndStatusReportsCoexist` |
+| R9 | External reports cloned at the public snapshot boundary; heartbeat path preserves ownership | `00a7855` | `TestExternalSnapshotOwnsEveryMutableReportMember`, `TestExternalSnapshotBuildConcurrentMutation` |
+| R10 | Native transactions skip external merge; affected-only clone and delta byte accounting; observer/source quotas | `15928d9`, `5f8b5dd` | `TestNativePutDoesNotCloneExternalState`, `TestExternalMergeClonesOnlyAffectedState`, `TestExternalSourceShareCannotConsumeTheWholeBudget`, `TestExternalReportStateIsChargedToObserverQuota` |
+| R11 | One `SelectResources` result per frame shared by scalar and card paths | `e0c4f6c` | `TestResourcePanel128RowsAllocationBudget`, `TestResourceScalarAndServerCardUseTheSameFrameSelection`, `BenchmarkResourcePanel512` |
+| R12 | Translated README links, scenarios, fuzz registration and maintenance cleanup | final test/docs commits | `scripts/test_readme.py`, full scenario table |
+| R13 | Implementation/remediation records and generated site refreshed | final docs commit | `scripts/test_site.py`, `build_demo.py --check` |
+
+## Verification record
+
+Baseline focused tests on `28c3f70` passed, while the reviewer's overlay tests
+failed for R1-R11 and the README check failed for R12. After the fixes:
+
+| Check | Result |
+| --- | --- |
+| `gofmt -l cmd internal` | empty (all formatted) |
+| `go vet ./...` | pass |
+| `go test ./...` | pass, all packages |
+| `go test -race -count=1 -timeout=15m ./...` | pass, exit 0 (all packages) |
+| `python3 scripts/test_readme.py` | 3 tests pass |
+| `python3 -m unittest discover -s scripts -p 'test_*.py'` | 58 tests pass |
+| `go test ./internal/report -run '^$' -fuzz=FuzzNormalize -fuzztime=10s` | pass, 4,441,754 executions, no panic |
+| `go test ./internal/store -run 'TestOldBinaryRefusesNewExternalData|TestExternalFormatBarrierFailureLeavesNoAck|TestLegacyExternalJournalUpgradesBeforeNextAck'` | pass; the old reader is built from git commit `74db358` |
+| `make site` | regenerated six generated pages; binaries remain ignored |
+| `python3 scripts/verify.py` | pass on this commit; detailed ignored build output is `.verify-build/verification/summary.json` |
+
+### Performance comparison
+
+Same local machine (Apple M6, arm64, Go 1.26.10), `-benchmem -count=1`.
+Timings include local filesystem fsync for `Store.Put`; they are comparative,
+not a portable gate.
+
+| Measurement | Before review | After hardening |
+| --- | --- | --- |
+| Native store write with 512 bindings x 64 Seen | 2,898,115 ns/op, 5,348,925 B/op, 5,130 allocs/op (external merge step) | 2,824,135 ns/op, 6,935 B/op, 32 allocs/op (complete `Store.Put`) |
+| 512-node monitor frame, 128 rows | 95,251,479 ns/op, 261,012,670 B/op, 1,263,674 allocs/op | 890,875 ns/op, 3,220,961 B/op, 13,281 allocs/op |
+| 512 external resource selection alone | 867,612 ns/op, 1,698,976 B/op, 5,197 allocs/op | unchanged by the monitor cache; kept as the view microbenchmark |
+| External merge, 512 bindings, one changed binding | not separately measured | 76,213 ns/op, 374,572 B/op, 566 allocs/op |
+
+B/op is allocated bytes per operation, not resident memory. The remaining
+external-merge growth with binding count is the top-level map copy; it no
+longer copies each binding's bounded Seen history.
+
+### Security, upgrade and rollback
+
+- No new runtime dependency, no production adapter registration and no
+  adjacent repository change. `ProductionSourceAdapters()` remains empty.
+- External reports remain `reported` evidence and never claim measured
+  connectivity; source errors remain attempts and do not become target
+  outages.
+- Public contracts are recomputed from the redacted topology. Private
+  credential values are never hashed into public output.
+- A native-only data directory keeps checkpoint schema 1 and remains readable
+  by `74db358`. Before the first external journal acknowledgment the store
+  installs schema 2 through the existing atomic-write/fsync path. Schema 2 is
+  monotonic, including after source/state removal. Rollback requires restoring
+  the pre-upgrade backup; there is no in-place downgrade.
+- External state is charged to the global state budget and to the owning
+  observer's share. With several sources configured, one source is capped at
+  half of the external budget. Capacity refusal happens before journal
+  acknowledgment and never evicts accepted evidence.
+
+### Remaining limits and unverified ranges
+
+- No production vendor adapter exists yet, by instruction; the synthetic
+  adapters are test-only and are not a production deployment test.
+- The external state budget is fixed at 4 MiB. Configurations whose bounded
+  Seen/retention needs exceed it are refused explicitly rather than silently
+  evicted; this is a real capacity limit, not a dynamic quota.
+- Late reports are still not backfilled into historical rollups or incidents.
+- Live Windows TUN, real proxy cores, real SSH tunnels, production endpoints
+  and live credentials were not exercised. Cross-builds verify compilation
+  only.
+- The downgrade test needs `git` and commit `74db358` in the checkout; it skips
+  with that stated reason in a shallow archive. It is not replaced by a
+  regenerated fixture.
+- `scripts/verify.py` runs loopback-only acceptance; production monitoring and
+  deployment were not accessed.
+
+### Merge readiness
+
+The ten reproduced code failures and the README failure now have repository
+regressions. The remaining limits above are documented constraints; they do
+not block merging the hardening branch. The final `scripts/verify.py` run is
+required to be green on the committed tree before merge; it is recorded in
+the ignored `.verify-build/verification/` directory and summarized here.
+
+## Commit log
 
 | Task | Commit | Summary |
 | --- | --- | --- |
-| 0 | _this commit_ | Baseline, issue freeze and remediation plan |
+| 0 | `976dd18` | Baseline, issue freeze and remediation plan |
+| 1 | `f518ec3` | Payload-compatible field rejection and normalization fuzz |
+| 2 | `3e0a766` | Shared live admission for API and local collector |
+| 3 | `a669541` | External recovery context before journal replay |
+| 4 | `d07192a` | Durable external checkpoint format barrier |
+| 5 | `18879eb` | Accepted-state isolation from rejected reports |
+| 6 | `a12a885` | Epoch and evidence-gap confirmation lifecycle |
+| 7 | `7811a42` | Resolved route content in external contracts |
+| 8 | `c4d007f` | Object/report-type source requests and fan-out |
+| 9 | `00a7855` | Detached external reports in snapshots |
+| 10 | `15928d9` | Incremental external state on store writes |
+| 10a | `5f8b5dd` | External state charged to observer quotas |
+| 11 | `e0c4f6c` | Per-frame resource selection cache |
+| 12 | `e86d22a` | Scenarios, replay idempotence and multi-report identity |
+| 13 | _this commit_ | README links, records and generated site |
+| 14 | `74afa41` | Collector clock step-back during a source read |
+| 15 | `b1113b6` | Remove unreachable epoch revival helper |

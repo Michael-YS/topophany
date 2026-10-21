@@ -182,6 +182,7 @@ Topophany 1.4.0 可以把 Cloudflare 部署的公网域名、源站、Tunnel 连
 | [运维](docs/OPERATIONS.md) · [内存](docs/MEMORY.md) | 双采集器、存储、恢复、资源上限和内存预算 |
 | [安全模型](docs/SECURITY.md) | 凭据、传输和权限边界（[审查](docs/SECURITY-REVIEW-2026-10-14.md)） |
 | [场景](docs/SCENARIOS.md) · [验收](docs/ACCEPTANCE.md) | 测试证明了什么，哪些还需要在真实硬件上验证 |
+| [外部适配器](docs/EXTERNAL-ADAPTERS.md) · [实现契约](docs/MULTI-PROBE-IMPLEMENTATION.md) | 源适配器编写、报告/时间/去重语义、预算与升级/回滚 |
 | [变更记录](CHANGELOG.md) | 发布历史 |
 
 ## 仓库结构

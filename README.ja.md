@@ -182,6 +182,7 @@ Topophany 1.4.0 では、Cloudflare の公開ホスト名、オリジン、Tunne
 | [運用](docs/OPERATIONS.md) · [メモリ](docs/MEMORY.md) | デュアルコレクター、ストレージ、復旧、リソースの上限、メモリ予算 |
 | [セキュリティモデル](docs/SECURITY.md) | 認証情報、通信、権限の境界 ([レビュー](docs/SECURITY-REVIEW-2026-10-14.md)) |
 | [シナリオ](docs/SCENARIOS.md) · [受け入れ](docs/ACCEPTANCE.md) | テストで証明できること、実機で確かめる必要があること |
+| [外部アダプター](docs/EXTERNAL-ADAPTERS.md) · [実装契約](docs/MULTI-PROBE-IMPLEMENTATION.md) | ソースアダプターの作成、レポート・時刻・重複排除の意味、予算、アップグレードとロールバック |
 | [変更履歴](CHANGELOG.md) | リリースの履歴 |
 
 ## リポジトリの構成

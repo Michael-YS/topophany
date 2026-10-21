@@ -122,6 +122,7 @@ def main() -> int:
             ("client", "FuzzSnapshotStructure"),
             ("engine", "FuzzStateNeverPromotesExpiredSample"),
             ("config", "FuzzDecodeTopology"),
+            ("report", "FuzzNormalize"),
             ("store", "FuzzEnvelope"),
             ("probe", "FuzzSOCKSAddress"),
             ("probe", "FuzzEdgeFactsCompatibility"),
