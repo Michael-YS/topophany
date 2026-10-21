@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/admission"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/ioaccount"
@@ -72,6 +73,8 @@ type Options struct {
 	Sources       map[string]model.Source
 	ExternalRules map[string]model.ExternalRule
 	Now           func() time.Time
+	// MonotonicNow supplies elapsed time for live admission; nil uses time.Now.
+	MonotonicNow func() time.Time
 }
 
 // receiptGrace is how long a receipt outlives the ingestion window.
@@ -169,10 +172,8 @@ type Store struct {
 	// rewrite the directory with its narrower model.
 	format      int
 	sawExternal bool
-	// admissionHigh is the wall-clock high-water mark used for live external
-	// admission. A collector step-back must not make a previously valid
-	// attempt look like it came from the future.
-	admissionHigh time.Time
+	// Both API validation and local writes advance this clock under mu.
+	admissionClock admission.Clock
 
 	// Receipts in the order they were taken, from receiptHead on, so the
 	// expired ones are found at the front rather than by visiting them all;
@@ -707,14 +708,7 @@ func (s *Store) Put(b model.Batch) error {
 	if s.poisoned != nil {
 		return s.poisoned
 	}
-	now := s.options.Now().UTC()
-	if now.After(s.admissionHigh) {
-		s.admissionHigh = now
-	}
-	future := s.admissionHigh
-	if future.IsZero() {
-		future = now
-	}
+	now, future := s.admissionTimesLocked()
 	// External observations are normalized and live-admitted against the
 	// installed bindings before identity hashing. The API and local collectors
 	// thus take the same decision, and an unnormalized direct writer cannot

@@ -108,8 +108,7 @@ type Server struct {
 	mu      sync.Mutex
 	// Admission advances its wall-clock high-water mark by monotonic elapsed
 	// time. A backward wall-clock step therefore does not freeze admission.
-	clockHigh                 time.Time
-	clockTick                 time.Time
+	validationClock           admission.Clock  // fallback for a server without a store
 	admissionClock            func() time.Time // nil uses time.Now (with its monotonic reading)
 	limits                    map[string]limit
 	slots                     chan struct{}
@@ -617,8 +616,6 @@ func (s *Server) put(a authority, b model.Batch) (int, string) {
 // treat as "now" for the future bound. The store already accepts a collector
 // step-back; this keeps that from being rejected at the API.
 func (s *Server) admissionTimes() (now, future time.Time) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	now = s.Now()
 	tick := time.Now()
 	if s.admissionClock != nil {
@@ -627,14 +624,12 @@ func (s *Server) admissionTimes() (now, future time.Time) {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	if !s.clockTick.IsZero() {
-		s.clockHigh = s.clockHigh.Add(max(tick.Sub(s.clockTick), 0))
+	if s.Store != nil {
+		return s.Store.AdmissionTimes(now, tick)
 	}
-	s.clockTick = tick
-	if now.After(s.clockHigh) {
-		s.clockHigh = now
-	}
-	return now, s.clockHigh
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return now, s.validationClock.Advance(now, tick)
 }
 
 // ValidateBatch judges b from observer under the current topology.

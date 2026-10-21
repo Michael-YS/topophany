@@ -363,6 +363,13 @@ Topophany-side JSON tests.
 
 Follow-up lifecycle regressions:
 
+- `TestExternalAPIAndStoreShareRollbackClock` and
+  `TestLocalExternalAdmissionAdvancesDuringRollback` advance the same
+  collector-owned monotonic high-water mark during wall-clock rollback.
+  `TestClockRollbackAdvancesWithoutDoubleCounting` prevents delayed clock
+  readings from expanding the admission window twice; far-future evidence
+  remains refused without changing report state.
+
 - `TestRejectedReportsPreserveConfirmedPolicyAfterGap` and
   `TestPolicyConfirmationSurvivesRestartAndUnchangedRules` keep confirmation
   flags stable through rejected reports, journal/checkpoint recovery and
