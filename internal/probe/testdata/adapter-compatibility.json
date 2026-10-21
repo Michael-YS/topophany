@@ -1,6 +1,6 @@
 {
   "cloudflare-dns": {
-    "contract": "ad2963d74dff614763d3211a27ee612c89a35e2bf19ea16333f04fc1fbbc63f6",
+    "contract": "c1a6f66865681be134e8826838da6cd1948f3fc711a858075ca5a093e497f53a",
     "observation": {
       "id": "",
       "project": "lab",
@@ -27,7 +27,7 @@
     }
   },
   "cloudflare-pool": {
-    "contract": "aa770435e8e90a577a4963da2db4869d89efe9d7ea198086d3a92a1b349a6ba1",
+    "contract": "65e0b93b0e14663af30c4760b26915c7a8bfda6ba4d9d5ca3836b0d67d1ece47",
     "observation": {
       "id": "",
       "project": "lab",
@@ -56,7 +56,7 @@
     }
   },
   "cloudflare-tunnel": {
-    "contract": "7432115ae6d2f2569a1f7c107c35ea04f59a6f798b0eb7dc9d8c7a9af14e6d84",
+    "contract": "125040acc8448261586b7511c607d179687dc3df9ec7826bbf68aae6a6713817",
     "observation": {
       "id": "",
       "project": "lab",
@@ -85,7 +85,7 @@
     }
   },
   "cloudflared-ok": {
-    "contract": "9e2dc26821efd2200148ca0aa3b66b82227534915343ea354adfa0412906c53d",
+    "contract": "908a0befe30f12c1b84f2f9c3da499da8ce8fa7b1f91985ad8a77f6893ea476d",
     "observation": {
       "id": "",
       "project": "lab",
@@ -318,7 +318,7 @@
     }
   },
   "tailscale-idle": {
-    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "contract": "b9085ee1415a255a5667ae498e214adc0cee2df3ade1aeceb2946ed17ad12d61",
     "observation": {
       "id": "",
       "project": "lab",
@@ -347,7 +347,7 @@
     }
   },
   "tailscale-missing": {
-    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "contract": "b9085ee1415a255a5667ae498e214adc0cee2df3ade1aeceb2946ed17ad12d61",
     "observation": {
       "id": "",
       "project": "lab",
@@ -372,7 +372,7 @@
     }
   },
   "tailscale-offline": {
-    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "contract": "b9085ee1415a255a5667ae498e214adc0cee2df3ade1aeceb2946ed17ad12d61",
     "observation": {
       "id": "",
       "project": "lab",
@@ -397,7 +397,7 @@
     }
   },
   "tailscale-permission": {
-    "contract": "c4f5dc7161c9b4df7062328fb5601b7fa0a59d57c751c4bf88bae0b8926f27be",
+    "contract": "b9085ee1415a255a5667ae498e214adc0cee2df3ade1aeceb2946ed17ad12d61",
     "observation": {
       "id": "",
       "project": "lab",
@@ -421,7 +421,7 @@
     }
   },
   "wireguard-missing": {
-    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "contract": "4d68a7351fc98b574b48a827dc3a5401cbbc4eb4b7cb38cb929dc6a029d16daa",
     "observation": {
       "id": "",
       "project": "lab",
@@ -446,7 +446,7 @@
     }
   },
   "wireguard-ok": {
-    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "contract": "4d68a7351fc98b574b48a827dc3a5401cbbc4eb4b7cb38cb929dc6a029d16daa",
     "observation": {
       "id": "",
       "project": "lab",
@@ -473,7 +473,7 @@
     }
   },
   "wireguard-permission": {
-    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "contract": "4d68a7351fc98b574b48a827dc3a5401cbbc4eb4b7cb38cb929dc6a029d16daa",
     "observation": {
       "id": "",
       "project": "lab",
@@ -497,7 +497,7 @@
     }
   },
   "wireguard-shape": {
-    "contract": "ee115eaddd15d323d6dea450d3b4b60e942cccb70bf76ea70708548ee60b933e",
+    "contract": "4d68a7351fc98b574b48a827dc3a5401cbbc4eb4b7cb38cb929dc6a029d16daa",
     "observation": {
       "id": "",
       "project": "lab",
