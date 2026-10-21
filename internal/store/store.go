@@ -156,6 +156,10 @@ type Store struct {
 	settled         time.Time // when the rollups last settled
 	external        *model.ExternalState
 	externalBytes   int64
+	// admissionHigh is the wall-clock high-water mark used for live external
+	// admission. A collector step-back must not make a previously valid
+	// attempt look like it came from the future.
+	admissionHigh time.Time
 
 	// Receipts in the order they were taken, from receiptHead on, so the
 	// expired ones are found at the front rather than by visiting them all;
@@ -652,12 +656,20 @@ func (s *Store) Put(b model.Batch) error {
 	defer s.commitMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// External observations are normalized against the installed bindings
-	// before identity hashing. API and local collectors thus use the same
-	// admission shape, and an unnormalized direct writer cannot poison the
-	// persisted cursor.
+	now := s.options.Now().UTC()
+	if now.After(s.admissionHigh) {
+		s.admissionHigh = now
+	}
+	future := s.admissionHigh
+	if future.IsZero() {
+		future = now
+	}
+	// External observations are normalized and live-admitted against the
+	// installed bindings before identity hashing. The API and local collectors
+	// thus take the same decision, and an unnormalized direct writer cannot
+	// poison the persisted cursor.
 	for i := range b.Observations {
-		if e := s.admitExternalLocked(&b.Observations[i]); e != nil {
+		if e := s.admitExternalLocked(&b.Observations[i], now, future); e != nil {
 			return e
 		}
 	}
@@ -682,7 +694,6 @@ func (s *Store) Put(b model.Batch) error {
 		b.Heartbeat = nil
 	}
 	pending := map[string]rowEncoding{}
-	now := s.options.Now().UTC()
 	kept := make([]model.Observation, 0, len(b.Observations))
 	for i, v := range b.Observations {
 		if v.ID == "" || v.Check == "" || v.SampledAt.IsZero() {

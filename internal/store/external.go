@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/admission"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/report"
@@ -94,11 +96,11 @@ func (s *Store) resizeExternalLocked() {
 	s.externalBytes = size
 }
 
-// admitExternalLocked normalizes and validates one external observation
+// admitExternalLocked normalizes and live-admits one external observation
 // against the installed context. It is also the direct-local-collector
 // admission path, which does not pass through the API. Callers hold
 // commitMu and s.mu.
-func (s *Store) admitExternalLocked(v *model.Observation) error {
+func (s *Store) admitExternalLocked(v *model.Observation, now, future time.Time) error {
 	if v.External == nil {
 		if _, ok := s.options.Bindings[v.Check]; ok {
 			return errors.New("external check requires a collection attempt")
@@ -113,8 +115,8 @@ func (s *Store) admitExternalLocked(v *model.Observation) error {
 	if !ok {
 		return errors.New("external observation has no declared source")
 	}
-	x := model.Check{ID: v.Check, Observer: source.Observer, Kind: "external", External: &binding}
-	normalized, err := report.ValidateExternalObservation(*v, x, source)
+	x := model.Check{ID: v.Check, Observer: source.Observer, Kind: "external", External: &binding, TimeoutSeconds: source.TimeoutSeconds}
+	normalized, err := admission.External(*v, x, source, admission.Window{Now: now, Future: future, MaxAge: s.options.Retention, Skew: 30 * time.Second})
 	if err != nil {
 		return fmt.Errorf("external observation: %w", err)
 	}

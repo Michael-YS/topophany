@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/admission"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
@@ -203,7 +205,7 @@ func TestExternalSourceFailureDoesNotMoveContactOrReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	contact := s.ExternalView().Sources["probe-api"].LastContact
-	failure := model.Observation{ID: "home.boot.2", Project: c.Project, Contract: config.Contract(c, c.Checks[len(c.Checks)-1]), Check: "vm-resources", Observer: "home", Boot: "boot", Sequence: 2, SampledAt: now.Add(time.Minute), Outcome: "error", Evidence: "reported", Stage: "external_source", Code: "source_timeout", Detail: "source read failed", DurationMS: 500, PathEvidence: "external_source", External: &model.ExternalObservation{Source: "probe-api", SourceGeneration: "gen-1", AttemptedAt: now.Add(time.Minute), Contact: false}}
+	failure := model.Observation{ID: "home.boot.2", Project: c.Project, Contract: config.Contract(c, c.Checks[len(c.Checks)-1]), Check: "vm-resources", Observer: "home", Boot: "boot", Sequence: 2, SampledAt: now.Add(5 * time.Second), Outcome: "error", Evidence: "reported", Stage: "external_source", Code: "source_timeout", Detail: "source read failed", DurationMS: 500, PathEvidence: "external_source", External: &model.ExternalObservation{Source: "probe-api", SourceGeneration: "gen-1", AttemptedAt: now.Add(5 * time.Second), Contact: false}}
 	if err := s.Put(batch(c, failure)); err != nil {
 		t.Fatal(err)
 	}
@@ -296,5 +298,66 @@ func TestExternalStateResetsOnContractChangeButNotNote(t *testing.T) {
 	s.SetCurrent(config.Revision(changed), config.Contracts(changed), config.Stale(changed))
 	if state := s.ExternalView(); state != nil && len(state.Bindings) > 0 {
 		t.Fatalf("changed contract reused external state: %+v", state)
+	}
+}
+
+func TestLocalCollectorRejectsFutureReportWithoutMovingCursor(t *testing.T) {
+	c := externalStoreConfig(t)
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	s := openTest(t, t.TempDir(), externalStoreOptions(c, &now))
+	first := externalStoreObservation(t, c, "sample-1", 20, 1, now.Add(-time.Minute), now.Add(-2*time.Minute))
+	if err := s.Put(batch(c, first)); err != nil {
+		t.Fatal(err)
+	}
+	before := s.ExternalView()
+	future := externalStoreObservation(t, c, "future", 25, 2, now.Add(-time.Minute), now.Add(24*time.Hour))
+	if err := s.Put(batch(c, future)); err == nil || admission.Code(err) != "external_report_time_out_of_range" {
+		t.Fatalf("future report not refused by the local collector: %v", err)
+	}
+	if after := s.ExternalView(); !reflect.DeepEqual(before, after) {
+		t.Fatalf("rejected future report changed external state:\nbefore=%+v\nafter=%+v", before, after)
+	}
+	futureEnvelope := externalStoreObservation(t, c, "future-envelope", 25, 3, now.Add(24*time.Hour), now)
+	if err := s.Put(batch(c, futureEnvelope)); err == nil || admission.Code(err) != "sample_time_out_of_range" {
+		t.Fatalf("future envelope not refused by the local collector: %v", err)
+	}
+	if after := s.ExternalView(); !reflect.DeepEqual(before, after) {
+		t.Fatal("rejected future envelope changed external state")
+	}
+	next := externalStoreObservation(t, c, "sample-2", 21, 4, now, now.Add(-time.Minute))
+	if err := s.Put(batch(c, next)); err != nil {
+		t.Fatalf("valid report rejected after future refusals: %v", err)
+	}
+	after := s.ExternalView()
+	if after.Bindings["vm-resources"].ReportSamples != 2 || after.Bindings["vm-resources"].Cursor.SampleID != "sample-2" {
+		t.Fatalf("cursor did not advance to the next valid report: %+v", after.Bindings["vm-resources"])
+	}
+	if after.Bindings["vm-resources"].Duplicates != before.Bindings["vm-resources"].Duplicates || after.Bindings["vm-resources"].Late != before.Bindings["vm-resources"].Late || after.Bindings["vm-resources"].Conflicts != before.Bindings["vm-resources"].Conflicts || after.Bindings["vm-resources"].Unusable != before.Bindings["vm-resources"].Unusable {
+		t.Fatal("rejected reports changed diagnostic counters")
+	}
+}
+
+func TestExternalJournalReplayIsNotRejectedByLaterLiveClock(t *testing.T) {
+	c := externalStoreConfig(t)
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	s := openTest(t, dir, externalStoreOptions(c, &now))
+	if err := s.Put(batch(c, externalStoreObservation(t, c, "sample-1", 30, 1, now, now))); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Replay reconstructs accepted evidence from its original timestamps; it
+	// is not a new live read and must not be judged against this later clock.
+	later := now.Add(72 * time.Hour)
+	reopened, err := Open(dir, externalStoreOptions(c, &later))
+	if err != nil {
+		t.Fatalf("journal replay was re-admitted as live evidence: %v", err)
+	}
+	defer reopened.Close()
+	state := reopened.ExternalView()
+	if state == nil || state.Bindings["vm-resources"].ReportSamples != 1 {
+		t.Fatalf("replayed external state = %+v", state)
 	}
 }

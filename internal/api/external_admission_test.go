@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/admission"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -282,4 +283,50 @@ func TestExternalStateAppearsInVersionedSnapshotAndNativeAggregatesIgnoreIt(t *t
 		}
 	}
 	_ = srv
+}
+
+func TestAPIAndLocalAdmissionAgreeOnExternalTimeBounds(t *testing.T) {
+	cases := map[string]struct {
+		mutate func(*model.Batch, model.Config)
+		code   string
+	}{
+		"valid": {},
+		"future report": {func(b *model.Batch, _ model.Config) {
+			b.Observations[0].External.Report.ObservedAt = time.Now().Add(2 * time.Hour)
+		}, "external_report_time_out_of_range"},
+		"future envelope": {func(b *model.Batch, _ model.Config) {
+			b.Observations[0].SampledAt = time.Now().Add(2 * time.Hour)
+		}, "sample_time_out_of_range"},
+		"old attempt": {func(b *model.Batch, _ model.Config) {
+			b.Observations[0].External.AttemptedAt = time.Now().Add(-48 * time.Hour)
+		}, "external_attempt_time_out_of_range"},
+		"report after read": {func(b *model.Batch, _ model.Config) {
+			b.Observations[0].External.Report.ObservedAt = time.Now().Add(time.Minute)
+		}, "external_report_time_out_of_range"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv, _, b, c := externalAPIFixture(t)
+			if tc.mutate != nil {
+				tc.mutate(&b, c)
+			}
+			code, _ := srv.ValidateBatch(b, "home")
+			err := srv.Store.Put(b)
+			if code == "" {
+				if err != nil {
+					t.Fatalf("API accepted a report the local store refused: %v", err)
+				}
+				return
+			}
+			if tc.code != "" && code != tc.code {
+				t.Fatalf("API code = %q, want %q", code, tc.code)
+			}
+			if err == nil {
+				t.Fatalf("local store accepted a report the API refused with %q", code)
+			}
+			if got := admission.Code(err); got != code {
+				t.Fatalf("local code = %q, API code = %q (%v)", got, code, err)
+			}
+		})
+	}
 }

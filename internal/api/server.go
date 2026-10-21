@@ -18,11 +18,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/WhitenWhiten/topophany/internal/admission"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/ledger"
 	"github.com/WhitenWhiten/topophany/internal/model"
-	"github.com/WhitenWhiten/topophany/internal/report"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/store"
@@ -718,20 +718,13 @@ func (g *generation) validateBatch(b model.Batch, observer string, now, future t
 			if !ok {
 				return "external_binding_mismatch", 409
 			}
-			normalized, e := report.ValidateExternalObservation(*v, x, s)
+			normalized, e := admission.External(*v, x, s, admission.Window{Now: now, Future: future, MaxAge: maxAge, Skew: 30 * time.Second})
 			if e != nil {
-				return report.Code(e), 400
+				code := admission.Code(e)
+				return code, externalAdmissionStatus(code)
 			}
 			if v.External != nil {
-				if !validTime(v.External.AttemptedAt) {
-					return "external_attempt_time_out_of_range", 422
-				}
 				v.External.Report = normalized
-				if normalized != nil {
-					if at, known := report.SampleAt(*normalized); known && (at.Year() < 1970 || at.After(future.Add(30*time.Second))) {
-						return "external_report_time_out_of_range", 422
-					}
-				}
 			}
 		}
 		if code := config.ObservationBounds(*v, time.Duration(x.TimeoutSeconds+5)*time.Second); code != "" {
@@ -754,6 +747,18 @@ func (g *generation) validateBatch(b model.Batch, observer string, now, future t
 		}
 	}
 	return "", 0
+}
+
+// externalAdmissionStatus preserves the HTTP distinction the API made before
+// live admission was shared: an out-of-window time is unprocessable, while a
+// malformed or forged observation is a bad request.
+func externalAdmissionStatus(code string) int {
+	switch code {
+	case "sample_time_out_of_range", "external_attempt_time_out_of_range", "external_report_time_out_of_range":
+		return 422
+	default:
+		return 400
+	}
 }
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	raw, err := json.Marshal(v)
