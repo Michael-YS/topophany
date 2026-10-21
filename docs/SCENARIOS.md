@@ -305,5 +305,12 @@ uses validated topologies with services and endpoints, exercising actual cards.
 | Topology reuse is bound to collector and revision, survives caller mutation, refreshes after reload and preserves legacy full snapshots | `TestTopologyCacheNegotiationReloadAndClientOwnership`, `TestOmittedTopologyRequiresMatchingEndpointRevision`, `TestSnapshotViewsRetriesTheWholeGeneration` |
 | Adaptive checkpoint cadence counts actual durable bytes, stays within floor/replay ceiling and recovers uncheckpointed journal transactions | `TestAdaptiveCheckpointThresholdAndRecovery`, `TestCheckpointPolicyLimits` |
 | Reused state folds preserve time expiry, future-evidence eligibility, rollback, independent ownership, write/reload invalidation and consistent HTTP projections | `TestPreparedEvidenceRemainsTimeSensitiveAndOwnsInputs`, `TestPreparedEvaluationReusesEvidenceAndInvalidatesOnWriteAndReload`, `TestSnapshotCacheDoesNotRepeatStoreWork` |
-
 | A collector clock rollback invalidates the HTTP snapshot capture rather than returning a future timestamp | `TestSnapshotCacheRefreshesAfterClockRollback` |
+| Identity-only readers never trigger gzip; later negotiated reads reuse the capture, account compressed bytes, evict within budget and remember unhelpful compression | `TestSnapshotCompressionIsLazyAndReusesIdentityCapture`, `TestLazyCompressionEvictsWithinBudgetAndRemembersNoSavings` |
+| Direct and prepared builds match 1,800 pre-optimization snapshots across outcomes, thresholds, carries, paused checks, maintenance, time shifts and observer views | `TestSnapshotPathsMatchPreOptimizationGolden` (frozen SHA-256 fixtures from `a056b9a`; only build version normalized) |
+
+Performance comparisons include cold identity/gzip/dynamic snapshot captures and
+late gzip negotiation (`BenchmarkSnapshotRepresentation`), worker-local panels
+(`BenchmarkLocalPanelSnapshot`), and both prepared cache hits and preparation
+after invalidation (`BenchmarkEngineTopology`). Timing benchmarks are comparative
+evidence, not portable pass/fail thresholds or production RSS measurements.

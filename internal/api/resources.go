@@ -109,13 +109,8 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	if omitTopology {
 		key += "\x00dynamic"
 	}
-	if raw, ok := s.snapshotCache[key]; ok {
-		if compressed {
-			if zipped := s.snapshotGzip[key]; zipped != nil {
-				return snapshotBody{zipped, "gzip"}, http.StatusOK, ""
-			}
-		}
-		return snapshotBody{data: raw}, http.StatusOK, ""
+	if _, ok := s.snapshotCache[key]; ok {
+		return s.snapshotResponse(key, compressed), http.StatusOK, ""
 	}
 	if s.snapshotMisses[principal] >= 2 || s.snapshotBuilds >= 8 {
 		return snapshotBody{}, 429, "snapshot_rate_limited"
@@ -155,9 +150,8 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	if err != nil {
 		return snapshotBody{}, 503, "snapshot_budget_exceeded"
 	}
-	zipped := compressSnapshot(raw)
 	for key, old := range s.snapshotCache {
-		if s.snapshotCacheBytes+len(raw)+len(zipped) <= 32<<20 && len(s.snapshotCache) < 8 {
+		if s.snapshotCacheBytes+len(raw) <= 32<<20 && len(s.snapshotCache) < 8 {
 			break
 		}
 		delete(s.snapshotCache, key)
@@ -165,12 +159,41 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 		delete(s.snapshotGzip, key)
 	}
 	s.snapshotCache[key] = raw
-	s.snapshotGzip[key] = zipped
-	s.snapshotCacheBytes += len(raw) + len(zipped)
-	if compressed && zipped != nil {
-		return snapshotBody{zipped, "gzip"}, http.StatusOK, ""
+	s.snapshotCacheBytes += len(raw)
+	return s.snapshotResponse(key, compressed), http.StatusOK, ""
+}
+
+// Called with snapshotMu held. Generate gzip only when requested, including
+// after an identity cache hit. A present nil entry remembers that compression
+// was unhelpful, so later requests do not repeat that work.
+func (s *Server) snapshotResponse(key string, compressed bool) snapshotBody {
+	raw := s.snapshotCache[key]
+	if !compressed {
+		return snapshotBody{data: raw}
 	}
-	return snapshotBody{data: raw}, http.StatusOK, ""
+	zipped, tried := s.snapshotGzip[key]
+	if !tried {
+		zipped = compressSnapshot(raw)
+		for other, old := range s.snapshotCache {
+			if s.snapshotCacheBytes+len(zipped) <= 32<<20 {
+				break
+			}
+			if other == key {
+				continue
+			}
+			s.snapshotCacheBytes -= len(old) + len(s.snapshotGzip[other])
+			delete(s.snapshotCache, other)
+			delete(s.snapshotGzip, other)
+		}
+		// Each raw response is at most 8 MiB and gzip is retained only if
+		// smaller, so keeping this entry always fits the 32 MiB budget.
+		s.snapshotGzip[key] = zipped
+		s.snapshotCacheBytes += len(zipped)
+	}
+	if zipped != nil {
+		return snapshotBody{zipped, "gzip"}
+	}
+	return snapshotBody{data: raw}
 }
 
 var errSnapshotBudget = errors.New("snapshot budget exceeded")

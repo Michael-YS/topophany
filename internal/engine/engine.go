@@ -152,30 +152,53 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 	return NewPlan(c).Build(instance, view, rows, carries, beats, now)
 }
 
-// Build evaluates a snapshot under this plan. Concurrent calls are safe.
+// Build evaluates one snapshot without allocating a reusable Prepared cache.
+// Concurrent calls are safe; callers must not mutate inputs during the call.
 func (p *Plan) Build(instance, view string, rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
-	return p.Prepare(rows, carries, beats).Build(instance, view, now)
+	lastSeen, reported := map[string]time.Time{}, map[string]string{}
+	limit := now.Add(5 * time.Second)
+	seen := func(observer string, at time.Time) {
+		if !at.After(limit) && at.After(lastSeen[observer]) {
+			lastSeen[observer] = at
+		}
+	}
+	for id, h := range beats {
+		if h.Project == p.config.Project {
+			seen(id, h.SampledAt)
+			reported[id] = p.reportedContract(id, h)
+		}
+	}
+	states := p.foldEvidence(rows, carries, seen)
+	for _, x := range p.config.Checks {
+		states[x.ID] = currentState(x, states[x.ID], now)
+	}
+	return p.buildSnapshot(instance, view, now, states, lastSeen, reported, beats)
 }
 
 // Build derives current freshness, observer liveness and entity judgments from
 // prepared evidence. It is safe for concurrent readers and returns owned data.
 func (e *Prepared) Build(instance, view string, now time.Time) model.Snapshot {
 	p := e.plan
-	c := p.config
-	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: p.publicRevision, GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Clone(p.public), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Endpoints: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
-	lastSeen := e.lastSeen(now)
-	reported, beats := e.reported, e.beats
-	allStates := make(map[string]model.CheckState, len(c.Checks))
-	checks := p.checks
-	for _, x := range c.Checks {
+	states := make(map[string]model.CheckState, len(p.checks))
+	for _, x := range p.config.Checks {
 		st := currentState(x, e.checks[x.ID], now)
 		if st.Last != nil {
 			last := model.CloneObservation(*st.Last)
 			st.Last = &last
 		}
-		allStates[x.ID] = st
+		states[x.ID] = st
+	}
+	return p.buildSnapshot(instance, view, now, states, e.lastSeen(now), e.reported, e.beats)
+}
+
+// Both entry points supply owned check states. Entity derivation and public
+// projection stay identical without copying diagnostics a second time.
+func (p *Plan) buildSnapshot(instance, view string, now time.Time, allStates map[string]model.CheckState, lastSeen map[string]time.Time, reported map[string]string, beats map[string]model.Heartbeat) model.Snapshot {
+	c, checks := p.config, p.checks
+	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: p.publicRevision, GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Clone(p.public), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Endpoints: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
+	for _, x := range c.Checks {
 		if view == "" || view == x.Observer {
-			out.Checks = append(out.Checks, st)
+			out.Checks = append(out.Checks, allStates[x.ID])
 		}
 	}
 	for _, o := range c.Observers {

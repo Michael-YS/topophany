@@ -90,6 +90,14 @@ func BenchmarkEngineTopology(b *testing.B) {
 					prepared.Build("audit", "", now)
 				}
 			})
+			// Every new evidence version pays preparation again. Keep this
+			// distinct from both cached reads and one-shot Plan.Build calls.
+			b.Run("prepare-and-build", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					p.Prepare(rows, nil, nil).Build("audit", "", now)
+				}
+			})
 			b.Run("generation", func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {

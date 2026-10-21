@@ -26,7 +26,7 @@ import (
 const viewerToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const workerToken = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-func fixture(t *testing.T) (*Server, http.Handler, model.Batch) {
+func fixture(t testing.TB) (*Server, http.Handler, model.Batch) {
 	t.Helper()
 	c := testkit.Config()
 	now := time.Now().UTC()

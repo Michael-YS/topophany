@@ -174,18 +174,23 @@ measurements for the same load. Include cold start, steady healthy sampling,
 delivery outage/recovery, checkpoint and log rotation separately. Display-only
 writes are rebuildable and do not force sync; they are not evidence deduplication.
 New observations with the same result still persist and count as monitoring
-evidence. Queue batching and checkpoint policy changes are intentionally deferred
-until these measurements justify them; acknowledgement remains after durable
-storage and reliable worker enqueue is unchanged.
+evidence. Outbox ACK cleanup batches directory synchronization, and checkpoint
+cadence adapts within the replay budget described below. Collector acknowledgement
+remains after durable storage and reliable worker enqueue is unchanged.
 
 ### Idle worker heartbeats
 
 `worker --heartbeat-interval` defaults to `15s` (allowed `1s`–`1m`). The worker caps it at one third of its observer's `stale_seconds`, recalculating on topology reload. Delivery continues every two seconds for queued samples; sample uploads always carry current liveness when their schema and revision permit it. Empty rounds send only when the idle deadline is due. A new boot, contracts digest, revision, or backward clock step sends liveness on the next eligible round. Retry backoff remains in force after transport failures. Storage backpressure still permits independent heartbeats, at the same idle cadence. Heartbeats never extend the validity of check measurements. Delivery telemetry may therefore update less often while idle.
 
-Snapshot responses negotiate gzip for payloads of at least 1 KiB when compression saves bytes. The collector caches both representations within the existing 32 MiB budget. Native clients bound encoded input as well as decompressed JSON; deadlines, validation and decoded response limits still apply. Clients that do not negotiate gzip keep receiving JSON.
+Snapshot responses negotiate gzip for payloads of at least 1 KiB when compression saves bytes. The collector generates gzip only when requested, including after an identity response was cached, and retains both representations within the existing 32 MiB budget. Unhelpful compression results are remembered for that capture. Native clients bound encoded input as well as decompressed JSON; deadlines, validation and decoded response limits still apply. Clients that do not negotiate gzip keep receiving JSON without paying for compression.
 
 New viewers retain one validated public topology per collector and send its revision as `topology_revision` on subsequent snapshot reads. A matching collector omits the static topology and marks `topology_omitted`; a different revision sends it in full. State timestamps, measurement expiry and dynamic validation are unchanged. The cache owns its data independently of returned snapshots, is scoped to the configured collector, and is replaced on reload. Older clients and collectors keep using complete snapshots without negotiation.
 
 Automatic checkpointing uses the last successfully persisted checkpoint's encoded size as its journal threshold, bounded by `serve --checkpoint-bytes` (default 16 MiB) and `--max-journal-bytes` (default 128 MiB). Both must be at most 128 MiB, and the ceiling must be at least the floor. Equal values restore a fixed threshold. The threshold survives restart through the checkpoint's file size; no on-disk format changes. This reduces repeated large rewrites at the cost of more journal disk space and restart replay. One bounded transaction can cross the threshold, still below the 256 MiB journal recovery limit. Explicit checkpoints retain their immediate durability behavior.
 
 The collector reuses folded check evidence across HTTP views, its incident watcher and attached monitor panels until the store evidence version or topology generation changes. Each read still recalculates measurement freshness, observer liveness and entity state using its own time; future samples and clock rollback are handled without a new write. The one-second HTTP cache continues to bind observer projections to one capture. Published snapshots and prepared evidence own separate mutable data.
+
+One-shot engine users, including worker-local panels and preview generation,
+use a direct build path without allocating a reusable evidence cache. Both paths
+share evidence folding and entity derivation. Compare cache hits, freshly prepared
+evidence and direct builds separately when measuring performance.

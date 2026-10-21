@@ -21,20 +21,46 @@ type Prepared struct {
 }
 
 func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat) *Prepared {
-	e := &Prepared{plan: p, checks: make(map[string]model.CheckState, len(p.checks)), seen: map[string][]time.Time{}, reported: map[string]string{}, beats: map[string]model.Heartbeat{}}
+	e := &Prepared{plan: p, seen: map[string][]time.Time{}, reported: map[string]string{}, beats: map[string]model.Heartbeat{}}
 	for id, h := range beats {
 		if h.Project != p.config.Project {
 			continue
 		}
 		e.beats[id] = model.CloneHeartbeat(h)
 		e.seen[id] = append(e.seen[id], h.SampledAt)
-		switch {
-		case h.Contracts != "":
-			e.reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Contracts == p.observers[id]]
-		case h.Revision != "":
-			e.reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Revision == p.revision]
-		}
+		e.reported[id] = p.reportedContract(id, h)
 	}
+	e.checks = p.foldEvidence(rows, carries, func(observer string, at time.Time) {
+		e.seen[observer] = append(e.seen[observer], at)
+	})
+	for id, stamps := range e.seen {
+		slices.SortFunc(stamps, time.Time.Compare)
+		e.seen[id] = slices.CompactFunc(stamps, time.Time.Equal)
+	}
+	return e
+}
+
+func (p *Plan) reportedContract(observer string, h model.Heartbeat) string {
+	var current bool
+	switch {
+	case h.Contracts != "":
+		current = h.Contracts == p.observers[observer]
+	case h.Revision != "":
+		current = h.Revision == p.revision
+	default:
+		return ""
+	}
+	if current {
+		return "current"
+	}
+	return "outdated"
+}
+
+// Both one-shot and reusable builds fold evidence through the same path. The
+// visitor lets one-shot builds retain just last-seen times, while Prepared
+// keeps all eligible timestamps to answer future reads and clock rollbacks.
+// Returned states own their diagnostics independently of the input rows.
+func (p *Plan) foldEvidence(rows []model.Observation, carries []Carry, seen func(string, time.Time)) map[string]model.CheckState {
 	histories := make(map[string][]*model.Observation, len(p.checks))
 	for i := range rows {
 		v := &rows[i]
@@ -46,7 +72,7 @@ func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[stri
 			continue
 		}
 		histories[v.Check] = append(histories[v.Check], v)
-		e.seen[v.Observer] = append(e.seen[v.Observer], v.SampledAt)
+		seen(v.Observer, v.SampledAt)
 	}
 	carried := map[string]*Carry{}
 	for i, k := range carries {
@@ -54,6 +80,7 @@ func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[stri
 			carried[k.Check] = &carries[i]
 		}
 	}
+	states := make(map[string]model.CheckState, len(p.checks))
 	for _, x := range p.config.Checks {
 		st := evaluateEvidence(x, carried[x.ID], histories[x.ID])
 		st.Contract = p.publicContracts[x.ID]
@@ -62,13 +89,9 @@ func (p *Plan) Prepare(rows []model.Observation, carries []Carry, beats map[stri
 			last.Contract, last.Revision = st.Contract, ""
 			st.Last = &last
 		}
-		e.checks[x.ID] = st
+		states[x.ID] = st
 	}
-	for id, stamps := range e.seen {
-		slices.SortFunc(stamps, time.Time.Compare)
-		e.seen[id] = slices.CompactFunc(stamps, time.Time.Equal)
-	}
-	return e
+	return states
 }
 
 // Future evidence becomes eligible as the clock advances, and a clock rollback
