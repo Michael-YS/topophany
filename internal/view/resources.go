@@ -389,9 +389,11 @@ func minTime(a, b, c time.Time) time.Time {
 // ResourceCards flattens the unified selection into what existing cards and
 // CLI details display. It is the only caller-side shape: no TUI or monitor
 // filters checks by kind or observer node again.
-func (v View) ResourceCards() map[string][]CardResource {
+func (v View) ResourceCards() map[string][]CardResource { return resourceCards(v.SelectResources()) }
+
+func resourceCards(selection map[string]NodeResources) map[string][]CardResource {
 	out := map[string][]CardResource{}
-	for node, n := range v.SelectResources() {
+	for node, n := range selection {
 		if len(n.All) > 0 {
 			out[node] = n.All
 		} else {

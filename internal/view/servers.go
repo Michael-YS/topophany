@@ -144,7 +144,12 @@ type Fleet struct {
 	endpointDefs map[string]model.Endpoint
 }
 
-func (v View) Fleet() *Fleet {
+func (v View) Fleet() *Fleet { return v.FleetWithResources(nil) }
+
+// FleetWithResources builds the same fleet from a resource selection already
+// computed for this frame. A nil selection is computed here. The selection is
+// read-only; callers that share it must not mutate the returned cards.
+func (v View) FleetWithResources(selection map[string]NodeResources) *Fleet {
 	s := v.Snapshot
 	t := s.Topology
 	f := &Fleet{Names: map[string]string{}, Nodes: map[string]model.Node{}, serviceVia: indexServiceVia(t), cached: v.Cached, nodeState: map[string]model.EntityState{}, services: map[string][]model.Service{}, svcState: map[string]model.EntityState{}, endpoints: map[string][]model.Endpoint{}, fronted: map[string][]model.Endpoint{}, epHealth: map[string]string{}, children: map[string][]model.Node{}, observers: map[string][]model.Observer{}, obsState: map[string]model.ObserverState{}, links: map[string][]model.Link{}, pops: map[string][]string{}, regions: map[string][]string{}, popCounts: map[string]map[string]int64{}, linkState: map[string]string{}, linkRead: map[string][]string{}, topology: t, scope: s.ViewObserver, checkStates: make(map[string]model.CheckState, len(s.Checks))}
@@ -241,7 +246,10 @@ func (v View) Fleet() *Fleet {
 	for at := range f.pops {
 		sort.Strings(f.pops[at])
 	}
-	f.resources = v.ResourceCards()
+	if selection == nil {
+		selection = v.SelectResources()
+	}
+	f.resources = resourceCards(selection)
 	return f
 }
 

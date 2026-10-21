@@ -19,6 +19,7 @@ type projection struct {
 	observers                      []ObserverVerdict
 	serverList                     []ServerListEntry
 	serverListClock                evidenceClock
+	resources                      map[string]view.NodeResources
 	currentClocks, completeClocks  *evidenceIndex
 	aged                           *model.Snapshot
 	stale                          map[string]int
@@ -49,9 +50,18 @@ func newProjection(in Input, now time.Time) *projection {
 	return &projection{v: v, all: all, samples: in.Samples}
 }
 
+// resourceSelection is computed once per frame and shared by scalar
+// resource.* rows and every server card, so they use one snapshot and clock.
+func (p *projection) resourceSelection() map[string]view.NodeResources {
+	if p.resources == nil {
+		p.resources = p.v.SelectResources()
+	}
+	return p.resources
+}
+
 func (p *projection) serverFleet() *view.Fleet {
 	if p.fleet == nil {
-		p.fleet = p.v.Fleet()
+		p.fleet = p.v.FleetWithResources(p.resourceSelection())
 		p.nodeChecks = make(map[string][]string, len(p.v.Snapshot.Nodes))
 		for _, n := range p.v.Snapshot.Nodes {
 			p.nodeChecks[n.ID] = n.Checks

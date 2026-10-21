@@ -127,7 +127,7 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 		return deliveryValue(v, in.Delivery, now)
 	}
 	if strings.HasPrefix(r.Metric, "resource.") {
-		return resourceMetric(v, s, now, r)
+		return projection.resourceMetric(v, r)
 	}
 	if s.GeneratedAt.IsZero() || s.GeneratedAt.After(now.Add(model.SampleClockAhead)) || view.Expired(s, now) {
 		v.Freshness = "stale"
@@ -254,12 +254,13 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 }
 
 // resourceMetric reads the one node-selected resource, never a different
-// source and never host.* semantics from a non-host check.
-func resourceMetric(v Value, s model.Snapshot, now time.Time, r Row) Value {
+// source and never host.* semantics from a non-host check. The frame's one
+// selection is shared with server.card.
+func (p *projection) resourceMetric(v Value, r Row) Value {
 	if r.Select.Node == "" {
 		return missing(v, "selector_required")
 	}
-	n, ok := (view.View{Snapshot: s, Now: now}).SelectResources()[r.Select.Node]
+	n, ok := p.resourceSelection()[r.Select.Node]
 	if !ok || n.Selected.Check == "" {
 		return missing(v, "entity_missing")
 	}
