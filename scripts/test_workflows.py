@@ -35,6 +35,12 @@ class ReleaseBoundaryTests(unittest.TestCase):
         for forbidden in ("actions/checkout", "go test", "go build", "scripts/", "tar -", "unzip"):
             self.assertNotIn(forbidden, publish)
 
+    def test_release_requires_vulnerability_check(self):
+        source = (ROOT / ".github/workflows/release.yml").read_text()
+        test, build = source.split("\n  build:\n")
+        self.assertIn("go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...", test)
+        self.assertIn("    needs: test", build)
+
     def test_release_binaries_carry_the_tag_version(self):
         # The build checks out one commit without tags, where the toolchain
         # can stamp only a pseudo-version; the binary must say the release.

@@ -51,7 +51,8 @@ def main() -> int:
     start_clock = time.monotonic()
     build_dir = Path(tempfile.mkdtemp(prefix="topophany-verify-"))
 
-    toolchain_bin = next(Path.home().glob("go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.*/bin"), None)
+    required_go = re.search(r"^go ([0-9.]+)$", (ROOT / "go.mod").read_text(), re.MULTILINE)[1]
+    toolchain_bin = next(Path.home().glob(f"go/pkg/mod/golang.org/toolchain@v0.0.1-go{required_go}.*/bin"), None)
     if toolchain_bin and toolchain_bin.is_dir():
         env["PATH"] = str(toolchain_bin) + os.pathsep + env.get("PATH", "")
         # A version-manager shim may have exported another toolchain's GOROOT.

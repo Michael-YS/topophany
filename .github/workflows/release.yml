@@ -20,6 +20,8 @@ jobs:
           go-version-file: go.mod
           cache: false
       - run: go test -count=1 ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   build:
     needs: test
