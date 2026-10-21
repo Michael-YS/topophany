@@ -8,6 +8,7 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -188,5 +189,60 @@ func TestCancellationAndInvalidScheduler(t *testing.T) {
 	}
 	if e = s.Run(ctx); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestCancelledProbeIsNotDelivered(t *testing.T) {
+	for _, name := range []string{"once", "run"} {
+		t.Run(name, func(t *testing.T) {
+			c := testkit.Config()
+			started := make(chan struct{}, 1)
+			p := func(ctx context.Context, c model.Config, x model.Check) model.Observation {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+				<-ctx.Done()
+				return model.Observation{Check: x.ID, SampledAt: time.Now(), Outcome: "fail", Code: "timeout"}
+			}
+			var sunk atomic.Int32
+			s, err := New(c, "home", 1, p, func(model.Observation) error {
+				sunk.Add(1)
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				if name == "once" {
+					done <- s.Once(ctx)
+				} else {
+					done <- s.Run(ctx)
+				}
+			}()
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("probe did not start")
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if name == "once" && !errors.Is(err, context.Canceled) {
+					t.Fatal(err)
+				}
+				if name == "run" && err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("scheduler did not stop")
+			}
+			if sunk.Load() != 0 {
+				t.Fatalf("cancelled probe was delivered %d times", sunk.Load())
+			}
+		})
 	}
 }
