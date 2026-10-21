@@ -77,15 +77,18 @@ type ResourceValue struct {
 	Freshness       string     `json:"freshness"`
 	SampledAt       *time.Time `json:"sampled_at"`
 	ValidUntil      *time.Time `json:"valid_until"`
-	Source          string     `json:"-"`
-	Object          string     `json:"-"`
-	TimeBasis       string     `json:"-"`
-	SelectionReason string     `json:"-"`
-	Selected        bool       `json:"-"`
+	Source          string     `json:"source,omitempty"`
+	Object          string     `json:"object,omitempty"`
+	TimeBasis       string     `json:"time_basis,omitempty"`
+	SelectionReason string     `json:"selection_reason,omitempty"`
+	Selected        bool       `json:"selected,omitempty"`
+	DataDeadline    time.Time  `json:"data_deadline,omitzero"`
+	ContactDeadline time.Time  `json:"contact_deadline,omitzero"`
 	CPU             struct {
 		Percent *float64 `json:"percent"`
 		Limit   *float64 `json:"limit"`
 		Logical *uint64  `json:"logical"`
+		Basis   string   `json:"basis,omitempty"`
 	} `json:"cpu"`
 	Memory struct {
 		Percent *float64 `json:"percent"`
@@ -100,6 +103,7 @@ type ResourceValue struct {
 		Path    string   `json:"path"`
 		Used    *uint64  `json:"used_bytes"`
 		Total   *uint64  `json:"total_bytes"`
+		Basis   string   `json:"basis,omitempty"`
 	} `json:"disk"`
 	Process *ProcessValue `json:"process"`
 }
@@ -343,7 +347,7 @@ func threshold(n float64) *float64 {
 	return &n
 }
 func resource(v view.View, r view.CardResource) ResourceValue {
-	out := ResourceValue{Check: r.Check, Observer: r.Observer.ID, Health: r.Health, Freshness: r.Freshness, SampledAt: stamp(r.SampledAt), Source: r.Source, Object: r.Object, TimeBasis: r.TimeBasis, SelectionReason: r.Reason, Selected: r.Selected}
+	out := ResourceValue{Check: r.Check, Observer: r.Observer.ID, Health: r.Health, Freshness: r.Freshness, SampledAt: stamp(r.SampledAt), Source: r.Source, Object: r.Object, TimeBasis: r.TimeBasis, SelectionReason: r.Reason, Selected: r.Selected, DataDeadline: r.DataDeadline, ContactDeadline: r.ContactDeadline}
 	var def model.Check
 	for _, c := range v.Snapshot.Topology.Checks {
 		if c.ID == r.Check {
@@ -373,10 +377,12 @@ func resource(v view.View, r view.CardResource) ResourceValue {
 	}
 	f := r.Facts
 	out.CPU.Percent, out.CPU.Logical, out.CPU.Limit = percent(f, "cpu_used_percent"), number(f, "cpu_logical_count"), threshold(h.MaxCPUPercent)
+	out.CPU.Basis = f["cpu_basis"]
 	out.Memory.Percent, out.Memory.Limit = percent(f, "memory_used_percent"), threshold(h.MaxMemoryPercent)
 	out.Memory.Used, out.Memory.Total, out.Memory.Basis = number(f, "memory_used_bytes"), number(f, "memory_total_bytes"), f["memory_basis"]
 	out.Disk.Percent, out.Disk.Limit = percent(f, "disk_used_percent"), threshold(h.MaxDiskPercent)
 	out.Disk.Used, out.Disk.Total = number(f, "disk_used_bytes"), number(f, "disk_total_bytes")
+	out.Disk.Basis = f["disk_basis"]
 	if out.Process != nil {
 		out.Process.Matching = number(f, "process_matching_count")
 	}

@@ -436,8 +436,8 @@ its existing worker budget.
 | 4 persistence/dedup | `7820cda` | complete |
 | 5 report state/statistics | `b82f42d` | complete |
 | 6 source runtime | `1e24fa2` | complete |
-| 7 unified resources | this commit | complete |
-| 8 stream/bar | — | pending |
+| 7 unified resources | `aaada89` | complete |
+| 8 stream/bar | this commit | complete |
 | 9 end-to-end | — | pending |
 | 10 docs/full verification | — | pending |
 
@@ -557,9 +557,28 @@ Record only real changes to the frozen rules here, with the reason.
   a missing assertion field into a passing test. TUI's process row is omitted
   for external reports, which carry no process inventory.
 - The monitor's generic root-disk reorder was removed: selection order is
-  authoritative. Task 8 will expose the optional source/object/time-basis
-  metadata in the stream JSON and refresh the frozen stream goldens for those
-  additive fields.
+  authoritative.
+- Task 8 enables optional `source`, `object`, `time_basis`,
+  `selection_reason`, `selected`, `data_deadline`, `contact_deadline`, CPU
+  basis and disk basis on each stream resource. Existing `server.card`
+  fields, `resources[0]` semantics and per-resource `valid_until` remain.
+  Nested numbers are still withdrawn by `monitor.Current` from the resource's
+  own deadline while the card row can stay current.
+- Task 8 adds `resource.cpu.used_percent`, `resource.memory.used_percent` and
+  `resource.disk.used_percent`, selected by node through `SelectResources`.
+  `host.*` keeps its check-scoped native-host semantics and refuses to read an
+  external check. All three metrics are in `monitor.Catalog`, hence in
+  capability discovery.
+- The stream preview goldens were refreshed for the additive metadata only.
+  A structural JSON comparison of all 20 changed files found no removed or
+  changed existing path and only the new keys `source`, `selected`,
+  `selection_reason` and `data_deadline`; CPU/disk basis and contact deadline
+  are omitted when empty. No behavior oracle was relaxed.
+- Read-only bar review: `ServerCard.Resource` has explicit `CodingKeys`, so
+  the new keys are ignored; `SectionBuilder` reads `resources.first`;
+  `ReaderPolicy` applies each resource's `valid_until`. A local `swift test`
+  could not build the adjacent checkout because its pre-existing
+  `xcstringstool` helper is not executable; no bar file was changed.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters

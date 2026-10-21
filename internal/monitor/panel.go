@@ -126,6 +126,9 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 	if strings.HasPrefix(r.Metric, "delivery.") {
 		return deliveryValue(v, in.Delivery, now)
 	}
+	if strings.HasPrefix(r.Metric, "resource.") {
+		return resourceMetric(v, s, now, r)
+	}
 	if s.GeneratedAt.IsZero() || s.GeneratedAt.After(now.Add(model.SampleClockAhead)) || view.Expired(s, now) {
 		v.Freshness = "stale"
 		return missing(v, "source_expired")
@@ -249,6 +252,53 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 	v.Text = fmt.Sprintf("%.1f%%", n)
 	return v
 }
+
+// resourceMetric reads the one node-selected resource, never a different
+// source and never host.* semantics from a non-host check.
+func resourceMetric(v Value, s model.Snapshot, now time.Time, r Row) Value {
+	if r.Select.Node == "" {
+		return missing(v, "selector_required")
+	}
+	n, ok := (view.View{Snapshot: s, Now: now}).SelectResources()[r.Select.Node]
+	if !ok || n.Selected.Check == "" {
+		return missing(v, "entity_missing")
+	}
+	card := n.Selected
+	if !card.Current || card.Facts == nil {
+		return missing(v, "sample_unreadable")
+	}
+	m, _ := metric(r.Metric)
+	value, err := strconv.ParseFloat(card.Facts[m.Fact], 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+		return missing(v, "invalid_value")
+	}
+	v.Value = value
+	v.Text = fmt.Sprintf("%.1f%%", value)
+	v.Health = card.Health
+	v.Freshness = card.Freshness
+	v.Check = card.Check
+	v.Observer = card.Observer.ID
+	v.SampledAt = card.SampledAt
+	v.ValidUntil = card.ValidUntil
+	switch {
+	case strings.HasPrefix(r.Metric, "resource.cpu."):
+		v.Basis = card.Facts["cpu_basis"]
+		if v.Basis == "" {
+			if card.Native {
+				v.Basis = "host_normalized_0_100"
+			} else {
+				v.Basis = "source_reported_0_100"
+			}
+		}
+		v.SampleWindowMS, _ = strconv.ParseInt(card.Facts["cpu_sample_ms"], 10, 64)
+	case strings.HasPrefix(r.Metric, "resource.memory."):
+		v.Basis = card.Facts["memory_basis"]
+	case strings.HasPrefix(r.Metric, "resource.disk."):
+		v.Basis = card.Facts["disk_basis"]
+	}
+	return v
+}
+
 func deliveryValue(v Value, reports []model.DeliveryStatus, now time.Time) Value {
 	var matches []model.DeliveryStatus
 	for _, r := range reports {

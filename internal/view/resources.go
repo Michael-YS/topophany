@@ -301,6 +301,9 @@ func externalFacts(x model.Check, r *model.ExternalReport) (map[string]string, s
 		if res.CPU.SampleWindowMS != nil {
 			facts["cpu_sample_ms"] = strconv.FormatInt(*res.CPU.SampleWindowMS, 10)
 		}
+		if res.CPU.Basis != "" {
+			facts["cpu_basis"] = res.CPU.Basis
+		}
 	}
 	if res.Memory != nil {
 		if res.Memory.TotalBytes != nil {
