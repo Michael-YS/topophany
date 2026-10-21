@@ -148,7 +148,7 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 		v.Text = fmt.Sprint(v.Value)
 		v.Health = "up"
 		v.SampledAt = s.GeneratedAt
-		v.ValidUntil = s.GeneratedAt.Add(15 * time.Second)
+		v.ValidUntil = s.GeneratedAt.Add(model.SnapshotLifetime)
 		return v
 	}
 	if m.Selector == "" {
@@ -156,7 +156,7 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 		v.Value = verdict.State
 		v.Text = verdict.Text
 		v.Health = verdictHealth(verdict.State)
-		v.ValidUntil = s.GeneratedAt.Add(15 * time.Second)
+		v.ValidUntil = s.GeneratedAt.Add(model.SnapshotLifetime)
 		for _, cs := range s.Checks {
 			if cs.Last != nil {
 				if cs.Last.SampledAt.After(v.SampledAt) {
@@ -210,13 +210,13 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 			break
 		}
 	}
-	if limit := s.GeneratedAt.Add(15 * time.Second); v.ValidUntil.After(limit) {
+	if limit := s.GeneratedAt.Add(model.SnapshotLifetime); v.ValidUntil.After(limit) {
 		v.ValidUntil = limit
 	}
 	if cs.Freshness != "fresh" {
 		return missing(v, cs.Freshness)
 	}
-	if v.SampledAt.After(now.Add(5 * time.Second)) {
+	if v.SampledAt.After(now.Add(model.SampleClockAhead)) {
 		return missing(v, "clock_skew")
 	}
 	if v.ValidUntil.IsZero() || !now.Before(v.ValidUntil) {
@@ -265,8 +265,8 @@ func deliveryValue(v Value, reports []model.DeliveryStatus, now time.Time) Value
 	r := matches[0]
 	v.Collector = r.Collector
 	v.SampledAt = r.ReportedAt
-	v.ValidUntil = r.ReportedAt.Add(15 * time.Second)
-	if r.ReportedAt.After(now.Add(5 * time.Second)) {
+	v.ValidUntil = r.ReportedAt.Add(model.SnapshotLifetime)
+	if r.ReportedAt.After(now.Add(model.SampleClockAhead)) {
 		return missing(v, "clock_skew")
 	}
 	if !now.Before(v.ValidUntil) {

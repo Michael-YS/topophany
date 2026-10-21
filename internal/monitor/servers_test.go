@@ -132,7 +132,7 @@ func TestServerListUsesOnlyListedNodeDeadlines(t *testing.T) {
 	}
 	// Even without supporting checks, the source envelope bounds the list.
 	snap.Nodes[0].Checks = nil
-	if r := Build(cfg, Input{Snapshot: snap}, now).Rows[0]; !r.ValidUntil.Equal(now.Add(15 * time.Second)) {
+	if r := Build(cfg, Input{Snapshot: snap}, now).Rows[0]; !r.ValidUntil.Equal(now.Add(model.SnapshotLifetime)) {
 		t.Fatal(r)
 	}
 }

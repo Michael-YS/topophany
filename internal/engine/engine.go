@@ -119,7 +119,7 @@ func currentState(x model.Check, s model.CheckState, now time.Time) model.CheckS
 	if s.Last == nil {
 		return s
 	}
-	if s.Last.SampledAt.After(now.Add(5 * time.Second)) {
+	if s.Last.SampledAt.After(now.Add(model.SampleClockAhead)) {
 		s.Health = "unknown"
 		s.Freshness = "stale"
 		s.Reason = "executor clock is ahead; sample not treated as current"
@@ -156,7 +156,7 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 // Concurrent calls are safe; callers must not mutate inputs during the call.
 func (p *Plan) Build(instance, view string, rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
 	lastSeen, reported := map[string]time.Time{}, map[string]string{}
-	limit := now.Add(5 * time.Second)
+	limit := now.Add(model.SampleClockAhead)
 	seen := func(observer string, at time.Time) {
 		if !at.After(limit) && at.After(lastSeen[observer]) {
 			lastSeen[observer] = at

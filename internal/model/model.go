@@ -16,6 +16,13 @@ const MaxSnapshotBytes = 8 << 20
 // that carries it, so a probe adding optional facts has to stop here.
 const MaxObservationFacts = 32
 
+// SampleClockAhead is how far a sample or heartbeat may sit ahead of the
+// reader before it is left out of the current state.
+const SampleClockAhead = 5 * time.Second
+
+// SnapshotLifetime is how long a generated snapshot stays current.
+const SnapshotLifetime = 15 * time.Second
+
 // Schemas of what is written and sent. A topology file is schema 1. Batches
 // and snapshots are schema 2: observations carry the contract of their
 // check, not the revision of the whole topology. A collector still accepts

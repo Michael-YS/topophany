@@ -106,7 +106,7 @@ func (p *Plan) foldEvidence(rows []model.Observation, carries []Carry, seen func
 // can make it ineligible again. Keep timestamps rather than a frozen last-seen.
 func (e *Prepared) lastSeen(now time.Time) map[string]time.Time {
 	out := make(map[string]time.Time, len(e.seen))
-	limit := now.Add(5 * time.Second)
+	limit := now.Add(model.SampleClockAhead)
 	for id, stamps := range e.seen {
 		i := sort.Search(len(stamps), func(i int) bool { return stamps[i].After(limit) })
 		if i > 0 {

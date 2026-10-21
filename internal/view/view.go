@@ -22,9 +22,9 @@ type View struct {
 }
 
 // Expired reports whether a snapshot no longer says anything current: none
-// was received, or it was generated more than 15 seconds before now.
+// was received, or it was generated more than SnapshotLifetime before now.
 func Expired(s model.Snapshot, now time.Time) bool {
-	return s.GeneratedAt.IsZero() || now.Sub(s.GeneratedAt) > 15*time.Second
+	return s.GeneratedAt.IsZero() || now.Sub(s.GeneratedAt) > model.SnapshotLifetime
 }
 
 // The tabs that show evidence, in the TUI's order.

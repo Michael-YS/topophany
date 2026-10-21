@@ -119,7 +119,7 @@ func combineClock(a, b evidenceClock) evidenceClock {
 }
 func indexEvidence(v view.View) *evidenceIndex {
 	s := v.Snapshot
-	base := s.GeneratedAt.Add(15 * time.Second).UTC()
+	base := s.GeneratedAt.Add(model.SnapshotLifetime).UTC()
 	e := &evidenceIndex{base: base, checks: make(map[string]evidenceClock, len(s.Checks)), byObserver: make(map[string]evidenceClock, len(s.Observers)), checkClock: evidenceClock{until: base}, observerClock: evidenceClock{until: base}}
 	stale := make(map[string]int, len(s.Topology.Checks))
 	for _, c := range s.Topology.Checks {
@@ -131,7 +131,7 @@ func indexEvidence(v view.View) *evidenceIndex {
 			clock.sampled = c.Last.SampledAt.UTC()
 			if c.Freshness == "fresh" {
 				clock.until = minTime(base, clock.sampled.Add(time.Duration(stale[c.ID])*time.Second))
-				if clock.sampled.After(v.Now.Add(5 * time.Second)) {
+				if clock.sampled.After(v.Now.Add(model.SampleClockAhead)) {
 					clock.until = v.Now
 				}
 			}
@@ -152,7 +152,7 @@ func indexEvidence(v view.View) *evidenceIndex {
 		clock := evidenceClock{sampled: o.LastSeen.UTC(), until: base}
 		if o.Health == "up" && !o.LastSeen.IsZero() {
 			clock.until = minTime(base, o.LastSeen.Add(time.Duration(stale[o.ID])*time.Second))
-			if o.LastSeen.After(v.Now.Add(5 * time.Second)) {
+			if o.LastSeen.After(v.Now.Add(model.SampleClockAhead)) {
 				clock.until = v.Now
 			}
 		}
