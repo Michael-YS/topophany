@@ -38,6 +38,19 @@ func TestAddressChangeDryRunAndReferencedDeletion(t *testing.T) {
 	if e != nil || got.Addresses["entry"] != "192.0.2.11" || got.Endpoints[0].Address != "https://${entry}/" {
 		t.Fatal(e, got.Endpoints[0])
 	}
+	c.Checks[0].HTTP.RequestHeaders = map[string]string{"X-Key": "literal"}
+	secretPath := filepath.Join(t.TempDir(), "secret.json")
+	body, _ := json.Marshal(c)
+	if e = os.WriteFile(secretPath, body, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e = a.address([]string{"--config", secretPath, "--set", "entry=192.0.2.12"}); e != nil {
+		t.Fatal(e)
+	}
+	st, e := os.Stat(secretPath)
+	if e != nil || st.Mode().Perm() != 0600 {
+		t.Fatal(st.Mode(), e)
+	}
 	before, _ := os.ReadFile(path)
 	if e = a.address([]string{"--config", path, "--delete", "entry"}); e == nil {
 		t.Fatal("removed an address in use")

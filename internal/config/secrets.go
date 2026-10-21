@@ -2,6 +2,7 @@ package config
 
 import (
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -32,6 +33,16 @@ func HasLiteralSecret(c model.Config) bool {
 		}
 	}
 	return false
+}
+
+// WriteMode is the mode to use when replacing a topology file. A file that
+// holds a literal secret is always 0600; a secret-free file keeps the mode
+// it already had.
+func WriteMode(c model.Config, existing os.FileMode) os.FileMode {
+	if HasLiteralSecret(c) || existing == 0 {
+		return 0600
+	}
+	return existing.Perm()
 }
 
 func urlCarriesSecret(s string) bool {

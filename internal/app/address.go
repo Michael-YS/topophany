@@ -64,7 +64,7 @@ func (a *App) address(args []string) error {
 		if e != nil {
 			return e
 		}
-		if e = secure.AtomicWrite(*path, append(b, '\n'), info.Mode().Perm()); e != nil {
+		if e = secure.AtomicWrite(*path, append(b, '\n'), config.WriteMode(c, info.Mode())); e != nil {
 			return e
 		}
 	}

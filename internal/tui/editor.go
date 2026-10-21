@@ -75,6 +75,7 @@ func (e *Editor) Save() (string, error) {
 	if st, err := os.Stat(e.Path); err == nil {
 		mode = st.Mode().Perm()
 	}
+	mode = config.WriteMode(e.Config, mode)
 	if err = secure.AtomicWrite(e.Path, append(b, '\n'), mode); err != nil {
 		return "", err
 	}

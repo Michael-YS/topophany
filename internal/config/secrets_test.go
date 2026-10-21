@@ -59,4 +59,12 @@ func TestLiteralSecretTopologyMustBePrivate(t *testing.T) {
 	if !config.HasLiteralSecret(c) {
 		t.Fatal("url query was not a literal secret")
 	}
+	if config.WriteMode(c, 0644) != 0600 {
+		t.Fatal("secret topology kept a shared mode")
+	}
+	c.Checks[0].Target = ""
+	c.Checks[0].HTTP.RequestHeaders = nil
+	if config.WriteMode(c, 0644) != 0644 || config.WriteMode(c, 0) != 0600 {
+		t.Fatal("secret-free mode", config.WriteMode(c, 0644))
+	}
 }

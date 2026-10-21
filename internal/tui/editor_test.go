@@ -23,6 +23,31 @@ func editorModel(t *testing.T) (*Model, string) {
 	m.rebuild()
 	return m, path
 }
+func TestEditorTightensPermissionsWhenSavingSecrets(t *testing.T) {
+	m, path := editorModel(t)
+	if err := os.WriteFile(path, []byte("{}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m.Edit.Config.Checks[0].HTTP.RequestHeaders = map[string]string{"X-Key": "literal"}
+	if _, err := m.Edit.Save(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(path)
+	if err != nil || st.Mode().Perm() != 0600 {
+		t.Fatal(st.Mode(), err)
+	}
+	m.Edit.Config.Checks[0].HTTP.RequestHeaders = nil
+	if err = os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.Edit.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = os.Stat(path); err != nil || st.Mode().Perm() != 0644 {
+		t.Fatal(st.Mode(), err)
+	}
+}
+
 func typeText(m *Model, s string) {
 	for _, r := range s {
 		m.Key(string(r))
