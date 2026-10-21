@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
+	"slices"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/report"
 	"github.com/WhitenWhiten/topophany/internal/source"
 )
 
@@ -18,7 +20,7 @@ import (
 // before any source is scheduled; Collect performs exactly one source read.
 type SourceRuntime interface {
 	Validate(model.Config) error
-	Collect(context.Context, model.Config, model.Source, []string) ([]source.Reading, error)
+	Collect(context.Context, model.Config, model.Source, []source.Request) ([]source.Reading, error)
 }
 
 // BatchSink persists a fan-out batch. A nil BatchSink falls back to the
@@ -90,15 +92,20 @@ func (s *Scheduler) collectSource(ctx context.Context, src model.Source, checks 
 	started := time.Now().UTC()
 	jobCtx, cancel := context.WithTimeout(ctx, time.Duration(src.TimeoutSeconds)*time.Second)
 	defer cancel()
-	wanted := make([]string, 0, len(checks))
-	seenObject := map[string]bool{}
+	requests := make([]source.Request, 0, len(checks))
+	requestIndex := make(map[string]int, len(checks))
 	for _, x := range checks {
-		if !seenObject[x.External.Object] {
-			seenObject[x.External.Object] = true
-			wanted = append(wanted, x.External.Object)
+		object, kind := x.External.Object, x.External.Report
+		if i, ok := requestIndex[object]; ok {
+			if !slices.Contains(requests[i].Reports, kind) {
+				requests[i].Reports = append(requests[i].Reports, kind)
+			}
+			continue
 		}
+		requestIndex[object] = len(requests)
+		requests = append(requests, source.Request{Object: object, Reports: []string{kind}})
 	}
-	readings, err := s.sources.Collect(jobCtx, s.Config, src, wanted)
+	readings, err := s.sources.Collect(jobCtx, s.Config, src, requests)
 	finished := time.Now().UTC()
 	if ctx.Err() != nil {
 		return nil, false
@@ -116,16 +123,22 @@ func (s *Scheduler) collectSource(ctx context.Context, src model.Source, checks 
 		}
 		return out, true
 	}
-	byObject := make(map[string]source.Reading, len(readings))
+	byKey := make(map[source.Key]source.Reading, len(readings))
+	gotObject := make(map[string]bool, len(readings))
 	for _, reading := range readings {
-		byObject[reading.Object] = reading
+		gotObject[reading.Object] = true
+		byKey[source.Key{Object: reading.Object, Report: report.PayloadType(reading.Report)}] = reading
 	}
 	out := make([]model.Observation, 0, len(checks))
 	for _, x := range checks {
-		reading, ok := byObject[x.External.Object]
+		reading, ok := byKey[source.Key{Object: x.External.Object, Report: x.External.Report}]
 		switch {
 		case !ok:
-			out = append(out, s.sourceAttempt(x, src, generation, started, finished, elapsed, "external_object_missing", true, nil))
+			code := "external_report_type_missing"
+			if !gotObject[x.External.Object] {
+				code = "external_object_missing"
+			}
+			out = append(out, s.sourceAttempt(x, src, generation, started, finished, elapsed, code, true, nil))
 		case !reportTypeMatches(x, reading.Report):
 			out = append(out, s.sourceAttempt(x, src, generation, started, finished, elapsed, "external_report_type_mismatch", true, nil))
 		default:
@@ -137,13 +150,7 @@ func (s *Scheduler) collectSource(ctx context.Context, src model.Source, checks 
 }
 
 func reportTypeMatches(x model.Check, r model.ExternalReport) bool {
-	switch x.External.Report {
-	case model.ReportTypeResource:
-		return r.Resource != nil && r.Status == nil
-	case model.ReportTypeStatus:
-		return r.Status != nil && r.Resource == nil
-	}
-	return false
+	return report.PayloadType(r) == x.External.Report
 }
 
 func (s *Scheduler) sourceAttempt(x model.Check, src model.Source, generation string, started, finished time.Time, elapsed time.Duration, code string, contact bool, r *model.ExternalReport) model.Observation {

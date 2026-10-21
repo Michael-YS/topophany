@@ -13,14 +13,15 @@ import (
 )
 
 type syntheticSource struct {
-	t       testing.TB
-	server  *httptest.Server
-	mu      sync.Mutex
-	counts  map[string]int
-	base    time.Time
-	counter atomic.Int32
-	list    atomic.Pointer[testkit.SyntheticListPayload]
-	status  atomic.Pointer[testkit.SyntheticStatusPayload]
+	t        testing.TB
+	server   *httptest.Server
+	mu       sync.Mutex
+	counts   map[string]int
+	base     time.Time
+	counter  atomic.Int32
+	list     atomic.Pointer[testkit.SyntheticListPayload]
+	status   atomic.Pointer[testkit.SyntheticStatusPayload]
+	combined atomic.Pointer[testkit.SyntheticCombinedPayload]
 }
 
 func newSyntheticSource(t testing.TB) *syntheticSource {
@@ -31,6 +32,7 @@ func newSyntheticSource(t testing.TB) *syntheticSource {
 	t.Setenv("TOPO_SYNTHETIC_SOURCE_TOKEN", "synthetic-source-token")
 	s.setList(s.defaultList())
 	s.setStatus(s.defaultStatus())
+	s.setCombined(s.defaultCombined())
 	return s
 }
 
@@ -46,8 +48,9 @@ func (s *syntheticSource) bump(path string) {
 	s.mu.Unlock()
 }
 
-func (s *syntheticSource) setList(p testkit.SyntheticListPayload)     { s.list.Store(&p) }
-func (s *syntheticSource) setStatus(p testkit.SyntheticStatusPayload) { s.status.Store(&p) }
+func (s *syntheticSource) setList(p testkit.SyntheticListPayload)         { s.list.Store(&p) }
+func (s *syntheticSource) setStatus(p testkit.SyntheticStatusPayload)     { s.status.Store(&p) }
+func (s *syntheticSource) setCombined(p testkit.SyntheticCombinedPayload) { s.combined.Store(&p) }
 
 func (s *syntheticSource) handle(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "Bearer synthetic-source-token" {
@@ -75,6 +78,9 @@ func (s *syntheticSource) handle(w http.ResponseWriter, r *http.Request) {
 	case "/status":
 		s.bump("/status")
 		_ = json.NewEncoder(w).Encode(s.status.Load())
+	case "/combined":
+		s.bump("/combined")
+		_ = json.NewEncoder(w).Encode(s.combined.Load())
 	case "/bad-json":
 		s.bump("/bad-json")
 		_, _ = w.Write([]byte("{"))
@@ -117,6 +123,12 @@ func (s *syntheticSource) defaultList() testkit.SyntheticListPayload {
 func (s *syntheticSource) defaultStatus() testkit.SyntheticStatusPayload {
 	latency := int64(20)
 	return testkit.SyntheticStatusPayload{Object: "svc-web", SampleID: "status-1", ObservedAt: s.base.UTC().Add(-5 * time.Second), TimeBasis: "upstream_sample", Status: "up", LatencyMS: &latency, ObservationPoint: "synthetic-edge"}
+}
+
+func (s *syntheticSource) defaultCombined() testkit.SyntheticCombinedPayload {
+	latency := int64(25)
+	percent := 25.0
+	return testkit.SyntheticCombinedPayload{Object: "svc-web", SampleID: "combined-1", ObservedAt: s.base.UTC().Add(-5 * time.Second), CPUPercent: &percent, Status: "up", LatencyMS: &latency}
 }
 
 func (s *syntheticSource) URL(path string) string { return s.server.URL + path }

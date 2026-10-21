@@ -17,18 +17,20 @@ import (
 )
 
 const (
-	SyntheticListAdapter    = "synthetic-list"
-	SyntheticCounterAdapter = "synthetic-counter"
-	SyntheticStatusAdapter  = "synthetic-status"
+	SyntheticListAdapter     = "synthetic-list"
+	SyntheticCounterAdapter  = "synthetic-counter"
+	SyntheticStatusAdapter   = "synthetic-status"
+	SyntheticCombinedAdapter = "synthetic-combined"
 )
 
 // SyntheticSourceAdapters is the test-only static registry. Tests pass it to
 // probe.NewSourceRuntime explicitly; production passes an empty registry.
 func SyntheticSourceAdapters() map[string]source.Adapter {
 	return map[string]source.Adapter{
-		SyntheticListAdapter:    ListAdapter{},
-		SyntheticCounterAdapter: &CounterAdapter{},
-		SyntheticStatusAdapter:  StatusAdapter{},
+		SyntheticListAdapter:     ListAdapter{},
+		SyntheticCounterAdapter:  &CounterAdapter{},
+		SyntheticStatusAdapter:   StatusAdapter{},
+		SyntheticCombinedAdapter: CombinedAdapter{},
 	}
 }
 
@@ -78,7 +80,16 @@ func (ListAdapter) Validate(s model.Source) error {
 	return nil
 }
 
-func (ListAdapter) Collect(ctx context.Context, io source.IO, s model.Source, wanted []string) ([]source.Reading, error) {
+func (ListAdapter) Collect(ctx context.Context, io source.IO, s model.Source, requests []source.Request) ([]source.Reading, error) {
+	wanted := map[string]bool{}
+	for _, request := range requests {
+		if request.Wants(model.ReportTypeResource) {
+			wanted[request.Object] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
 	token, err := io.Credential(ctx, s)
 	if err != nil {
 		return nil, err
@@ -124,7 +135,9 @@ func (ListAdapter) Collect(ctx context.Context, io source.IO, s model.Source, wa
 	out := make([]source.Reading, 0, len(machines))
 	ids := make([]string, 0, len(machines))
 	for id := range machines {
-		ids = append(ids, id)
+		if wanted[id] {
+			ids = append(ids, id)
+		}
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
@@ -194,7 +207,15 @@ func (a *CounterAdapter) Validate(s model.Source) error {
 	return nil
 }
 
-func (a *CounterAdapter) Collect(ctx context.Context, io source.IO, s model.Source, wanted []string) ([]source.Reading, error) {
+func (a *CounterAdapter) Collect(ctx context.Context, io source.IO, s model.Source, requests []source.Request) ([]source.Reading, error) {
+	object := "counter-" + s.ID
+	wanted := false
+	for _, request := range requests {
+		wanted = wanted || request.Object == object && request.Wants(model.ReportTypeResource)
+	}
+	if !wanted {
+		return nil, nil
+	}
 	token, err := io.Credential(ctx, s)
 	if err != nil {
 		return nil, err
@@ -238,7 +259,7 @@ func (a *CounterAdapter) Collect(ctx context.Context, io source.IO, s model.Sour
 		used := p.MemoryUsed
 		rep.Resource.Memory = &model.MemoryReport{TotalBytes: &p.MemoryTotal, UsedBytes: &used, Basis: "gauge"}
 	}
-	return []source.Reading{{Object: "counter-" + s.ID, Report: rep}}, nil
+	return []source.Reading{{Object: object, Report: rep}}, nil
 }
 
 // SyntheticStatusPayload is one status point, with an upstream latency that
@@ -262,7 +283,7 @@ func (StatusAdapter) Validate(s model.Source) error {
 	return nil
 }
 
-func (StatusAdapter) Collect(ctx context.Context, io source.IO, s model.Source, wanted []string) ([]source.Reading, error) {
+func (StatusAdapter) Collect(ctx context.Context, io source.IO, s model.Source, requests []source.Request) ([]source.Reading, error) {
 	token, err := io.Credential(ctx, s)
 	if err != nil {
 		return nil, err
@@ -293,5 +314,83 @@ func (StatusAdapter) Collect(ctx context.Context, io source.IO, s model.Source, 
 	if p.SampleID == "" {
 		return nil, source.NewError("invalid_status", "status response lacks a stable sample ID")
 	}
-	return []source.Reading{{Object: p.Object, Report: rep}}, nil
+	for _, request := range requests {
+		if request.Object == p.Object && request.Wants(model.ReportTypeStatus) {
+			return []source.Reading{{Object: p.Object, Report: rep}}, nil
+		}
+	}
+	return nil, nil
+}
+
+// SyntheticCombinedPayload has a resource reading and a status reading for
+// the same object, so one source read can feed two bindings without being
+// mistaken for a duplicate object.
+type SyntheticCombinedPayload struct {
+	Object     string    `json:"object"`
+	SampleID   string    `json:"sample_id"`
+	ObservedAt time.Time `json:"observed_at"`
+	CPUPercent *float64  `json:"cpu_percent,omitempty"`
+	Status     string    `json:"status"`
+	LatencyMS  *int64    `json:"latency_ms,omitempty"`
+}
+
+type CombinedAdapter struct{}
+
+func (CombinedAdapter) Validate(s model.Source) error {
+	if s.Target == "" {
+		return source.NewError("invalid_target", "combined source needs a target")
+	}
+	return nil
+}
+
+func (CombinedAdapter) Collect(ctx context.Context, io source.IO, s model.Source, requests []source.Request) ([]source.Reading, error) {
+	token, err := io.Credential(ctx, s)
+	if err != nil {
+		return nil, err
+	}
+	headers := map[string]string{"Accept": "application/json"}
+	if token != "" {
+		headers["Authorization"] = "Bearer " + token
+	}
+	resp, err := io.Get(ctx, s, "", headers, s.MaxResponseBytes)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Status != 200 {
+		return nil, source.NewError("upstream_status", "combined endpoint did not return 200")
+	}
+	var p SyntheticCombinedPayload
+	if err := json.Unmarshal(resp.Body, &p); err != nil {
+		return nil, source.NewError("parse_error", "combined response is not valid JSON")
+	}
+	if p.Object == "" || p.SampleID == "" || p.ObservedAt.IsZero() || p.Status == "" {
+		return nil, source.NewError("invalid_combined", "combined response lacks identity, time or status")
+	}
+	if p.CPUPercent == nil {
+		return nil, source.NewError("invalid_combined", "combined response lacks a resource reading")
+	}
+	for _, request := range requests {
+		if request.Object != p.Object {
+			continue
+		}
+		if request.Wants(model.ReportTypeResource) {
+			percent := *p.CPUPercent
+			rep := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: p.Object, SampleID: p.SampleID, ObservedAt: p.ObservedAt, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &percent}}}
+			if request.Wants(model.ReportTypeStatus) {
+				status := p.Status
+				latency := p.LatencyMS
+				return []source.Reading{
+					{Object: p.Object, Report: rep},
+					{Object: p.Object, Report: model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: p.Object, SampleID: p.SampleID, ObservedAt: p.ObservedAt, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: status, UpstreamLatencyMS: latency}}},
+				}, nil
+			}
+			return []source.Reading{{Object: p.Object, Report: rep}}, nil
+		}
+		if request.Wants(model.ReportTypeStatus) {
+			status := p.Status
+			latency := p.LatencyMS
+			return []source.Reading{{Object: p.Object, Report: model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: p.Object, SampleID: p.SampleID, ObservedAt: p.ObservedAt, TimeBasis: model.TimeBasisUpstreamSample}, Status: &model.StatusReport{Status: status, UpstreamLatencyMS: latency}}}}, nil
+		}
+	}
+	return nil, nil
 }

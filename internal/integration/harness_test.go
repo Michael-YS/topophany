@@ -64,7 +64,7 @@ func newChain(t testing.TB, c model.Config) *chain {
 }
 
 func (ch *chain) openStore() *store.Store {
-	st, err := store.Open(ch.dir, store.Options{Revision: config.Revision(ch.cfg), Contracts: config.Contracts(ch.cfg), Stale: config.Stale(ch.cfg), Observers: observerIDs(ch.cfg), MaxHistory: 8, MaxReceipts: 5000, Retention: 24 * time.Hour, Now: func() time.Time { return *ch.now }})
+	st, err := store.Open(ch.dir, store.Options{Observers: observerIDs(ch.cfg), MaxHistory: 8, MaxReceipts: 5000, Retention: 24 * time.Hour, Now: func() time.Time { return *ch.now }}.WithTopology(ch.cfg))
 	if err != nil {
 		ch.t.Fatal(err)
 	}

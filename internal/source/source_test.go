@@ -25,10 +25,12 @@ type fakeAdapter struct {
 	err      error
 	pages    int
 	validErr error
+	requests []source.Request
 }
 
 func (a *fakeAdapter) Validate(model.Source) error { return a.validErr }
-func (a *fakeAdapter) Collect(context.Context, source.IO, model.Source, []string) ([]source.Reading, error) {
+func (a *fakeAdapter) Collect(_ context.Context, _ source.IO, _ model.Source, requests []source.Request) ([]source.Reading, error) {
+	a.requests = append([]source.Request(nil), requests...)
 	return a.readings, a.err
 }
 
@@ -45,6 +47,14 @@ func statusReading(object string) source.Reading {
 }
 
 func testTime() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC) }
+
+func statusRequests(objects ...string) []source.Request {
+	out := make([]source.Request, 0, len(objects))
+	for _, object := range objects {
+		out = append(out, source.Request{Object: object, Reports: []string{model.ReportTypeStatus}})
+	}
+	return out
+}
 
 func TestRuntimeValidateRefusesUnwiredAdapterAndInvalidSource(t *testing.T) {
 	c := sourceConfig()
@@ -68,7 +78,7 @@ func TestRuntimeCollectStampsObjectNormalizesAndIgnoresUnboundObjects(t *testing
 	src, _ := config.Source(c, "probe-api")
 	a := &fakeAdapter{readings: []source.Reading{statusReading("svc"), statusReading("not-bound")}}
 	rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return &fakeIO{}, nil }}
-	readings, err := rt.Collect(context.Background(), c, src, []string{"svc"})
+	readings, err := rt.Collect(context.Background(), c, src, statusRequests("svc"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +94,7 @@ func TestRuntimeRejectsForeignPayloadFieldWithoutPanic(t *testing.T) {
 	reading.Report.Fields = map[string]string{"disk.root.percent": model.FieldMissing}
 	a := &fakeAdapter{readings: []source.Reading{reading}}
 	rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return &fakeIO{}, nil }}
-	if _, err := rt.Collect(context.Background(), c, src, []string{"svc"}); err == nil || source.Code(err) != "unknown_field" {
+	if _, err := rt.Collect(context.Background(), c, src, statusRequests("svc")); err == nil || source.Code(err) != "unknown_field" {
 		t.Fatalf("foreign status field accepted or lost its code: %v", err)
 	}
 }
@@ -104,7 +114,7 @@ func TestRuntimeCollectRefusesDuplicateBudgetAndPages(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			a := &fakeAdapter{readings: tc.readings}
 			rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return tc.io, nil }}
-			_, err := rt.Collect(context.Background(), c, src, []string{"svc"})
+			_, err := rt.Collect(context.Background(), c, src, statusRequests("svc"))
 			if err == nil {
 				t.Fatal("invalid runtime result accepted")
 			}
@@ -137,11 +147,74 @@ func TestRuntimeBuildsFreshIOSessionPerCollection(t *testing.T) {
 		return &fakeIO{}, nil
 	}}
 	for i := 0; i < 2; i++ {
-		if _, err := rt.Collect(context.Background(), c, src, []string{"svc"}); err != nil {
+		if _, err := rt.Collect(context.Background(), c, src, statusRequests("svc")); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if sessions != 2 {
 		t.Fatalf("IO sessions = %d; a source read must not reuse another session", sessions)
+	}
+}
+
+func resourceReading(object string) source.Reading {
+	percent := 25.0
+	return source.Reading{Object: object, Report: model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: object, SampleID: "r-" + object, ObservedAt: testTime(), TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &percent}}}}
+}
+
+func TestRuntimeCollectsResourceAndStatusForOneObject(t *testing.T) {
+	c := sourceConfig()
+	src, _ := config.Source(c, "probe-api")
+	a := &fakeAdapter{readings: []source.Reading{resourceReading("svc"), statusReading("svc")}}
+	rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return &fakeIO{}, nil }}
+	readings, err := rt.Collect(context.Background(), c, src, []source.Request{{Object: "svc", Reports: []string{model.ReportTypeResource, model.ReportTypeStatus}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(readings) != 2 || readings[0].Report.Resource == nil || readings[1].Report.Status == nil {
+		t.Fatalf("dual-type readings = %+v", readings)
+	}
+	if len(a.requests) != 1 || !a.requests[0].Wants(model.ReportTypeResource) || !a.requests[0].Wants(model.ReportTypeStatus) {
+		t.Fatalf("adapter request = %+v", a.requests)
+	}
+	// Omitting a requested type is legal at the runtime boundary; the runner
+	// turns that binding into a missing-report attempt.
+	a.readings = []source.Reading{statusReading("svc")}
+	readings, err = rt.Collect(context.Background(), c, src, []source.Request{{Object: "svc", Reports: []string{model.ReportTypeResource, model.ReportTypeStatus}}})
+	if err != nil || len(readings) != 1 || readings[0].Report.Status == nil {
+		t.Fatalf("partial result = %+v %v", readings, err)
+	}
+}
+
+func TestRuntimeRejectsAmbiguousReportRequestsAndResults(t *testing.T) {
+	c := sourceConfig()
+	src, _ := config.Source(c, "probe-api")
+	both := statusReading("svc")
+	both.Report.Resource = &model.ResourceReport{CPU: &model.CPUReport{}}
+	cases := map[string]struct {
+		requests []source.Request
+		readings []source.Reading
+		code     string
+	}{
+		"duplicate object request": {[]source.Request{{Object: "svc", Reports: []string{model.ReportTypeStatus}}, {Object: "svc", Reports: []string{model.ReportTypeResource}}}, nil, "duplicate_object_request"},
+		"duplicate type request":   {[]source.Request{{Object: "svc", Reports: []string{model.ReportTypeStatus, model.ReportTypeStatus}}}, nil, "duplicate_report_request"},
+		"unsupported type":         {[]source.Request{{Object: "svc", Reports: []string{"metric"}}}, nil, "unsupported_report_type"},
+		"too many objects":         {[]source.Request{{Object: "svc", Reports: []string{model.ReportTypeStatus}}, {Object: "svc2", Reports: []string{model.ReportTypeStatus}}}, nil, "object_budget"},
+		"duplicate result":         {[]source.Request{{Object: "svc", Reports: []string{model.ReportTypeStatus}}}, []source.Reading{statusReading("svc"), statusReading("svc")}, "duplicate_report"},
+		"unexpected result type":   {[]source.Request{{Object: "svc", Reports: []string{model.ReportTypeStatus}}}, []source.Reading{resourceReading("svc")}, "unexpected_report_type"},
+		"double payload":           {[]source.Request{{Object: "svc", Reports: []string{model.ReportTypeResource, model.ReportTypeStatus}}}, []source.Reading{both}, "unsupported_report_type"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srcBudget := src
+			if name == "too many objects" {
+				srcBudget.MaxObjects = 1
+			}
+			a := &fakeAdapter{readings: tc.readings}
+			rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return &fakeIO{}, nil }}
+			_, err := rt.Collect(context.Background(), c, srcBudget, tc.requests)
+			if err == nil || source.Code(err) != tc.code {
+				t.Fatalf("code = %q, want %q (%v)", source.Code(err), tc.code, err)
+			}
+		})
 	}
 }

@@ -44,6 +44,20 @@ func Code(err error) string {
 	return ""
 }
 
+// PayloadType names the one payload a normalized report carries, or "" when
+// it has none or both. Callers use it as part of a source result key; it is
+// not a second admission decision.
+func PayloadType(r model.ExternalReport) string {
+	switch {
+	case r.Resource != nil && r.Status == nil:
+		return model.ReportTypeResource
+	case r.Status != nil && r.Resource == nil:
+		return model.ReportTypeStatus
+	default:
+		return ""
+	}
+}
+
 // SampleAt returns the upstream sample time when the report carries a known
 // time basis. A dashboard's read time must be labelled live_read by the
 // adapter's versioned contract; it is never inferred here.

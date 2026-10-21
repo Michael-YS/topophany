@@ -628,3 +628,83 @@ func TestSourceTimeoutIsAnAttempt(t *testing.T) {
 		t.Fatalf("source timeout became target evidence: %+v", state)
 	}
 }
+
+func TestSameObjectResourceAndStatusReportsCoexist(t *testing.T) {
+	synthetic := newSyntheticSource(t)
+	c := testkit.Config()
+	c.Checks = nil
+	c.Sources = []model.Source{{ID: "combined-source", Adapter: testkit.SyntheticCombinedAdapter, Observer: "cloud", Target: synthetic.URL("/combined"), CredentialEnv: "TOPO_SYNTHETIC_SOURCE_TOKEN", IntervalSeconds: 1, TimeoutSeconds: 5, StaleSeconds: 90, MaxResponseBytes: 128 << 10, MaxPages: 1, MaxObjects: 10, MaxReportBytes: 64 << 10}}
+	c.Checks = append(c.Checks,
+		model.Check{ID: "combined-resource", Observer: "cloud", Kind: "external", External: &model.ExternalBinding{Source: "combined-source", Object: "svc-web", Report: model.ReportTypeResource, Node: "dmit", MaxAgeSeconds: 60, PrimaryDisk: "root"}},
+		model.Check{ID: "combined-status", Observer: "cloud", Kind: "external", Service: "web", External: &model.ExternalBinding{Source: "combined-source", Object: "svc-web", Report: model.ReportTypeStatus, Node: "dmit", MaxAgeSeconds: 60}},
+	)
+	config.Defaults(&c)
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	ch := newChain(t, c)
+	ctx := context.Background()
+	ch.once(ctx)
+	ch.deliver(ctx)
+	if got := synthetic.count("/combined"); got != 1 {
+		t.Fatalf("combined source reads = %d", got)
+	}
+	state := ch.st.ExternalView()
+	if state == nil || state.Bindings["combined-resource"].ReportSamples != 1 || state.Bindings["combined-status"].ReportSamples != 1 {
+		t.Fatalf("dual report state = %+v", state)
+	}
+	if state.Bindings["combined-resource"].Last.Resource == nil || state.Bindings["combined-resource"].Last.Status != nil {
+		t.Fatalf("resource payload = %+v", state.Bindings["combined-resource"].Last)
+	}
+	if state.Bindings["combined-status"].Last.Status == nil || state.Bindings["combined-status"].Last.Resource != nil {
+		t.Fatalf("status payload = %+v", state.Bindings["combined-status"].Last)
+	}
+
+	snap := ch.snapshot(*ch.now)
+	if len(snap.External) != 2 {
+		t.Fatalf("snapshot external views = %+v", snap.External)
+	}
+	for _, e := range snap.External {
+		if e.Check == "combined-resource" && (e.Report == nil || e.Report.Resource == nil || e.Health != "up") {
+			t.Fatalf("resource view = %+v", e)
+		}
+		if e.Check == "combined-status" && (e.Report == nil || e.Report.Status == nil || e.Health != "up") {
+			t.Fatalf("status view = %+v", e)
+		}
+	}
+	rows := []monitor.Row{
+		{ID: "cpu", Metric: "resource.cpu.used_percent", Visual: "bar", Select: monitor.Selector{Node: "dmit"}},
+		{ID: "card", Metric: "server.card", Visual: "card", Select: monitor.Selector{Node: "dmit"}},
+	}
+	cfg := monitor.Config{Template: monitor.Template{Schema: 1, Title: "combined", Rows: rows}}
+	panel := monitor.Build(cfg, monitor.Input{Snapshot: snap}, *ch.now)
+	cpu, ok := panel.Rows[0].Value.(float64)
+	if !ok || cpu != 25 {
+		t.Fatalf("scalar resource = %#v", panel.Rows[0].Value)
+	}
+	card, ok := panel.Rows[1].Value.(monitor.ServerCard)
+	if !ok || len(card.Resources) != 1 || card.Resources[0].CPU.Percent == nil || *card.Resources[0].CPU.Percent != 25 || card.Resources[0].Check != "combined-resource" {
+		t.Fatalf("server card resource = %+v", card.Resources)
+	}
+
+	// A second read of the same upstream sample is a duplicate for each
+	// report type and does not create another entity or accepted sample.
+	ch.once(ctx)
+	ch.deliver(ctx)
+	state = ch.st.ExternalView()
+	if state.Bindings["combined-resource"].ReportSamples != 1 || state.Bindings["combined-status"].ReportSamples != 1 {
+		t.Fatalf("duplicate dual report advanced state: %+v", state.Bindings)
+	}
+	if state.Bindings["combined-resource"].Duplicates != 1 || state.Bindings["combined-status"].Duplicates != 1 {
+		t.Fatalf("duplicate diagnostics = %+v", state.Bindings)
+	}
+
+	// Both reports expire together under their own deadlines.
+	*ch.now = ch.now.Add(2 * time.Minute)
+	snap = ch.snapshot(*ch.now)
+	for _, e := range snap.External {
+		if e.Freshness == "fresh" || e.Health != "unknown" {
+			t.Fatalf("expired dual report stayed current: %+v", e)
+		}
+	}
+}

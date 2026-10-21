@@ -49,11 +49,23 @@ type fakeSourceRuntime struct {
 	started  chan struct{}
 	block    bool
 	bySource map[string][]source.Reading
+	mu       sync.Mutex
+	requests map[string][]source.Request
 }
 
 func (f *fakeSourceRuntime) Validate(model.Config) error { return nil }
-func (f *fakeSourceRuntime) Collect(ctx context.Context, c model.Config, s model.Source, wanted []string) ([]source.Reading, error) {
+func (f *fakeSourceRuntime) Collect(ctx context.Context, c model.Config, s model.Source, requests []source.Request) ([]source.Reading, error) {
 	f.calls.Add(1)
+	f.mu.Lock()
+	if f.requests == nil {
+		f.requests = map[string][]source.Request{}
+	}
+	copied := make([]source.Request, len(requests))
+	for i, request := range requests {
+		copied[i] = source.Request{Object: request.Object, Reports: append([]string(nil), request.Reports...)}
+	}
+	f.requests[s.ID] = append(f.requests[s.ID], copied...)
+	f.mu.Unlock()
 	if f.started != nil {
 		select {
 		case <-f.started:
@@ -275,7 +287,7 @@ type isolationRuntime struct {
 }
 
 func (r *isolationRuntime) Validate(model.Config) error { return nil }
-func (r *isolationRuntime) Collect(ctx context.Context, c model.Config, s model.Source, wanted []string) ([]source.Reading, error) {
+func (r *isolationRuntime) Collect(ctx context.Context, c model.Config, s model.Source, requests []source.Request) ([]source.Reading, error) {
 	select {
 	case r.started <- s.ID:
 	default:
@@ -344,5 +356,90 @@ func TestBadSourceDoesNotStarveAnotherSourceOrNativeCheck(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("run did not stop")
+	}
+}
+
+func resourceReading(object string, at time.Time) source.Reading {
+	percent := 25.0
+	return source.Reading{Object: object, Report: model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: object, SampleID: "resource-" + object, ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &percent}}}}
+}
+
+func dualReportConfig(t testing.TB) model.Config {
+	t.Helper()
+	c := testkit.Config()
+	c.Checks = nil
+	c.Sources = []model.Source{{ID: "probe-api", Adapter: testkit.SyntheticCombinedAdapter, Observer: "home", Target: "https://probe.invalid/combined", IntervalSeconds: 1, TimeoutSeconds: 2, StaleSeconds: 90, MaxResponseBytes: 1 << 20, MaxPages: 1, MaxObjects: 10, MaxReportBytes: 64 << 10}}
+	c.Checks = append(c.Checks,
+		model.Check{ID: "combined-resource", Observer: "home", Kind: "external", External: &model.ExternalBinding{Source: "probe-api", Object: "svc", Report: model.ReportTypeResource, Node: "dmit", MaxAgeSeconds: 60, PrimaryDisk: "root"}},
+		model.Check{ID: "combined-status", Observer: "home", Kind: "external", External: &model.ExternalBinding{Source: "probe-api", Object: "svc", Report: model.ReportTypeStatus, Node: "dmit", MaxAgeSeconds: 60}},
+	)
+	config.Defaults(&c)
+	if err := config.Validate(c); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestSourceSameObjectResourceAndStatusShareOneRead(t *testing.T) {
+	c := dualReportConfig(t)
+	now := time.Now().UTC()
+	status := statusReadings(c, now.Add(-time.Minute))[0]
+	rt := &fakeSourceRuntime{readings: []source.Reading{resourceReading("svc", now.Add(-time.Minute)), status}}
+	var got []model.Observation
+	s, err := New(c, "home", 1, func(context.Context, model.Config, model.Check) model.Observation {
+		t.Fatal("native probe ran for external-only config")
+		return model.Observation{}
+	}, func(model.Observation) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.WithSources(rt, func(obs []model.Observation) error { got = append(got, obs...); return nil }, 4)
+	if err := s.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if rt.calls.Load() != 1 || len(got) != 2 {
+		t.Fatalf("calls=%d observations=%d", rt.calls.Load(), len(got))
+	}
+	seen := map[string]bool{}
+	for _, o := range got {
+		if o.Outcome != "ok" || o.External == nil || o.External.Report == nil {
+			t.Fatalf("dual report attempt = %+v", o)
+		}
+		seen[o.Check] = true
+	}
+	if !seen["combined-resource"] || !seen["combined-status"] {
+		t.Fatalf("checks = %+v", seen)
+	}
+	rt.mu.Lock()
+	requests := rt.requests["probe-api"]
+	rt.mu.Unlock()
+	if len(requests) != 1 || requests[0].Object != "svc" || !requests[0].Wants(model.ReportTypeResource) || !requests[0].Wants(model.ReportTypeStatus) {
+		t.Fatalf("requests = %+v", requests)
+	}
+}
+
+func TestSourceMissingReportTypeIsAnAttemptNotAnEntityOrOutage(t *testing.T) {
+	c := dualReportConfig(t)
+	now := time.Now().UTC()
+	status := statusReadings(c, now.Add(-time.Minute))[0]
+	rt := &fakeSourceRuntime{readings: []source.Reading{status}}
+	var got []model.Observation
+	s, _ := New(c, "home", 1, func(context.Context, model.Config, model.Check) model.Observation { return model.Observation{} }, func(model.Observation) error { return nil })
+	s.WithSources(rt, func(obs []model.Observation) error { got = append(got, obs...); return nil }, 4)
+	if err := s.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("observations = %d", len(got))
+	}
+	codes := map[string]string{}
+	for _, o := range got {
+		codes[o.Check] = o.Code
+		if o.Connectivity {
+			t.Fatal("attempt claimed measured connectivity")
+		}
+	}
+	if codes["combined-status"] != "" || codes["combined-resource"] != "external_report_type_missing" {
+		t.Fatalf("codes = %+v", codes)
 	}
 }
