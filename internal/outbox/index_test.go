@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -13,6 +14,12 @@ import (
 )
 
 func TestAckBatchSyncsOnceAndPreservesFailedItems(t *testing.T) {
+	// SyncDir is a no-op on Windows; deletion, index and recovery assertions
+	// below still exercise the complete ACK path on that platform.
+	wantSyncs := uint64(1)
+	if runtime.GOOS == "windows" {
+		wantSyncs = 0
+	}
 	q := queue(t)
 	rid := Recipient("collector")
 	for seq := uint64(1); seq <= 4; seq++ {
@@ -36,8 +43,8 @@ func TestAckBatchSyncsOnceAndPreservesFailedItems(t *testing.T) {
 	if err := q.Ack([]string{items[0].ID, items[1].ID, items[2].ID}, rid); err == nil {
 		t.Fatal("expected deletion failure")
 	}
-	if got := ioaccount.DirectorySync.Read().Count - before; got != 1 {
-		t.Fatalf("successful prefix synced %d times, want 1", got)
+	if got := ioaccount.DirectorySync.Read().Count - before; got != wantSyncs {
+		t.Fatalf("successful prefix synced %d times, want %d", got, wantSyncs)
 	}
 	if got := q.pendingIDs(rid, 0, 0); len(got) != 3 || got[0] != items[1].ID {
 		t.Fatal("failed/unattempted items lost", got)
@@ -52,8 +59,8 @@ func TestAckBatchSyncsOnceAndPreservesFailedItems(t *testing.T) {
 	if err := q.Ack([]string{items[1].ID, items[2].ID, items[3].ID, items[3].ID}, rid); err != nil {
 		t.Fatal(err)
 	}
-	if got := ioaccount.DirectorySync.Read().Count - before; got != 1 {
-		t.Fatalf("batch synced %d times", got)
+	if got := ioaccount.DirectorySync.Read().Count - before; got != wantSyncs {
+		t.Fatalf("batch synced %d times, want %d", got, wantSyncs)
 	}
 	if len(q.Pending(rid, 0)) != 0 || len(q.pending) != 0 {
 		t.Fatal("index retained acknowledged entries")
@@ -75,8 +82,12 @@ func TestAckSyncFailureRetainsBothErrors(t *testing.T) {
 	q := &Queue{dir: filepath.Join(t.TempDir(), "missing")}
 	prior := errors.New("delete failed")
 	err := q.syncRemoved(true, prior)
-	if !errors.Is(err, prior) || !errors.Is(err, os.ErrNotExist) {
+	if !errors.Is(err, prior) {
 		t.Fatal(err)
+	}
+	// Only platforms that open and sync the directory report its absence.
+	if wantMissing := runtime.GOOS != "windows"; errors.Is(err, os.ErrNotExist) != wantMissing {
+		t.Fatalf("missing directory error = %v, want %v: %v", errors.Is(err, os.ErrNotExist), wantMissing, err)
 	}
 }
 
