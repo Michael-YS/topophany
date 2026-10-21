@@ -305,3 +305,5 @@ uses validated topologies with services and endpoints, exercising actual cards.
 | Topology reuse is bound to collector and revision, survives caller mutation, refreshes after reload and preserves legacy full snapshots | `TestTopologyCacheNegotiationReloadAndClientOwnership`, `TestOmittedTopologyRequiresMatchingEndpointRevision`, `TestSnapshotViewsRetriesTheWholeGeneration` |
 | Adaptive checkpoint cadence counts actual durable bytes, stays within floor/replay ceiling and recovers uncheckpointed journal transactions | `TestAdaptiveCheckpointThresholdAndRecovery`, `TestCheckpointPolicyLimits` |
 | Reused state folds preserve time expiry, future-evidence eligibility, rollback, independent ownership, write/reload invalidation and consistent HTTP projections | `TestPreparedEvidenceRemainsTimeSensitiveAndOwnsInputs`, `TestPreparedEvaluationReusesEvidenceAndInvalidatesOnWriteAndReload`, `TestSnapshotCacheDoesNotRepeatStoreWork` |
+
+| A collector clock rollback invalidates the HTTP snapshot capture rather than returning a future timestamp | `TestSnapshotCacheRefreshesAfterClockRollback` |

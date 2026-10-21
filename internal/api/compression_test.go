@@ -3,10 +3,13 @@ package api
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
+	"github.com/WhitenWhiten/topophany/internal/model"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestSnapshotCompressionNegotiationAndCacheBudget(t *testing.T) {
@@ -51,5 +54,18 @@ func TestSnapshotCompressionNegotiationAndCacheBudget(t *testing.T) {
 	}
 	if held != s.snapshotCacheBytes || held > 32<<20 {
 		t.Fatal("compressed cache not charged", held, s.snapshotCacheBytes)
+	}
+}
+
+func TestSnapshotCacheRefreshesAfterClockRollback(t *testing.T) {
+	s, handler, _ := fixture(t)
+	clock := s.Now()
+	s.Now = func() time.Time { return clock }
+	first := request(handler, "GET", "/v1/snapshot", viewerToken, "", nil)
+	clock = clock.Add(-time.Minute)
+	second := request(handler, "GET", "/v1/snapshot", viewerToken, "", nil)
+	var snap model.Snapshot
+	if first.Code != http.StatusOK || second.Code != http.StatusOK || json.Unmarshal(second.Body.Bytes(), &snap) != nil || !snap.GeneratedAt.Equal(clock) {
+		t.Fatal("clock rollback reused a snapshot from the future", second.Code)
 	}
 }

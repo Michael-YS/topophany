@@ -1,14 +1,10 @@
 package api
 
 import (
-	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
@@ -47,7 +43,7 @@ func (s *Server) release(scope, role string) {
 
 func (s *Server) writeSnapshot(w http.ResponseWriter, r *http.Request, g *generation, view, principal string) {
 	compressed := acceptsGzip(r.Header.Get("Accept-Encoding"))
-	raw, status, code := s.snapshotRepresentation(g, view, principal, compressed, r.URL.Query().Get("topology_revision"))
+	body, status, code := s.snapshotRepresentation(g, view, principal, compressed, r.URL.Query().Get("topology_revision"))
 	if status != http.StatusOK {
 		if status == 429 || code == "topology_reloaded" {
 			w.Header().Set("Retry-After", "1")
@@ -56,29 +52,35 @@ func (s *Server) writeSnapshot(w http.ResponseWriter, r *http.Request, g *genera
 		return
 	}
 	w.Header().Add("Vary", "Accept-Encoding")
-	if compressed && len(raw) > 0 && raw[0] == 0x1f {
-		w.Header().Set("Content-Encoding", "gzip")
+	if body.encoding != "" {
+		w.Header().Set("Content-Encoding", body.encoding)
 	}
 	// A slow reader must not retain the cache/build mutex.
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(raw)
+	_, _ = w.Write(body.data)
 }
 
 // cachedSnapshot is the snapshot of view under g, the generation its
 // request was admitted under.
 func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, int, string) {
-	return s.snapshotRepresentation(g, view, principal, false, "")
+	body, status, code := s.snapshotRepresentation(g, view, principal, false, "")
+	return body.data, status, code
 }
 
-func (s *Server) snapshotRepresentation(g *generation, view, principal string, compressed bool, knownRevision string) ([]byte, int, string) {
+type snapshotBody struct {
+	data     []byte
+	encoding string
+}
+
+func (s *Server) snapshotRepresentation(g *generation, view, principal string, compressed bool, knownRevision string) (snapshotBody, int, string) {
 	// Reload takes this lock before changing any snapshot dependency. Refuse
 	// an old authority before reading storage or ledger metadata, even on a
 	// cache hit, and keep the generation stable until capture is complete.
 	s.reloadMu.RLock()
 	defer s.reloadMu.RUnlock()
 	if g != s.generation() {
-		return nil, http.StatusServiceUnavailable, "topology_reloaded"
+		return snapshotBody{}, http.StatusServiceUnavailable, "topology_reloaded"
 	}
 	// Capture bounded store tails once per second. Cache at most eight observer
 	// projections (32 MiB total) so switching views cannot amplify store reads.
@@ -86,13 +88,14 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	// What is cached was built under one generation and is served under no
 	// other.
 	if !s.snapshotMu.TryLock() {
-		return nil, 429, "snapshot_busy"
+		return snapshotBody{}, 429, "snapshot_busy"
 	}
 	defer s.snapshotMu.Unlock()
-	if s.snapshotCache == nil || s.snapshotGen != g || s.Now().Sub(s.snapshotAt) >= time.Second {
+	now := s.Now()
+	if s.snapshotCache == nil || s.snapshotGen != g || now.Before(s.snapshotAt) || now.Sub(s.snapshotAt) >= time.Second {
 		s.snapshotGen = g
 		s.snapshotEvidence = s.preparedEvidence(g)
-		s.snapshotAt = s.Now()
+		s.snapshotAt = now
 		s.snapshotStorage = s.Store.Usage()
 		s.snapshotAvailable = nil
 		s.snapshotCache = map[string][]byte{}
@@ -109,13 +112,13 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	if raw, ok := s.snapshotCache[key]; ok {
 		if compressed {
 			if zipped := s.snapshotGzip[key]; zipped != nil {
-				return zipped, http.StatusOK, ""
+				return snapshotBody{zipped, "gzip"}, http.StatusOK, ""
 			}
 		}
-		return raw, http.StatusOK, ""
+		return snapshotBody{data: raw}, http.StatusOK, ""
 	}
 	if s.snapshotMisses[principal] >= 2 || s.snapshotBuilds >= 8 {
-		return nil, 429, "snapshot_rate_limited"
+		return snapshotBody{}, 429, "snapshot_rate_limited"
 	}
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
@@ -150,18 +153,9 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	}
 	raw, err := summaryPublicJSON(snap)
 	if err != nil {
-		return nil, 503, "snapshot_budget_exceeded"
+		return snapshotBody{}, 503, "snapshot_budget_exceeded"
 	}
-	var zipped []byte
-	if len(raw) >= 1024 {
-		var buf bytes.Buffer
-		z, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
-		_, _ = z.Write(raw)
-		_ = z.Close()
-		if buf.Len() < len(raw) {
-			zipped = buf.Bytes()
-		}
-	}
+	zipped := compressSnapshot(raw)
 	for key, old := range s.snapshotCache {
 		if s.snapshotCacheBytes+len(raw)+len(zipped) <= 32<<20 && len(s.snapshotCache) < 8 {
 			break
@@ -174,9 +168,9 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	s.snapshotGzip[key] = zipped
 	s.snapshotCacheBytes += len(raw) + len(zipped)
 	if compressed && zipped != nil {
-		return zipped, http.StatusOK, ""
+		return snapshotBody{zipped, "gzip"}, http.StatusOK, ""
 	}
-	return raw, http.StatusOK, ""
+	return snapshotBody{data: raw}, http.StatusOK, ""
 }
 
 var errSnapshotBudget = errors.New("snapshot budget exceeded")
@@ -248,33 +242,4 @@ func summaryPublicJSON(s model.Snapshot) ([]byte, error) {
 		return nil, errSnapshotBudget
 	}
 	return raw, nil
-}
-
-// Explicit gzip rejection takes precedence over a wildcard. Invalid quality
-// values never opt a caller into a representation it may not decode.
-func acceptsGzip(header string) bool {
-	wildcard := false
-	for _, part := range strings.Split(header, ",") {
-		fields := strings.Split(part, ";")
-		name := strings.ToLower(strings.TrimSpace(fields[0]))
-		quality := 1.0
-		for _, parameter := range fields[1:] {
-			key, value, ok := strings.Cut(strings.TrimSpace(parameter), "=")
-			if strings.EqualFold(key, "q") {
-				q, err := strconv.ParseFloat(value, 64)
-				if !ok || err != nil || !(q >= 0 && q <= 1) {
-					quality = 0
-				} else {
-					quality = q
-				}
-			}
-		}
-		if name == "gzip" {
-			return quality > 0
-		}
-		if name == "*" {
-			wildcard = quality > 0
-		}
-	}
-	return wildcard
 }
