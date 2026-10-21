@@ -117,6 +117,7 @@ type Server struct {
 	snapshotCarries    []engine.Carry
 	snapshotBeats      map[string]model.Heartbeat
 	snapshotCache      map[string][]byte
+	snapshotGzip       map[string][]byte
 	snapshotAvailable  map[string][]model.Availability // by check, as of snapshotAt
 	snapshotCacheBytes int
 	snapshotMisses     map[string]int
@@ -439,7 +440,7 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request, a authority) {
 			return
 		}
 	}
-	s.writeSnapshot(w, a.gen, view, a.TokenSHA256)
+	s.writeSnapshot(w, r, a.gen, view, a.TokenSHA256)
 }
 func (s *Server) topology(w http.ResponseWriter, r *http.Request, a authority) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

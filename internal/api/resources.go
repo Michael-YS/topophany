@@ -1,10 +1,14 @@
 package api
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
@@ -41,14 +45,19 @@ func (s *Server) release(scope, role string) {
 	<-slots
 }
 
-func (s *Server) writeSnapshot(w http.ResponseWriter, g *generation, view, principal string) {
-	raw, status, code := s.cachedSnapshot(g, view, principal)
+func (s *Server) writeSnapshot(w http.ResponseWriter, r *http.Request, g *generation, view, principal string) {
+	compressed := acceptsGzip(r.Header.Get("Accept-Encoding"))
+	raw, status, code := s.snapshotRepresentation(g, view, principal, compressed)
 	if status != http.StatusOK {
 		if status == 429 || code == "topology_reloaded" {
 			w.Header().Set("Retry-After", "1")
 		}
 		writeError(w, status, code)
 		return
+	}
+	w.Header().Add("Vary", "Accept-Encoding")
+	if compressed && len(raw) > 0 && raw[0] == 0x1f {
+		w.Header().Set("Content-Encoding", "gzip")
 	}
 	// A slow reader must not retain the cache/build mutex.
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -59,6 +68,10 @@ func (s *Server) writeSnapshot(w http.ResponseWriter, g *generation, view, princ
 // cachedSnapshot is the snapshot of view under g, the generation its
 // request was admitted under.
 func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, int, string) {
+	return s.snapshotRepresentation(g, view, principal, false)
+}
+
+func (s *Server) snapshotRepresentation(g *generation, view, principal string, compressed bool) ([]byte, int, string) {
 	// Reload takes this lock before changing any snapshot dependency. Refuse
 	// an old authority before reading storage or ledger metadata, even on a
 	// cache hit, and keep the generation stable until capture is complete.
@@ -83,11 +96,17 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 		s.snapshotStorage = s.Store.Usage()
 		s.snapshotAvailable = nil
 		s.snapshotCache = map[string][]byte{}
+		s.snapshotGzip = map[string][]byte{}
 		s.snapshotCacheBytes = 0
 		s.snapshotMisses = map[string]int{}
 		s.snapshotBuilds = 0
 	}
 	if raw, ok := s.snapshotCache[view]; ok {
+		if compressed {
+			if zipped := s.snapshotGzip[view]; zipped != nil {
+				return zipped, http.StatusOK, ""
+			}
+		}
 		return raw, http.StatusOK, ""
 	}
 	if s.snapshotMisses[principal] >= 2 || s.snapshotBuilds >= 8 {
@@ -124,15 +143,30 @@ func (s *Server) cachedSnapshot(g *generation, view, principal string) ([]byte, 
 	if err != nil {
 		return nil, 503, "snapshot_budget_exceeded"
 	}
+	var zipped []byte
+	if len(raw) >= 1024 {
+		var buf bytes.Buffer
+		z, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+		_, _ = z.Write(raw)
+		_ = z.Close()
+		if buf.Len() < len(raw) {
+			zipped = buf.Bytes()
+		}
+	}
 	for key, old := range s.snapshotCache {
-		if s.snapshotCacheBytes+len(raw) <= 32<<20 && len(s.snapshotCache) < 8 {
+		if s.snapshotCacheBytes+len(raw)+len(zipped) <= 32<<20 && len(s.snapshotCache) < 8 {
 			break
 		}
 		delete(s.snapshotCache, key)
-		s.snapshotCacheBytes -= len(old)
+		s.snapshotCacheBytes -= len(old) + len(s.snapshotGzip[key])
+		delete(s.snapshotGzip, key)
 	}
 	s.snapshotCache[view] = raw
-	s.snapshotCacheBytes += len(raw)
+	s.snapshotGzip[view] = zipped
+	s.snapshotCacheBytes += len(raw) + len(zipped)
+	if compressed && zipped != nil {
+		return zipped, http.StatusOK, ""
+	}
 	return raw, http.StatusOK, ""
 }
 
@@ -205,4 +239,33 @@ func summaryPublicJSON(s model.Snapshot) ([]byte, error) {
 		return nil, errSnapshotBudget
 	}
 	return raw, nil
+}
+
+// Explicit gzip rejection takes precedence over a wildcard. Invalid quality
+// values never opt a caller into a representation it may not decode.
+func acceptsGzip(header string) bool {
+	wildcard := false
+	for _, part := range strings.Split(header, ",") {
+		fields := strings.Split(part, ";")
+		name := strings.ToLower(strings.TrimSpace(fields[0]))
+		quality := 1.0
+		for _, parameter := range fields[1:] {
+			key, value, ok := strings.Cut(strings.TrimSpace(parameter), "=")
+			if strings.EqualFold(key, "q") {
+				q, err := strconv.ParseFloat(value, 64)
+				if !ok || err != nil || !(q >= 0 && q <= 1) {
+					quality = 0
+				} else {
+					quality = q
+				}
+			}
+		}
+		if name == "gzip" {
+			return quality > 0
+		}
+		if name == "*" {
+			wildcard = quality > 0
+		}
+	}
+	return wildcard
 }

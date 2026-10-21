@@ -31,8 +31,8 @@ func HTTP(ep Endpoint) (*http.Client, error) {
 		}
 		tc.RootCAs = roots
 	}
-	// Collectors send no compressed responses, and with compression off the
-	// response limits count what a collector sends.
+	// Negotiate gzip in our wrapper so encoded and decoded reads both stay
+	// bounded, including streams of empty gzip members.
 	tr := &http.Transport{Proxy: nil, DisableCompression: true, TLSClientConfig: tc, MaxResponseHeaderBytes: 32768, TLSHandshakeTimeout: 4 * time.Second, ResponseHeaderTimeout: 6 * time.Second, DialContext: (&net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}).DialContext, MaxIdleConnsPerHost: 2}
-	return &http.Client{Transport: tr, Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
+	return &http.Client{Transport: gzipTransport{tr}, Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
 }

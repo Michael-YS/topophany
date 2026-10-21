@@ -209,8 +209,8 @@ func TestMalformedSnapshotsAndBodyBudget(t *testing.T) {
 }
 
 // A collector that streams compressed nothing cannot hold a read for as
-// long as the client waits: the client asks for no compression and
-// decodes none, so its budget counts what the collector sends.
+// long as the client waits: encoded bytes have their own budget, even when
+// the decompressed payload contains no bytes at all.
 func TestCompressedNothingRunsOutTheBudget(t *testing.T) {
 	var members bytes.Buffer
 	for members.Len() < 32<<10 {
@@ -234,8 +234,8 @@ func TestCompressedNothingRunsOutTheBudget(t *testing.T) {
 	if _, _, e := c.Snapshot(context.Background(), ""); e == nil || time.Since(start) > 4*time.Second {
 		t.Fatal("compressed nothing held the read", e, time.Since(start))
 	}
-	if asked.Load() != 0 {
-		t.Fatal("the client asked for a compressed answer")
+	if asked.Load() == 0 {
+		t.Fatal("the client did not negotiate compression")
 	}
 }
 func TestNoRedirectCredentialLeak(t *testing.T) {

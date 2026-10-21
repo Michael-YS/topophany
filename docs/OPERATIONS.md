@@ -181,3 +181,5 @@ storage and reliable worker enqueue is unchanged.
 ### Idle worker heartbeats
 
 `worker --heartbeat-interval` defaults to `15s` (allowed `1s`–`1m`). The worker caps it at one third of its observer's `stale_seconds`, recalculating on topology reload. Delivery continues every two seconds for queued samples; sample uploads always carry current liveness when their schema and revision permit it. Empty rounds send only when the idle deadline is due. A new boot, contracts digest, revision, or backward clock step sends liveness on the next eligible round. Retry backoff remains in force after transport failures. Storage backpressure still permits independent heartbeats, at the same idle cadence. Heartbeats never extend the validity of check measurements. Delivery telemetry may therefore update less often while idle.
+
+Snapshot responses negotiate gzip for payloads of at least 1 KiB when compression saves bytes. The collector caches both representations within the existing 32 MiB budget. Native clients bound encoded input as well as decompressed JSON; deadlines, validation and decoded response limits still apply. Clients that do not negotiate gzip keep receiving JSON.
