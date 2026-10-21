@@ -10,8 +10,8 @@ import (
 func TestClockRollbackAdvancesWithoutDoubleCounting(t *testing.T) {
 	start := time.Now()
 	var clock admission.Clock
-	if got := clock.Advance(start, start); !got.Equal(start) {
-		t.Fatal(got)
+	if got := clock.Advance(start, start); got != start.UTC() {
+		t.Fatalf("wall-clock bound retained a monotonic annotation: %v", got)
 	}
 	behind := start.Add(-time.Hour)
 	for _, elapsed := range []time.Duration{time.Second, time.Minute, 10 * time.Minute} {

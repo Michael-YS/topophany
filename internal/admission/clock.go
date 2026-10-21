@@ -10,6 +10,9 @@ type Clock struct {
 }
 
 func (c *Clock) Advance(wall, tick time.Time) time.Time {
+	// Only tick carries elapsed-time semantics. Otherwise Time.After could
+	// compare monotonic annotations and ignore an actual wall-clock step.
+	wall = wall.UTC()
 	if c.tick.IsZero() || tick.After(c.tick) {
 		if !c.tick.IsZero() {
 			c.high = c.high.Add(tick.Sub(c.tick))
