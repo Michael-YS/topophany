@@ -51,38 +51,50 @@ func (s *Store) startCheckpoint() {
 	}()
 }
 
+// copyJournalTail is the suffix copy. Tests pause it to prove readers are
+// not waiting on that IO.
+var copyJournalTail = io.Copy
+
 // The durable checkpoint covers [0,boundary). Replace the WAL atomically with
 // only the suffix appended while it was written. A crash before replacement
 // replays the old prefix idempotently; after replacement every new ACKed sample
 // is still present. Never truncate the live journal to the captured boundary.
-// Called with mu held, so the suffix cannot change during its bounded copy.
+// Called with commitMu and mu held. commitMu keeps writers out, so the copy
+// itself does not hold mu.
 func (s *Store) retainJournalTail(boundary int64) error {
 	tail := s.bytes - boundary
 	if tail < 0 {
 		return errors.New("checkpoint journal boundary moved")
 	}
+	file := s.file
 	path := filepath.Join(s.dir, "journal.jsonl")
+	s.mu.Unlock()
 	closed := false
 	err := secure.AtomicWriteStreamMeasured(path, 0600, &ioaccount.Journal, func(w io.WriteSeeker) error {
-		_, err := io.Copy(w, io.NewSectionReader(s.file, boundary, tail))
+		_, err := copyJournalTail(w, io.NewSectionReader(file, boundary, tail))
 		if err != nil {
 			return err
 		}
 		// Windows replacement requires closing the original handle first. The old
 		// WAL remains durable if publication of its replacement fails.
 		closed = true
-		return s.file.Close()
+		return file.Close()
 	})
 	if !closed {
-		_ = s.file.Close()
+		_ = file.Close()
 	}
-	var openErr error
-	s.file, openErr = os.OpenFile(path, os.O_RDWR, 0600)
+	reopened, openErr := os.OpenFile(path, os.O_RDWR, 0600)
+	var seekErr error
+	if openErr == nil {
+		_, seekErr = reopened.Seek(0, io.SeekEnd)
+	}
+	s.mu.Lock()
+	s.file = reopened
 	if openErr != nil {
 		return errors.Join(err, openErr)
 	}
-	if _, openErr = s.file.Seek(0, io.SeekEnd); openErr != nil {
-		return errors.Join(err, openErr)
+	if seekErr != nil {
+		return errors.Join(err, seekErr)
 	}
 	if err == nil {
 		s.bytes = tail

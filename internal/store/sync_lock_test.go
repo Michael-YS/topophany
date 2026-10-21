@@ -1,7 +1,9 @@
 package store
 
 import (
+	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,4 +53,53 @@ func TestReadersDoNotWaitForJournalSync(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestReadersDoNotWaitForCheckpointTailCopy(t *testing.T) {
+	previous := copyJournalTail
+	t.Cleanup(func() { copyJournalTail = previous })
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	copyJournalTail = func(dst io.Writer, src io.Reader) (int64, error) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-release
+		return io.Copy(dst, src)
+	}
+	c := testkit.Config()
+	s := openTest(t, t.TempDir(), Options{CheckpointBytes: 1024, MaxJournalBytes: 1 << 20, Contracts: config.Contracts(c), Revision: config.Revision(c)})
+	v := testkit.Observation(c, "home-http", 1, time.Now().UTC(), "ok")
+	v.Detail = strings.Repeat("x", 2048)
+	if err := s.Put(batch(c, v)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("checkpoint did not copy the journal tail")
+	}
+	viewed := make(chan struct{})
+	go func() {
+		s.View()
+		close(viewed)
+	}()
+	select {
+	case <-viewed:
+	case <-time.After(time.Second):
+		t.Fatal("reader waited for the checkpoint tail copy")
+	}
+	close(release)
+	s.mu.Lock()
+	s.waitCheckpoint()
+	s.mu.Unlock()
 }
