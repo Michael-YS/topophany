@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -33,6 +32,10 @@ func EvaluateCarried(x model.Check, carry *Carry, rows []model.Observation, now 
 // evaluate owns only the index slice. Sorting pointers avoids copying entire
 // observations and never changes the input order or its diagnostic maps.
 func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.Time) model.CheckState {
+	return currentState(x, evaluateEvidence(x, carry, rows), now)
+}
+
+func evaluateEvidence(x model.Check, carry *Carry, rows []*model.Observation) model.CheckState {
 	s := model.CheckState{ID: x.ID, Observer: x.Observer, Health: "unknown", Freshness: "never", Evidence: "unknown", Reason: "not yet measured"}
 	if x.Disabled {
 		s.Freshness = "paused"
@@ -109,6 +112,13 @@ func evaluate(x model.Check, carry *Carry, rows []*model.Observation, now time.T
 		}
 	}
 	s.Freshness = "fresh"
+	return s
+}
+
+func currentState(x model.Check, s model.CheckState, now time.Time) model.CheckState {
+	if s.Last == nil {
+		return s
+	}
 	if s.Last.SampledAt.After(now.Add(5 * time.Second)) {
 		s.Health = "unknown"
 		s.Freshness = "stale"
@@ -144,65 +154,28 @@ func BuildCarried(c model.Config, instance, view string, rows []model.Observatio
 
 // Build evaluates a snapshot under this plan. Concurrent calls are safe.
 func (p *Plan) Build(instance, view string, rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
+	return p.Prepare(rows, carries, beats).Build(instance, view, now)
+}
+
+// Build derives current freshness, observer liveness and entity judgments from
+// prepared evidence. It is safe for concurrent readers and returns owned data.
+func (e *Prepared) Build(instance, view string, now time.Time) model.Snapshot {
+	p := e.plan
 	c := p.config
-	revision, contracts, public := p.revision, p.contracts, p.publicContracts
 	out := model.Snapshot{Schema: model.SnapshotSchema, Version: model.Version, Project: c.Project, Instance: instance, Revision: p.publicRevision, GeneratedAt: now.UTC(), ViewObserver: view, Topology: config.Clone(p.public), Checks: []model.CheckState{}, Nodes: []model.EntityState{}, Endpoints: []model.EntityState{}, Services: []model.EntityState{}, Paths: []model.EntityState{}, Links: []model.EntityState{}, Observers: []model.ObserverState{}, Incidents: []model.Incident{}}
-	checkDefs := p.checks
-	histories := make(map[string][]*model.Observation, len(c.Checks))
-	lastSeen := map[string]time.Time{}
-	// An executor is alive whatever topology it runs; whether its samples
-	// count is decided sample by sample.
-	reported := map[string]string{}
-	for id, h := range beats {
-		if h.Project != c.Project {
-			continue
-		}
-		if !h.SampledAt.After(now.Add(5 * time.Second)) {
-			lastSeen[id] = h.SampledAt
-		}
-		// What it measures: a schema 2 executor digests its contracts; a
-		// schema 1 one counts only under the very revision it runs.
-		switch {
-		case h.Contracts != "":
-			reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Contracts == p.observers[id]]
-		case h.Revision != "":
-			reported[id] = map[bool]string{true: "current", false: "outdated"}[h.Revision == revision]
-		}
-	}
-	for i := range rows {
-		v := &rows[i]
-		if v.Project != c.Project || !config.Counted(*v, contracts, revision) {
-			continue
-		}
-		x, ok := checkDefs[v.Check]
-		if !ok || x.Observer != v.Observer {
-			continue
-		}
-		histories[v.Check] = append(histories[v.Check], v)
-		if !v.SampledAt.After(now.Add(5*time.Second)) && v.SampledAt.After(lastSeen[v.Observer]) {
-			lastSeen[v.Observer] = v.SampledAt
-		}
-	}
-	carried := map[string]*Carry{}
-	for i, k := range carries {
-		if k.Contract != "" && k.Contract == contracts[k.Check] {
-			carried[k.Check] = &carries[i]
-		}
-	}
-	allStates := map[string]model.CheckState{}
+	lastSeen := e.lastSeen(now)
+	reported, beats := e.reported, e.beats
+	allStates := make(map[string]model.CheckState, len(c.Checks))
 	checks := p.checks
 	for _, x := range c.Checks {
-		st := evaluate(x, carried[x.ID], histories[x.ID], now)
-		st.Contract = public[x.ID]
+		st := currentState(x, e.checks[x.ID], now)
 		if st.Last != nil {
-			last := *st.Last
-			last.Facts, last.Timings = maps.Clone(last.Facts), maps.Clone(last.Timings)
-			last.Contract, last.Revision = st.Contract, ""
+			last := model.CloneObservation(*st.Last)
 			st.Last = &last
 		}
 		allStates[x.ID] = st
 		if view == "" || view == x.Observer {
-			out.Checks = append(out.Checks, allStates[x.ID])
+			out.Checks = append(out.Checks, st)
 		}
 	}
 	for _, o := range c.Observers {

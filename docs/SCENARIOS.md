@@ -292,3 +292,16 @@ uses validated topologies with services and endpoints, exercising actual cards.
 | A 4,000-check topology retains every confirmed failure while cross-observer proof samples and lookups stay bounded; saturated summaries allocate nothing | `TestCounterEvidenceNearLimitKeepsCoreFailures`, `TestResponseProofIndexBoundsAndExclusion`, `BenchmarkCrossObserverCounterEvidence` |
 | Bearer, custom header, Host override, query and proxy credentials cannot be reflected through HTTP status or Mihomo numeric history, timestamps, counts and API error codes; public diagnostics remain | `TestPrivateHTTPStatusIsWithheld`, `TestPrivateMihomoNumericTelemetryIsWithheld` |
 | Repeating applications.list 127 times beside a scalar cannot retain or publish oversized rich values; external panels and stream frames share the 1 MiB limit | `TestPersistentPanelBudgetBeforeRetention`, `TestPanelAggregateBudgetAndCallerOwnership`, `TestFrameBoundWriteAndFlush` |
+
+## Single-user resource optimizations
+
+| Scenario | Regression coverage |
+|---|---|
+| Receipt-rate counters preserve exact hour boundaries, clock rollback, expiry and restart; byte counters track growing and shrinking heartbeat telemetry | `TestRecentRateAcrossExpiryRollbackAndRestart`, `TestHeartbeatByteAccountingTracksReplacements`, `TestAccountingKeptAsItGoesIsWhatIsHeld` |
+| Explicit batch copies detach evidence maps, sample slices and heartbeat telemetry while preserving nil/empty values | `TestCloneBatchOwnership`, `TestCloneBatchPreservesEmptyAndNil`, `TestDurablePartialAcknowledgementAndOwnership` |
+| Recipient indexes preserve delivery order and independent ACKs; batched cleanup syncs its successful prefix even when a later deletion fails | `TestPendingIsTheEarliestInOrder`, `TestAckBatchSyncsOnceAndPreservesFailedItems`, `TestAckSyncFailureRetainsBothErrors` |
+| Idle heartbeat pacing never delays samples; reload, new boots, clock rollback and short observer freshness retain liveness | `TestIdleCadenceKeepsSamplesPromptAndLivenessIndependent`, `TestIdleHeartbeatIntervalFollowsObserverFreshness`, `TestStorageBackpressureDoesNotStopHeartbeats` |
+| Negotiated gzip shares the snapshot cache budget and preserves encoded/decompressed bounds, checksums and deadlines | `TestSnapshotCompressionNegotiationAndCacheBudget`, `TestGzipSnapshotAndDecodedBudget`, `TestCompressedNothingRunsOutTheBudget` |
+| Topology reuse is bound to collector and revision, survives caller mutation, refreshes after reload and preserves legacy full snapshots | `TestTopologyCacheNegotiationReloadAndClientOwnership`, `TestOmittedTopologyRequiresMatchingEndpointRevision`, `TestSnapshotViewsRetriesTheWholeGeneration` |
+| Adaptive checkpoint cadence counts actual durable bytes, stays within floor/replay ceiling and recovers uncheckpointed journal transactions | `TestAdaptiveCheckpointThresholdAndRecovery`, `TestCheckpointPolicyLimits` |
+| Reused state folds preserve time expiry, future-evidence eligibility, rollback, independent ownership, write/reload invalidation and consistent HTTP projections | `TestPreparedEvidenceRemainsTimeSensitiveAndOwnsInputs`, `TestPreparedEvaluationReusesEvidenceAndInvalidatesOnWriteAndReload`, `TestSnapshotCacheDoesNotRepeatStoreWork` |

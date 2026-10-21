@@ -83,6 +83,13 @@ func BenchmarkEngineTopology(b *testing.B) {
 				}
 			})
 			p := NewPlan(c)
+			prepared := p.Prepare(rows, nil, nil)
+			b.Run("prepared", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					prepared.Build("audit", "", now)
+				}
+			})
 			b.Run("generation", func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {

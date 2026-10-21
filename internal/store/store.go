@@ -106,6 +106,7 @@ type envelope struct {
 }
 type Store struct {
 	mu             sync.Mutex
+	version        uint64
 	dir            string
 	file           *os.File
 	unlock         func() error
@@ -418,6 +419,7 @@ func (s *Store) expired(id string) bool {
 func (s *Store) SetCurrent(revision string, contracts map[string]string, stale map[string]time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.version++
 	s.options.Revision = revision
 	s.options.Contracts = maps.Clone(contracts)
 	s.options.Stale = maps.Clone(stale)
@@ -546,6 +548,7 @@ func before(a, b model.Observation) bool {
 	return a.SampledAt.Before(b.SampledAt)
 }
 func (s *Store) apply(b model.Batch, prepared map[string]rowEncoding) error {
+	s.version++
 	for _, v := range b.Observations {
 		encoded, ok := prepared[v.ID]
 		if !ok {
@@ -814,6 +817,9 @@ func (s *Store) pruneHistory(cutoff time.Time) {
 			}
 		}
 		s.historyCounts = counts
+	}
+	if start > 0 {
+		s.version++
 	}
 	clear(s.rows[:start])
 	s.rows = s.rows[start:]

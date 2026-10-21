@@ -71,3 +71,11 @@ func (s *Store) StateView() ([]model.Observation, []engine.Carry, map[string]mod
 	}
 	return out, carries, beats
 }
+
+// Version changes whenever evidence used for state evaluation changes. It is
+// process-local; reloads are additionally separated by the API's generation.
+func (s *Store) Version() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.version
+}

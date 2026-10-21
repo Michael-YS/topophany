@@ -91,7 +91,7 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	defer s.snapshotMu.Unlock()
 	if s.snapshotCache == nil || s.snapshotGen != g || s.Now().Sub(s.snapshotAt) >= time.Second {
 		s.snapshotGen = g
-		s.snapshotRows, s.snapshotCarries, s.snapshotBeats = s.Store.StateView()
+		s.snapshotEvidence = s.preparedEvidence(g)
 		s.snapshotAt = s.Now()
 		s.snapshotStorage = s.Store.Usage()
 		s.snapshotAvailable = nil
@@ -119,7 +119,7 @@ func (s *Server) snapshotRepresentation(g *generation, view, principal string, c
 	}
 	s.snapshotMisses[principal]++
 	s.snapshotBuilds++
-	snap := s.buildSnapshot(g, view, s.snapshotRows, s.snapshotCarries, s.snapshotBeats, s.snapshotAt)
+	snap := s.buildPreparedSnapshot(s.snapshotEvidence, view, s.snapshotAt)
 	usage := model.StorageUsage(s.snapshotStorage)
 	usage.Observers = slices.Clone(usage.Observers)
 	if view != "" {

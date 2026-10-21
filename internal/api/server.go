@@ -112,10 +112,12 @@ type Server struct {
 	snapshotMu         sync.Mutex
 	snapshotAt         time.Time
 	snapshotGen        *generation // what the cached snapshots were built under
-	snapshotRows       []model.Observation
+	evaluationMu       sync.Mutex
+	evaluationGen      *generation
+	evaluationVersion  uint64
+	evaluation         *engine.Prepared
+	snapshotEvidence   *engine.Prepared
 	snapshotStorage    store.Usage
-	snapshotCarries    []engine.Carry
-	snapshotBeats      map[string]model.Heartbeat
 	snapshotCache      map[string][]byte
 	snapshotGzip       map[string][]byte
 	snapshotAvailable  map[string][]model.Availability // by check, as of snapshotAt
@@ -244,11 +246,28 @@ func (s *Server) ReloadWith(c model.Config, a Auth, configure func()) {
 	}
 }
 
-// buildSnapshot is the one place every reader adds the collector-wide
-// evidence that is not part of the engine's check derivation. A new field
-// belongs here, not in each of the three snapshot readers.
-func (s *Server) buildSnapshot(g *generation, view string, rows []model.Observation, carries []engine.Carry, beats map[string]model.Heartbeat, now time.Time) model.Snapshot {
-	snap := g.engine.Build(s.Instance, view, rows, carries, beats, now)
+// Reuse folded evidence until a durable write, retained-history change or
+// topology reload invalidates it. Every reader still judges the current time.
+func (s *Server) preparedEvidence(g *generation) *engine.Prepared {
+	s.evaluationMu.Lock()
+	version := s.Store.Version()
+	if s.evaluation == nil || s.evaluationGen != g || s.evaluationVersion != version {
+		rows, carries, beats := s.Store.StateView()
+		s.evaluation = g.engine.Prepare(rows, carries, beats)
+		s.evaluationGen, s.evaluationVersion = g, version
+	}
+	evidence := s.evaluation
+	s.evaluationMu.Unlock()
+	return evidence
+}
+
+func (s *Server) buildSnapshot(g *generation, view string, now time.Time) model.Snapshot {
+	return s.buildPreparedSnapshot(s.preparedEvidence(g), view, now)
+}
+
+// Add collector-wide evidence in one place for all three snapshot readers.
+func (s *Server) buildPreparedSnapshot(evidence *engine.Prepared, view string, now time.Time) model.Snapshot {
+	snap := evidence.Build(s.Instance, view, now)
 	if s.Ingress != nil {
 		snap.Ingress = s.Ingress.Summary(now)
 	}
@@ -269,8 +288,7 @@ func (s *Server) ObserveWith(now time.Time, settled bool, consume func(model.Sna
 	s.reloadMu.RLock()
 	defer s.reloadMu.RUnlock()
 	g := s.generation()
-	rows, carries, beats := s.Store.StateView()
-	snap := s.buildSnapshot(g, "", rows, carries, beats, now)
+	snap := s.buildSnapshot(g, "", now)
 	if s.Ledger == nil {
 		if consume != nil {
 			consume(snap, nil)
@@ -290,8 +308,7 @@ func (s *Server) MonitorSnapshot(now time.Time) model.Snapshot {
 	s.reloadMu.RLock()
 	defer s.reloadMu.RUnlock()
 	g := s.generation()
-	rows, carries, beats := s.Store.StateView()
-	return s.buildSnapshot(g, "", rows, carries, beats, now)
+	return s.buildSnapshot(g, "", now)
 }
 
 // MonitorHistory reads a check's newest samples as /v1/history answers
