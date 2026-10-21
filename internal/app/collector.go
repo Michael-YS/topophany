@@ -193,9 +193,16 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 			return nil, nil
 		}
 		revision := config.Revision(c)
-		return runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
+		s, e := runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
 			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}})
 		})
+		if e != nil {
+			return nil, e
+		}
+		batch := func(vs []model.Observation) error {
+			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: vs})
+		}
+		return s.WithSources(probe.NewSourceRuntime(probe.ProductionSourceAdapters()), batch, 4), nil
 	}
 	scheduler, e := local(c)
 	if e != nil {

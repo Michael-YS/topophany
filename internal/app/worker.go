@@ -97,7 +97,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	local := func(c model.Config) (*runner.Scheduler, error) {
 		d.SetHeartbeatInterval(idleHeartbeatInterval(c, *observer, *heartbeatInterval))
 		revision := config.Revision(c)
-		return runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
+		s, e := runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
 			if panel != nil {
 				localView.Record(v)
 			}
@@ -109,6 +109,24 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 			}
 			return err
 		})
+		if e != nil {
+			return nil, e
+		}
+		batch := func(vs []model.Observation) error {
+			if panel != nil {
+				for _, v := range vs {
+					localView.Record(v)
+				}
+			}
+			err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: vs}, d.Recipients())
+			var degraded *outbox.DegradedError
+			if errors.As(err, &degraded) {
+				fmt.Fprintln(a.Err, degraded)
+				return nil
+			}
+			return err
+		}
+		return s.WithSources(probe.NewSourceRuntime(probe.ProductionSourceAdapters()), batch, 4), nil
 	}
 	s, e := local(c)
 	if e != nil {

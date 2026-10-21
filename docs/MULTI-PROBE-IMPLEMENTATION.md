@@ -434,8 +434,8 @@ its existing worker budget.
 | 2 report normalization | `4a1de5c` | complete |
 | 3 collector admission | `99c533c` | complete |
 | 4 persistence/dedup | `7820cda` | complete |
-| 5 report state/statistics | this commit | complete |
-| 6 source runtime | — | pending |
+| 5 report state/statistics | `b82f42d` | complete |
+| 6 source runtime | this commit | complete |
 | 7 unified resources | — | pending |
 | 8 stream/bar | — | pending |
 | 9 end-to-end | — | pending |
@@ -516,6 +516,27 @@ Record only real changes to the frozen rules here, with the reason.
   availability or a collection attempt into a probe latency.
 - Snapshot schema 3 now carries this projection. The client validates it and
   still reads native-only schema 2 snapshots.
+- Task 6 adds `internal/source` (static `Adapter`/`Runtime`, reading and
+  error vocabulary), `probe.SourceIO` (same-origin GET, explicit TLS/route,
+  no ambient proxy, no redirects, page/body budget, credential env read), and
+  source jobs in `runner.Scheduler` with a separate bounded worker pool.
+- A source job reads once and fans out to the declared enabled bindings. A
+  missing object or source failure produces an attempt observation, not a
+  target failure. The scheduler keeps one in-flight task per source, at most
+  four source workers, at most the configured source list as its ready queue,
+  and applies interval jitter plus bounded exponential backoff.
+- Fan-out is stamped and split at 100 observations or 512 KiB encoded bytes
+  before the batch sink. A single observation that cannot fit is an explicit
+  error. Native and source sink failures stop that scheduler, as before.
+- Source sessions are not cached: `Runtime.Collect` builds a fresh
+  `SourceIO` for every read. `SourceGeneration` is a non-secret hash of boot,
+  source ID and adapter, so it cannot leak a query/token digest. Route, TLS and
+  credential-value changes are picked up by the fresh session; a reload
+  cancels the old scheduler and waits before the new generation starts.
+- The production adapter registry is intentionally empty. A config with
+  external sources fails explicitly in worker/serve/once until the first
+  adapter is statically registered. Synthetic test adapters are injected only
+  by tests and never enter `ProductionSourceAdapters`.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters

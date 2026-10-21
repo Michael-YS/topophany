@@ -226,6 +226,15 @@ func (a *App) topologyCommand(ctx context.Context, cmd string, args []string) er
 		if e != nil {
 			return e
 		}
+		batch := func(vs []model.Observation) error {
+			for _, v := range vs {
+				if e := json.NewEncoder(a.Out).Encode(v); e != nil {
+					return e
+				}
+			}
+			return nil
+		}
+		r.WithSources(probe.NewSourceRuntime(probe.ProductionSourceAdapters()), batch, 4)
 		return r.Once(ctx)
 	}
 	return nil

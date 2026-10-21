@@ -26,6 +26,10 @@ type Scheduler struct {
 	Sink      Sink
 	sequence  uint64
 	contracts map[string]string
+
+	sources       SourceRuntime
+	sourceSink    BatchSink
+	sourceWorkers int
 }
 type completed struct {
 	index       int
@@ -50,7 +54,7 @@ func New(c model.Config, observer string, workers int, p Probe, sink Sink) (*Sch
 	if e != nil {
 		return nil, e
 	}
-	return &Scheduler{Config: c, Observer: observer, Workers: workers, Boot: boot, Probe: p, Sink: sink}, nil
+	return &Scheduler{Config: c, Observer: observer, Workers: workers, Boot: boot, Probe: p, Sink: sink, sourceWorkers: maxSourceWorkers}, nil
 }
 func (s *Scheduler) stamp(v model.Observation) model.Observation {
 	s.sequence++
@@ -70,7 +74,7 @@ func (s *Scheduler) stamp(v model.Observation) model.Observation {
 func (s *Scheduler) checks() []model.Check {
 	r := []model.Check{}
 	for _, x := range s.Config.Checks {
-		if x.Observer == s.Observer && !x.Disabled && !x.Maintenance {
+		if x.Kind != "external" && x.Observer == s.Observer && !x.Disabled && !x.Maintenance {
 			r = append(r, x)
 		}
 	}
@@ -81,6 +85,18 @@ func (s *Scheduler) checks() []model.Check {
 func (s *Scheduler) Run(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
+	sources, bySource := s.localSources()
+	if len(sources) > 0 {
+		if s.sources == nil || s.sourceSink == nil || s.Probe == nil {
+			return fmt.Errorf("external sources require an explicitly wired source runtime and fan-out sink")
+		}
+		if s.sourceWorkers < 1 || s.sourceWorkers > maxSourceWorkers {
+			return fmt.Errorf("source concurrency must be 1..%d", maxSourceWorkers)
+		}
+		if e := s.sources.Validate(s.Config); e != nil {
+			return e
+		}
+	}
 	checks := s.checks()
 	jobs := make(chan int)
 	done := make(chan completed, s.Workers)
@@ -106,6 +122,44 @@ func (s *Scheduler) Run(parent context.Context) error {
 				}
 			}
 		}()
+	}
+	var sourceJobs chan sourceJob
+	var sourceDone chan sourceResult
+	sourceIdle := 0
+	sourceDue := make([]time.Time, len(sources))
+	sourceActive := make([]bool, len(sources))
+	sourceFailures := make([]int, len(sources))
+	if len(sources) > 0 {
+		sourceJobs = make(chan sourceJob)
+		sourceDone = make(chan sourceResult, s.sourceWorkers)
+		sourceIdle = min(s.sourceWorkers, len(sources))
+		start := time.Now()
+		for i := range sourceDue {
+			sourceDue[i] = start.Add(time.Duration(rand.IntN(1000)) * time.Millisecond)
+		}
+		for range min(s.sourceWorkers, len(sources)) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case job, ok := <-sourceJobs:
+						if !ok {
+							return
+						}
+						src := sources[job.index]
+						observations, failed := s.collectSource(ctx, src, bySource[src.ID])
+						select {
+						case sourceDone <- sourceResult{index: job.index, observations: observations, failed: failed}:
+						case <-ctx.Done():
+							return
+						}
+					}
+				}
+			}()
+		}
 	}
 	defer func() { cancel(); wg.Wait() }()
 	due := make([]time.Time, len(checks))
@@ -149,6 +203,31 @@ func (s *Scheduler) Run(parent context.Context) error {
 			busy[key(x)] = true
 		}
 	}
+	handSources := func(now time.Time) {
+		if len(sources) == 0 || sourceIdle == 0 {
+			return
+		}
+		ready := []int{}
+		for i := range sources {
+			if !sourceActive[i] && !now.Before(sourceDue[i]) {
+				ready = append(ready, i)
+			}
+		}
+		slices.SortStableFunc(ready, func(a, b int) int { return sourceDue[a].Compare(sourceDue[b]) })
+		for _, i := range ready {
+			if sourceIdle == 0 {
+				return
+			}
+			select {
+			case sourceJobs <- sourceJob{index: i}:
+			case <-ctx.Done():
+				return
+			}
+			sourceIdle--
+			sourceActive[i] = true
+		}
+	}
+	handSources(time.Now())
 	for {
 		select {
 		case <-ctx.Done():
@@ -166,12 +245,54 @@ func (s *Scheduler) Run(parent context.Context) error {
 			interval := time.Duration(checks[r.index].IntervalSeconds) * time.Second
 			due[r.index] = time.Now().Add(interval + time.Duration(float64(interval)*(rand.Float64()-.5)*.1))
 			hand(time.Now())
+		case r := <-sourceDone:
+			sourceIdle++
+			sourceActive[r.index] = false
+			if ctx.Err() != nil {
+				return nil
+			}
+			source := sources[r.index]
+			if e := s.sendFanout(r.observations); e != nil {
+				return e
+			}
+			delay := time.Duration(source.IntervalSeconds) * time.Second
+			if r.failed {
+				sourceFailures[r.index]++
+				delay = sourceBackoff(delay, sourceFailures[r.index])
+			} else {
+				sourceFailures[r.index] = 0
+				delay = jitter(delay)
+			}
+			sourceDue[r.index] = time.Now().Add(delay)
+			handSources(time.Now())
 		case now := <-tick.C:
 			hand(now)
+			handSources(now)
 		}
 	}
 }
 func (s *Scheduler) Once(ctx context.Context) error {
+	sources, bySource := s.localSources()
+	if len(sources) > 0 {
+		if s.sources == nil || s.sourceSink == nil {
+			return fmt.Errorf("external sources require an explicitly wired source runtime and fan-out sink")
+		}
+		if e := s.sources.Validate(s.Config); e != nil {
+			return e
+		}
+		for _, src := range sources {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			observations, _ := s.collectSource(ctx, src, bySource[src.ID])
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if e := s.sendFanout(observations); e != nil {
+				return e
+			}
+		}
+	}
 	for _, x := range s.checks() {
 		if ctx.Err() != nil {
 			return ctx.Err()
