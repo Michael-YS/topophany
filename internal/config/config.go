@@ -82,6 +82,10 @@ func Load(path string) (model.Config, error) {
 	return c, nil
 }
 func Defaults(c *model.Config) {
+	defaultSources(c)
+	for i := range c.Checks {
+		sourceSchedule(*c, &c.Checks[i])
+	}
 	for i := range c.Observers {
 		if c.Observers[i].StaleSeconds == 0 {
 			c.Observers[i].StaleSeconds = 90
@@ -104,14 +108,16 @@ func Defaults(c *model.Config) {
 		if x.RecoveryThreshold == 0 {
 			x.RecoveryThreshold = 2
 		}
-		if x.HTTP.Method == "" {
-			x.HTTP.Method = "GET"
-		}
-		if x.HTTP.MaxBodyBytes == 0 {
-			x.HTTP.MaxBodyBytes = 65536
-		}
-		if x.DNS.Type == "" {
-			x.DNS.Type = "A"
+		if x.Kind != "external" {
+			if x.HTTP.Method == "" {
+				x.HTTP.Method = "GET"
+			}
+			if x.HTTP.MaxBodyBytes == 0 {
+				x.HTTP.MaxBodyBytes = 65536
+			}
+			if x.DNS.Type == "" {
+				x.DNS.Type = "A"
+			}
 		}
 	}
 }
@@ -235,6 +241,10 @@ func validateResolved(c model.Config) error {
 		}
 		paths[p.ID] = p
 	}
+	sources, err := validateSources(c)
+	if err != nil {
+		return err
+	}
 	graph := map[string][]string{}
 	for _, p := range c.Paths {
 		for _, n := range p.Nodes {
@@ -328,6 +338,9 @@ func validateResolved(c model.Config) error {
 			return fmt.Errorf("check %s: missing observer", x.ID)
 		}
 		if err := validateHost(x, c); err != nil {
+			return fmt.Errorf("check %s: %w", x.ID, err)
+		}
+		if err := validateExternal(x, c, sources); err != nil {
 			return fmt.Errorf("check %s: %w", x.ID, err)
 		}
 		if x.Endpoint != "" {
@@ -554,6 +567,8 @@ func validateResolved(c model.Config) error {
 			}
 		case "host":
 			// Validated above; this check reads only the observer's host.
+		case "external":
+			// Validated above; execution is wired explicitly by the runner.
 		default:
 			return fmt.Errorf("check %s: unsupported kind %q", x.ID, x.Kind)
 		}
@@ -583,7 +598,7 @@ func validateResolved(c model.Config) error {
 			}
 		}
 	}
-	return nil
+	return validateResourceSelections(c)
 }
 
 func acyclic(g map[string][]string) error {
@@ -703,6 +718,12 @@ func Public(c model.Config) model.Config {
 		x.HTTP.RequestHeaders = nil
 		x.HTTP.RequestHeaderEnvs = nil
 		x.CAFile = ""
+	}
+	for i := range out.Sources {
+		s := &out.Sources[i]
+		s.Target = PublicURL(s.Target)
+		s.CredentialEnv = ""
+		s.CAFile = ""
 	}
 	for i := range out.Paths {
 		for j := range out.Paths[i].Proxies {

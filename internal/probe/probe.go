@@ -119,6 +119,14 @@ func (r Runner) Run(ctx context.Context, c model.Config, x model.Check) model.Ob
 		o.PathEvidence = "local_host_runtime_reported"
 		delete(o.Facts, "connection_semantics")
 		e = r.host(ctx, x, &o)
+	case "external":
+		// The source runtime is wired through the runner. Reaching this
+		// native check path means no source adapter was installed; refuse
+		// explicitly rather than pretend a report was collected.
+		o.Evidence = "reported"
+		o.PathEvidence = "external_source_runtime"
+		delete(o.Facts, "connection_semantics")
+		e = local("external", "external_runtime_unavailable")
 	default:
 		e = local("setup", "unsupported_check")
 	}

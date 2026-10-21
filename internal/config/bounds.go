@@ -14,7 +14,7 @@ import (
 // PresentationBounds applies equally to local topology and remote public views.
 // Total cardinality bounds the renderer's pairwise layout work as well as wire size.
 func PresentationBounds(c model.Config) error {
-	if len(c.Applications)+len(c.Addresses)+len(c.Nodes)+len(c.Endpoints)+len(c.Services)+len(c.Observers)+len(c.Links)+len(c.Paths)+len(c.Checks) > 4096 {
+	if len(c.Applications)+len(c.Addresses)+len(c.Nodes)+len(c.Endpoints)+len(c.Services)+len(c.Observers)+len(c.Links)+len(c.Paths)+len(c.Checks)+len(c.Sources) > 4096 {
 		return errors.New("topology exceeds 4096 total entities")
 	}
 	references := len(c.Links) * 2
@@ -22,6 +22,7 @@ func PresentationBounds(c model.Config) error {
 		if n.Parent != "" {
 			references++
 		}
+		references += len(n.ResourceChecks)
 	}
 	for _, p := range c.Paths {
 		references += len(p.Nodes) + len(p.Links) + len(p.Candidates) + len(p.DependsOn) + len(p.Proxies)
@@ -31,6 +32,11 @@ func PresentationBounds(c model.Config) error {
 	}
 	for _, e := range c.Endpoints {
 		references += len(e.Via)
+	}
+	for _, x := range c.Checks {
+		if x.External != nil {
+			references += 4
+		}
 	}
 	if references > 8192 {
 		return errors.New("topology exceeds 8192 graph references")

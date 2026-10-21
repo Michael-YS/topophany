@@ -429,8 +429,8 @@ its existing worker budget.
 
 | Task | Commit | Status |
 |---|---|---|
-| 0 base/design freeze | (this commit) | in progress |
-| 1 typed model/config | — | pending |
+| 0 base/design freeze | `7f5ebaa` | complete |
+| 1 typed model/config | this commit | complete |
 | 2 report normalization | — | pending |
 | 3 collector admission | — | pending |
 | 4 persistence/dedup | — | pending |
@@ -445,7 +445,12 @@ its existing worker budget.
 
 Record only real changes to the frozen rules here, with the reason.
 
-- No adjustment yet.
+- Task 1 keeps `primary_disk` optional so a partial resource report can be
+  modelled, but selection never guesses: with no explicit primary disk the
+  external disk is unknown. A disk assertion requires `primary_disk`.
+- Task 1 leaves external execution deliberately unwired: reaching the native
+  probe path reports `external_runtime_unavailable` rather than a successful
+  empty sample. Task 6 replaces this with source-level execution.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters

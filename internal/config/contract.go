@@ -41,6 +41,9 @@ type contract struct {
 // shown to viewers, who see PublicContract.
 func Contract(c model.Config, x model.Check) string {
 	resolved, _ := ResolveCheck(c, x)
+	if resolved.Kind == "external" && resolved.External != nil {
+		return externalMeasurement(c.Project, c, resolved)
+	}
 	return measurement(c.Project, resolved, Target(c, resolved), Path(c, resolved.Path).Proxies)
 }
 
@@ -97,6 +100,10 @@ func Contracts(c model.Config) map[string]string {
 		paths[p.ID] = p.Proxies
 	}
 	for _, x := range c.Checks {
+		if x.Kind == "external" && x.External != nil {
+			out[x.ID] = externalMeasurement(c.Project, c, x)
+			continue
+		}
 		// Target is the one place a kind's default target is defined, so the
 		// batch contract must go through it too; the map of endpoints this
 		// used to read would silently disagree with Contract for a kind such
@@ -161,4 +168,62 @@ func Counted(v model.Observation, contracts map[string]string, revision string) 
 		return v.Contract == contracts[v.Check]
 	}
 	return v.Revision != "" && v.Revision == revision
+}
+
+// externalContract identifies what an external binding measures without
+// coupling it to presentation or credential values. A change to the source
+// instance, route/TLS, budgets, object, report type, subject, age or
+// assertions starts a new report state; a name, note or credential variable
+// name does not.
+type externalContract struct {
+	Schema   int                     `json:"schema"`
+	Project  string                  `json:"project"`
+	Check    string                  `json:"check"`
+	Observer string                  `json:"observer"`
+	Kind     string                  `json:"kind"`
+	Service  string                  `json:"service,omitempty"`
+	Source   externalSourceContract  `json:"source"`
+	Binding  externalBindingContract `json:"binding"`
+}
+
+type externalSourceContract struct {
+	ID               string `json:"id"`
+	Adapter          string `json:"adapter"`
+	Target           string `json:"target"`
+	Path             string `json:"path,omitempty"`
+	BindIP           string `json:"bind_ip,omitempty"`
+	ResolveIP        string `json:"resolve_ip,omitempty"`
+	ServerName       string `json:"server_name,omitempty"`
+	CAFile           string `json:"ca_file,omitempty"`
+	TimeoutSeconds   int    `json:"timeout_seconds"`
+	MaxResponseBytes int64  `json:"max_response_bytes"`
+	MaxPages         int    `json:"max_pages"`
+	MaxObjects       int    `json:"max_objects"`
+	MaxReportBytes   int    `json:"max_report_bytes"`
+}
+
+type externalBindingContract struct {
+	Source        string                    `json:"source"`
+	Object        string                    `json:"object"`
+	Report        string                    `json:"report"`
+	Node          string                    `json:"node"`
+	MaxAgeSeconds int                       `json:"max_age_seconds"`
+	PrimaryDisk   string                    `json:"primary_disk,omitempty"`
+	Assertions    *model.ResourceAssertions `json:"assertions,omitempty"`
+}
+
+func externalMeasurement(project string, c model.Config, x model.Check) string {
+	s, _ := Source(c, x.External.Source)
+	b := *x.External
+	// Values are copied by value; Assertions is immutable once the config is
+	// loaded and is hashed as JSON. CredentialEnv, names and notes are absent.
+	out := externalContract{
+		Schema: 3, Project: project, Check: x.ID, Observer: x.Observer,
+		Kind: "external", Service: x.Service,
+		Source:  externalSourceContract{ID: s.ID, Adapter: s.Adapter, Target: s.Target, Path: s.Path, BindIP: s.BindIP, ResolveIP: s.ResolveIP, ServerName: s.ServerName, CAFile: s.CAFile, TimeoutSeconds: s.TimeoutSeconds, MaxResponseBytes: s.MaxResponseBytes, MaxPages: s.MaxPages, MaxObjects: s.MaxObjects, MaxReportBytes: s.MaxReportBytes},
+		Binding: externalBindingContract{Source: b.Source, Object: b.Object, Report: b.Report, Node: b.Node, MaxAgeSeconds: b.MaxAgeSeconds, PrimaryDisk: b.PrimaryDisk, Assertions: b.Assertions},
+	}
+	raw, _ := json.Marshal(out)
+	h := sha256.Sum256(raw)
+	return hex.EncodeToString(h[:])
 }

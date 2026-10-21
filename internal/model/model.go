@@ -115,6 +115,7 @@ type Config struct {
 	Links     []Link     `json:"links,omitempty"`
 	Paths     []Path     `json:"paths"`
 	Checks    []Check    `json:"checks"`
+	Sources   []Source   `json:"sources,omitempty"`
 }
 type Node struct {
 	ID       string    `json:"id"`
@@ -124,7 +125,11 @@ type Node struct {
 	Group    string    `json:"group,omitempty"`
 	Provider string    `json:"provider,omitempty"` // who runs it: a cloud or VPS vendor, an edge or platform
 	Location *Location `json:"location,omitempty"` // declared placement for maps; never inferred from IP
-	Notes    string    `json:"notes,omitempty"`
+	// ResourceChecks orders the resource bindings this node uses: primary
+	// first, fallbacks after it. Empty preserves native-only behavior and is
+	// refused once an external resource makes the choice ambiguous.
+	ResourceChecks []string `json:"resource_checks,omitempty"`
+	Notes          string   `json:"notes,omitempty"`
 }
 type Location struct {
 	Label string  `json:"label,omitempty"`
@@ -226,7 +231,10 @@ type Check struct {
 	DNS               DNSOptions     `json:"dns,omitempty"`
 	Adapter           AdapterOptions `json:"adapter,omitempty"`
 	Host              *HostOptions   `json:"host,omitempty"`
-	Notes             string         `json:"notes,omitempty"`
+	// External is present exactly when Kind is "external". It binds a stable
+	// upstream object to this check's target node/service.
+	External *ExternalBinding `json:"external,omitempty"`
+	Notes    string           `json:"notes,omitempty"`
 }
 
 // HostOptions selects a local filesystem and optional resource assertions.

@@ -18,6 +18,7 @@ func Clone(c model.Config) model.Config {
 			v := *l
 			c.Nodes[i].Location = &v
 		}
+		c.Nodes[i].ResourceChecks = slices.Clone(c.Nodes[i].ResourceChecks)
 	}
 	c.Endpoints = slices.Clone(c.Endpoints)
 	for i := range c.Endpoints {
@@ -36,12 +37,21 @@ func Clone(c model.Config) model.Config {
 		p.Candidates, p.DependsOn = slices.Clone(p.Candidates), slices.Clone(p.DependsOn)
 		p.Proxies = slices.Clone(p.Proxies)
 	}
+	c.Sources = slices.Clone(c.Sources)
 	c.Checks = slices.Clone(c.Checks)
 	for i := range c.Checks {
 		x := &c.Checks[i]
 		if x.Host != nil {
 			h := *x.Host
 			x.Host = &h
+		}
+		if x.External != nil {
+			b := *x.External
+			if x.External.Assertions != nil {
+				a := *x.External.Assertions
+				b.Assertions = &a
+			}
+			x.External = &b
 		}
 		x.HTTP.Status = slices.Clone(x.HTTP.Status)
 		x.HTTP.ExpectedExit = slices.Clone(x.HTTP.ExpectedExit)
