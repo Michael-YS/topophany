@@ -430,8 +430,8 @@ its existing worker budget.
 | Task | Commit | Status |
 |---|---|---|
 | 0 base/design freeze | `7f5ebaa` | complete |
-| 1 typed model/config | this commit | complete |
-| 2 report normalization | — | pending |
+| 1 typed model/config | `87d82a4` | complete |
+| 2 report normalization | this commit | complete |
 | 3 collector admission | — | pending |
 | 4 persistence/dedup | — | pending |
 | 5 report state/statistics | — | pending |
@@ -451,6 +451,18 @@ Record only real changes to the frozen rules here, with the reason.
 - Task 1 leaves external execution deliberately unwired: reaching the native
   probe path reports `external_runtime_unavailable` rather than a successful
   empty sample. Task 6 replaces this with source-level execution.
+- Task 2 implements the common layer in `internal/report`. Normalization
+  requires at least one resource value, permits any subset of CPU, memory and
+  disks, and validates capacity relations with subtraction so addition cannot
+  overflow. Field-status entries are optional for present values (present is
+  implicitly known) and required only to say missing/unsupported/invalid. A
+  contradictory status is refused.
+- Task 2's counter helper is runtime-only and bounded by an explicit series
+  limit; it never evicts series, because eviction would silently merge
+  histories. A reset or long window reseeds and yields no rate.
+- Raw `model.ExternalReport` normalization does not itself decide sample
+  acceptance; that is the task 4 merge step. Time-unknown reports normalize
+  for diagnosis, but `SampleAt`/`DataDeadline` refuse to make them evidence.
 - First-phase limitation: late reports are diagnostic-only, not backfilled
   into historical rollups.
 - No production vendor adapter is added in this delivery. Synthetic adapters
