@@ -363,6 +363,12 @@ Topophany-side JSON tests.
 
 Follow-up lifecycle regressions:
 
+- `TestRejectedReportsPreserveConfirmedPolicyAfterGap` and
+  `TestPolicyConfirmationSurvivesRestartAndUnchangedRules` keep confirmation
+  flags stable through rejected reports, journal/checkpoint recovery and
+  unrelated reloads. Only an effective policy-threshold edit rejudges the
+  stored policy run.
+
 - `TestExternalMigrationWaitsForNativeBackgroundCheckpoint` pauses a native
   background checkpoint while the first external transaction arrives. The
   transaction waits, installs the format barrier, and survives restart without

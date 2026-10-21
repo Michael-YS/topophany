@@ -388,8 +388,9 @@ func (s *Store) applyExternalRulesLocked() {
 	s.resizeExternalLocked()
 }
 
-// applyExternalRule sets the thresholds and resolves what the already
-// persisted runs mean under them. It never increments a run.
+// applyExternalRule rejudges runs only when their effective thresholds change.
+// Confirmed evidence can outlive a run reset across a sampling gap, so replay,
+// duplicates and metadata reloads must preserve the persisted confirmation.
 func applyExternalRule(state model.BindingState, rule model.ExternalRule) model.BindingState {
 	failure, recovery, policy := rule.FailureThreshold, rule.RecoveryThreshold, rule.PolicyThreshold
 	if failure < 1 {
@@ -401,13 +402,23 @@ func applyExternalRule(state model.BindingState, rule model.ExternalRule) model.
 	if policy < 0 {
 		policy = 0
 	}
-	state.FailureThreshold, state.RecoveryThreshold, state.PolicyThreshold = failure, recovery, policy
-	if state.ConfirmedDown {
-		state.ConfirmedDown = state.UpRun < int64(recovery)
-	} else {
-		state.ConfirmedDown = state.DownRun >= int64(failure)
+	oldFailure, oldRecovery := state.FailureThreshold, state.RecoveryThreshold
+	if oldFailure < 1 {
+		oldFailure = 3
 	}
-	threshold := max(policy, 1)
-	state.PolicyConfirmed = state.PolicyRun >= int64(threshold)
+	if oldRecovery < 1 {
+		oldRecovery = 2
+	}
+	if oldFailure != failure || oldRecovery != recovery {
+		if state.ConfirmedDown {
+			state.ConfirmedDown = state.UpRun < int64(recovery)
+		} else {
+			state.ConfirmedDown = state.DownRun >= int64(failure)
+		}
+	}
+	if max(state.PolicyThreshold, 1) != max(policy, 1) {
+		state.PolicyConfirmed = state.PolicyRun >= int64(max(policy, 1))
+	}
+	state.FailureThreshold, state.RecoveryThreshold, state.PolicyThreshold = failure, recovery, policy
 	return state
 }
