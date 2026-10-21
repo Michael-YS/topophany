@@ -105,6 +105,11 @@ type Server struct {
 	Ingress                   *IngressCounter
 	Now                       func() time.Time
 	mu                        sync.Mutex
+	// clockHigh is the latest collector time admission has observed. A step
+	// backward leaves it in place, so a worker whose own clock kept moving is
+	// not treated as sampling from the future. Age is still judged from the
+	// current Now.
+	clockHigh time.Time
 	limits                    map[string]limit
 	slots                     chan struct{}
 	viewerSlots               chan struct{}
@@ -584,7 +589,8 @@ func (s *Server) put(a authority, b model.Batch) (int, string) {
 	if s.generation() != a.gen {
 		return 503, "topology_reloaded"
 	}
-	if code, status := a.gen.validateBatch(b, a.Observer, s.Now(), s.MaxSampleAge); code != "" {
+	now, future := s.admissionTimes()
+	if code, status := a.gen.validateBatch(b, a.Observer, now, future, s.MaxSampleAge); code != "" {
 		return status, code
 	}
 	if e := s.Store.Put(b); e != nil {
@@ -604,11 +610,28 @@ func (s *Server) put(a authority, b model.Batch) (int, string) {
 	return 0, ""
 }
 
+// admissionTimes is the collector clock and the latest clock admission may
+// treat as "now" for the future bound. The store already accepts a collector
+// step-back; this keeps that from being rejected at the API.
+func (s *Server) admissionTimes() (now, future time.Time) {
+	now = s.Now()
+	if now.IsZero() {
+		now = time.Now()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if now.After(s.clockHigh) {
+		s.clockHigh = now
+	}
+	return now, s.clockHigh
+}
+
 // ValidateBatch judges b from observer under the current topology.
 func (s *Server) ValidateBatch(b model.Batch, observer string) (string, int) {
-	return s.generation().validateBatch(b, observer, s.Now(), s.MaxSampleAge)
+	now, future := s.admissionTimes()
+	return s.generation().validateBatch(b, observer, now, future, s.MaxSampleAge)
 }
-func (g *generation) validateBatch(b model.Batch, observer string, now time.Time, maxAge time.Duration) (string, int) {
+func (g *generation) validateBatch(b model.Batch, observer string, now, future time.Time, maxAge time.Duration) (string, int) {
 	if b.Project != g.config.Project {
 		return "project_mismatch", 409
 	}
@@ -628,7 +651,7 @@ func (g *generation) validateBatch(b model.Batch, observer string, now time.Time
 		return "invalid_batch_size", 400
 	}
 	validTime := func(t time.Time) bool {
-		return !t.IsZero() && !t.After(now.Add(30*time.Second)) && !t.Before(now.Add(-maxAge))
+		return !t.IsZero() && !t.After(future.Add(30*time.Second)) && !t.Before(now.Add(-maxAge))
 	}
 	for _, v := range b.Observations {
 		x, ok := g.checks[v.Check]

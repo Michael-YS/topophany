@@ -151,6 +151,35 @@ func TestBatchValidationContract(t *testing.T) {
 		})
 	}
 }
+
+// A collector clock that steps backward must not make a worker which kept
+// its own clock look like it is sampling from the future. A sample still an
+// hour ahead of the last collector time is rejected.
+func TestCollectorClockStepBackKeepsAdmittingWorkerTime(t *testing.T) {
+	srv, h, b := fixture(t)
+	start := srv.Now().UTC()
+	b.Observations[0].SampledAt = start
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	srv.Now = func() time.Time { return start.Add(-time.Minute) }
+	next := testkit.Observation(srv.Config, "home-http", 2, start.Add(2*time.Second), "ok")
+	b.Observations = []model.Observation{next}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal("sample after collector step-back", w.Code, w.Body.String())
+	}
+	b.Observations = nil
+	b.Heartbeat = &model.Heartbeat{Observer: "home", Boot: "boot", SampledAt: start.Add(3 * time.Second)}
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 202 {
+		t.Fatal("heartbeat after collector step-back", w.Code, w.Body.String())
+	}
+	far := testkit.Observation(srv.Config, "home-http", 3, start.Add(time.Hour), "ok")
+	b.Observations = []model.Observation{far}
+	b.Heartbeat = nil
+	if w := request(h, "POST", "/v1/observations", workerToken, "application/json", payload(t, b)); w.Code != 422 {
+		t.Fatal("hour-ahead sample", w.Code, w.Body.String())
+	}
+}
 func TestInvalidSecondObservationLeavesBatchUncommitted(t *testing.T) {
 	srv, h, b := fixture(t)
 	bad := b.Observations[0]
