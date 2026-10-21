@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -143,8 +144,19 @@ func MergeBinding(check, contract string, binding model.ExternalBinding, state m
 
 	basis := BasisSignature(r)
 	basisChanged := state.Basis != "" && state.Basis != basis
-	if basisChanged {
+	epochChanged := state.ReportSamples > 0 && r.Epoch != state.Cursor.Epoch
+	gap := evidenceGap(state, binding, sampledAt)
+	if epochChanged || basisChanged {
 		resetContinuity(&state)
+	} else if gap {
+		// A gap restarts consecutive runs but does not itself prove a
+		// recovery or a new failure: confirmed flags change only through a
+		// report that is accepted below.
+		resetRuns(&state)
+	}
+	if epochChanged {
+		retireEpoch(&state, state.Cursor.Epoch)
+		unretireEpoch(&state, r.Epoch)
 	}
 	state.Cursor = model.ReportCursor{Mode: mode, Identity: identity, SampleID: r.SampleID, Epoch: r.Epoch, Sequence: cloneUint(r.Sequence), ObservedAt: sampledAt, TimeBasis: r.TimeBasis, Hash: hash}
 	last := model.CloneExternalReport(r)
@@ -242,6 +254,9 @@ func classifyReport(state model.BindingState, r model.ExternalReport, hash, mode
 			return VerdictConflict, "same_sample_different_content"
 		}
 	}
+	if r.Epoch != "" && slices.Contains(state.RetiredEpochs, r.Epoch) {
+		return VerdictLate, "retired_epoch"
+	}
 	if state.Cursor.Identity != "" && state.Cursor.Identity == identity {
 		if state.Cursor.Hash == hash {
 			return VerdictDuplicate, "same_identity"
@@ -254,8 +269,55 @@ func classifyReport(state model.BindingState, r model.ExternalReport, hash, mode
 // resetContinuity starts a new consecutive-confirmation lifecycle. Historical
 // accepted-sample counters are deliberately untouched.
 func resetContinuity(state *model.BindingState) {
-	state.UpRun, state.DownRun, state.PolicyRun = 0, 0, 0
+	resetRuns(state)
 	state.ConfirmedDown, state.PolicyConfirmed = false, false
+}
+
+func resetRuns(state *model.BindingState) {
+	state.UpRun, state.DownRun, state.PolicyRun = 0, 0, 0
+}
+
+// evidenceGap reports whether the previous accepted report had already left
+// its validity window when this sample was taken. Equality is a gap: a
+// report's data deadline is exclusive.
+func evidenceGap(state model.BindingState, binding model.ExternalBinding, sampledAt time.Time) bool {
+	if state.Last == nil {
+		return false
+	}
+	prev, ok := SampleAt(*state.Last)
+	if !ok {
+		return false
+	}
+	maxAge := time.Duration(binding.MaxAgeSeconds) * time.Second
+	if maxAge <= 0 {
+		maxAge = time.Duration(state.MaxAgeSeconds) * time.Second
+	}
+	if maxAge <= 0 {
+		return false
+	}
+	return !sampledAt.Before(prev.Add(maxAge))
+}
+
+// retireEpoch records the end of a producer sequence namespace and keeps the
+// list bounded. The current cursor's epoch is only retired after a newer epoch
+// is accepted, never by a rejected report.
+func retireEpoch(state *model.BindingState, epoch string) {
+	if epoch == "" || slices.Contains(state.RetiredEpochs, epoch) {
+		return
+	}
+	retired := append([]string(nil), state.RetiredEpochs...)
+	retired = append(retired, epoch)
+	if len(retired) > model.MaxRetiredEpochs {
+		retired = append([]string(nil), retired[len(retired)-model.MaxRetiredEpochs:]...)
+	}
+	state.RetiredEpochs = retired
+}
+
+func unretireEpoch(state *model.BindingState, epoch string) {
+	if epoch == "" || !slices.Contains(state.RetiredEpochs, epoch) {
+		return
+	}
+	state.RetiredEpochs = slices.DeleteFunc(append([]string(nil), state.RetiredEpochs...), func(e string) bool { return e == epoch })
 }
 
 // orderVerdict compares a not-yet-accepted identity with the cursor. Time

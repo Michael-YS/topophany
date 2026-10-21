@@ -306,11 +306,16 @@ func validateExternalState(state model.ExternalState) error {
 		}
 	}
 	for check, b := range state.Bindings {
-		if check == "" || b.Check != check || len(b.Contract) > 64 || b.MaxAgeSeconds < 0 || b.MaxAgeSeconds > 604800 || b.FailureThreshold < 0 || b.FailureThreshold > 20 || b.RecoveryThreshold < 0 || b.RecoveryThreshold > 20 || b.PolicyThreshold < 0 || b.PolicyThreshold > 20 || len(b.Seen) > model.MaxSourceReportIDs || len(b.LastResult) > 16 || len(b.LastCode) > 96 {
+		if check == "" || b.Check != check || len(b.Contract) > 64 || b.MaxAgeSeconds < 0 || b.MaxAgeSeconds > 604800 || b.FailureThreshold < 0 || b.FailureThreshold > 20 || b.RecoveryThreshold < 0 || b.RecoveryThreshold > 20 || b.PolicyThreshold < 0 || b.PolicyThreshold > 20 || len(b.Seen) > model.MaxSourceReportIDs || len(b.RetiredEpochs) > model.MaxRetiredEpochs || len(b.LastResult) > 16 || len(b.LastCode) > 96 {
 			return errors.New("invalid external binding state")
 		}
 		if b.ReportType != model.ReportTypeResource && b.ReportType != model.ReportTypeStatus {
 			return errors.New("invalid external binding report type")
+		}
+		for _, epoch := range b.RetiredEpochs {
+			if epoch == "" || len(epoch) > 128 {
+				return errors.New("invalid retired external epoch")
+			}
 		}
 		if b.Last != nil {
 			if _, err := report.Normalize(*b.Last, model.MaxReportBytes); err != nil {

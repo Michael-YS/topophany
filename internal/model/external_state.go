@@ -67,8 +67,12 @@ type BindingState struct {
 	LastAcceptedAt  time.Time       `json:"last_accepted_at,omitzero"`
 	Basis           string          `json:"basis,omitempty"`
 	Seen            []SeenSample    `json:"seen,omitempty"`
-	LastResult      string          `json:"last_result,omitempty"` // new, duplicate, late, conflict, unusable
-	LastCode        string          `json:"last_code,omitempty"`
+	// RetiredEpochs names producer epochs whose sequence namespace has ended.
+	// A late report from one cannot switch the current epoch back. The list is
+	// bounded; older names fall off after MaxRetiredEpochs transitions.
+	RetiredEpochs []string `json:"retired_epochs,omitempty"`
+	LastResult    string   `json:"last_result,omitempty"` // new, duplicate, late, conflict, unusable
+	LastCode      string   `json:"last_code,omitempty"`
 
 	FailureThreshold  int  `json:"failure_threshold,omitempty"`
 	RecoveryThreshold int  `json:"recovery_threshold,omitempty"`
@@ -130,6 +134,7 @@ func CloneBindingState(in BindingState) BindingState {
 		out.Last = &v
 	}
 	out.Seen = append([]SeenSample(nil), in.Seen...)
+	out.RetiredEpochs = append([]string(nil), in.RetiredEpochs...)
 	return out
 }
 

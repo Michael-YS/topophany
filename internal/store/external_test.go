@@ -391,3 +391,50 @@ func TestRecoverySkipsRemovedBindingAndChangedContract(t *testing.T) {
 		})
 	}
 }
+
+func externalSequenceObservation(t testing.TB, c model.Config, epoch string, sequence uint64, at time.Time) model.Observation {
+	t.Helper()
+	x, _ := config.Check(c, "vm-resources")
+	percent := 25.0
+	seq := sequence
+	r := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: x.External.Object, Epoch: epoch, Sequence: &seq, ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &percent}}}
+	return model.Observation{ID: "home.boot." + testkitSeq(sequence), Project: c.Project, Contract: config.Contract(c, x), Check: x.ID, Observer: "home", Boot: "boot", Sequence: sequence, SampledAt: at, Outcome: "ok", Evidence: "reported", Stage: "external_source", DurationMS: 4, PathEvidence: "external_source", External: &model.ExternalObservation{Source: "probe-api", SourceGeneration: "gen-1", AttemptedAt: at, Contact: true, Report: &r}}
+}
+
+func TestExternalEpochAndRetiredEpochSurviveRestart(t *testing.T) {
+	c := externalStoreConfig(t)
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	s := openTest(t, dir, externalStoreOptions(c, &now))
+	for i, epoch := range []string{"boot-a", "boot-a", "boot-b"} {
+		at := now.Add(time.Duration(i) * time.Second)
+		if err := s.Put(batch(c, externalSequenceObservation(t, c, epoch, uint64(i+1), at))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := s.ExternalView().Bindings["vm-resources"]
+	if before.Cursor.Epoch != "boot-b" || len(before.RetiredEpochs) != 1 || before.RetiredEpochs[0] != "boot-a" {
+		t.Fatalf("epoch transition state = %+v", before)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := openTest(t, dir, externalStoreOptions(c, &now))
+	state := reopened.ExternalView().Bindings["vm-resources"]
+	if state.Cursor.Epoch != "boot-b" || len(state.RetiredEpochs) != 1 || state.ReportSamples != 3 {
+		t.Fatalf("restart lost epoch state: %+v", state)
+	}
+	// A later timestamp from the retired epoch still cannot switch current
+	// state after a restart.
+	old := externalSequenceObservation(t, c, "boot-a", 4, now.Add(3*time.Second))
+	if err := reopened.Put(batch(c, old)); err != nil {
+		t.Fatal(err)
+	}
+	after := reopened.ExternalView().Bindings["vm-resources"]
+	if after.Cursor.Epoch != "boot-b" || after.Late != state.Late+1 || after.LastResult != "late" || after.LastCode != "retired_epoch" {
+		t.Fatalf("retired epoch replayed after restart: %+v", after)
+	}
+	if after.ReportSamples != state.ReportSamples || after.Cursor.Hash != state.Cursor.Hash {
+		t.Fatal("retired epoch replay changed accepted report")
+	}
+}

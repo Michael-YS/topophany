@@ -96,26 +96,26 @@ func TestMergeSequenceEpochOrderingAndBasisReset(t *testing.T) {
 	nextEpoch := r
 	nextEpoch.Epoch = "boot-b"
 	nextEpoch.Sequence = seq(1)
-	nextEpoch.ObservedAt = at.Add(time.Minute)
+	nextEpoch.ObservedAt = at.Add(30 * time.Second)
 	nextEpoch.Status = &model.StatusReport{Status: "up"}
-	state, got = report.MergeBinding("check", "contract", b, state, nextEpoch, at.Add(time.Minute))
+	state, got = report.MergeBinding("check", "contract", b, state, nextEpoch, at.Add(30*time.Second))
 	if got.Verdict != report.VerdictNew || state.UpRun != 1 || state.DownRun != 0 {
 		t.Fatalf("new epoch = %+v %+v", got, state)
 	}
 	// A different basis resets runs. The report is still new and accepted.
 	oldBasis := nextEpoch
 	oldBasis.SampleID = "basis-2"
-	oldBasis.ObservedAt = at.Add(2 * time.Minute)
+	oldBasis.ObservedAt = at.Add(time.Minute)
 	oldBasis.Status = &model.StatusReport{Status: "up"}
-	state, got = report.MergeBinding("check", "contract", b, state, oldBasis, at.Add(2*time.Minute))
+	state, got = report.MergeBinding("check", "contract", b, state, oldBasis, at.Add(time.Minute))
 	if got.BasisChanged || state.UpRun != 2 {
 		t.Fatalf("first basis = %+v %+v", got, state)
 	}
 	state.Basis = "manual-old"
 	changed := oldBasis
 	changed.SampleID = "basis-3"
-	changed.ObservedAt = at.Add(3 * time.Minute)
-	state, got = report.MergeBinding("check", "contract", b, state, changed, at.Add(3*time.Minute))
+	changed.ObservedAt = at.Add(90 * time.Second)
+	state, got = report.MergeBinding("check", "contract", b, state, changed, at.Add(90*time.Second))
 	if !got.BasisChanged || state.UpRun != 1 {
 		t.Fatalf("basis reset = %+v %+v", got, state)
 	}
@@ -293,5 +293,146 @@ func TestMergeRejectedVerdictsPreserveAcceptedState(t *testing.T) {
 	}
 	if after.PolicyRun != 1 || after.PolicyConfirmed || after.ResourceSamples != 3 || after.ReportSamples != 3 {
 		t.Fatalf("basis reset did not re-count the first new sample: %+v", after)
+	}
+}
+
+func statusSample(epoch string, sequence uint64, status string, at time.Time) model.ExternalReport {
+	seq := sequence
+	return model.ExternalReport{
+		ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "svc", Epoch: epoch, Sequence: &seq, ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample},
+		Status:     &model.StatusReport{Status: status},
+	}
+}
+
+func TestMergeNewEpochResetsFailureAndRecoveryConfirmation(t *testing.T) {
+	b := model.ExternalBinding{Source: "source", Object: "svc", Report: model.ReportTypeStatus, MaxAgeSeconds: 60}
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	state := model.BindingState{FailureThreshold: 2, RecoveryThreshold: 2}
+
+	// A down -> confirmed down under epoch A.
+	for i, offset := range []time.Duration{0, 10 * time.Second} {
+		state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", uint64(i+1), "down", at.Add(offset)), at.Add(offset))
+	}
+	if !state.ConfirmedDown || state.DownRun != 2 {
+		t.Fatalf("epoch A did not confirm: %+v", state)
+	}
+	// The same outcome in a new epoch must not inherit the old run.
+	newEpoch := statusSample("boot-b", 1, "down", at.Add(20*time.Second))
+	state, got := report.MergeBinding("check", "contract", b, state, newEpoch, at.Add(20*time.Second))
+	if got.Verdict != report.VerdictNew || state.DownRun != 1 || state.ConfirmedDown {
+		t.Fatalf("new epoch inherited failure confirmation: %+v %+v", got, state)
+	}
+	if len(state.RetiredEpochs) != 1 || state.RetiredEpochs[0] != "boot-a" {
+		t.Fatalf("retired epochs = %+v", state.RetiredEpochs)
+	}
+	if state.ReportSamples != 3 || state.StatusDown != 3 {
+		t.Fatalf("historical counts were rewound: %+v", state)
+	}
+	before := model.CloneBindingState(state)
+	old := statusSample("boot-a", 3, "down", at.Add(30*time.Second))
+	after, got := report.MergeBinding("check", "contract", b, state, old, at.Add(30*time.Second))
+	if got.Verdict != report.VerdictLate || got.Code != "retired_epoch" {
+		t.Fatalf("old epoch was not refused: %+v", got)
+	}
+	if !reflect.DeepEqual(acceptedState(after), acceptedState(before)) {
+		t.Fatal("old epoch replay changed accepted state")
+	}
+	// An up in the new epoch starts its own recovery count.
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-b", 2, "up", at.Add(40*time.Second)), at.Add(40*time.Second))
+	if state.UpRun != 1 || state.ConfirmedDown {
+		t.Fatalf("new epoch inherited recovery confirmation: %+v", state)
+	}
+
+	// A fresh recovery lifecycle: confirmed down, one up under epoch C.
+	state = model.BindingState{FailureThreshold: 2, RecoveryThreshold: 2}
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-c", 1, "down", at), at)
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-c", 2, "down", at.Add(10*time.Second)), at.Add(10*time.Second))
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-c", 3, "up", at.Add(20*time.Second)), at.Add(20*time.Second))
+	if !state.ConfirmedDown || state.UpRun != 1 {
+		t.Fatalf("recovery setup = %+v", state)
+	}
+	state, got = report.MergeBinding("check", "contract", b, state, statusSample("boot-d", 1, "up", at.Add(30*time.Second)), at.Add(30*time.Second))
+	if got.Verdict != report.VerdictNew || state.UpRun != 1 || state.ConfirmedDown {
+		t.Fatalf("new epoch inherited a recovery run: %+v %+v", got, state)
+	}
+}
+
+func TestMergeEvidenceGapRestartsConfirmationWithoutFakeRecovery(t *testing.T) {
+	b := model.ExternalBinding{Source: "source", Object: "svc", Report: model.ReportTypeStatus, MaxAgeSeconds: 60}
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	state := model.BindingState{FailureThreshold: 2, RecoveryThreshold: 2}
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 1, "down", at), at)
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 2, "down", at.Add(2*time.Minute)), at.Add(2*time.Minute))
+	if state.DownRun != 1 || state.ConfirmedDown {
+		t.Fatalf("hour-gap failure counted as consecutive: %+v", state)
+	}
+	if state.ReportSamples != 2 || state.StatusDown != 2 {
+		t.Fatalf("historical counts after gap = %+v", state)
+	}
+
+	// Exactly at the exclusive data deadline is already a gap.
+	state = model.BindingState{FailureThreshold: 2}
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 1, "down", at), at)
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 2, "down", at.Add(60*time.Second)), at.Add(60*time.Second))
+	if state.DownRun != 1 || state.ConfirmedDown {
+		t.Fatalf("deadline boundary counted as continuous: %+v", state)
+	}
+	// Just inside the window remains continuous.
+	state = model.BindingState{FailureThreshold: 2}
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 1, "down", at), at)
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 2, "down", at.Add(59*time.Second)), at.Add(59*time.Second))
+	if state.DownRun != 2 || !state.ConfirmedDown {
+		t.Fatalf("continuous sample was split: %+v", state)
+	}
+
+	// A confirmed outage stays confirmed across a gap until recovery is
+	// itself confirmed from new reports; one up sample cannot fake it.
+	state = model.BindingState{FailureThreshold: 2, RecoveryThreshold: 2}
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 1, "down", at), at)
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 2, "down", at.Add(10*time.Second)), at.Add(10*time.Second))
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 3, "up", at.Add(20*time.Second)), at.Add(20*time.Second))
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 4, "up", at.Add(3*time.Minute)), at.Add(3*time.Minute))
+	if !state.ConfirmedDown || state.UpRun != 1 {
+		t.Fatalf("gap forged recovery: %+v", state)
+	}
+	state, _ = report.MergeBinding("check", "contract", b, state, statusSample("boot-a", 5, "up", at.Add(3*time.Minute+10*time.Second)), at.Add(3*time.Minute+10*time.Second))
+	if state.ConfirmedDown || state.UpRun != 2 {
+		t.Fatalf("confirmed recovery did not complete: %+v", state)
+	}
+}
+
+func TestMergePolicyGapAndEpochLifecycle(t *testing.T) {
+	b := model.ExternalBinding{Source: "source", Object: "vm/one", Report: model.ReportTypeResource, MaxAgeSeconds: 60, Assertions: &model.ResourceAssertions{CPUPercentMax: f(80)}}
+	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	cpu := 90.0
+	reportAt := func(epoch string, seq uint64, at time.Time) model.ExternalReport {
+		n := seq
+		return model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/one", Epoch: epoch, Sequence: &n, ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &cpu, Basis: "original"}}}
+	}
+	state := model.BindingState{PolicyThreshold: 2}
+	state, _ = report.MergeBinding("check", "contract", b, state, reportAt("boot-a", 1, at), at)
+	state, _ = report.MergeBinding("check", "contract", b, state, reportAt("boot-a", 2, at.Add(10*time.Second)), at.Add(10*time.Second))
+	if !state.PolicyConfirmed || state.PolicyRun != 2 {
+		t.Fatalf("policy did not confirm: %+v", state)
+	}
+	state, got := report.MergeBinding("check", "contract", b, state, reportAt("boot-b", 1, at.Add(20*time.Second)), at.Add(20*time.Second))
+	if got.Verdict != report.VerdictNew || state.PolicyRun != 1 || state.PolicyConfirmed {
+		t.Fatalf("new epoch inherited policy confirmation: %+v %+v", got, state)
+	}
+	if state.PolicyViolations != 3 {
+		t.Fatalf("policy history was rewound: %+v", state)
+	}
+	old := reportAt("boot-a", 3, at.Add(30*time.Second))
+	before := model.CloneBindingState(state)
+	after, got := report.MergeBinding("check", "contract", b, state, old, at.Add(30*time.Second))
+	if got.Verdict != report.VerdictLate || got.Code != "retired_epoch" || !reflect.DeepEqual(acceptedState(after), acceptedState(before)) {
+		t.Fatalf("old policy epoch = %+v; accepted state changed", got)
+	}
+
+	state = model.BindingState{PolicyThreshold: 2}
+	state, _ = report.MergeBinding("check", "contract", b, state, reportAt("boot-a", 1, at), at)
+	state, _ = report.MergeBinding("check", "contract", b, state, reportAt("boot-a", 2, at.Add(2*time.Minute)), at.Add(2*time.Minute))
+	if state.PolicyRun != 1 || state.PolicyConfirmed {
+		t.Fatalf("policy gap counted as continuous: %+v", state)
 	}
 }

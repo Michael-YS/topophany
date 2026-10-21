@@ -29,6 +29,7 @@ const (
 	MaxReportBytes     = 64 << 10
 	MaxSourceTarget    = 2048
 	MaxSourceReportIDs = 256
+	MaxRetiredEpochs   = 8
 )
 
 // Source is one external instance read from one observer. It owns the
