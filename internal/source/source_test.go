@@ -218,3 +218,23 @@ func TestRuntimeRejectsAmbiguousReportRequestsAndResults(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeAllowsIndependentIdentityAndTimePerReportType(t *testing.T) {
+	c := sourceConfig()
+	src, _ := config.Source(c, "probe-api")
+	resource := resourceReading("svc")
+	status := statusReading("svc")
+	status.Report.SampleID = "status-only"
+	resource.Report.SampleID = "resource-only"
+	resource.Report.ObservedAt = testTime().Add(-time.Minute)
+	status.Report.ObservedAt = testTime()
+	a := &fakeAdapter{readings: []source.Reading{resource, status}}
+	rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return &fakeIO{}, nil }}
+	readings, err := rt.Collect(context.Background(), c, src, []source.Request{{Object: "svc", Reports: []string{model.ReportTypeResource, model.ReportTypeStatus}}})
+	if err != nil || len(readings) != 2 {
+		t.Fatalf("dual readings = %+v %v", readings, err)
+	}
+	if readings[0].Report.SampleID == readings[1].Report.SampleID || readings[0].Report.ObservedAt.Equal(readings[1].Report.ObservedAt) {
+		t.Fatal("runtime forced one identity or time across report types")
+	}
+}

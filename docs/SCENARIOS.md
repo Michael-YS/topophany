@@ -358,3 +358,43 @@ local Swift build could not run because the pre-existing `xcstringstool`
 helper is not executable, so compatibility is based on its explicit decoder
 keys, `resources.first` use and per-resource `valid_until` policy plus the
 Topophany-side JSON tests.
+
+## Multi-probe hardening (2026-10-21)
+
+These are the review's ten reproduced failures plus the documentation check.
+Each row names the repository regression that now runs without `/tmp`
+fixtures. The store downgrade test builds the actual `74db358` reader from git
+into a temporary directory when the full history is available; otherwise it
+skips with that reason instead of passing a guessed format.
+
+| Scenario and Invariant | Automated Test Evidence |
+|---|---|
+| A status report cannot carry resource/disk field statuses and a resource report cannot carry status fields; empty, double, unknown, illegal and empty-nested payloads are refused without panic; bounded fuzzed input re-normalizes idempotently | `TestNormalizeFieldStatusIsPayloadSpecific`, `TestNormalizeMalformedPayloadsDoNotPanic`, `FuzzNormalize`, `TestRuntimeRejectsForeignPayloadFieldWithoutPanic`, `TestClientRejectsForeignPayloadFieldInExternalSnapshotWithoutPanic`, `TestExternalAdmissionRejectsForgedEvidenceAndSchema/foreign_status_field` |
+| The API and a direct local collector share one live admission decision for envelope time, attempt time, report time and live-read relations; a rejected report leaves cursor, deadline, Seen and diagnostics unchanged; journal replay is not judged against a later clock | `TestExternalAdmissionTimeRelations`, `TestExternalAdmissionAcceptsLiveReportAndOwnsIt`, `TestLocalCollectorRejectsFutureReportWithoutMovingCursor`, `TestExternalJournalReplayIsNotRejectedByLaterLiveClock`, `TestAPIAndLocalAdmissionAgreeOnExternalTimeBounds` |
+| The production collector installs bindings, sources, contracts and thresholds before `Store.Open`; an uncheckpointed external journal restarts through the real `serve` path; removed bindings and changed contracts do not block startup or enter current state | `TestServeRecoversExternalJournalBeforeAPIInstallsContext`, `TestRecoverySkipsRemovedBindingAndChangedContract` |
+| No external record is acknowledged before a schema 2 checkpoint is durable; a real `74db358` reader refuses the directory after the first external write, after checkpoint, and after source removal; native-only data stays schema 1; a failed/interrupted barrier is retried without ACK | `TestOldBinaryRefusesNewExternalData`, `TestExternalFormatBarrierFailureLeavesNoAck`, `TestLegacyExternalJournalUpgradesBeforeNextAck`, `TestExternalJournalSyncFailureLeavesNoCursor` |
+| Duplicate, conflict, late and unusable reports change only diagnostics; conflict with a different basis cannot clear confirmed policy; only a new valid basis report resets runs and counts its first sample | `TestMergeRejectedVerdictsPreserveAcceptedState`, `TestMergeStatusConfirmationOnlyFromNewValidReports`, `TestMergeDuplicateReplayIsIdempotent` |
+| A newly accepted epoch resets down/up/policy runs and confirmations before counting its first report; evidence older than the exclusive data deadline restarts runs without faking recovery; retired epochs cannot switch state back, including after restart | `TestMergeNewEpochResetsFailureAndRecoveryConfirmation`, `TestMergeEvidenceGapRestartsConfirmationWithoutFakeRecovery`, `TestMergePolicyGapAndEpochLifecycle`, `TestExternalEpochAndRetiredEpochSurviveRestart` |
+| The external private contract contains the resolved ordered proxy chain and route/TLS fields; path rename or presentation metadata does not reset it; public contracts are recomputed from the redacted topology; route reload invalidates old snapshots and refuses old outbox batches | `TestExternalContractIncludesResolvedRoute`, `TestExternalPublicContractUsesRedactedRouteOnly`, `TestExternalStateResetsWhenOnlyTheSourceRouteChanges`, `TestRouteReloadInvalidatesOldExternalSnapshotsAndOutbox`, `TestRouteReloadRejectsAnOldExternalOutboxBatch` |
+| Source requests and results are keyed by object and report type; one object can supply resource and status in one read; duplicate report type, unexpected type, missing type and unsupported type are explicit; 100 bindings still share one read | `TestRuntimeCollectsResourceAndStatusForOneObject`, `TestRuntimeRejectsAmbiguousReportRequestsAndResults`, `TestSourceSameObjectResourceAndStatusShareOneRead`, `TestSourceMissingReportTypeIsAnAttemptNotAnEntityOrOutage`, `TestSameObjectResourceAndStatusReportsCoexist` |
+| A returned snapshot owns every mutable report member: CPU, memory, disks, field status, sequence and report pointer; mutating a snapshot cannot change the prepared cache, persisted state or a heartbeat-refreshed build; concurrent builds and mutations are race-free | `TestExternalSnapshotOwnsEveryMutableReportMember`, `TestExternalSnapshotBuildConcurrentMutation` |
+| A native `Store.Put` does not visit, clone or serialize external state; an external transaction clones only affected source/binding values and accounts encoded bytes incrementally; one source among several cannot consume the whole budget | `TestNativePutDoesNotCloneExternalState`, `TestExternalMergeClonesOnlyAffectedState`, `TestExternalSourceShareCannotConsumeTheWholeBudget` |
+| One resource selection serves every scalar `resource.*` row and `server.card` in a frame with the same snapshot and clock; 512 nodes with 128 rows stays far below the review's 261 MB frame and the 16 MiB initial allocation target | `TestResourcePanel128RowsAllocationBudget`, `TestResourceScalarAndServerCardUseTheSameFrameSelection`, `BenchmarkResourcePanel512` |
+
+Measured on the delivery machine (Apple M6, Go 1.26.10, darwin/arm64) with
+`-benchmem -count=1`:
+
+- `BenchmarkNativeStorePutWithExternalState` at 0/128/512 bindings with 64
+  Seen IDs each: 2.99/2.72/2.82 ms/op, 6,832/6,847/6,935 B/op and 31/32/32
+  allocs/op. The review measured 5.35 MB in the external merge step alone at
+  512 bindings; the complete native Put is now about 6.9 KB and does not grow
+  with Seen.
+- `BenchmarkExternalMergeAffectedBinding` at 1/128/512 bindings:
+  23/44/76 µs/op and 18/107/375 KB/op. The remaining growth is the top-level
+  map copy, not a clone of every binding's Seen slice.
+- `BenchmarkResourcePanel512` with 512 nodes and 1/32/128 rows:
+  0.69/0.76/0.89 ms/op and 1.64/2.03/3.22 MB/op. The review measured
+  95 ms and 261 MB for 128 rows.
+
+These are local comparative measurements, not portable latency or RSS
+guarantees; B/op is allocation volume, not resident memory.

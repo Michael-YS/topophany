@@ -436,3 +436,26 @@ func TestMergePolicyGapAndEpochLifecycle(t *testing.T) {
 		t.Fatalf("policy gap counted as continuous: %+v", state)
 	}
 }
+
+func TestMergeDuplicateReplayIsIdempotent(t *testing.T) {
+	b, state, r, at := mergeFixture()
+	state, _ = report.MergeBinding("check", "contract", b, state, r, at)
+	before := acceptedState(state)
+	basis, cursor, last := state.Basis, state.Cursor, state.Last
+	for i := 0; i < 50; i++ {
+		next, result := report.MergeBinding("check", "contract", b, state, r, at.Add(time.Duration(i+1)*time.Second))
+		if result.Verdict != report.VerdictDuplicate {
+			t.Fatalf("replay %d verdict = %+v", i, result)
+		}
+		state = next
+	}
+	if !reflect.DeepEqual(acceptedState(state), before) {
+		t.Fatalf("duplicate replay changed accepted state:\nbefore=%+v\nafter=%+v", before, state)
+	}
+	if state.Basis != basis || !reflect.DeepEqual(state.Cursor, cursor) || !reflect.DeepEqual(state.Last, last) {
+		t.Fatal("duplicate replay changed basis, cursor or last report")
+	}
+	if state.Duplicates != 50 || state.ReportSamples != 1 {
+		t.Fatalf("duplicate diagnostics = %+v", state)
+	}
+}

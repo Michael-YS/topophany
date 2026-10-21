@@ -1,6 +1,7 @@
 package store
 
 import (
+	"maps"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
@@ -52,21 +53,10 @@ func ContextFromConfig(c model.Config) TopologyContext {
 func (o Options) WithTopology(c model.Config) Options {
 	ctx := ContextFromConfig(c)
 	o.Revision = ctx.Revision
-	o.Contracts = mapsClone(ctx.Contracts)
-	o.Stale = mapsClone(ctx.Stale)
+	o.Contracts = maps.Clone(ctx.Contracts)
+	o.Stale = maps.Clone(ctx.Stale)
 	o.Bindings = ctx.Bindings
 	o.Sources = ctx.Sources
 	o.ExternalRules = ctx.ExternalRules
 	return o
-}
-
-func mapsClone[V any](m map[string]V) map[string]V {
-	if m == nil {
-		return nil
-	}
-	out := make(map[string]V, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
 }
