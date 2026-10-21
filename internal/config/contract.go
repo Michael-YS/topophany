@@ -45,18 +45,43 @@ func Contract(c model.Config, x model.Check) string {
 }
 
 func measurement(project string, x model.Check, target string, proxies []model.Proxy) string {
+	httpOpt, dnsOpt, adapter, host := measuredOptions(x)
+	b, _ := json.Marshal(contract{Schema: 2, Project: project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: target, Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: httpOpt, DNS: dnsOpt, Adapter: adapter, Host: host, Proxies: proxies})
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
+// measuredOptions keeps the option blocks the kind actually executes.
+// Defaults fills every check with an HTTP method and a DNS type; leaving
+// those in the hash would drop a TCP check's history when someone later set
+// expected_pops, which this probe never reads.
+func measuredOptions(x model.Check) (model.HTTPOptions, model.DNSOptions, model.AdapterOptions, *model.HostOptions) {
+	var httpOpt model.HTTPOptions
+	var dnsOpt model.DNSOptions
+	var adapter model.AdapterOptions
+	var host *model.HostOptions
+	switch x.Kind {
+	case "http":
+		httpOpt = x.HTTP
+	case "mihomo":
+		httpOpt = x.HTTP
+		adapter = x.Adapter
+	case "dns":
+		dnsOpt = x.DNS
+	case "tailscale", "wireguard", "cloudflared", "cloudflare":
+		adapter = x.Adapter
+	case "host":
+		host = x.Host
+	}
 	// Settle is a confirmation threshold, not a measurement: it says when a
 	// difference may be treated as confirmed, like failure_threshold, and
 	// must not reset the history it only delays.
-	adapter := x.Adapter
 	if ref := adapter.ProviderReference; ref != nil {
 		settled := *ref
 		settled.SettleSeconds = nil
 		adapter.ProviderReference = &settled
 	}
-	b, _ := json.Marshal(contract{Schema: 2, Project: project, Check: x.ID, Observer: x.Observer, Kind: x.Kind, Target: target, Timeout: x.TimeoutSeconds, BindIP: x.BindIP, Resolve: x.ResolveIP, Server: x.ServerName, CAFile: x.CAFile, HTTP: x.HTTP, DNS: x.DNS, Adapter: adapter, Host: x.Host, Proxies: proxies})
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	return httpOpt, dnsOpt, adapter, host
 }
 
 // Contracts are the contracts of every check in c, by check ID.

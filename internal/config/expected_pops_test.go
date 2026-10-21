@@ -85,6 +85,28 @@ func TestExpectedPopsContractAndDefaultJSON(t *testing.T) {
 	if declared.Checks[0].HTTP.ExpectedPops[0] != "HKG" {
 		t.Fatal("clone shares the expected pops")
 	}
+
+	tcp := testkit.Config()
+	x := tcp.Checks[0]
+	x.ID = "home-tcp"
+	x.Kind = "tcp"
+	x.Endpoint = "dmit-ssh"
+	x.Target = ""
+	x.HTTP = model.HTTPOptions{}
+	tcp.Checks = append(tcp.Checks, x)
+	config.Defaults(&tcp)
+	if err := config.Validate(tcp); err != nil {
+		t.Fatal(err)
+	}
+	i := len(tcp.Checks) - 1
+	beforeTCP := config.Contract(tcp, tcp.Checks[i])
+	tcp.Checks[i].HTTP.ExpectedPops = []string{"HKG"}
+	if err := config.Validate(tcp); err != nil {
+		t.Fatal("tcp check with expected_pops", err)
+	}
+	if got := config.Contract(tcp, tcp.Checks[i]); got != beforeTCP {
+		t.Fatal("expected_pops on a tcp check changed its contract")
+	}
 }
 
 // Every topology shipped in examples/ except the Cloudflare worked example was
