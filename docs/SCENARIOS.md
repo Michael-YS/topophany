@@ -22,7 +22,7 @@ This document lists the finite, verifiable scenario contracts for version 1.4.1,
 | Stale host readings lose only their numbers; typed and JSON readers retain card identity and sample times, while nested observer evidence expires independently | `TestServerResourceExpiryPreservesCard`, `TestServerObserverEvidenceExpiresIndependently` |
 | Scoped file and attached feeds retain known observer judgments and heartbeat liveness without inventing unprovided verdicts | `TestScopedPanelPreservesKnownObserverEvidence`, `TestMonitorScopedClientPublishesObserverVerdicts` |
 | Every callback owns its limits and nested evidence without changing the running request | `TestStreamCallbackOwnsEveryFrame` |
-| A replacement's real collector project guard keeps the old stream running, including when the complete observer snapshot is foreign; pending preparation keeps publishing and joins on cancellation | `TestForeignCollectorReplacementKeepsPreviousRequest`, `TestPendingReplacementKeepsPublishingAndJoinsOnCancel` |
+| A replacement's real collector project guard keeps the old stream running, including when the complete observer snapshot is foreign; pending preparation keeps publishing and joins on cancellation, and a first read that exceeds its five-second budget commits unavailable evidence rather than a partial result | `TestForeignCollectorReplacementKeepsPreviousRequest`, `TestPendingReplacementKeepsPublishingAndJoinsOnCancel`, `TestPreparationBudgetCommitsUnavailable` |
 | JSON escaping cannot turn an invalid request into a fatal oversized error frame; subsequent requests and orderly EOF still work | `TestInvalidRequestCannotOverflowErrorFrame`, `TestMonitorStreamProtocol/escaped_invalid_request_cannot_end_stream` |
 | Summary liveness changes bypass cadence; shared card state matches topology rows, and golden normalization preserves sample-to-deadline intervals | `TestSummaryLivenessBypassesCadence`, `TestCardNodeStateMatchesTopology`, `TestGoldenNormalizationPreservesDeadlines`; `BenchmarkServerPanels` measures large-panel allocation and runtime |
 | Streaming requests replace atomically; rejected requests keep the active configuration, oversized lines recover, EOF and signals stop with no values, and a closed stdout exits 0 | `TestMonitorStreamProtocol`, `TestStreamReplacementErrorsAndCancellation`, `TestAllErrorsLeaveRunningRequest`, `TestRequestLineBoundsAndRecovery`, `TestFrameBoundWriteAndFlush` |
@@ -490,4 +490,5 @@ cooldown across credential readers; `TestReconfigureNeverOverlapsSourcePoll` che
 one source's cancellation gate across execution generations;
 `TestRetryReplayHistoryIsBoundedAndIdempotent` retains replay identities within an
 explicit nonce budget; `TestPrivateCredentialPermissionsAndInvisibleSelection`
-checks credential file permissions and a well-shaped inaccessible selection.
+checks credential file permissions, malformed credential storage and a
+well-shaped inaccessible selection.

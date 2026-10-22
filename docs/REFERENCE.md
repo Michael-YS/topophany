@@ -563,7 +563,9 @@ and publishes immediately, with a new `config_revision` and the echoed
 `request_id`. A client starts with unavailable rows while its first collector
 read is pending. A replacement client source checks its first read within a
 five-second budget while the previous request continues publishing; only then
-is the replacement committed. A foreign-project response rejects the candidate.
+is the replacement committed. If that read does not finish within the budget,
+the replacement is committed with unavailable rows, never with a partial
+result. A foreign-project response rejects the candidate.
 An invalid request publishes an `error` frame with no rows and
 keeps the previous request running. Error codes are `invalid_request`,
 `unsupported_protocol`, `credentials_unavailable`, `profile_not_found` and

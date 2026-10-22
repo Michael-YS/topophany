@@ -197,7 +197,9 @@ func TestPendingReplacementKeepsPublishingAndJoinsOnCancel(t *testing.T) {
 		return s, e
 	}
 	continued := false
-	err := Run(ctx, lines, open, func(p monitor.Panel) error {
+	// Disable the internal budget: this test drives cancellation itself, so a
+	// loaded runner must not turn the intended cancel into a preparation timeout.
+	err := runClock(ctx, lines, open, func(p monitor.Panel) error {
 		if p.Lifecycle == "running" && preparing.Load() {
 			continued = true
 			cancel()
@@ -206,9 +208,64 @@ func TestPendingReplacementKeepsPublishingAndJoinsOnCancel(t *testing.T) {
 			t.Error("unprepared candidate committed")
 		}
 		return nil
-	})
+	}, time.Now, 0)
 	if err != nil || !continued || !joined.Load() || !closed.Load() {
 		t.Fatal(err, continued, joined.Load(), closed.Load())
+	}
+}
+
+func TestPreparationBudgetCommitsUnavailable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	lines := make(chan Line, 2)
+	lines <- line(request())
+	r := request()
+	r.RequestID = "pending"
+	lines <- line(r)
+	c := testkit.Config()
+	var closed atomic.Bool
+	var oldRunning bool
+	var pending monitor.Panel
+	open := func(ctx context.Context, r Request) (Source, *Error) {
+		if r.RequestID == "pending" {
+			return Source{
+				Project: c.Project,
+				Prepare: func(ctx context.Context) (monitor.Input, *Error) {
+					<-ctx.Done()
+					// A partial result must not become committed evidence.
+					return monitor.Input{}, nil
+				},
+				Fetch: func(ctx context.Context) (monitor.Input, error) {
+					<-ctx.Done()
+					return monitor.Input{}, ctx.Err()
+				},
+				Close: func() { closed.Store(true) },
+			}, nil
+		}
+		return Source{
+			Project: c.Project,
+			Initial: monitor.Input{Snapshot: engine.Build(c, "fixture", "", nil, nil, time.Now())},
+			Fetch: func(ctx context.Context) (monitor.Input, error) {
+				<-ctx.Done()
+				return monitor.Input{}, ctx.Err()
+			},
+		}, nil
+	}
+	err := runClock(ctx, lines, open, func(p monitor.Panel) error {
+		if p.RequestID == "one" && p.Lifecycle == "running" {
+			oldRunning = true
+		}
+		if p.RequestID == "pending" && p.Lifecycle == "running" {
+			pending = p
+			cancel()
+		}
+		return nil
+	}, time.Now, 25*time.Millisecond)
+	if err != nil || !oldRunning || !closed.Load() {
+		t.Fatal(err, oldRunning, closed.Load())
+	}
+	if len(pending.Rows) != 1 || pending.Rows[0].Reason != "source_unavailable" {
+		t.Fatalf("budget-expired candidate committed partial input: %+v", pending.Rows)
 	}
 }
 

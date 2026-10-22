@@ -17,7 +17,9 @@ type Source struct {
 	Errors  <-chan *Error
 	Initial monitor.Input
 	// Prepare validates a replacement's first read before the active source is
-	// released. The first request still emits Initial immediately.
+	// released. The first request still emits Initial immediately. A result
+	// returned only because its context expired is treated as unavailable
+	// evidence, not as a validated input.
 	Prepare func(context.Context) (monitor.Input, *Error)
 	Fetch   monitor.Fetch
 	Close   func()
@@ -29,11 +31,18 @@ type Emit func(monitor.Panel) error
 // a request cancels and joins its runtime before publishing the new revision.
 // A rejected line never changes the running source or its cadence.
 func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
-	return RunClock(ctx, lines, open, emit, time.Now)
+	return runClock(ctx, lines, open, emit, time.Now, prepareBudget)
 }
 
 // RunClock uses one evaluation/publication clock for embedding tests.
 func RunClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now func() time.Time) error {
+	return runClock(ctx, lines, open, emit, now, prepareBudget)
+}
+
+// runClock also exposes the replacement preparation budget to embedding
+// tests. A non-positive budget disables the internal deadline; the caller's
+// context still bounds preparation.
+func runClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now func() time.Time, budget time.Duration) error {
 	if now == nil {
 		now = time.Now
 	}
@@ -129,7 +138,7 @@ func RunClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now 
 			}
 			if source.Prepare != nil && cancel != nil {
 				var outputErr error
-				source.Initial, e, outputErr = prepareReplacement(ctx, source, frames, &sourceErrors, publish, func(e *Error) error { return reject(active.RequestID, e) })
+				source.Initial, e, outputErr = prepareReplacement(ctx, source, frames, &sourceErrors, publish, func(e *Error) error { return reject(active.RequestID, e) }, budget)
 				if e != nil || ctx.Err() != nil || outputErr != nil {
 					if source.Close != nil {
 						source.Close()

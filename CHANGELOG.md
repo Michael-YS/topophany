@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicitly on a schema 2 reader. The on-disk checkpoint becomes schema 2 once
   external state exists; an older binary refuses it instead of ignoring state.
 
+### Fixed
+
+- Commit a stream replacement whose first read exceeds the five-second
+  preparation budget as unavailable evidence instead of trusting a partial
+  result. Keep the direct credential-storage test portable to Windows, where
+  POSIX permission bits are not enforced.
+
 ## [1.4.1] - 2026-10-21
 
 This patch reduces collector and worker CPU, memory, snapshot traffic and disk

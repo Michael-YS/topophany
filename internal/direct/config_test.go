@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -564,7 +565,20 @@ func TestPrivateCredentialPermissionsAndInvisibleSelection(t *testing.T) {
 		t.Fatal(e)
 	}
 	path := filepath.Join(st.Root, "credential-"+p.Sources[0].Credential+".json")
-	if e := os.Chmod(path, 0644); e != nil {
+	if runtime.GOOS != "windows" {
+		if e := os.Chmod(path, 0644); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := st.Token(context.Background(), p.Profile, p.Sources[0], time.Now()); AsError(e).Code != "credential_storage_error" {
+			t.Fatal(e)
+		}
+	}
+	// Windows does not enforce POSIX permission bits, so exercise the storage
+	// failure with malformed content that every platform rejects.
+	if e := os.Chmod(path, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(path, []byte("{"), 0600); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := st.Token(context.Background(), p.Profile, p.Sources[0], time.Now()); AsError(e).Code != "credential_storage_error" {
