@@ -1,0 +1,13 @@
+{
+  "connection": "Beszel direct",
+  "loading": "LOADING RESOURCE DATA",
+  "ready": "RESOURCE DATA CURRENT",
+  "partial": "RESOURCE DATA PARTIAL",
+  "no_data": "NO RESOURCE DATA",
+  "unavailable": "RESOURCE DATA UNAVAILABLE",
+  "scope": "Resource telemetry does not establish application or network reachability.",
+  "history": "History is not supported in direct mode.",
+  "opening": "Opening direct resource snapshot",
+  "counts": "resource samples current",
+  "source_label": "Source"
+}

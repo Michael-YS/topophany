@@ -271,6 +271,9 @@ type Verdict struct {
 }
 
 func (v View) Verdict() Verdict {
+	if v.Snapshot.Direct != nil && !v.Draft && !v.Cached {
+		return v.directVerdict()
+	}
 	c := v.Counts()
 	inc := len(v.Snapshot.Incidents)
 	switch {
@@ -300,6 +303,10 @@ func (v View) Verdict() Verdict {
 // Calm is what the Overview says when nothing needs attention, and why:
 // a state (draft, cached, no-checks or clear), a headline and a line more.
 func (v View) Calm() (state, headline, more string) {
+	if v.Snapshot.Direct != nil && !v.Draft && !v.Cached {
+		verdict := v.directVerdict()
+		return verdict.State, verdict.Glyph + " " + verdict.Text, DirectText("scope")
+	}
 	switch {
 	case v.Draft:
 		return "draft", "◇ Local draft", "The editor has no live evidence; preview it with topo preview --config."

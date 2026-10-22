@@ -212,3 +212,15 @@ make site                    # re-record the homepage's TUI replays and rewrite 
 ## 许可证
 
 [MIT](LICENSE)
+
+### 无需 collector 的 Beszel direct
+
+`topo --source direct --profile desktop` 在当前进程中读取 Beszel Hub 的 CPU、
+内存与主磁盘；`--json`、`status`、`show` 和 `monitor configure/run` 使用相同
+profile。用 `topo sources inspect|save|remove --json-stdin` 配置，
+`topo sources list --json` 列出 direct profile，与 collector 连接独立。
+默认采集 60 秒、展示 5 秒、数据有效期 180 秒；没有后台服务、指标数据库或历史
+查询，不将资源数据完整误称为网络健康。一次性读取默认最多等待 15 秒，可用
+`--wait` 修改；`history --source direct` 明确返回不支持。支持范围为已验证的
+Beszel v0.21.0 资源格式及已记录的 mem 扩展，不承诺任意版本兼容或完整 MFA/SSO。
+参见 [配置与限制](docs/DIRECT.md) 和 [D1 规范包](docs/contracts/direct-v1/contract.md)。

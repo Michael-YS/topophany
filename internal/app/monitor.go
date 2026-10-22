@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/client"
+	"github.com/WhitenWhiten/topophany/internal/direct"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -22,7 +23,7 @@ func (a *App) monitor(ctx context.Context, args []string) error {
 		return a.monitorStream(ctx, args[1:])
 	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help" || args[0] == "-h") {
-		_, e := fmt.Fprintln(a.Out, "topo monitor configure|run|show|path|preview|export NAME [--monitor-dir DIR]\ntopo monitor metrics\ntopo monitor stream [--capabilities | --profiles [--credentials PATH]]\nStream accepts requests on stdin and writes frames on stdout; client or credential-free preview.\nConfigure imports a template; run starts a client panel; preview reads the current output. Changes apply after restart.")
+		_, e := fmt.Fprintln(a.Out, "topo monitor configure|run|show|path|preview|export NAME [--monitor-dir DIR]\ntopo monitor metrics\ntopo monitor stream [--capabilities | --profiles [--credentials PATH]]\nStream accepts requests on stdin and writes frames on stdout; client, direct or credential-free preview.\nConfigure imports a template; run starts a client or direct panel; preview reads the current output. Changes apply after restart.")
 		return e
 	}
 	if len(args) == 1 && args[0] == "metrics" {
@@ -37,6 +38,7 @@ func (a *App) monitor(ctx context.Context, args []string) error {
 	}
 	f := a.flags("monitor " + action)
 	root := f.String("monitor-dir", "", "explicit monitor configuration root (also for service accounts)")
+	directRoot := f.String("direct-root", "", "absolute private direct configuration root")
 	if e := parsed(f, args[2:]); e != nil {
 		return e
 	}
@@ -83,11 +85,17 @@ func (a *App) monitor(ctx context.Context, args []string) error {
 			RequiresRestart bool           `json:"requires_restart"`
 		}{c, path, runningRevision, state, state == "running" && p.ConfigRevision != c.Revision})
 	case "run":
-		if c.Source != "client" {
-			return errors.New("monitor run requires source client; attach collector/worker panels to their process")
+		if c.Source != "client" && c.Source != "direct" {
+			return errors.New("monitor run requires source client or direct; attach collector/worker panels to their process")
 		}
 		if !c.Enabled {
 			return errors.New("monitor disabled; enable it before starting")
+		}
+		if c.Source == "direct" {
+			if *directRoot != "" {
+				c.DirectRoot = *directRoot
+			}
+			return a.runDirectMonitor(ctx, c, path)
 		}
 		cl, e := monitorClient(c)
 		if e != nil {
@@ -135,7 +143,8 @@ func (a *App) configureMonitor(name string, args []string) error {
 	f := a.flags("monitor configure")
 	root := f.String("monitor-dir", "", "explicit monitor configuration root")
 	template := f.String("template", "", "template JSON to import; - reads stdin")
-	source := f.String("source", "client", "client, collector or worker")
+	source := f.String("source", "client", "client, direct, collector or worker")
+	directRoot := f.String("direct-root", "", "absolute private direct configuration root")
 	credentials := f.String("credentials", "", "saved client credential file")
 	profile := f.String("profile", "", "saved client profile (resolved once at configuration)")
 	project := f.String("project", "", "expected project")
@@ -176,6 +185,9 @@ func (a *App) configureMonitor(name string, args []string) error {
 	}
 	set := map[string]bool{}
 	f.Visit(func(v *flag.Flag) { set[v.Name] = true })
+	if set["direct-root"] {
+		c.DirectRoot = *directRoot
+	}
 	if set["source"] {
 		c.Source = *source
 	}
@@ -215,6 +227,8 @@ func (a *App) configureMonitor(name string, args []string) error {
 		if e = secure.Decode(r, &c.Template, monitor.MaxConfigBytes); e != nil {
 			return e
 		}
+	} else if fresh && c.Source == "direct" {
+		c.Template = monitor.DefaultDirectTemplate()
 	} else if fresh {
 		return errors.New("first configuration requires --template FILE or --template -")
 	}
@@ -243,11 +257,37 @@ func (a *App) configureMonitor(name string, args []string) error {
 				return errors.New("monitor profile project mismatch")
 			}
 		}
+	} else if c.Source == "direct" {
+		if set["credentials"] && *credentials != "" {
+			return errors.New("direct monitor does not accept client credentials")
+		}
+		c.Credentials = ""
+		st, err := direct.NewStore(c.DirectRoot)
+		if err != nil {
+			return err
+		}
+		p, err := st.Load(c.Profile)
+		if err != nil {
+			return err
+		}
+		if c.Project != "" && set["project"] && c.Project != p.Project {
+			return errors.New("direct monitor profile project mismatch")
+		}
+		c.Project = p.Project
 	} else {
 		c.Credentials = ""
 		c.Profile = ""
+		c.DirectRoot = ""
 	}
-	c.Output, e = monitor.PrepareOutput(c.Output, c.Name, filepath.Dir(path), c.Credentials)
+	protectedRoot := ""
+	if c.Source == "direct" {
+		st, err := direct.NewStore(c.DirectRoot)
+		if err != nil {
+			return err
+		}
+		protectedRoot = st.Root
+	}
+	c.Output, e = monitor.PrepareOutput(c.Output, c.Name, filepath.Dir(path), c.Credentials, protectedRoot)
 	if e != nil {
 		return e
 	}
@@ -258,7 +298,7 @@ func (a *App) configureMonitor(name string, args []string) error {
 	// writer and is never reset by a configuration update.
 	var out *monitor.Output
 	if _, e = os.Lstat(c.Output); errors.Is(e, os.ErrNotExist) {
-		out, e = monitor.OpenOutput(c.Output, c.Name, filepath.Dir(path), c.Credentials)
+		out, e = monitor.OpenOutput(c.Output, c.Name, filepath.Dir(path), c.Credentials, protectedRoot)
 		if e != nil {
 			return e
 		}
@@ -284,4 +324,41 @@ func (a *App) configureMonitor(name string, args []string) error {
 		Interval   string `json:"interval"`
 		State      string `json:"state"`
 	}{path, "embedded; topo monitor export " + name, c.Output, c.Interval, "saved; restart required for running instances"})
+}
+
+func (a *App) runDirectMonitor(ctx context.Context, c monitor.Config, path string) error {
+	st, e := direct.NewStore(c.DirectRoot)
+	if e != nil {
+		return e
+	}
+	p, e := st.Load(c.Profile)
+	if e != nil {
+		return e
+	}
+	if c.Project != "" && c.Project != p.Project {
+		return errors.New("direct monitor profile project changed")
+	}
+	if c.Observer != "" && c.Observer != direct.Observer {
+		return errors.New("unknown direct observer")
+	}
+	s, e := direct.NewSession(ctx, st, p, direct.Options{Now: a.now})
+	if e != nil {
+		return e
+	}
+	defer s.Close()
+	out, e := monitor.OpenOutput(c.Output, c.Name, filepath.Dir(path), st.Root)
+	if e != nil {
+		return e
+	}
+	defer out.Close()
+	fetch := func(ctx context.Context) (monitor.Input, error) {
+		if e := ctx.Err(); e != nil {
+			return monitor.Input{}, e
+		}
+		snap, e := s.Snapshot(c.Observer, a.now())
+		return monitor.Input{Snapshot: snap}, e
+	}
+	initial := monitor.Input{Snapshot: direct.LoadingSnapshot(p, c.Observer, a.now())}
+	monitor.RunClock(ctx, c, fetch, out, nil, func(s string) { fmt.Fprintln(a.Err, s) }, a.now, initial)
+	return nil
 }

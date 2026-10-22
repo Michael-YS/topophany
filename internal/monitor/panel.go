@@ -25,6 +25,9 @@ type Input struct {
 	Unavailable bool
 }
 type Panel struct {
+	Profile            string      `json:"profile,omitempty"`
+	ProfileRevision    string      `json:"profile_revision,omitempty"`
+	DatasetID          string      `json:"dataset_id,omitempty"`
 	RequestID          string      `json:"request_id"`
 	Error              *FrameError `json:"error,omitempty"`
 	Schema             int         `json:"schema"`
@@ -62,6 +65,11 @@ type Value struct {
 
 func Build(c Config, in Input, now time.Time) Panel {
 	p := Panel{Schema: 1, Name: c.Name, ConfigRevision: c.Revision, Source: c.Source, Project: in.Snapshot.Project, Observer: in.Snapshot.ViewObserver, Lifecycle: "running", GeneratedAt: now.UTC(), Title: c.Template.Title, Icon: c.Template.Icon, BarRow: c.Template.Bar.Row, Rows: []Value{}}
+	if c.Source == "direct" && in.Snapshot.Direct != nil {
+		p.Profile = in.Snapshot.Direct.Profile
+		p.ProfileRevision = in.Snapshot.Direct.ProfileRevision
+		p.DatasetID = in.Snapshot.Direct.DatasetID
+	}
 	if p.Observer == "" {
 		p.Observer = c.Observer
 	}

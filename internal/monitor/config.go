@@ -15,6 +15,7 @@ import (
 const MaxConfigBytes = 256 << 10
 
 type Config struct {
+	DirectRoot  string   `json:"direct_root,omitempty"`
 	Schema      int      `json:"schema"`
 	Revision    string   `json:"revision"`
 	Name        string   `json:"name"`
@@ -65,6 +66,12 @@ func (c Config) Validate() error {
 	}
 	if c.Source == "client" && (!filepath.IsAbs(c.Credentials) || !config.ID(c.Profile)) {
 		return errors.New("client monitor requires absolute credentials path and a named profile")
+	}
+	if c.DirectRoot != "" && !filepath.IsAbs(c.DirectRoot) {
+		return errors.New("direct_root must be absolute")
+	}
+	if c.Source == "direct" && (!config.ID(c.Profile) || c.Credentials != "") {
+		return errors.New("direct monitor requires a named profile and no client credentials")
 	}
 	if c.Project != "" && !config.ID(c.Project) || c.Observer != "" && !config.ID(c.Observer) {
 		return errors.New("invalid monitor project/observer")

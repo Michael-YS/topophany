@@ -23,17 +23,19 @@ const MaxRequestBytes = 256 << 10
 const MaxFrameBytes = monitor.MaxPanelBytes
 
 type Request struct {
-	Schema      int              `json:"schema"`
-	RequestID   string           `json:"request_id"`
-	Source      string           `json:"source"`
-	Credentials string           `json:"credentials"`
-	Profile     string           `json:"profile"`
-	Project     string           `json:"project"`
-	Observer    string           `json:"observer"`
-	Scenario    int              `json:"scenario"`
-	Lang        string           `json:"lang"`
-	Interval    string           `json:"interval"`
-	Template    monitor.Template `json:"template"`
+	ProfileRevision string           `json:"profile_revision,omitempty"`
+	RetryNonce      string           `json:"retry_nonce,omitempty"`
+	Schema          int              `json:"schema"`
+	RequestID       string           `json:"request_id"`
+	Source          string           `json:"source"`
+	Credentials     string           `json:"credentials"`
+	Profile         string           `json:"profile"`
+	Project         string           `json:"project"`
+	Observer        string           `json:"observer"`
+	Scenario        int              `json:"scenario"`
+	Lang            string           `json:"lang"`
+	Interval        string           `json:"interval"`
+	Template        monitor.Template `json:"template"`
 }
 type Error = monitor.FrameError
 
@@ -114,8 +116,8 @@ func Decode(line Line) (Request, *Error) {
 	if len(r.RequestID) > 64 {
 		return bad("request_id exceeds 64 bytes")
 	}
-	if r.Source != "client" && r.Source != "preview" {
-		return bad("source must be client or preview")
+	if r.Source != "client" && r.Source != "preview" && r.Source != "direct" {
+		return bad("source must be client, preview or direct")
 	}
 	if r.Credentials != "" && !filepath.IsAbs(r.Credentials) {
 		return bad("credentials must be an absolute path")
@@ -129,6 +131,15 @@ func Decode(line Line) (Request, *Error) {
 	}
 	if r.Scenario < 0 {
 		return bad("scenario must be nonnegative")
+	}
+	if len(r.ProfileRevision) > 128 || len(r.RetryNonce) > 128 {
+		return bad("direct revision/nonce exceeds budget")
+	}
+	if r.Source != "direct" && (r.ProfileRevision != "" || r.RetryNonce != "") {
+		return bad("profile_revision and retry_nonce require direct")
+	}
+	if r.Source == "direct" && (r.Profile == "" || r.Credentials != "" || r.Scenario != 0 || r.Lang != "") {
+		return bad("direct requires profile and no client/preview credentials/scenario/lang")
 	}
 	if r.Source == "client" && (r.Scenario != 0 || r.Lang != "") {
 		return bad("scenario and lang require preview")

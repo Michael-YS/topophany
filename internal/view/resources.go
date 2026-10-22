@@ -14,6 +14,7 @@ import (
 // from their normalized, unspliced payload. The extra fields identify the
 // source and the deadlines a reader must apply before showing numbers.
 type CardResource struct {
+	Origin    *model.Origin     `json:"origin,omitempty"`
 	Check     string            `json:"check"`
 	Observer  Ref               `json:"observer"`
 	Health    string            `json:"health"`
@@ -231,7 +232,7 @@ func (v View) externalResource(e model.ExternalBindingView, x model.Check, o mod
 	if name == "" {
 		name = o.ID
 	}
-	r := CardResource{Check: e.Check, Observer: Ref{ID: o.ID, Name: name}, Health: e.Health, Freshness: e.Freshness, SampledAt: e.SampledAt, External: true, Source: e.Source, Object: e.Object, TimeBasis: e.TimeBasis, Reason: e.Reason, DataDeadline: e.DataDeadline, ContactDeadline: e.ContactDeadline, ValidUntil: e.ValidUntil, Report: e.Report}
+	r := CardResource{Origin: v.ResourceOrigin(e.Source, e.Object), Check: e.Check, Observer: Ref{ID: o.ID, Name: name}, Health: e.Health, Freshness: e.Freshness, SampledAt: e.SampledAt, External: true, Source: e.Source, Object: e.Object, TimeBasis: e.TimeBasis, Reason: e.Reason, DataDeadline: e.DataDeadline, ContactDeadline: e.ContactDeadline, ValidUntil: e.ValidUntil, Report: e.Report}
 	if r.ValidUntil.IsZero() {
 		r.ValidUntil = minTime(deadlineOrZero(r.DataDeadline), deadlineOrZero(r.ContactDeadline), v.Snapshot.GeneratedAt.Add(model.SnapshotLifetime))
 	}

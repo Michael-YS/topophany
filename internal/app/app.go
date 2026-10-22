@@ -49,6 +49,9 @@ Read what the TUI shows
   topo history CHECK                a check's recent samples
   topo history CHECK --step 1h      how a check fared, hour by hour, from its rollups
   topo --json                       one authenticated snapshot as JSON
+  topo --source direct --profile ID  Beszel resource TUI without a collector
+  topo sources list --json           list direct profiles (independent of client profiles)
+  topo sources inspect|save|remove --json-stdin  bounded direct configuration API
   topo --token-stdin                read a temporary bearer token from stdin
   topo --credential-file FILE       read a temporary token from a private file
 
@@ -84,6 +87,12 @@ answers. 'topo preview [--scenario N] status' (or show, history) reads the
 synthetic evidence instead; 'topo preview scenarios' lists the scenarios.
 'topo preview --lang LANG' writes the built-in topology and the scenarios in
 another language; by default they follow LC_ALL, LC_MESSAGES or LANG.
+
+Direct also supports --json, status, show and monitor configure/run. It reads
+CPU, memory and the primary disk; it does not establish network reachability.
+One-shot reads wait at most 15s (--wait overrides); history explicitly fails
+with history_unsupported_in_direct_mode. --direct-root ABS_PATH overrides only
+the private direct configuration root. See docs/DIRECT.md for configuration API 1.
 
 In the TUI: 1–9 or Tab switch tabs, ↑↓ or jk move, Enter shows the evidence,
 / filters, v switches the observer you view from, m z f p change the map,
@@ -126,6 +135,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.serve(ctx, args[1:])
 	case "worker":
 		return a.worker(ctx, args[1:])
+	case "sources":
+		return a.sources(ctx, args[1:])
 	case "monitor":
 		return a.monitor(ctx, args[1:])
 	case "preferences":

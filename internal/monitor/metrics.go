@@ -71,19 +71,20 @@ type ApplicationValue struct {
 	Unmonitored int            `json:"unmonitored"`
 }
 type ResourceValue struct {
-	Check           string     `json:"check"`
-	Observer        string     `json:"observer"`
-	Health          string     `json:"health"`
-	Freshness       string     `json:"freshness"`
-	SampledAt       *time.Time `json:"sampled_at"`
-	ValidUntil      *time.Time `json:"valid_until"`
-	Source          string     `json:"source,omitempty"`
-	Object          string     `json:"object,omitempty"`
-	TimeBasis       string     `json:"time_basis,omitempty"`
-	SelectionReason string     `json:"selection_reason,omitempty"`
-	Selected        bool       `json:"selected,omitempty"`
-	DataDeadline    time.Time  `json:"data_deadline,omitzero"`
-	ContactDeadline time.Time  `json:"contact_deadline,omitzero"`
+	Origin          *model.Origin `json:"origin,omitempty"`
+	Check           string        `json:"check"`
+	Observer        string        `json:"observer"`
+	Health          string        `json:"health"`
+	Freshness       string        `json:"freshness"`
+	SampledAt       *time.Time    `json:"sampled_at"`
+	ValidUntil      *time.Time    `json:"valid_until"`
+	Source          string        `json:"source,omitempty"`
+	Object          string        `json:"object,omitempty"`
+	TimeBasis       string        `json:"time_basis,omitempty"`
+	SelectionReason string        `json:"selection_reason,omitempty"`
+	Selected        bool          `json:"selected,omitempty"`
+	DataDeadline    time.Time     `json:"data_deadline,omitzero"`
+	ContactDeadline time.Time     `json:"contact_deadline,omitzero"`
 	CPU             struct {
 		Percent *float64 `json:"percent"`
 		Limit   *float64 `json:"limit"`
@@ -112,16 +113,18 @@ type ProcessValue struct {
 	Matching *uint64 `json:"matching"`
 }
 type ServerListEntry struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Kind     string `json:"kind"`
-	Provider string `json:"provider"`
-	Group    string `json:"group"`
-	Where    string `json:"where"`
-	Health   string `json:"health"`
-	Note     string `json:"note"`
+	Origin   *model.Origin `json:"origin,omitempty"`
+	ID       string        `json:"id"`
+	Name     string        `json:"name"`
+	Kind     string        `json:"kind"`
+	Provider string        `json:"provider"`
+	Group    string        `json:"group"`
+	Where    string        `json:"where"`
+	Health   string        `json:"health"`
+	Note     string        `json:"note"`
 }
 type ServerCard struct {
+	Origin    *model.Origin     `json:"origin,omitempty"`
 	ID        string            `json:"id"`
 	Name      string            `json:"name"`
 	Kind      string            `json:"kind"`
@@ -347,7 +350,7 @@ func threshold(n float64) *float64 {
 	return &n
 }
 func resource(v view.View, r view.CardResource) ResourceValue {
-	out := ResourceValue{Check: r.Check, Observer: r.Observer.ID, Health: r.Health, Freshness: r.Freshness, SampledAt: stamp(r.SampledAt), Source: r.Source, Object: r.Object, TimeBasis: r.TimeBasis, SelectionReason: r.Reason, Selected: r.Selected, DataDeadline: r.DataDeadline, ContactDeadline: r.ContactDeadline}
+	out := ResourceValue{Origin: r.Origin, Check: r.Check, Observer: r.Observer.ID, Health: r.Health, Freshness: r.Freshness, SampledAt: stamp(r.SampledAt), Source: r.Source, Object: r.Object, TimeBasis: r.TimeBasis, SelectionReason: r.Reason, Selected: r.Selected, DataDeadline: r.DataDeadline, ContactDeadline: r.ContactDeadline}
 	var def model.Check
 	for _, c := range v.Snapshot.Topology.Checks {
 		if c.ID == r.Check {
@@ -417,7 +420,10 @@ func (p *projection) servers() ([]ServerListEntry, time.Time, time.Time) {
 			if !view.ServerNode(n, known) {
 				continue
 			}
-			p.serverList = append(p.serverList, serverEntry(fleet, n.ID, fleet.Card(n.ID)))
+			entry := serverEntry(fleet, n.ID, fleet.Card(n.ID))
+			selected := p.resourceSelection()[n.ID].Selected
+			entry.Origin = p.v.ResourceOrigin(selected.Source, selected.Object)
+			p.serverList = append(p.serverList, entry)
 			for _, id := range p.nodeChecks[n.ID] {
 				ids[id] = true
 			}
@@ -439,7 +445,9 @@ func (p *projection) server(id string) (ServerCard, time.Time, time.Time, bool) 
 	}
 	card := fleet.Card(id)
 	entry := serverEntry(fleet, id, card)
-	out := ServerCard{ID: entry.ID, Name: entry.Name, Kind: entry.Kind, Provider: entry.Provider, Group: entry.Group, Where: entry.Where, Health: entry.Health, Note: entry.Note, Resources: []ResourceValue{}, Services: []ServiceValue{}, Observes: []ObserverVerdict{}}
+	selected := p.resourceSelection()[id].Selected
+	entry.Origin = p.v.ResourceOrigin(selected.Source, selected.Object)
+	out := ServerCard{Origin: entry.Origin, ID: entry.ID, Name: entry.Name, Kind: entry.Kind, Provider: entry.Provider, Group: entry.Group, Where: entry.Where, Health: entry.Health, Note: entry.Note, Resources: []ResourceValue{}, Services: []ServiceValue{}, Observes: []ObserverVerdict{}}
 	ids := map[string]bool{}
 	for _, c := range p.nodeChecks[id] {
 		ids[c] = true
@@ -493,6 +501,18 @@ func (p *projection) richValue(value Value) Value {
 		value.Health = "unknown"
 	}
 	switch value.Metric {
+	case "sources.status":
+		status, until := v.SourcesStatus()
+		value.Value = status
+		value.Text = status.State
+		value.ValidUntil = until
+		value.SampledAt = time.Time{}
+		value.Health = "unknown"
+		if status.State == "ready" {
+			value.Health = "up"
+		} else if status.State == "partial" {
+			value.Health = "degraded"
+		}
 	case "summary.verdict":
 		s := summary(v)
 		value.Value = s

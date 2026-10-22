@@ -14,6 +14,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
 type Fetch func(context.Context, string) (model.Snapshot, string, error)
@@ -59,6 +60,16 @@ func RunWithFetch(parent context.Context, fetch Fetch, observer string, noColor 
 	m := &Model{Observer: observer, NoColor: noColor}
 	m.initializeStartup(options)
 	return loop(parent, m, fetch, nil, nil, in, out)
+}
+
+// RunDirect uses the ordinary viewer with an explicit resource-only identity.
+func RunDirect(parent context.Context, fetch Fetch, observer string, noColor bool, in, out *os.File, options ...Startup) error {
+	m := &Model{Observer: observer, NoColor: noColor, Direct: true}
+	m.initializeStartup(options)
+	history := func(context.Context, string, int) ([]model.Observation, error) {
+		return nil, errors.New(view.DirectText("history"))
+	}
+	return loop(parent, m, fetch, history, nil, in, out)
 }
 
 // RunEditor opens the editor on a local topology. It never contacts a
@@ -226,6 +237,9 @@ func loop(parent context.Context, m *Model, fetch Fetch, history History, bound 
 	}
 	samples := &sampler{read: history, readAt: bound, results: make(chan fetchedSamples, 1)}
 	m.Loading = "connecting to the collector"
+	if m.Direct {
+		m.Loading = view.DirectText("opening")
+	}
 	request()
 	keys := time.NewTicker(30 * time.Millisecond)
 	defer keys.Stop()

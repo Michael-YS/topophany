@@ -518,8 +518,10 @@ func IsColo(s string) bool {
 }
 
 type Snapshot struct {
-	Storage *StorageUsage `json:"storage,omitempty"`
-	Ingress *Ingress      `json:"ingress,omitempty"`
+	SourcesStatus *SourcesStatus `json:"sources_status,omitempty"`
+	Direct        *DirectInfo    `json:"direct,omitempty"`
+	Storage       *StorageUsage  `json:"storage,omitempty"`
+	Ingress       *Ingress       `json:"ingress,omitempty"`
 
 	TopologyOmitted bool            `json:"topology_omitted,omitempty"`
 	DetailsOmitted  bool            `json:"details_omitted,omitempty"`

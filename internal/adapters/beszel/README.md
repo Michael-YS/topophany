@@ -49,7 +49,10 @@ The worker sends the token as `Authorization: <token>`, without adding a
 `Bearer` prefix. Use a dedicated ordinary Beszel user with read access to the
 assigned systems. A superuser token is unnecessary. Obtain and rotate the
 token through your existing Beszel/PocketBase authentication workflow;
-automatic token refresh is outside this read-only adapter. Do not paste a
+automatic token refresh is outside this read-only adapter. The explicit
+[direct mode](../../../docs/DIRECT.md) supplies a separate controlled
+authentication module and a process-local session while reusing this GET-only
+adapter. It does not require a collector or keep resource history. Do not paste a
 token into topology JSON or commit it to the repository. See the official
 [PocketBase authentication documentation](https://pocketbase.io/docs/authentication/).
 

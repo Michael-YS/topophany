@@ -11,6 +11,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/config"
+	"github.com/WhitenWhiten/topophany/internal/direct"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/preview"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
@@ -195,6 +196,7 @@ func parseMixed(f *flag.FlagSet, args []string) ([]string, error) {
 // flags choose or, under topo preview, against its synthetic evidence.
 func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed) error {
 	f := a.flags(cmd)
+	mode := addDirectFlags(f)
 	var connect func() (*client.Client, error)
 	observerDefault, jsonDefault := "", false
 	if pv == nil {
@@ -245,8 +247,26 @@ func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed
 			}
 		}
 	}
-	var r reader
 	if pv == nil {
+		if e := mode.validate(f); e != nil {
+			return e
+		}
+	} else if *mode.source != "client" {
+		return errors.New("preview cannot be combined with --source")
+	}
+	var r reader
+	if pv == nil && *mode.source == "direct" {
+		if cmd == "history" {
+			return &direct.Error{Code: "history_unsupported_in_direct_mode", Message: "History is not supported in direct mode."}
+		}
+		s, _, e := a.openDirect(ctx, f, mode)
+		if e != nil {
+			return e
+		}
+		defer s.Close()
+		a.waitDirect(ctx, s, mode)
+		r = a.directReader(s)
+	} else if pv == nil {
 		c, e := connect()
 		if e != nil {
 			return e
@@ -273,6 +293,14 @@ func (a *App) read(ctx context.Context, cmd string, args []string, pv *previewed
 	at := now()
 	v := view.View{Snapshot: snap, Now: at, Cached: view.Expired(snap, at)}
 	h := header{Project: snap.Project, Instance: snap.Instance, Server: server, Observer: snap.ViewObserver, GeneratedAt: snap.GeneratedAt, Cached: v.Cached}
+	if snap.Direct != nil {
+		status, _ := v.SourcesStatus()
+		h.Source = "direct"
+		h.Profile = snap.Direct.Profile
+		h.ProfileRevision = snap.Direct.ProfileRevision
+		h.DatasetID = snap.Direct.DatasetID
+		h.Sources = &status
+	}
 	if pv != nil {
 		h.Scenario, _, _ = strings.Cut(pv.sim.Scenarios()[pv.sim.Scenario()], "\t")
 	}

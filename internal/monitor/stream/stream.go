@@ -29,7 +29,15 @@ type Emit func(monitor.Panel) error
 // a request cancels and joins its runtime before publishing the new revision.
 // A rejected line never changes the running source or its cadence.
 func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
-	instance := time.Now().UTC().Format("20060102T150405.000000000")
+	return RunClock(ctx, lines, open, emit, time.Now)
+}
+
+// RunClock uses one evaluation/publication clock for embedding tests.
+func RunClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now func() time.Time) error {
+	if now == nil {
+		now = time.Now
+	}
+	instance := now().UTC().Format("20060102T150405.000000000")
 	var sequence, revision uint64
 	var active Request
 	var c monitor.Config
@@ -66,7 +74,7 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 		}
 		bounded := *e
 		bounded.Message = boundedText(e.Message, 1024)
-		now := time.Now().UTC()
+		now := now().UTC()
 		return send(monitor.Panel{Schema: 1, Name: "stream", RequestID: id, Lifecycle: "error", Error: &bounded, GeneratedAt: now, PublisherExpiresAt: now.Add(30 * time.Second), Rows: []monitor.Value{}})
 	}
 	publish := func(p monitor.Panel) error {
@@ -85,7 +93,7 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 	}
 	stopped := func() error {
 		stop()
-		now := time.Now().UTC()
+		now := now().UTC()
 		p := last
 		p.Schema = 1
 		p.Name = "stream"
@@ -154,7 +162,7 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 			cancel, done, unsubscribe, frames = runCancel, ready, unsub, ch
 			// Build the prepared first frame synchronously: even buffered EOF cannot
 			// overtake it. Run publishes that same evidence before it starts polling.
-			first := monitor.Build(c, source.Initial, time.Now())
+			first := monitor.Build(c, source.Initial, now())
 			first.RequestID = active.RequestID
 			first.PublisherExpiresAt = first.GeneratedAt.Add(30 * time.Second)
 			if err := send(first); err != nil {
@@ -173,7 +181,7 @@ func Run(ctx context.Context, lines <-chan Line, open Open, emit Emit) error {
 				if source.Close != nil {
 					defer source.Close()
 				}
-				monitor.Run(runCtx, c, source.Fetch, nil, hub, nil, source.Initial)
+				monitor.RunClock(runCtx, c, source.Fetch, nil, hub, nil, now, source.Initial)
 			}()
 		case e, ok := <-sourceErrors:
 			if !ok {

@@ -36,6 +36,7 @@ type Ref struct {
 // Card is what a server's card says beside its state and name. Healths
 // are those of the view: unknown throughout a cached one.
 type Card struct {
+	Origin    *model.Origin  `json:"origin,omitempty"`
 	Resources []CardResource `json:"resources,omitempty"`
 	Kind      string         `json:"kind"`            // with its provider, e.g. "edge · Cloudflare"
 	Group     string         `json:"group,omitempty"` //
@@ -287,6 +288,12 @@ func (f *Fleet) Card(id string) Card {
 	}
 	c := Card{Kind: KindLabel(n), Group: n.Group, Memo: strings.TrimSpace(n.Notes), Services: []CardService{}, Fronts: []CardEndpoint{}, Pops: []string{}, Addresses: []CardEndpoint{}, Hosts: []CardHost{}, Observers: []CardObserver{}, Links: []CardLink{}}
 	c.Resources = f.resources[n.ID]
+	for _, r := range c.Resources {
+		if r.Selected {
+			c.Origin = r.Origin
+			break
+		}
+	}
 	if c.Kind == "" {
 		c.Kind = "node"
 	}

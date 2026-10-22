@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
+	viewpkg "github.com/WhitenWhiten/topophany/internal/view"
 )
 
 // The frame around every view: a header bar, the tab strip, a one-line health
@@ -55,7 +56,12 @@ func (m *Model) headerBar(cv *Canvas, x0, y, w int, touch bool) {
 			add("  ✓ saved", cUp)
 		}
 	} else {
-		if m.Preview != nil {
+		if m.Direct {
+			add(viewpkg.DirectText("connection"), cText)
+			if m.Snapshot.Direct != nil {
+				add(" / "+m.Snapshot.Direct.Profile, cMuted)
+			}
+		} else if m.Preview != nil {
 			add("◆ PREVIEW ", cEdit)
 			if !touch {
 				add(m.scenario(), cText)
@@ -325,6 +331,12 @@ func (m *Model) statusBar(cv *Canvas, x0, y, w int) {
 			x += cv.Text(x, y, n, fg(cText).bold(), -1)
 			x += cv.Text(x, y, " "+word, fg(cMuted), max(0, end-1-x))
 		}
+		return
+	}
+	if m.Snapshot.Direct != nil {
+		status, _ := m.view().SourcesStatus()
+		text := viewpkg.DirectText("connection") + " · " + status.State + " · " + itoa(status.Counts.Current) + "/" + itoa(status.Counts.Selected) + " " + viewpkg.DirectText("counts")
+		cv.Text(x, y, text, fg(cText), w-2)
 		return
 	}
 	up, down, warn, unk := m.counts()

@@ -48,6 +48,7 @@ type Metric struct {
 func Catalog() []Metric {
 	all := []string{"client", "collector", "worker"}
 	catalog := []Metric{
+		{Name: "sources.status", Type: "object", Sources: []string{"direct"}, Visual: "status"},
 		{Name: "summary.verdict", Type: "object", Sources: []string{"client", "collector"}, Visual: "status"},
 		{Name: "observers.verdicts", Type: "array", Sources: []string{"client", "collector"}, Visual: "list"},
 		{Name: "attention.list", Type: "object", Sources: []string{"client", "collector"}, Visual: "list"},
@@ -76,6 +77,12 @@ func Catalog() []Metric {
 		{Name: "storage.sync.duration_ms", Type: "number", Unit: "milliseconds", Sources: []string{"collector", "worker"}},
 	}
 	for i := range catalog {
+		if slices.Contains(catalog[i].Sources, "client") {
+			catalog[i].Sources = append(catalog[i].Sources, "preview")
+		}
+		if catalog[i].Name == "server.card" || catalog[i].Name == "servers.list" || strings.HasPrefix(catalog[i].Name, "resource.") {
+			catalog[i].Sources = append(catalog[i].Sources, "direct")
+		}
 		if catalog[i].Visual == "" {
 			catalog[i].Visual = "text"
 			if catalog[i].Unit == "percent" {
@@ -97,7 +104,7 @@ func (t Template) Validate(source string) error {
 	if source == "preview" {
 		source = "client"
 	}
-	if !slices.Contains([]string{"client", "collector", "worker"}, source) {
+	if !slices.Contains([]string{"client", "collector", "worker", "direct"}, source) {
 		return errors.New("unknown monitor source")
 	}
 	if t.Schema != 1 || len(t.Title) == 0 || len(t.Title) > 256 || len(t.Icon) > 64 || len(t.Rows) == 0 || len(t.Rows) > 128 {
@@ -143,4 +150,11 @@ func (t Template) Validate(source string) error {
 		return errors.New("bar.row must reference a template row")
 	}
 	return nil
+}
+
+// DefaultDirectTemplate names acquisition state and resource-bearing servers.
+func DefaultDirectTemplate() Template {
+	t := Template{Schema: 1, Title: "Topophany", Rows: []Row{{ID: "status", Metric: "sources.status", Visual: "status"}, {ID: "servers", Metric: "servers.list", Visual: "list"}}}
+	t.Bar.Row = "status"
+	return t
 }

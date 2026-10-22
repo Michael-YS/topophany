@@ -1,6 +1,9 @@
 package monitor
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"github.com/WhitenWhiten/topophany/internal/view"
+)
 
 // Structured rows carry safety state inside their value as well as on the row.
 // A resource becoming stale or one observer losing evidence must bypass cadence
@@ -28,6 +31,8 @@ func safetyState(p Panel) string {
 			for _, server := range v {
 				state = append(state, []any{server.ID, server.Health, server.Note})
 			}
+		case view.SourcesStatus:
+			state = append(state, v)
 		case SummaryVerdict:
 			state = append(state, v.State, v.Counts, v.Observers)
 		case []ObserverVerdict:

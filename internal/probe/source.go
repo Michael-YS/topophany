@@ -3,7 +3,7 @@ package probe
 import (
 	"context"
 	"errors"
-	"io"
+	stdio "io"
 	"net"
 	"net/http"
 	"net/url"
@@ -104,14 +104,20 @@ func (io *sourceIO) Get(ctx context.Context, s model.Source, page string, header
 	}
 	resp, err := io.client.Do(req)
 	if err != nil {
+		if strings.HasPrefix(secure.ErrorCode(err), "tls_") {
+			return source.Response{}, &source.Error{Code: "transport_error", Detail: "source request failed", Transport: "tls_error"}
+		}
 		return source.Response{}, source.NewError("transport_error", "source request failed")
 	}
 	defer resp.Body.Close()
 	body, err := readAtMost(resp.Body, maxBytes)
 	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, stdio.ErrUnexpectedEOF) {
+			return source.Response{}, source.NewError("transport_error", "source response read failed")
+		}
 		return source.Response{}, source.NewError("response_budget", "source response exceeded its byte budget")
 	}
-	return source.Response{Status: resp.StatusCode, ContentType: resp.Header.Get("Content-Type"), Body: body}, nil
+	return source.Response{RetryAfter: resp.Header.Get("Retry-After"), Status: resp.StatusCode, ContentType: resp.Header.Get("Content-Type"), Body: body}, nil
 }
 
 func (io *sourceIO) sameOrigin(page string) (*url.URL, error) {
@@ -166,11 +172,11 @@ func hasHeaderBreak(s string) bool {
 
 // readAtMost bounds a body with a hard read cap, including a peer that
 // ignores Content-Length.
-func readAtMost(r io.Reader, limit int64) ([]byte, error) {
+func readAtMost(r stdio.Reader, limit int64) ([]byte, error) {
 	if limit < 1 {
 		return nil, errors.New("invalid read limit")
 	}
-	b, err := io.ReadAll(io.LimitReader(r, limit+1))
+	b, err := stdio.ReadAll(stdio.LimitReader(r, limit+1))
 	if err != nil {
 		return nil, err
 	}
@@ -185,4 +191,23 @@ func readAtMost(r io.Reader, limit int64) ([]byte, error) {
 // never registered.
 func ProductionSourceAdapters() map[string]source.Adapter {
 	return map[string]source.Adapter{"beszel": beszel.Adapter{}}
+}
+
+// SourceIO supplies the same controlled GET transport with an explicit resolver.
+// The resolver's references stay outside public topology and snapshots.
+func SourceIO(c model.Config, s model.Source, resolve func(context.Context, model.Source) (string, error)) (source.IO, error) {
+	io, err := newSourceIO(c, s)
+	if err != nil {
+		return nil, err
+	}
+	return &resolvedSourceIO{IO: io, resolve: resolve}, nil
+}
+
+type resolvedSourceIO struct {
+	source.IO
+	resolve func(context.Context, model.Source) (string, error)
+}
+
+func (io *resolvedSourceIO) Credential(ctx context.Context, s model.Source) (string, error) {
+	return io.resolve(ctx, s)
 }

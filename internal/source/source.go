@@ -21,8 +21,9 @@ import (
 // Error is a bounded adapter/runtime failure. Collectors turn it into a
 // collection-attempt diagnostic, never into a target outage.
 type Error struct {
-	Code   string
-	Detail string
+	Transport string // optional closed transport classification; never upstream error text
+	Code      string
+	Detail    string
 }
 
 func (e *Error) Error() string {
@@ -101,6 +102,7 @@ type Reading struct {
 
 // Response is a bounded HTTP response supplied by the runtime.
 type Response struct {
+	RetryAfter  string
 	Status      int
 	ContentType string
 	Body        []byte

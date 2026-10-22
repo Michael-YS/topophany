@@ -21,6 +21,7 @@ func (a *App) view(ctx context.Context, args []string) error {
 	f := a.flags("topo")
 	panelFlags := addMonitorFlags(f)
 	connect := a.connection(f)
+	mode := addDirectFlags(f)
 	observer := f.String("observer", "", "observer view (default all)")
 	jsonOut := f.Bool("json", false, "print one snapshot without terminal control")
 	startupFlags := addPreferenceFlags(f)
@@ -31,6 +32,12 @@ func (a *App) view(ctx context.Context, args []string) error {
 	}
 	if _, e := withDevice(tui.Startup{}, *device); e != nil {
 		return e
+	}
+	if e := mode.validate(f); e != nil {
+		return e
+	}
+	if *mode.source == "direct" {
+		return a.viewDirect(ctx, f, mode, *observer, *jsonOut, *noColor, *device, panelFlags, startupFlags)
 	}
 	c, e := connect()
 	if e != nil {

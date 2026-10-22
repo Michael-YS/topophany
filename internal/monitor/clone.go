@@ -1,6 +1,9 @@
 package monitor
 
-import "slices"
+import (
+	"github.com/WhitenWhiten/topophany/internal/view"
+	"slices"
+)
 
 func copyPointer[T any](p *T) *T {
 	if p == nil {
@@ -27,8 +30,14 @@ func clone(p Panel) Panel {
 		r := &p.Rows[i]
 		r.Limit = copyPointer(r.Limit)
 		switch v := r.Value.(type) {
+		case view.SourcesStatus:
+			r.Value = view.CloneSourcesStatus(v)
 		case []ServerListEntry:
-			r.Value = slices.Clone(v)
+			v = slices.Clone(v)
+			for i := range v {
+				v[i].Origin = copyPointer(v[i].Origin)
+			}
+			r.Value = v
 		case []ServiceListEntry:
 			r.Value = slices.Clone(v)
 		case ServiceCard:
@@ -49,11 +58,13 @@ func clone(p Panel) Panel {
 			}
 			r.Value = v
 		case ServerCard:
+			v.Origin = copyPointer(v.Origin)
 			v.Resources = slices.Clone(v.Resources)
 			v.Services = slices.Clone(v.Services)
 			v.Observes = cloneObservers(v.Observes)
 			for i := range v.Resources {
 				x := &v.Resources[i]
+				x.Origin = copyPointer(x.Origin)
 				x.SampledAt = copyPointer(x.SampledAt)
 				x.ValidUntil = copyPointer(x.ValidUntil)
 				x.CPU.Percent = copyPointer(x.CPU.Percent)

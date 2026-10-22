@@ -461,3 +461,32 @@ data ownership, and bounded resource use.
 | Verifier timeout reclaims ordinary POSIX child processes | `scripts.test_verify.VerifyCommandTests` |
 
 Active verification additionally includes `FuzzParseTunnel`, `FuzzParseDNSRecord`, and `FuzzParsePoolHealth`.
+
+## Beszel direct D1
+
+| Scenario and invariant | Regression coverage |
+|---|---|
+| Config API uses isolated roots, strict auth unions, safe JSON envelopes and no secret reflection; save CAS and IDs remain stable | TestSourcesRealCommandEnvelopesAndSecrets, TestProfileAtomicIdentityAndAuth, TestInputStrictAndBounded |
+| Discovery is bounded, empty is independent of auth, MFA/401/403/TLS keep conservative codes | TestDiscoveryAndFailures, TestSelectionConflictRemoveStorage |
+| Credentials survive pre-publication failures, refresh is coordinated across processes and fenced against removal | TestRefreshTwoProcessesAndStorageFailure, TestRefreshAndDeleteSerialized |
+| Twenty objects reserve twenty GET pages; no default disk guessing or alarm thresholds | TestGeneratedProfileBudgets, TestSessionRealRuntime20ObjectsAndNoTickRequests |
+| Repeated samples never renew data; Session and Store agree; publication does not increment confirmation | TestSessionMatchesStoreAndDoesNotRenewOldData |
+| Source errors retain valid data, isolate other sources and eventually expire; bounded batch rejection is atomic | TestSessionFailureIsolatesAndExpires, TestSessionBudgetsAtomicBatchAndClose |
+| Retry does not overlap or bypass Retry-After; 401 renews once and 403 never becomes token expiry | TestSessionScheduleRetryAndFirstFailures, Test401RefreshOnceAnd403DoesNotRefresh, TestRetryAfterCannotBeBypassed |
+| Reprojection shares its session; only affected source settings reconfigure and late generations are refused | TestDirectManagerOwnsProjectionAndRejectsConflicts, TestReconfigureOnlyAffectedSourceAndRejectLateResults |
+| Snapshot/status/show keep their shapes, history explicitly refuses, file monitors restart/stop and TUI identifies resource telemetry | TestDirectCurrentStateCommandsKeepTheirShapes, TestDirectMonitorFilesAndTUIProjection |
+| Fixed-clock status states/counts/deadlines and origin share production serialization with Bar fixtures | TestD1SourceStatesCountsAndClocks, TestDirectContractFixtures |
+| Concurrent Snapshot/Record/Close owns published values | TestSessionConcurrentSnapshotRecordClose and go test -race |
+| Real subprocess configuration/stream source changes, budgets, retry and EOF | scripts/direct-contract.py |
+
+Additional D1 confirmation and recovery cases: `TestActualRulesAndBudgetFailurePreserveAcceptedEvidence`
+checks actual configured thresholds and atomic refusal after prior evidence;
+`TestLiveBudgetFailureHasScopedDiagnostic` checks a visible state_budget source;
+`TestLocalCandidateFailureRetainsOldConfig` rejects invalid local TLS configuration;
+`TestRemovalWinsAgainstLateNetworkRefresh` removes a source while its HTTP refresh
+is in flight; `TestAuthRetryAfterPersistsAcrossProcesses` preserves authentication
+cooldown across credential readers; `TestReconfigureNeverOverlapsSourcePoll` checks
+one source's cancellation gate across execution generations;
+`TestRetryReplayHistoryIsBoundedAndIdempotent` retains replay identities within an
+explicit nonce budget; `TestPrivateCredentialPermissionsAndInvisibleSelection`
+checks credential file permissions and a well-shaped inaccessible selection.

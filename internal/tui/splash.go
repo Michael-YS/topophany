@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/WhitenWhiten/topophany/internal/view"
 	"strings"
 	"time"
 )
@@ -125,6 +126,8 @@ func (m *Model) splashLines(offline bool) []vline {
 	out := []vline{}
 	if !offline {
 		switch {
+		case m.Direct:
+			out = append(out, vline{{m.spinner() + "  ", fg(cAccent2)}, {view.DirectText("opening"), fg(cText).bold()}})
 		case m.Preview != nil:
 			out = append(out, vline{{m.spinner() + "  ", fg(cAccent2)}, {"Starting the preview", fg(cText).bold()}},
 				vline{{"   synthetic evidence; no collector is dialled", fg(cMuted)}})

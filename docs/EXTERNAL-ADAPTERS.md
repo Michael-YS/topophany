@@ -360,17 +360,20 @@ Rollback:
 
 ## 10. Run entry points
 
-Production commands are unchanged:
+Collector/worker commands remain available:
 
 ```sh
 topo serve --config topology.json --data ./collector-data ...
 topo worker --config topology.json --observer cloud --data ./worker-data ...
 topo once --config topology.json --observer cloud
-topo monitor stream --config monitor.json ...
+topo monitor stream  # bounded NDJSON requests on stdin
 ```
 
-The source read is performed by the worker or a collector running local checks.
-The monitor and bar only consume snapshots and stream frames.
+In collector mode the source read is performed by the worker or collector.
+The explicit `direct` read mode also runs the controlled Beszel adapter inside
+each viewer/monitor process, using bounded memory and private credentials. It
+needs no collector, does not mix collector data, and has no history database.
+See [Direct setup](DIRECT.md) and the [D1 contract](contracts/direct-v1/contract.md).
 
 The integration suite exercises the production Beszel adapter and test-only
 list/counter/status adapters through the real runner, outbox, HTTP API, store,

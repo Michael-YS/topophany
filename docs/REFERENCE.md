@@ -505,8 +505,11 @@ formats fail validation.
 ### Streaming panels
 
 `topo monitor stream` reads one JSON request per line on stdin and writes one
-JSON frame per line on stdout. It creates no panel configuration, output file or
-lock. `topo monitor stream --capabilities` prints one line with protocol 1, the
+JSON frame per line on stdout. Client/preview create no panel configuration,
+output file or lock. Direct may lock/read/atomically renew credentials under
+its private direct root; it writes no metrics journal or history database.
+See [Direct v1](contracts/direct-v1/contract.md) for the configuration API,
+capabilities, sources.status, origin, dataset identity and expiry rules. `topo monitor stream --capabilities` prints one line with protocol 1, the
 binary version, sources, visuals and the metric catalog, then exits. The catalog
 includes `servers.list`, `service.card` and `services.list`; `profiles: true`
 advertises saved-profile discovery. These additions retain protocol 1. Consumers

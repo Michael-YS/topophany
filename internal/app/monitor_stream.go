@@ -9,8 +9,10 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/client"
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -20,6 +22,7 @@ import (
 
 func (a *App) monitorStream(ctx context.Context, args []string) error {
 	f := a.flags("monitor stream")
+	directRoot := f.String("direct-root", "", "absolute private direct configuration root")
 	capabilities := f.Bool("capabilities", false, "print protocol, version, sources, visuals and metrics; then exit")
 	profiles := f.Bool("profiles", false, "list saved client profile names, projects and active selection; then exit")
 	credentials := f.String("credentials", "", "credential file for --profiles (default normal discovery)")
@@ -28,6 +31,9 @@ func (a *App) monitorStream(ctx context.Context, args []string) error {
 			return nil
 		}
 		return &ExitError{Code: 2, Err: err}
+	}
+	if *directRoot != "" && !filepath.IsAbs(*directRoot) {
+		return &ExitError{Code: 2, Err: errors.New("--direct-root must be absolute")}
 	}
 	if *capabilities && *profiles {
 		return &ExitError{Code: 2, Err: errors.New("--capabilities and --profiles are mutually exclusive")}
@@ -46,9 +52,29 @@ func (a *App) monitorStream(ctx context.Context, args []string) error {
 	} else {
 		runCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
+		inputDone := make(chan struct{})
 		lines := make(chan stream.Line)
-		go stream.ReadLines(runCtx, a.In, lines)
-		err = stream.Run(runCtx, lines, stream.OpenSource, write)
+		go func() { defer close(inputDone); stream.ReadLines(runCtx, a.In, lines) }()
+		go func() {
+			select {
+			case <-runCtx.Done():
+				return
+			case <-inputDone:
+			}
+			timer := time.NewTimer(250 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-runCtx.Done():
+			case <-timer.C:
+				cancel()
+			}
+		}()
+		var closeSink func()
+		write, closeSink = frameSink(runCtx, a.Out)
+		defer closeSink()
+		manager := stream.NewDirectManager(*directRoot, a.now)
+		defer manager.Close()
+		err = stream.RunClock(runCtx, lines, manager.Open, write, a.now)
 		cancel()
 		if closer, ok := a.In.(io.ReadCloser); ok {
 			// An inherited blocking stdin descriptor may also block Close until
@@ -58,7 +84,7 @@ func (a *App) monitorStream(ctx context.Context, args []string) error {
 		// A Reader without Close may be owned by the embedding caller and remain
 		// blocked. Its sender still observes cancellation before delivering a line.
 	}
-	if err != nil && !isStreamClosedPipe(err) {
+	if err != nil && !errors.Is(err, context.Canceled) && !isStreamClosedPipe(err) {
 		fmt.Fprintln(a.Err, "monitor stream output unavailable")
 	}
 	return nil
@@ -84,7 +110,8 @@ func writeCapabilities(w io.Writer) error {
 		Visuals  []string         `json:"visuals"`
 		Metrics  []monitor.Metric `json:"metrics"`
 		Profiles bool             `json:"profiles"`
-	}{1, model.Version, []string{"client", "preview"}, []string{"text", "bar", "status", "list", "card"}, monitor.Catalog(), true})
+		Direct   any              `json:"direct"`
+	}{1, model.Version, []string{"client", "preview", "direct"}, []string{"text", "bar", "status", "list", "card"}, monitor.Catalog(), true, map[string]any{"schema": 1, "config_api": 1, "adapters": []string{"beszel"}, "retry": true, "limits": map[string]int{"sources_per_profile": 64, "objects_per_source": 20, "objects_per_profile": 256, "template_rows": 128}}})
 }
 
 func (a *App) writeProfiles(path string) error {

@@ -14,6 +14,14 @@ type Fetch func(context.Context) (Input, error)
 // publishes only in memory, for an embedding consumer. An optional prepared
 // input lets a source with immediate evidence publish it in the first frame.
 func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, report func(string), initial ...Input) {
+	RunClock(ctx, c, fetch, out, hub, report, time.Now, initial...)
+}
+
+// RunClock injects the projection clock; scheduling remains independent.
+func RunClock(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, report func(string), now func() time.Time, initial ...Input) {
+	if now == nil {
+		now = time.Now
+	}
 	if hub == nil {
 		hub = &Hub{}
 	}
@@ -95,7 +103,7 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 			}
 		})
 	}
-	instance := time.Now().UTC().Format("20060102T150405.000000000")
+	instance := now().UTC().Format("20060102T150405.000000000")
 	var sequence uint64
 	in := Input{Unavailable: true}
 	if len(initial) > 0 {
@@ -103,7 +111,7 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 	}
 	publish := func() {
 		sequence++
-		p := Build(c, in, time.Now())
+		p := Build(c, in, now())
 		p.Instance = instance
 		p.Sequence = sequence
 		p.PublisherExpiresAt = p.GeneratedAt.Add(30 * time.Second)
@@ -117,7 +125,7 @@ func Run(ctx context.Context, c Config, fetch Fetch, out *Output, hub *Hub, repo
 		case <-ctx.Done():
 			if p, ok := hub.Latest(); ok {
 				p.Sequence++
-				p.GeneratedAt = time.Now().UTC()
+				p.GeneratedAt = now().UTC()
 				p.PublisherExpiresAt = p.GeneratedAt
 				p.Lifecycle = "stopped"
 				for i := range p.Rows {

@@ -17,13 +17,18 @@ import (
 
 // header says where a view comes from, as the TUI's header bar does.
 type header struct {
-	Project     string    `json:"project"`
-	Instance    string    `json:"instance"`
-	Server      string    `json:"server"`
-	Scenario    string    `json:"scenario,omitempty"` // the synthetic scenario in effect, under topo preview
-	Observer    string    `json:"observer"`
-	GeneratedAt time.Time `json:"generated_at"`
-	Cached      bool      `json:"cached"`
+	Source          string              `json:"source,omitempty"`
+	Profile         string              `json:"profile,omitempty"`
+	ProfileRevision string              `json:"profile_revision,omitempty"`
+	DatasetID       string              `json:"dataset_id,omitempty"`
+	Sources         *view.SourcesStatus `json:"sources_status,omitempty"`
+	Project         string              `json:"project"`
+	Instance        string              `json:"instance"`
+	Server          string              `json:"server"`
+	Scenario        string              `json:"scenario,omitempty"` // the synthetic scenario in effect, under topo preview
+	Observer        string              `json:"observer"`
+	GeneratedAt     time.Time           `json:"generated_at"`
+	Cached          bool                `json:"cached"`
 }
 
 func (h header) print(t *text, now time.Time) {
@@ -32,7 +37,11 @@ func (h header) print(t *text, now time.Time) {
 		vantage = "all observers"
 	}
 	t.kv("Project", h.Project)
-	t.kv("Collector", h.Instance+" @ "+h.Server)
+	if h.Source == "direct" {
+		t.kv(view.DirectText("source_label"), view.DirectText("connection")+" / "+h.Profile)
+	} else {
+		t.kv("Collector", h.Instance+" @ "+h.Server)
+	}
 	if h.Scenario != "" {
 		t.kv("Scenario", h.Scenario)
 	}
@@ -48,6 +57,25 @@ func (h header) print(t *text, now time.Time) {
 // clear when the verdict is all clear and nothing needs attention, no
 // evidence when nothing current is known, otherwise attention.
 func standing(v view.View, attention []view.Row) (string, int) {
+	if v.Snapshot.Direct != nil {
+		status, _ := v.SourcesStatus()
+		if status.State == "ready" {
+			return "clear", 0
+		}
+		if status.Counts.Current > 0 {
+			return "attention", ExitAttention
+		}
+		allFailed := status.Counts.Selected > 0
+		for _, src := range status.Sources {
+			if src.Counts.Selected > 0 && (src.State == "connected" || src.State == "loading") {
+				allFailed = false
+			}
+		}
+		if allFailed {
+			return "no-evidence", ExitUnreachable
+		}
+		return "no-evidence", ExitNoEvidence
+	}
 	switch v.Verdict().State {
 	case "incidents", "down", "degraded":
 		return "attention", ExitAttention
