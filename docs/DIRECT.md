@@ -82,7 +82,9 @@ credential is retained. Renewals coordinate per credential reference across
 processes, then check the current reference and version under the commit lock.
 A late response cannot restore a removed source or overwrite a newer credential.
 Renewal does not change profile_revision or dataset_id. No password is retained
-for an expired nonrenewable token.
+for an expired nonrenewable token. A renewable token renews within the minute
+before its expiry; a nonrenewable token, which has no refresh, stays usable
+until it expires.
 
 ## Read current resources
 

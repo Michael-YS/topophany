@@ -380,11 +380,20 @@ func (s *Store) Token(ctx context.Context, profile string, entry Entry, now time
 		return v, nil
 	}
 	cl := tokenClaims(c.Token)
-	if cl.Exp == 0 || now.Before(time.Unix(cl.Exp, 0).Add(-time.Minute)) {
+	if cl.Exp == 0 {
 		return c.Token, nil
 	}
+	expires := time.Unix(cl.Exp, 0)
 	if !c.Renewable {
+		// A nonrenewable token cannot be refreshed ahead of time, so it stays
+		// usable until it expires rather than until a refresh window opens.
+		if now.Before(expires) {
+			return c.Token, nil
+		}
 		return "", fail("auth_required")
+	}
+	if now.Before(expires.Add(-time.Minute)) {
+		return c.Token, nil
 	}
 	if c.RetryAt.After(now) {
 		e := fail("rate_limited")

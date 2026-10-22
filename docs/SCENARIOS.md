@@ -469,6 +469,7 @@ Active verification additionally includes `FuzzParseTunnel`, `FuzzParseDNSRecord
 | Config API uses isolated roots, strict auth unions, safe JSON envelopes and no secret reflection; save CAS and IDs remain stable | TestSourcesRealCommandEnvelopesAndSecrets, TestProfileAtomicIdentityAndAuth, TestInputStrictAndBounded |
 | Discovery is bounded, empty is independent of auth, MFA/401/403/TLS keep conservative codes | TestDiscoveryAndFailures, TestSelectionConflictRemoveStorage |
 | Credentials survive pre-publication failures, refresh is coordinated across processes and fenced against removal | TestRefreshTwoProcessesAndStorageFailure, TestRefreshAndDeleteSerialized |
+| A renewable token renews only within its one-minute window; a nonrenewable token stays usable until it expires | TestCredentialExpiryWindows |
 | Twenty objects reserve twenty GET pages; no default disk guessing or alarm thresholds | TestGeneratedProfileBudgets, TestSessionRealRuntime20ObjectsAndNoTickRequests |
 | Repeated samples never renew data; Session and Store agree; publication does not increment confirmation | TestSessionMatchesStoreAndDoesNotRenewOldData |
 | Source errors retain valid data, isolate other sources and eventually expire; bounded batch rejection is atomic | TestSessionFailureIsolatesAndExpires, TestSessionBudgetsAtomicBatchAndClose |
