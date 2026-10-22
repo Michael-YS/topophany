@@ -7,27 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-22
+
+This release adds external observation sources with a read-only Beszel Hub
+adapter and direct current-state reads without a collector, and advances the
+wire schemas that carry external evidence. See the
+[release notes](docs/releases/v1.4.2.md) for upgrade and rollback steps.
+
 ### Added
 
-- Multi-probe external observation infrastructure: typed `sources` and
-  `external` check bindings, normalized resource/status reports, persisted
-  report cursors and contact state, bounded source-level collection with
-  fan-out, reported-only snapshot projection, unified resource selection and
-  optional stream metadata. Existing host checks and measurement contracts are
-  unchanged; no vendor adapter is included. See
+- External observation sources: typed top-level `sources` and `external` check
+  bindings, normalized resource and status reports, persisted report cursors and
+  source-contact state, bounded source-level collection with fan-out,
+  reported-only snapshot projection, unified resource selection and optional
+  stream metadata. Native host checks and their measurement contracts are
+  unchanged. See
   [`docs/MULTI-PROBE-IMPLEMENTATION.md`](docs/MULTI-PROBE-IMPLEMENTATION.md) and
   [`docs/EXTERNAL-ADAPTERS.md`](docs/EXTERNAL-ADAPTERS.md).
+- Beszel Hub adapter: read-only CPU, memory and filesystem samples with stable
+  upstream sample identity, independent field availability and optional reported
+  system status. It is documented in the
+  [adapter guide](internal/adapters/beszel/README.md) and
+  [`examples/beszel.json`](examples/beszel.json).
+- Direct current-state reads: `topo sources list|inspect|save|remove` and
+  `--source direct` read selected Beszel systems inside the `topo` process
+  without a collector, daemon or resource history. See
+  [`docs/DIRECT.md`](docs/DIRECT.md) and the
+  [D1 contract](docs/contracts/direct-v1/contract.md).
 
 ### Changed
 
 - Wire schemas: batches and snapshots are schema 3. A collector still accepts
   schema 2 native batches and a client still reads schema 2 native snapshots.
   External reports and their snapshot projection require schema 3 and fail
-  explicitly on a schema 2 reader. The on-disk checkpoint becomes schema 2 once
-  external state exists; an older binary refuses it instead of ignoring state.
+  explicitly on a schema 2 reader. The on-disk checkpoint moves to schema 2
+  before the first external record is acknowledged; an older binary refuses it
+  instead of ignoring state.
+- External contract identity includes the binding and the source's measured
+  configuration, including its resolved ordered route. Public contracts remain
+  redacted, and native contract hashes are unchanged.
+- Resource selection is shared by native host and external reports, with
+  ordered fallback, an explicit primary disk that is never guessed, and
+  independent deadlines for each resource.
+- The monitor stream stays at protocol schema 1 and adds optional external
+  metadata plus the `direct.schema=1` capability.
 
 ### Fixed
 
+- Preserve external evidence through recovery and refresh, detach public
+  snapshots from mutable report state, and apply report state changes only
+  after a report is accepted. Reset confirmation across report epochs and
+  evidence gaps, and preserve it when a configured threshold is unchanged.
+- Keep external state consistent with background checkpoints: serialize format
+  migration, preserve external state when a checkpoint is captured, charge it
+  to observer quotas, and install the external context before journal recovery.
+- Advance admission's future-time reference with monotonic elapsed time and
+  share that clock between API and local writes, so a collector clock step-back
+  does not reject valid samples.
+- Keep a direct-mode nonrenewable token usable until it expires.
 - Commit a stream replacement whose first read exceeds the five-second
   preparation budget as unavailable evidence instead of trusting a partial
   result. Keep the direct credential-storage test portable to Windows, where
@@ -1725,7 +1762,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/WhitenWhiten/topophany/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/WhitenWhiten/topophany/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/WhitenWhiten/topophany/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/WhitenWhiten/topophany/compare/v1.2.0...v1.3.0

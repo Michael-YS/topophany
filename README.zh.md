@@ -118,6 +118,7 @@ topo --credentials ./demo/credentials.json
 
 ### 升级注意事项
 
+- **启用外部数据源前，先升级所有组件。** `sources` 和 `external` 检查需要 1.4.2 的 collector、worker 和查看端；旧版本会拒绝这些新字段。批次和快照为 schema 3，但仍可读取 schema 2 的原生通信。collector 确认首条外部报告后，检查点会变为 schema 2，旧版本会拒绝读取；回滚需要升级前的匹配备份。详见 [1.4.2 发布说明](docs/releases/v1.4.2.md)。
 - **启用 1.4.0 新字段前，先升级 collector 和所有查看端。** 旧版本会拒绝新增的 Cloudflare 适配器选项、DNS 传输、私密请求头及 trace/机房断言；运行新检查前也要升级 worker。流协议仍为 1，使用 `service.card` 或 `services.list` 前请检查指标目录。详见 [1.4.0 发布说明](docs/releases/v1.4.0.md)。
 - **安装 bundle 需要审阅凭证。** `topo install --bundle DIR --dry-run` 会输出一个 `bundle_sha256`。把它保存在 bundle 之外，安装时用 `--bundle-sha256` 传回；审阅之后 bundle 有任何改动，安装都会被拒绝。
 - **采集器和 worker 有了内存目标。** `serve` 默认 128 MiB，`worker` 默认 64 MiB。可以用 `--memory-limit` 调整（设为 `0` 则沿用 `GOMEMLIMIT`）；在 Linux 上还可以用 `--memory-max` 加一道硬上限。详见[内存预算](docs/MEMORY.md)（英文）。

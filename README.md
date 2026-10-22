@@ -118,6 +118,7 @@ The [operations guide](docs/OPERATIONS.md) covers dual collectors, systemd units
 
 ### Upgrading
 
+- **Upgrade everything before enabling external sources.** `sources` and `external` checks require a 1.4.2 collector, workers and viewers; older binaries reject the new fields. Batches and snapshots are schema 3, while schema 2 native traffic remains readable. Once the collector acknowledges an external report its checkpoint is schema 2, which older binaries refuse; rollback requires a matching pre-upgrade backup. See the [1.4.2 release notes](docs/releases/v1.4.2.md).
 - **Upgrade collectors and viewers before enabling 1.4.0 fields.** Older binaries reject the new Cloudflare adapter options, DNS transports, secret request headers and trace/colo assertions. Update workers before running the new checks. The stream protocol stays at 1; check the metric catalog before requesting `service.card` or `services.list`. See the [1.4.0 release notes](docs/releases/v1.4.0.md).
 - **Installing a bundle takes its review receipt.** `topo install --bundle DIR --dry-run` prints a `bundle_sha256`. Keep it outside the bundle and install with `--bundle-sha256` set to it; any change to the bundle after you reviewed it is refused.
 - **Collectors and workers have a memory target.** It defaults to 128 MiB for `serve` and 64 MiB for `worker`. Change it with `--memory-limit` (`0` keeps `GOMEMLIMIT`); on Linux, `--memory-max` adds a hard cap. See [memory budgets](docs/MEMORY.md).
