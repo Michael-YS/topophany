@@ -1,0 +1,27 @@
+{
+  "page": 1,
+  "perPage": 1,
+  "totalItems": -1,
+  "totalPages": -1,
+  "items": [
+    {
+      "id": "validationrec03",
+      "system": "validationsys01",
+      "type": "1m",
+      "created": "2026-10-21 12:34:56.789Z",
+      "stats": {
+        "cpu": 12.5,
+        "m": 8,
+        "mu": 3,
+        "mp": 37.5,
+        "mb": 1,
+        "d": 100,
+        "du": 20,
+        "dp": 23.25,
+        "efs": {
+          "storage": {"d": 200, "du": 20, "rb": 0, "wb": 0}
+        }
+      }
+    }
+  ]
+}

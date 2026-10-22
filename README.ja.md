@@ -138,6 +138,7 @@ topo --credentials ./demo/credentials.json
 - **ホストリソース (Linux、macOS、Windows):** CPU、メモリ、ファイルシステムの容量と inode、プロセス数、指定したプロセスの RSS。リソースのしきい値とプロセス数も検証できます。[`examples/host-resources.json`](examples/host-resources.json) を参照してください。
 - **プロキシチェーン:** HTTP CONNECT、HTTPS CONNECT、SOCKS5、OpenSSH `-W` を、何段でもつないで使えます。
 - **読み取り専用のアダプター:** Mihomo、Tailscale、WireGuard、cloudflared、Cloudflare API。
+- **外部リソース:** Beszel Hub の CPU、メモリ、ディスクのサンプル。サンプルの識別子と鮮度を保持し、Hub が報告するシステム状態も取得できます。[アダプターガイド](internal/adapters/beszel/README.md)と [`examples/beszel.json`](examples/beszel.json) を参照してください。
 - **エッジとプラットフォーム:** Cloudflare (Workers と Pages を含む)、Vercel、Supabase。エッジが応答したからといって証明されるのはエッジまでで、その奥のオリジンではありません。
 
 ## Cloudflare：エッジからオリジンまで

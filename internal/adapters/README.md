@@ -76,15 +76,22 @@ focused checks. Follow `CONTRIBUTING.md` for the full verification requirements.
 ## External source adapters
 
 The shared multi-probe infrastructure is described in
-[`docs/EXTERNAL-ADAPTERS.md`](../../docs/EXTERNAL-ADAPTERS.md). A future
+[`docs/EXTERNAL-ADAPTERS.md`](../../docs/EXTERNAL-ADAPTERS.md). Each
 external source adapter belongs in its own directory here and implements the
 small production interface from `internal/source.Adapter`: `Validate` and
 `Collect`. It receives a bounded `source.IO` that owns transport, TLS, explicit
 route and credential lookup; the adapter owns versions, pagination, object IDs,
 time basis and field mapping.
 
+`beszel` reads the latest raw one-minute resource record for each configured
+Beszel system and, when requested, its reported status. It preserves record
+identity, upstream time, independent percentages and exact integer memory
+fields; unavailable values remain unavailable. The Hub's status is reported
+evidence with unknown sample time. See [beszel](beszel/README.md) for supported
+schemas, authentication, field mapping and budgets.
+
 Register a real adapter only in `probe.ProductionSourceAdapters`, explicitly.
 Synthetic adapters live in `internal/testkit` and must never be added to that
-map. The first adapter should not need changes to persistence deduplication,
+map. An adapter should not need changes to persistence deduplication,
 external confirmation, generic resource selection or the bar's numeric card
 rendering.

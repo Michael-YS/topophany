@@ -140,6 +140,7 @@ def main() -> int:
         run("repeat", ["go", "test", "-count=3", "-timeout=10m", "./..."], timeout=900)
         run("coverage-summary", ["go", "tool", "cover", "-func=" + cov_path])
         fuzz = [
+            ("adapters/beszel", "FuzzBeszelResourceDecode"),
             ("tui", "FuzzDecoderAndRendering"),
             ("api", "FuzzValidateBatch"),
             ("client", "FuzzSnapshotStructure"),
@@ -174,7 +175,7 @@ def main() -> int:
             run("build-" + goos + "-" + goarch,
                 ["go", "build", "-trimpath", "-o", str(target), "./cmd/topo"],
                 overrides={"GOOS": goos, "GOARCH": goarch, "CGO_ENABLED": "0"}, timeout=300)
-        for example in ("minimal", "homelab", "host-resources", "cloudflare"):
+        for example in ("minimal", "homelab", "host-resources", "cloudflare", "beszel"):
             run("example-" + example, [str(binary), "validate", "--config", "examples/" + example + ".json"])
         for panel, source in (("desktop", "collector"), ("worker", "worker")):
             run("monitor-example-" + panel, [str(binary), "monitor", "configure", panel,

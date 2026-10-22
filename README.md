@@ -138,6 +138,7 @@ The [changelog](CHANGELOG.md) has the notes for every earlier release.
 - **Host resources (Linux, macOS, Windows):** CPU, memory, filesystem capacity and inodes, process counts and selected-process RSS, with optional resource and process-count assertions. See [`examples/host-resources.json`](examples/host-resources.json).
 - **Proxy chains:** HTTP CONNECT, HTTPS CONNECT, SOCKS5 and OpenSSH `-W`, chained over several hops.
 - **Read-only adapters:** Mihomo, Tailscale, WireGuard, cloudflared, Cloudflare API.
+- **External resources:** Beszel Hub CPU, memory and disk samples, with stable sample identity, freshness and optional reported status. See the [adapter guide](internal/adapters/beszel/README.md) and [`examples/beszel.json`](examples/beszel.json).
 - **Edges and platforms:** Cloudflare (including Workers and Pages), Vercel, Supabase. An answer from the edge proves the edge, not the origin behind it.
 
 ## Cloudflare, from edge to origin

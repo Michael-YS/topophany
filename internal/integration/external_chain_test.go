@@ -354,7 +354,7 @@ func TestSyntheticSourceIsNotInProductionRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The integration test uses the test-only registry directly; a production
-	// chain would fail to start because ProductionSourceAdapters is empty.
+	// chain refuses synthetic adapters even when real adapters are registered.
 	// This assertion is covered in internal/probe; keep the config shape here
 	// so the fixture cannot accidentally rely on a production registration.
 	raw, _ := json.Marshal(c.Sources)

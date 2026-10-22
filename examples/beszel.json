@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "project": "beszel-resources",
+  "nodes": [
+    {"id": "collector", "name": "Collector", "kind": "host"},
+    {"id": "server-1", "name": "Beszel server", "kind": "host", "resource_checks": ["server-1-resources"]}
+  ],
+  "endpoints": [],
+  "services": [],
+  "observers": [
+    {"id": "beszel-reader", "node": "collector", "context": "reads the Beszel Hub from this observer"}
+  ],
+  "paths": [],
+  "sources": [
+    {
+      "id": "beszel-hub",
+      "name": "Beszel Hub",
+      "adapter": "beszel",
+      "observer": "beszel-reader",
+      "target": "https://beszel.example.com",
+      "credential_env": "TOPO_BESZEL_TOKEN",
+      "interval_seconds": 60,
+      "timeout_seconds": 8,
+      "stale_seconds": 180,
+      "max_response_bytes": 1048576,
+      "max_pages": 1,
+      "max_objects": 1,
+      "max_report_bytes": 65536,
+      "notes": "Replace target and external.object with your Hub base URL and systems.id. Supply a raw PocketBase token in TOPO_BESZEL_TOKEN."
+    }
+  ],
+  "checks": [
+    {
+      "id": "server-1-resources",
+      "name": "Beszel server resources",
+      "observer": "beszel-reader",
+      "kind": "external",
+      "external": {
+        "source": "beszel-hub",
+        "object": "sys012345678901",
+        "report": "resource",
+        "node": "server-1",
+        "max_age_seconds": 180,
+        "primary_disk": "root",
+        "assertions": {"cpu_percent_max": 90, "memory_percent_max": 90, "disk_percent_max": 85}
+      }
+    }
+  ]
+}

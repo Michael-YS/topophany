@@ -24,7 +24,7 @@ const (
 )
 
 // SyntheticSourceAdapters is the test-only static registry. Tests pass it to
-// probe.NewSourceRuntime explicitly; production passes an empty registry.
+// probe.NewSourceRuntime explicitly; production registers only real adapters.
 func SyntheticSourceAdapters() map[string]source.Adapter {
 	return map[string]source.Adapter{
 		SyntheticListAdapter:     ListAdapter{},

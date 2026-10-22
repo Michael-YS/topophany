@@ -1,10 +1,11 @@
 # External source adapters and upgrades
 
-This guide is for adding the first real source adapter. The common
-infrastructure is shipped and tested; no vendor adapter is implemented in this
-release. `probe.ProductionSourceAdapters()` is intentionally an empty static
-map, so a topology that names an external source fails before collection rather
-than pretending a report was read.
+This guide describes the external-source contract and how to add an adapter.
+The production registry ships `beszel`, which reads Beszel Hub resource samples
+and optional reported system status. Start with the
+[Beszel adapter guide](../internal/adapters/beszel/README.md) and
+[`examples/beszel.json`](../examples/beszel.json). Unknown adapter names are
+rejected before collection; synthetic adapters remain test-only.
 
 Read [MULTI-PROBE-IMPLEMENTATION.md](MULTI-PROBE-IMPLEMENTATION.md) for the
 frozen contract and delivery record. The scenario-level behavior is mapped in
@@ -42,7 +43,7 @@ small static interface in `internal/source`:
 ```go
 type Adapter interface {
     Validate(model.Source) error
-    Collect(context.Context, source.IO, model.Source, []string) ([]source.Reading, error)
+    Collect(context.Context, source.IO, model.Source, []source.Request) ([]source.Reading, error)
 }
 ```
 
@@ -52,7 +53,8 @@ type Adapter interface {
   source's explicit route/TLS policy, with no ambient proxy, redirects,
   compression or unbounded bodies;
 - the reviewed source;
-- the bounded stable object IDs the runner needs.
+- the bounded stable object IDs and report types the runner needs, grouped
+  into one `source.Request` per object.
 
 The adapter owns everything vendor-specific:
 
@@ -107,8 +109,9 @@ new adapter and map semantic regressions in `docs/SCENARIOS.md`.
 
 A complete new-style topology is in
 [`examples/multi-probe.template.json`](../examples/multi-probe.template.json).
-It is schema-valid but intentionally names `example-api`, which is not in the
-production registry until the first adapter is wired. Validate it with:
+It is schema-valid but intentionally names the placeholder `example-api`,
+which is not in the production registry. Use `examples/beszel.json` for the
+implemented adapter. Validate the generic template's schema with:
 
 ```sh
 topo validate --config examples/multi-probe.template.json
@@ -336,8 +339,9 @@ The wire and persistence changes are deliberately explicit:
 4. Upgrade TUI/bar clients. A current client reads schema 2 native snapshots and
    schema 3 snapshots. An old client refuses schema 3 explicitly; it does not
    silently show a partial external snapshot.
-5. Deploy the first adapter and its reviewed config. Until then a config that
-   names external sources fails at startup with an unwired-adapter error.
+5. Deploy a binary that includes the configured adapter and its reviewed config.
+   The production registry includes `beszel`; unknown names fail at startup
+   with an unwired-adapter error.
 6. Publish/monitor only after delivery shows accepted reports and source contact.
 
 Rollback:
@@ -368,9 +372,9 @@ topo monitor stream --config monitor.json ...
 The source read is performed by the worker or a collector running local checks.
 The monitor and bar only consume snapshots and stream frames.
 
-Until the first adapter is registered, source jobs fail explicitly. The
-integration suite exercises test-only list/counter/status adapters through the
-real runner, outbox, HTTP API, store, engine, view and monitor stream:
+The integration suite exercises the production Beszel adapter and test-only
+list/counter/status adapters through the real runner, outbox, HTTP API, store,
+engine, view and monitor stream:
 
 ```sh
 go test ./internal/integration -count=1

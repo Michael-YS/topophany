@@ -138,6 +138,7 @@ topo --credentials ./demo/credentials.json
 - **主机资源（Linux、macOS、Windows）：** CPU、内存、文件系统容量与 inode、进程数以及指定进程的内存占用，可以设置资源阈值和进程数检查。参见 [`examples/host-resources.json`](examples/host-resources.json)。
 - **代理链：** HTTP CONNECT、HTTPS CONNECT、SOCKS5 和 OpenSSH `-W`，可以多跳串联。
 - **只读适配器：** Mihomo、Tailscale、WireGuard、cloudflared、Cloudflare API。
+- **外部资源：** Beszel Hub 的 CPU、内存、磁盘采样，保留样本身份和新鲜度，并可读取上游报告的系统状态。参见[适配器说明](internal/adapters/beszel/README.md)及 [`examples/beszel.json`](examples/beszel.json)。
 - **边缘与平台：** Cloudflare（包括 Workers 和 Pages）、Vercel、Supabase。边缘有应答，只能证明边缘本身没问题，证明不了它背后的源站。
 
 ## Cloudflare：从边缘到源站
