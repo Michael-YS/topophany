@@ -122,7 +122,7 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 	if m.Visual == "status" || m.Visual == "list" || m.Visual == "card" {
 		return projection.resolve(v)
 	}
-	s, stale := projection.scalarSnapshot()
+	s := projection.scalarSnapshot()
 	if strings.HasPrefix(r.Metric, "delivery.") {
 		return deliveryValue(v, in.Delivery, now)
 	}
@@ -159,17 +159,10 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 		v.Value = verdict.State
 		v.Text = verdict.Text
 		v.Health = verdictHealth(verdict.State)
-		v.ValidUntil = s.GeneratedAt.Add(model.SnapshotLifetime)
-		for _, cs := range s.Checks {
-			if cs.Last != nil {
-				if cs.Last.SampledAt.After(v.SampledAt) {
-					v.SampledAt = cs.Last.SampledAt
-				}
-				expires := cs.Last.SampledAt.Add(time.Duration(stale[cs.ID]) * time.Second)
-				if cs.Freshness == "fresh" && expires.Before(v.ValidUntil) {
-					v.ValidUntil = expires
-				}
-			}
+		v.SampledAt, v.ValidUntil = projection.evidence().times(nil, false)
+		if !now.Before(v.ValidUntil) {
+			v.Freshness = "stale"
+			return missing(v, "sample_expired")
 		}
 		return v
 	}
@@ -204,13 +197,18 @@ func resolve(r Row, in Input, now time.Time, projection *projection) Value {
 	v.Health = cs.Health
 	v.Freshness = cs.Freshness
 	if cs.Last == nil {
-		return missing(v, "never_sampled")
-	}
-	v.SampledAt = cs.Last.SampledAt
-	for _, check := range s.Topology.Checks {
-		if check.ID == cs.ID {
-			v.ValidUntil = v.SampledAt.Add(time.Duration(check.StaleSeconds) * time.Second)
-			break
+		clock := projection.evidence().checks[cs.ID]
+		if r.Metric != "check.status" || clock.sampled.IsZero() {
+			return missing(v, "never_sampled")
+		}
+		v.SampledAt, v.ValidUntil = clock.sampled, clock.until
+	} else {
+		v.SampledAt = cs.Last.SampledAt
+		for _, check := range s.Topology.Checks {
+			if check.ID == cs.ID {
+				v.ValidUntil = v.SampledAt.Add(time.Duration(check.StaleSeconds) * time.Second)
+				break
+			}
 		}
 	}
 	if limit := s.GeneratedAt.Add(model.SnapshotLifetime); v.ValidUntil.After(limit) {
@@ -347,15 +345,12 @@ func deliveryValue(v Value, reports []model.DeliveryStatus, now time.Time) Value
 
 // ageSnapshot preserves collector judgments while allowing check and observer
 // evidence to expire between source refreshes. It never mutates its input.
-func ageSnapshot(s model.Snapshot, now time.Time) model.Snapshot {
+func ageSnapshot(s model.Snapshot, now time.Time, clocks *evidenceIndex) model.Snapshot {
 	s.Checks = slices.Clone(s.Checks)
-	stale := map[string]int{}
-	for _, c := range s.Topology.Checks {
-		stale[c.ID] = c.StaleSeconds
-	}
 	for i := range s.Checks {
 		c := &s.Checks[i]
-		if c.Freshness == "fresh" && c.Last != nil && (c.Last.SampledAt.After(now.Add(model.SampleClockAhead)) || !now.Before(c.Last.SampledAt.Add(time.Duration(stale[c.ID])*time.Second))) {
+		clock := clocks.checks[c.ID]
+		if c.Freshness == "fresh" && (clock.sampled.After(now.Add(model.SampleClockAhead)) || !now.Before(clock.until)) {
 			c.Freshness = "stale"
 			c.Health = "unknown"
 		}

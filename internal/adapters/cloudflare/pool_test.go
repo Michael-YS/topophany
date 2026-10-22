@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/WhitenWhiten/topophany/internal/adapters"
 )
 
 func TestCollectPoolHealthFixture(t *testing.T) {
@@ -109,6 +111,51 @@ func TestCollectPoolHealthSingleDocumentedShape(t *testing.T) {
 	}
 	if o.Outcome != "ok" {
 		t.Fatalf("outcome=%s", o.Outcome)
+	}
+}
+
+func TestCollectPoolRejectsEmptyRegionReports(t *testing.T) {
+	for _, raw := range []string{
+		`{"healthy":null}`,
+		`{"origins":null}`,
+		`{"HKG":null}`,
+		`{"HKG":{}}`,
+		`{"HKG":{"healthy":null,"origins":null}}`,
+		`{"HKG":{"new_field":"not_health"}}`,
+		`{"HKG":{"healthy":true},"LAX":null}`,
+	} {
+		for _, expected := range [][]string{nil, {"192.0.2.10"}} {
+			t.Run(raw+strings.Join(expected, ","), func(t *testing.T) {
+				options := poolOptions()
+				options.ExpectedOrigins = expected
+				o := observation()
+				body := []byte(`{"success":true,"result":{"pop_health":` + raw + `}}`)
+				err := collectPool(body, options, o)
+				failure, ok := err.(*adapters.Failure)
+				if !ok || !failure.Local || failure.Stage != "adapter_api" || failure.Code != "unsupported_response_shape" {
+					t.Fatalf("unreported health became target evidence: err=%v observation=%+v", err, o)
+				}
+				if o.Outcome != "unknown" || len(o.Facts) != 0 {
+					t.Fatalf("invalid region leaked partial evidence: %+v", o)
+				}
+			})
+		}
+	}
+	for _, raw := range []string{
+		`{"healthy":false}`,
+		`{"origins":[]}`,
+		`{"HKG":{"healthy":false}}`,
+		`{"HKG":{"origins":[]}}`,
+	} {
+		t.Run("explicit_reading_"+raw, func(t *testing.T) {
+			options := poolOptions()
+			options.ExpectedOrigins = nil
+			o := observation()
+			body := []byte(`{"success":true,"result":{"pop_health":` + raw + `}}`)
+			if err := collectPool(body, options, o); err != nil || o.Outcome != "ok" || o.Facts["regions_reporting"] != "1" {
+				t.Fatalf("explicit negative/empty reading rejected: err=%v observation=%+v", err, o)
+			}
+		})
 	}
 }
 

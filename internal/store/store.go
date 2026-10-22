@@ -222,6 +222,13 @@ func Open(dir string, o Options) (s *Store, err error) {
 		return nil, e
 	}
 	s.rebuildExternalAccountingLocked()
+	// A reload can replace bindings without writing a new checkpoint. Drop
+	// obsolete checkpoint state before replay checks the entity/byte budgets,
+	// just as the live reload did before accepting replacement observations.
+	if s.options.Contracts != nil {
+		s.pruneExternalLocked(s.options.Contracts)
+		s.applyExternalRulesLocked()
+	}
 	path := filepath.Join(dir, "journal.jsonl")
 	st, e := os.Lstat(path)
 	if e == nil && !st.Mode().IsRegular() {

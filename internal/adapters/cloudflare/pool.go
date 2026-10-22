@@ -130,17 +130,12 @@ func parseRegions(raw json.RawMessage) ([]regionHealth, error) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return nil, adapters.Local("adapter_api", "unsupported_response_shape")
 	}
-	if _, ok := fields["healthy"]; ok {
-		var region regionHealth
-		if err := json.Unmarshal(raw, &region); err != nil {
-			return nil, adapters.Local("adapter_api", "unsupported_response_shape")
-		}
-		return []regionHealth{region}, nil
-	}
-	if _, ok := fields["origins"]; ok {
-		var region regionHealth
-		if err := json.Unmarshal(raw, &region); err != nil {
-			return nil, adapters.Local("adapter_api", "unsupported_response_shape")
+	_, hasHealthy := fields["healthy"]
+	_, hasOrigins := fields["origins"]
+	if hasHealthy || hasOrigins {
+		region, err := parseRegion(raw)
+		if err != nil {
+			return nil, err
 		}
 		return []regionHealth{region}, nil
 	}
@@ -149,11 +144,21 @@ func parseRegions(raw json.RawMessage) ([]regionHealth, error) {
 	}
 	regions := make([]regionHealth, 0, len(fields))
 	for _, value := range fields {
-		var region regionHealth
-		if err := json.Unmarshal(value, &region); err != nil {
-			return nil, adapters.Local("adapter_api", "unsupported_response_shape")
+		region, err := parseRegion(value)
+		if err != nil {
+			return nil, err
 		}
 		regions = append(regions, region)
 	}
 	return regions, nil
+}
+
+// Missing health fields are not readings. Explicit false and an empty origins
+// array remain meaningful because their pointers/slices are non-nil.
+func parseRegion(raw json.RawMessage) (regionHealth, error) {
+	var region regionHealth
+	if err := json.Unmarshal(raw, &region); err != nil || region.Healthy == nil && region.Origins == nil {
+		return regionHealth{}, adapters.Local("adapter_api", "unsupported_response_shape")
+	}
+	return region, nil
 }

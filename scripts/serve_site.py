@@ -9,6 +9,7 @@ connecting directly to collectors; this script changes no published files.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from functools import partial
 import fnmatch
 import http.client
@@ -32,6 +33,42 @@ MAX_BODY = 4 << 20
 LAUNCH_TTL = 300
 MAX_CONNECTIONS = 16
 HEADER_TIMEOUT = 3
+EXCHANGE_TIMEOUT = 3
+COLLECTOR_TIMEOUT = 8
+
+
+@contextmanager
+def socket_deadline(peer, timeout):
+    """Bound a complete read, including peers that continually send small chunks."""
+    if timeout <= 0:
+        raise TimeoutError("read deadline exceeded")
+    deadline = time.monotonic() + timeout
+    lock = threading.Lock()
+    active, expired = True, False
+
+    def expire():
+        nonlocal expired
+        with lock:
+            if not active:
+                return
+            expired = True
+            try:
+                peer.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    timer = threading.Timer(timeout, expire)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        with lock:
+            active = False
+            timed_out = expired or time.monotonic() >= deadline
+        timer.cancel()
+    if timed_out:
+        raise TimeoutError("read deadline exceeded")
 
 
 class BoundedHTTPServer(ThreadingHTTPServer):
@@ -122,15 +159,20 @@ class Collector:
             return True
 
     def read(self, path: str) -> tuple[int, bytes]:
+        started = time.monotonic()
         connection = http.client.HTTPSConnection(
-            self.target.hostname, self.target.port or 443, context=self.tls, timeout=8)
+            self.target.hostname, self.target.port or 443, context=self.tls,
+            timeout=COLLECTOR_TIMEOUT)
         try:
             # No cookies, browser headers, or redirects reach another host.
-            connection.request("GET", self.target.path.rstrip("/") + path,
-                               headers={"Authorization": "Bearer " + self.token,
-                                        "Accept": "application/json"})
-            response = connection.getresponse()
-            body = response.read(MAX_BODY + 1)
+            connection.connect()
+            remaining = COLLECTOR_TIMEOUT - (time.monotonic() - started)
+            with socket_deadline(connection.sock, remaining):
+                connection.request("GET", self.target.path.rstrip("/") + path,
+                                   headers={"Authorization": "Bearer " + self.token,
+                                            "Accept": "application/json"})
+                response = connection.getresponse()
+                body = response.read(MAX_BODY + 1)
             if len(body) > MAX_BODY:
                 raise ValueError("collector response exceeds the viewer body limit")
             if 300 <= response.status < 400:
@@ -284,8 +326,9 @@ class SiteHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             if not 1 <= length <= 256 or self.headers.get("Transfer-Encoding"):
                 raise ValueError("invalid launch length")
-            self.connection.settimeout(3)
-            launch = self.rfile.read(length).decode("ascii")
+            self.connection.settimeout(EXCHANGE_TIMEOUT)
+            with socket_deadline(self.connection, EXCHANGE_TIMEOUT):
+                launch = self.rfile.read(length).decode("ascii")
             if not re.fullmatch(r"[0-9a-f]{64}", launch):
                 raise ValueError("invalid launch secret")
         except (ValueError, OSError):

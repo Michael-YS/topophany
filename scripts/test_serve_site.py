@@ -12,7 +12,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 SPEC = importlib.util.spec_from_file_location("serve_site", Path(__file__).with_name("serve_site.py"))
 site = importlib.util.module_from_spec(SPEC)
@@ -31,7 +31,17 @@ class Upstream(BaseHTTPRequestHandler):
             self.send_header("Location", "https://another-collector.invalid/v1/snapshot")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        delay = getattr(self.server, "body_delay", 0)
+        try:
+            if delay:
+                for value in body:
+                    self.wfile.write(bytes([value]))
+                    self.wfile.flush()
+                    time.sleep(delay)
+            else:
+                self.wfile.write(body)
+        except OSError:
+            pass
 
 
 class LocalViewerTests(unittest.TestCase):
@@ -183,6 +193,40 @@ class LocalViewerTests(unittest.TestCase):
                 except ConnectionResetError:
                     pass
 
+    def test_dripping_exchange_body_cannot_hold_admission_slots(self):
+        self.server.slots = threading.BoundedSemaphore(1)
+        secret = self.collector.launch
+        with patch.object(site, "EXCHANGE_TIMEOUT", .15, create=True):
+            with socket.create_connection(("127.0.0.1", self.server.server_port), timeout=1) as connection:
+                connection.sendall((f"POST {site.PREFIX}/exchange HTTP/1.1\r\n"
+                                    f"Host: {self.origin.removeprefix('http://')}\r\n"
+                                    f"Origin: {self.origin}\r\n"
+                                    "Sec-Fetch-Site: same-origin\r\n"
+                                    "Content-Length: 64\r\n\r\n").encode())
+                start = time.monotonic()
+                for _ in range(24):
+                    time.sleep(.025)
+                    try:
+                        connection.sendall(b"0")
+                    except OSError:
+                        break
+                self.assertLess(time.monotonic() - start, .5)
+                try:
+                    self.assertEqual(connection.recv(1), b"")
+                except ConnectionResetError:
+                    pass
+                self.assertEqual(self.collector.launch, secret)
+        self.assertEqual(self.exchange(secret)[0], 200)
+
+    def test_dripping_collector_body_has_absolute_deadline(self):
+        self.upstream.body_delay = .025
+        with patch.object(site, "COLLECTOR_TIMEOUT", .15, create=True):
+            start = time.monotonic()
+            self.assertEqual(self.authorized()[0], 502)
+            self.assertLess(time.monotonic() - start, .5)
+        self.upstream.body_delay = 0
+        self.assertEqual(self.authorized()[0], 200)
+
     def test_forged_browser_headers_cannot_acquire_a_capability(self):
         forged = {"Host": self.origin.removeprefix("http://"), "Origin": self.origin,
                   "Sec-Fetch-Site": "same-origin", "Referer": self.origin + "/zh/app/"}
@@ -259,6 +303,43 @@ class LocalViewerTests(unittest.TestCase):
         status, headers, _ = self.request("/js/" + worker.name)
         self.assertEqual(status, 200)
         self.assertIn("connect-src 'self' https:", headers["Content-Security-Policy"])
+
+
+class SocketDeadlineTests(unittest.TestCase):
+    def test_callback_started_before_cancel_cannot_close_completed_read(self):
+        class Timer:
+            def __init__(self, timeout, callback):
+                self.callback = callback
+
+            def start(self):
+                pass
+
+            def cancel(self):
+                self.callback()
+
+        peer = Mock()
+        with patch.object(site.threading, "Timer", Timer):
+            with site.socket_deadline(peer, 60):
+                pass
+        peer.shutdown.assert_not_called()
+
+    def test_expired_callback_cannot_admit_a_read_that_completed_concurrently(self):
+        class Timer:
+            def __init__(self, timeout, callback):
+                self.callback = callback
+
+            def start(self):
+                self.callback()
+
+            def cancel(self):
+                pass
+
+        peer = Mock()
+        with patch.object(site.threading, "Timer", Timer):
+            with self.assertRaises(TimeoutError):
+                with site.socket_deadline(peer, 60):
+                    pass
+        peer.shutdown.assert_called_once_with(socket.SHUT_RDWR)
 
 
 if __name__ == "__main__":

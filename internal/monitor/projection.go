@@ -22,20 +22,15 @@ type projection struct {
 	resources                      map[string]view.NodeResources
 	currentClocks, completeClocks  *evidenceIndex
 	aged                           *model.Snapshot
-	stale                          map[string]int
 	samples                        map[string][]model.Observation
 }
 
-func (p *projection) scalarSnapshot() (model.Snapshot, map[string]int) {
+func (p *projection) scalarSnapshot() model.Snapshot {
 	if p.aged == nil {
-		s := ageSnapshot(p.v.Snapshot, p.v.Now)
+		s := ageSnapshot(p.v.Snapshot, p.v.Now, p.evidence())
 		p.aged = &s
-		p.stale = make(map[string]int, len(s.Topology.Checks))
-		for _, check := range s.Topology.Checks {
-			p.stale[check.ID] = check.StaleSeconds
-		}
 	}
-	return *p.aged, p.stale
+	return *p.aged
 }
 
 type evidenceClock struct{ sampled, until time.Time }
@@ -135,16 +130,33 @@ func indexEvidence(v view.View) *evidenceIndex {
 	for _, c := range s.Topology.Checks {
 		stale[c.ID] = c.StaleSeconds
 	}
+	external := make(map[string]model.ExternalBindingView, len(s.External))
+	for _, binding := range s.External {
+		external[binding.Check] = binding
+	}
 	for _, c := range s.Checks {
 		clock := evidenceClock{until: base}
-		if c.Last != nil {
+		if binding, ok := external[c.ID]; ok {
+			// External evidence has no native Last observation. Its report
+			// age and source-contact clocks independently bound the judgment.
+			clock.sampled = binding.SampledAt.UTC()
+			if c.Freshness == "fresh" {
+				if binding.Report == nil || binding.SampledAt.IsZero() || binding.DataDeadline.IsZero() || binding.ContactDeadline.IsZero() || binding.ValidUntil.IsZero() {
+					clock.until = v.Now
+				} else {
+					clock.until = minTime(minTime(base, binding.ValidUntil), minTime(binding.DataDeadline, binding.ContactDeadline))
+				}
+			}
+		} else if c.Last != nil {
 			clock.sampled = c.Last.SampledAt.UTC()
 			if c.Freshness == "fresh" {
 				clock.until = minTime(base, clock.sampled.Add(time.Duration(stale[c.ID])*time.Second))
-				if clock.sampled.After(v.Now.Add(model.SampleClockAhead)) {
-					clock.until = v.Now
-				}
 			}
+		}
+		// A fresh judgment needs a real evidence clock, even when the whole
+		// external binding or native Last observation is absent.
+		if c.Freshness == "fresh" && (clock.sampled.IsZero() || clock.sampled.After(v.Now.Add(model.SampleClockAhead))) {
+			clock.until = v.Now
 		}
 		e.checks[c.ID] = clock
 		e.checkClock = combineClock(e.checkClock, clock)

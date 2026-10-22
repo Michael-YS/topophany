@@ -15,6 +15,7 @@ import platform
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,26 @@ import time
 from source_identity import source_identity, require_unchanged
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def run_command(command: list[str], *, timeout: float, **kwargs) -> subprocess.CompletedProcess:
+    """Run a logged command; cancel its POSIX process group on timeout or interruption."""
+    with subprocess.Popen(command, start_new_session=os.name == "posix", **kwargs) as proc:
+        try:
+            return subprocess.CompletedProcess(command, proc.wait(timeout=timeout))
+        except BaseException:
+            # Go launches separate test binaries. Killing only the Go driver
+            # leaves those children running into the next verification stage.
+            if os.name == "posix":
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                # Preserve the existing direct-child cleanup on non-POSIX hosts.
+                proc.kill()
+            proc.wait()
+            raise
 
 
 def main() -> int:
@@ -74,8 +95,8 @@ def main() -> int:
         procenv.update(overrides or {})
         try:
             with log_path.open("w", encoding="utf-8") as log:
-                proc = subprocess.run(command, cwd=ROOT, env=procenv, stdout=log,
-                                      stderr=subprocess.STDOUT, timeout=timeout, check=False)
+                proc = run_command(command, cwd=ROOT, env=procenv, stdout=log,
+                                   stderr=subprocess.STDOUT, timeout=timeout)
             content = log_path.read_text(encoding="utf-8", errors="replace")
             sanitized_content = sanitize_str(content)
             if sanitized_content != content:
@@ -105,8 +126,10 @@ def main() -> int:
         run("module-integrity", ["go", "mod", "verify"])
         run("vet", ["go", "vet", "./..."])
         cov_path = str((output / "coverage.out").relative_to(ROOT)) if (output / "coverage.out").is_relative_to(ROOT) else str(output / "coverage.out")
-        run("tests-json", ["go", "test", "-json", "-count=1",
-                           "-coverprofile=" + cov_path, "./..."])
+        # Coverage-instrumented rendering also needs the bounded package
+        # deadline and collection allowance used by the repeated test pass.
+        run("tests-json", ["go", "test", "-json", "-count=1", "-timeout=10m",
+                           "-coverprofile=" + cov_path, "./..."], timeout=900)
         # Race-instrumented TUI rendering can outgrow the former 600 s limit
         # on shared CI runners. Let Go report stacks for a hung package before
         # the outer deadline, which also allows time for compilation.
@@ -131,6 +154,9 @@ def main() -> int:
             ("adapters/wireguard", "FuzzWireGuardRows"),
             ("adapters/cloudflared", "FuzzReady"),
             ("adapters/cloudflared", "FuzzMetrics"),
+            ("adapters/cloudflare", "FuzzParseTunnel"),
+            ("adapters/cloudflare", "FuzzParseDNSRecord"),
+            ("adapters/cloudflare", "FuzzParsePoolHealth"),
             ("probe", "FuzzDNSPacket"),
             ("probe", "FuzzICMPChecksum"),
             ("rollup", "FuzzLateSampleOrder"),

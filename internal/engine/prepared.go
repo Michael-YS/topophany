@@ -39,11 +39,11 @@ func (p *Plan) PrepareExternal(rows []model.Observation, carries []Carry, beats 
 	return e.WithHeartbeats(beats)
 }
 
-// WithHeartbeats shares immutable folded checks and observation timestamps,
-// replacing only liveness. Previously captured snapshots retain their own beats.
+// WithHeartbeats shares immutable folded checks, observation timestamps and
+// external state owned by PrepareExternal. Build detaches published reports.
+// Only liveness is replaced; previous snapshots retain their own beats.
 func (e *Prepared) WithHeartbeats(beats map[string]model.Heartbeat) *Prepared {
 	next := *e
-	next.external = model.CloneExternalState(e.external)
 	next.beats = make(map[string]model.Heartbeat, len(beats))
 	next.reported = make(map[string]string, len(beats))
 	for id, h := range beats {

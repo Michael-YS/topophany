@@ -24,7 +24,9 @@ func (s *Store) EvaluationView(known uint64, force bool) ([]model.Observation, [
 }
 
 // EvaluationViewWithExternal is EvaluationView plus the persisted external
-// acceptance state needed to judge reported evidence independently.
+// acceptance state needed to judge reported evidence independently. When the
+// evidence version is unchanged, external state is omitted with rows/carries;
+// the caller keeps its prepared evidence and refreshes only heartbeats.
 func (s *Store) EvaluationViewWithExternal(known uint64, force bool) ([]model.Observation, []engine.Carry, map[string]model.Heartbeat, *model.ExternalState, uint64, uint64) {
 	s.mu.Lock()
 	version, evidenceVersion := s.version, s.evidenceVersion
@@ -33,9 +35,8 @@ func (s *Store) EvaluationViewWithExternal(known uint64, force bool) ([]model.Ob
 		beats[k] = model.CloneHeartbeat(v)
 	}
 	if !force && known == evidenceVersion {
-		external := model.CloneExternalState(s.external)
 		s.mu.Unlock()
-		return nil, nil, beats, external, version, evidenceVersion
+		return nil, nil, beats, nil, version, evidenceVersion
 	}
 	external := model.CloneExternalState(s.external)
 	count := len(s.rows)
@@ -84,6 +85,9 @@ func (s *Store) EvaluationViewWithExternal(known uint64, force bool) ([]model.Ob
 			v.Timings = nil
 			v.Detail = ""
 		}
+		// Attempts and reports, including older tail entries, must not expose
+		// pointers into the persisted observation graph.
+		v.External = model.CloneExternalObservation(v.External)
 	}
 	return out, carries, beats, external, version, evidenceVersion
 }

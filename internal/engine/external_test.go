@@ -52,6 +52,74 @@ func resourceReport(at time.Time, cpu float64) model.ExternalReport {
 	return model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "vm/dmit", SampleID: "resource-1", ObservedAt: at, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &cpu}, Disks: []model.DiskReport{{ID: "root", Percent: &cpu}}}}
 }
 
+func TestExternalInactiveChecksBeforeFirstReport(t *testing.T) {
+	for _, mode := range []struct {
+		name                  string
+		disabled, maintenance bool
+		freshness             string
+	}{
+		{"paused", true, false, "paused"},
+		{"maintenance", false, true, "maintenance"},
+		{"paused_takes_precedence", true, true, "paused"},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			c := externalEngineConfig(t, model.ReportTypeStatus, nil)
+			x := &c.Checks[len(c.Checks)-1]
+			x.Disabled, x.Maintenance = mode.disabled, mode.maintenance
+			now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+			plan := NewPlan(c)
+			assertInactiveCheck := func(t *testing.T, snap model.Snapshot) model.CheckState {
+				t.Helper()
+				var checked model.CheckState
+				for _, state := range snap.Checks {
+					if state.ID == "external-check" {
+						checked = state
+					}
+				}
+				if checked.ID == "" || checked.Freshness != mode.freshness || checked.Health != "unknown" || checked.PolicyConfirmed {
+					t.Fatalf("inactive external check = %+v", checked)
+				}
+				return checked
+			}
+			assertInactive := func(t *testing.T, snap model.Snapshot) model.ExternalBindingView {
+				t.Helper()
+				checked := assertInactiveCheck(t, snap)
+				if len(snap.External) != 1 || snap.External[0].Freshness != mode.freshness || snap.External[0].Health != "unknown" || snap.External[0].Reason != checked.Reason {
+					t.Fatalf("inactive external view = %+v", snap.External)
+				}
+				return snap.External[0]
+			}
+			t.Run("one-shot_builder", func(t *testing.T) {
+				// Plan.Build publishes check states; only Prepared.Build adds
+				// the separate External projection to the snapshot.
+				assertInactiveCheck(t, plan.Build("test", "", nil, nil, nil, now))
+			})
+			sourceFailure := model.NewExternalState()
+			sourceFailure.Sources["probe-api"] = report.MergeSource(model.SourceState{}, "probe-api", now, false, "auth_failed", 5)
+			emptyBinding := model.NewExternalState()
+			emptyBinding.Bindings["external-check"] = model.BindingState{Source: "probe-api"}
+			accepted := externalState(t, c, now, statusReport(now, "down"), now)
+			for name, ext := range map[string]*model.ExternalState{
+				"no_state":        nil,
+				"no_binding":      model.NewExternalState(),
+				"source_failure":  sourceFailure,
+				"empty_binding":   emptyBinding,
+				"accepted_report": accepted,
+			} {
+				t.Run(name, func(t *testing.T) {
+					e := assertInactive(t, plan.PrepareExternal(nil, nil, nil, ext).Build("test", "", now))
+					if name == "source_failure" && (e.SourceState.LastResult != "error" || e.SourceState.LastCode != "auth_failed") {
+						t.Fatalf("inactive binding lost source diagnostics: %+v", e.SourceState)
+					}
+					if name == "accepted_report" && (e.Report == nil || e.Report.Status == nil || e.Report.Status.Status != "down" || e.Stats.Samples != 1) {
+						t.Fatalf("inactive binding lost historical report: %+v", e)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestExternalStatusIsReportedAndDoesNotVoteInMeasuredService(t *testing.T) {
 	c := externalEngineConfig(t, model.ReportTypeStatus, nil)
 	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
@@ -247,8 +315,8 @@ func TestExternalSnapshotOwnsEveryMutableReportMember(t *testing.T) {
 		t.Fatalf("persisted state was mutated through a snapshot: %+v", persisted)
 	}
 
-	// Heartbeat refreshes clone the prepared external state rather than
-	// dropping ownership at a second boundary.
+	// Heartbeat refreshes share immutable prepared state; each published
+	// snapshot still owns its reports independently.
 	refreshed := prepared.WithHeartbeats(nil)
 	third := refreshed.Build("test", "", now)
 	third.External[0].Report.Resource.Disks[0].ID = "changed"

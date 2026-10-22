@@ -9,7 +9,15 @@ import (
 
 // externalBaseState is the state of a binding with no accepted report yet.
 func (p *Plan) externalBaseState(x model.Check) model.CheckState {
-	return model.CheckState{ID: x.ID, Contract: p.publicContracts[x.ID], Observer: x.Observer, Health: "unknown", Freshness: "never", Evidence: "reported", Reason: "no accepted external report"}
+	st := model.CheckState{ID: x.ID, Contract: p.publicContracts[x.ID], Observer: x.Observer, Health: "unknown", Freshness: "never", Evidence: "reported", Reason: "no accepted external report"}
+	// Configuration state does not depend on having collected evidence. This
+	// also covers a new binding whose source has never returned a report.
+	if x.Disabled {
+		st.Freshness, st.Reason = "paused", "check paused"
+	} else if x.Maintenance {
+		st.Freshness, st.Reason = "maintenance", "maintenance; excluded from alerts"
+	}
+	return st
 }
 
 // currentExternal judges one binding at now from persisted acceptance state.
@@ -18,7 +26,7 @@ func (p *Plan) externalBaseState(x model.Check) model.CheckState {
 // fabricated recovery or outage.
 func (p *Plan) currentExternal(x model.Check, ext *model.ExternalState, now time.Time) (model.CheckState, model.ExternalBindingView) {
 	st := p.externalBaseState(x)
-	view := model.ExternalBindingView{Check: x.ID, Source: x.External.Source, Object: x.External.Object, ReportType: x.External.Report, Node: x.External.Node, Service: x.Service, Health: "unknown", Freshness: "never", Evidence: "reported", Reason: st.Reason}
+	view := model.ExternalBindingView{Check: x.ID, Source: x.External.Source, Object: x.External.Object, ReportType: x.External.Report, Node: x.External.Node, Service: x.Service, Health: st.Health, Freshness: st.Freshness, Evidence: st.Evidence, Reason: st.Reason}
 	if ext == nil {
 		return st, view
 	}
@@ -59,14 +67,7 @@ func (p *Plan) currentExternal(x model.Check, ext *model.ExternalState, now time
 	}
 	view.ValidUntil = report.ValidUntil(dataDeadline, view.ContactDeadline, now.Add(model.SnapshotLifetime))
 	st.Since = state.LastAcceptedAt
-	if x.Disabled {
-		st.Freshness, st.Reason = "paused", "check paused"
-		view.Freshness, view.Reason = st.Freshness, st.Reason
-		return st, view
-	}
-	if x.Maintenance {
-		st.Freshness, st.Reason = "maintenance", "maintenance; excluded from alerts"
-		view.Freshness, view.Reason = st.Freshness, st.Reason
+	if x.Disabled || x.Maintenance {
 		return st, view
 	}
 	if state.Last == nil {

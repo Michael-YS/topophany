@@ -428,3 +428,23 @@ Measured on the delivery machine (Apple M6, Go 1.26.10, darwin/arm64) with
 
 These are local comparative measurements, not portable latency or RSS
 guarantees; B/op is allocation volume, not resident memory.
+
+## Audit recovery regressions (2026-10-22)
+
+These regressions cover recovery ordering, original evidence deadlines, mutable
+data ownership, and bounded resource use.
+
+| Boundary | Regression |
+| --- | --- |
+| Reload checkpoint before WAL budget checks | `TestExternalReloadPrunesCheckpointBeforeJournalReplay` |
+| Returned external observations own nested data | `TestEvaluationViewOwnsExternalAttemptsAndReports`, `TestEvaluationViewExternalMutationDoesNotRaceReaders` |
+| Unchanged evidence and heartbeat allocation budgets | `TestUnchangedExternalEvaluationAllocationBudget`, `TestExternalHeartbeatRefreshAllocationBudget` |
+| Disabled/maintenance external checks before first report | `TestExternalInactiveChecksBeforeFirstReport` |
+| Missing Cloudflare region readings vs explicit false/empty | `TestCollectPoolRejectsEmptyRegionReports` |
+| External status, original deadlines, missing clocks or binding records | `TestExternalCheckStatusUsesReportEvidence`, `TestExternalMonitorRowsKeepReportDeadlines`, `TestExternalStatusMissingEvidenceCannotBeFresh` |
+| Native summary expiry and missing observation records | `TestSummaryStatusKeepsOriginalNativeEvidenceDeadline`, `TestSummaryStatusMissingNativeEvidenceCannotBeFresh` |
+| API heartbeat refresh retains reports without renewing their evidence | `TestExternalEvidenceSurvivesHeartbeatRefreshWithoutExtendingDeadlines` |
+| Development bridge absolute read deadlines and timer races | `scripts.test_serve_site` |
+| Verifier timeout reclaims ordinary POSIX child processes | `scripts.test_verify.VerifyCommandTests` |
+
+Active verification additionally includes `FuzzParseTunnel`, `FuzzParseDNSRecord`, and `FuzzParsePoolHealth`.
