@@ -83,12 +83,32 @@ small production interface from `internal/source.Adapter`: `Validate` and
 route and credential lookup; the adapter owns versions, pagination, object IDs,
 time basis and field mapping.
 
+Beszel and Komari compose the helpers in `sourceutil` for strict base URLs,
+explicit credential references, header credential bounds, complete object/page
+preflight, JSON representation limits, controlled reads and closed IO errors.
+The same report guard rejects raw or JSON-escaped credential reflection after
+mapping, including through valid timestamps or integers. It receives an
+already resolved credential; anonymous reads never resolve one. Beszel also
+retains its stricter record-ID credential-fragment check. These helpers do
+not open transports, read environment variables, register adapters or own
+vendor HTTP status meanings. Object IDs, endpoints, raw-token versus Bearer
+authentication, sample time/identity, supported report types and metric
+semantics remain local to each adapter. Protocol-specific JSON limits remain
+explicit arguments, and runtime normalization keeps its separate result budget.
+
 `beszel` reads the latest raw one-minute resource record for each configured
 Beszel system and, when requested, its reported status. It preserves record
 identity, upstream time, independent percentages and exact integer memory
 fields; unavailable values remain unavailable. The Hub's status is reported
 evidence with unknown sample time. See [beszel](beszel/README.md) for supported
 schemas, authentication, field mapping and budgets.
+
+`komari` reads each configured node's latest recent CPU, memory and aggregate
+disk report from Komari 1.6.0. It preserves the server's receive time, handles
+omitted zero CPU values and exact wire byte counters, and supports optional
+Bearer API keys or anonymous public reads. The GET endpoint supplies no
+online status; a status binding is explicitly refused. See
+[komari](komari/README.md) for the pinned schema and compatibility limits.
 
 Register a real adapter only in `probe.ProductionSourceAdapters`, explicitly.
 Synthetic adapters live in `internal/testkit` and must never be added to that

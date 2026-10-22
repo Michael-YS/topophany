@@ -2,9 +2,12 @@
 
 This guide describes the external-source contract and how to add an adapter.
 The production registry ships `beszel`, which reads Beszel Hub resource samples
-and optional reported system status. Start with the
+and optional reported system status, and `komari`, which reads Komari's recent
+CPU, memory and aggregate disk samples. Start with the
 [Beszel adapter guide](../internal/adapters/beszel/README.md) and
-[`examples/beszel.json`](../examples/beszel.json). Unknown adapter names are
+[`examples/beszel.json`](../examples/beszel.json), or the
+[Komari adapter guide](../internal/adapters/komari/README.md) and
+[`examples/komari.json`](../examples/komari.json). Unknown adapter names are
 rejected before collection; synthetic adapters remain test-only.
 
 Read [MULTI-PROBE-IMPLEMENTATION.md](MULTI-PROBE-IMPLEMENTATION.md) for the
@@ -110,8 +113,9 @@ new adapter and map semantic regressions in `docs/SCENARIOS.md`.
 A complete new-style topology is in
 [`examples/multi-probe.template.json`](../examples/multi-probe.template.json).
 It is schema-valid but intentionally names the placeholder `example-api`,
-which is not in the production registry. Use `examples/beszel.json` for the
-implemented adapter. Validate the generic template's schema with:
+which is not in the production registry. Use `examples/beszel.json` or
+`examples/komari.json` for implemented adapters. Validate the generic
+template's schema with:
 
 ```sh
 topo validate --config examples/multi-probe.template.json

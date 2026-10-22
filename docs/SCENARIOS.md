@@ -492,3 +492,46 @@ one source's cancellation gate across execution generations;
 explicit nonce budget; `TestPrivateCredentialPermissionsAndInvisibleSelection`
 checks credential file permissions, malformed credential storage and a
 well-shaped inaccessible selection.
+
+## Komari external source (2026-10-22)
+
+The adapter is pinned to the Komari 1.6.0 recent-report schema. Synthetic
+fixtures and production loopback integration tests are separate from the
+opt-in official-binary harness; neither claims a user's live deployment
+was exercised. See [protocol and fixture provenance](../internal/adapters/komari/testdata/README.md)
+and the [adapter guide](../internal/adapters/komari/README.md).
+
+| Scenario and invariant | Regression coverage |
+| --- | --- |
+| One GET per configured UUID, exact Bearer header, optional anonymous public reads, strict base URL and no unsafe loopback route | `TestKomariReadOnlyProtocolAndAuthoritativeMapping`, `TestKomariPublicSourceDoesNotResolveOrSendCredentials`, `TestKomariSourceValidation` |
+| Resource-only requests, complete object/page/response budgets and cancellation checked before I/O; later node failure discards all results | `TestKomariCompleteRequestBudgetCheckedBeforeIO`, `TestKomariResponseBudgetCancellationAndAtomicMultiObjectFailure`, `TestKomariRuntimeEnforcesNormalizedReportBudget` |
+| CPU omitted zero is known zero; explicit null/missing remains missing; invalid percentages and core counts do not become zero | `TestKomariCPUZeroMissingInvalidAndCores`, `TestKomariCPUZeroAndMissingRemainDistinctInMonitor` |
+| Signed-int64 wire byte counters stay exact above 2^53, derived percentages require a valid pair, aggregate disk is not a root mount | `TestKomariExactByteCountersAndDerivedPercentages`, `TestKomariExactBytesSurviveCollectorHTTPAndMonitorWire` |
+| Latest sample selected independently of array order; every UUID/time is validated; equal instants have stable identity; contradictory same-time latest samples fail | `TestKomariLatestSampleIdentityAndConflictRules`, `TestKomariSampleTimeStrictnessAndNormalization`, `TestKomariRejectsMalformedEnvelopeAndForeignSchemas` |
+| Duplicate JSON keys, case aliases, malformed Unicode, excessive depth/strings/members/arrays/containers/recent records cannot change interpretation or exceed budgets | `TestKomariCaseAliasesCannotOverrideCanonicalProtocolFields`, `TestKomariJSONRepresentationAndRecentWindowBudgets`, `TestValidJSONUnicodePreservesRepresentation`, `FuzzKomariResourceDecode` |
+| Fixed errors never expose tokens or upstream labels; 404 is an unavailable API, not an empty sample; source errors never imply a target outage | `TestKomariCredentialAndFailureBoundaries`, `TestKomariCredentialsAndUnmappedTextNeverLeaveAdapter`, `TestKomariSourceFailureAndEmptyHistoryDoNotRefreshResourceEvidence` |
+| A credential shaped like a legal timestamp, integer or closed basis string, including escaped JSON, cannot escape through a report; a later reflection discards earlier reports | `TestKomariCredentialShapedLikeReportDataCannotEscape`, `TestKomariLaterCredentialReflectionDiscardsSuccessfulPrefix`, `TestKomariCredentialGuardUsesJSONEscaping`, `TestKomariValidMetricCredentialReflectionCannotReachCollector` |
+| Production registry, real HTTP, runner/outbox/collector/store/view/monitor and mirrored bindings use one sample/read | `TestKomariProductionRegistryThroughRunnerOutboxAPIStoreAndMonitor` |
+| Repeat, conflict, late sample, checkpoint and replay preserve original sample time/deadline; expired evidence disappears while display leases remain valid | `TestKomariRepeatedNewConflictingAndLateSamplesKeepUpstreamTime`, `TestKomariCheckpointOutboxReplayAndResourceExpiry` |
+| Redirects, oversized bodies, wrong content type, unsupported status and in-flight cancellation remain bounded failures | `TestKomariProductionTransportRefusalsAndUnsupportedStatus`, `TestKomariProductionTransportCancelsAnOutstandingRead` |
+| Full runtime cost measured for 1/60/600-record windows, with actual normalized values checked before timing | `BenchmarkKomariRuntimeCollect` |
+| Pinned official server, actual Agent v2 reports and compiled CLI; CPU zero, upstream integer rounding, authentication, anonymous reads and atomic failure | `scripts/accept_komari.py` |
+| Acceptance assertions reject a source error mislabeled as a target failure or fresh contact; RFC3339Nano order preserves variable fractions and single nanoseconds | `scripts.test_accept_komari.FailedCollectionTests`, `scripts.test_accept_komari.SampleInstantTests` |
+
+## Shared external-source safety (2026-10-22)
+
+Beszel and Komari share safety mechanisms without sharing their protocol
+mapping. All regression credentials below are synthetic; numeric/timestamp
+fixtures do not establish that PocketBase issues or accepts such tokens.
+
+| Scenario and invariant | Regression coverage |
+| --- | --- |
+| Both adapters reject ambiguous URLs, unsafe plaintext routes and invalid credential references; only Komari permits an anonymous source | `sourceutil.TestAdaptersShareURLSafetyWithoutChangingCredentialPolicy` |
+| Raw header bounds retain each vendor's minimum and prefix budget | `sourceutil.TestVendorCredentialLengthAndCharacterBoundaries` |
+| Full object/read plans and already consumed pages stay within limits before credentials or network I/O | `sourceutil.TestCompleteSourceBudgetsAndConsumedPages`, `TestRequestAndPageBudgetsArePreflighted`, `TestKomariCompleteRequestBudgetCheckedBeforeIO` |
+| Duplicate keys and invalid Unicode cannot change JSON interpretation; each vendor keeps its structural limits | `sourceutil.TestJSONBudgetPreservesRepresentationAndVendorLimits`, `TestJSONComplexityUTF8AndFilesystemKeyBoundaries`, `TestKomariJSONRepresentationAndRecentWindowBudgets` |
+| Common reads honor cancellation and byte bounds, admit only closed IO errors and leave HTTP status interpretation to adapters | `sourceutil.TestControlledReadCancellationBoundsAndClosedErrors` |
+| Full raw/escaped credentials, valid integers and normalized times cannot leave either adapter; encoding failures stay failures | `sourceutil.TestGuardReportRawEscapedNumericAndEncodingFailures`, `TestBeszelCredentialShapedLikeReportDataCannotEscape`, `TestKomariCredentialShapedLikeReportDataCannotEscape` |
+| A later Beszel object or status credential reflection discards the entire successful prefix, while ignored metadata does not block safe metrics | `TestBeszelLaterCredentialReflectionDiscardsResourceAndStatusPrefix`, `TestBeszelUnmappedCredentialTextStillAllowsSafeMetrics` |
+| Production runner/outbox/collector/store never retains a reflected Beszel credential, source contact or target outage | `TestBeszelValidMetricCredentialReflectionCannotReachCollector` |
+| Official Komari auth/hidden-node acceptance requires the scenario's exact error code on every observation; unrelated parse/config errors cannot satisfy it | `scripts.test_accept_komari.FailedCollectionTests` |

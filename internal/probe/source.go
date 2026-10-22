@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters/beszel"
+	"github.com/WhitenWhiten/topophany/internal/adapters/komari"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -190,7 +191,10 @@ func readAtMost(r stdio.Reader, limit int64) ([]byte, error) {
 // Real adapters are wired here explicitly; test-only synthetic adapters are
 // never registered.
 func ProductionSourceAdapters() map[string]source.Adapter {
-	return map[string]source.Adapter{"beszel": beszel.Adapter{}}
+	return map[string]source.Adapter{
+		"beszel": beszel.Adapter{},
+		"komari": komari.Adapter{},
+	}
 }
 
 // SourceIO supplies the same controlled GET transport with an explicit resolver.

@@ -1,0 +1,46 @@
+{
+  "status": "success",
+  "message": "",
+  "data": [
+    {
+      "uuid": "d4c8d9a1-4ec5-4c1b-9b95-4c1c8f930b0d",
+      "updated_at": "2026-10-22T12:34:56.123456789Z",
+      "cpu": {
+        "usage": 12.5,
+        "cores": 4,
+        "name": "Synthetic CPU",
+        "arch": "x86_64"
+      },
+      "ram": {
+        "total": 8589934592,
+        "used": 3221225472
+      },
+      "swap": {
+        "total": 2147483648,
+        "used": 0
+      },
+      "disk": {
+        "total": 107374182400,
+        "used": 21474836480
+      },
+      "load": {
+        "load1": 0.5,
+        "load5": 0.75,
+        "load15": 1
+      },
+      "network": {
+        "up": 1234,
+        "down": 5678,
+        "totalUp": 34567890123,
+        "totalDown": 98765432101
+      },
+      "connections": {
+        "tcp": 12,
+        "udp": 3
+      },
+      "uptime": 86400,
+      "process": 73,
+      "message": ""
+    }
+  ]
+}

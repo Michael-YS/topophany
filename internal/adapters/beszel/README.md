@@ -179,6 +179,14 @@ turn that failure into a target outage or refresh old resource evidence.
 Error messages contain fixed codes and explanations, not upstream response
 bodies, tokens, filesystem labels or exception strings.
 
+The final mapped resource and status reports also pass the shared `sourceutil`
+credential guard. A full credential reflected through a valid timestamp,
+integer or JSON-escaped string fails the whole collection with the fixed
+`beszel_credential_reflection` code. The existing sample-ID credential-fragment
+check remains in place. Numeric/timestamp credential regression fixtures test
+the adapter's accepted header boundary; they do not claim PocketBase issues
+or accepts such tokens instead of its normal authentication tokens.
+
 HTTPS is required except for a direct literal loopback HTTP address. An
 HTTP loopback source cannot use a proxy path or resolve to a non-loopback
 address. The base URL excludes userinfo, query, fragment, escaped path

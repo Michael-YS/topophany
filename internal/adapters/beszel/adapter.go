@@ -7,18 +7,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"mime"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
+	"github.com/WhitenWhiten/topophany/internal/adapters/sourceutil"
 	"github.com/WhitenWhiten/topophany/internal/model"
-	"github.com/WhitenWhiten/topophany/internal/secure"
 	"github.com/WhitenWhiten/topophany/internal/source"
 )
 
@@ -29,7 +25,6 @@ type Adapter struct{}
 var _ source.Adapter = Adapter{}
 
 const (
-	maxResponseBytes  = 8 << 20
 	maxJSONMembers    = 128
 	maxJSONArray      = 4096
 	maxJSONContainers = 1024
@@ -40,58 +35,7 @@ const (
 // neither a named proxy route nor a remote resolution override may expose
 // the PocketBase token on a plaintext hop.
 func (Adapter) Validate(s model.Source) error {
-	u, err := url.Parse(s.Target)
-	if err != nil || len(s.Target) > model.MaxSourceTarget || secure.Text(s.Target) != s.Target ||
-		u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery ||
-		u.Fragment != "" || strings.Contains(s.Target, "#") || u.RawPath != "" ||
-		(u.Scheme != "https" && u.Scheme != "http") {
-		return errors.New("beszel target must be an HTTP(S) Hub base URL without credentials, query or fragment")
-	}
-	if port := u.Port(); port != "" {
-		n, err := strconv.ParseUint(port, 10, 16)
-		if err != nil || n == 0 {
-			return errors.New("beszel target port must be 1..65535")
-		}
-	} else if strings.HasSuffix(u.Host, ":") {
-		return errors.New("beszel target port must be 1..65535")
-	}
-	for _, segment := range strings.Split(u.Path, "/") {
-		if segment == "." || segment == ".." {
-			return errors.New("beszel target path must not contain dot segments")
-		}
-		for _, c := range segment {
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("-._~", c)) {
-				return errors.New("beszel target path must contain only unescaped URL path segments")
-			}
-		}
-	}
-	if strings.Contains(u.Path, "//") || strings.HasSuffix(strings.TrimRight(u.Path, "/"), "/api") {
-		return errors.New("beszel target must be the Hub base URL before /api")
-	}
-	if !environmentName(s.CredentialEnv) {
-		return errors.New("beszel credential_env must name an environment variable")
-	}
-	if u.Scheme == "http" && (!loopback(u.Hostname()) || s.Path != "" || s.ResolveIP != "" && !loopback(s.ResolveIP)) {
-		return errors.New("beszel requires HTTPS except for direct literal loopback HTTP")
-	}
-	return nil
-}
-
-func environmentName(name string) bool {
-	if len(name) == 0 || len(name) > 128 {
-		return false
-	}
-	for i, c := range name {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || i > 0 && c >= '0' && c <= '9') {
-			return false
-		}
-	}
-	return true
-}
-
-func loopback(host string) bool {
-	ip, err := netip.ParseAddr(host)
-	return err == nil && ip.Zone() == "" && ip.IsLoopback()
+	return sourceutil.ValidateSource(s, sourceutil.SourcePolicy{Adapter: "beszel", BaseName: "Hub"})
 }
 
 func recordID(id string) bool {
@@ -113,8 +57,8 @@ func (a Adapter) Collect(ctx context.Context, io source.IO, s model.Source, requ
 	if a.Validate(s) != nil {
 		return nil, failure("beszel_config")
 	}
-	if len(requests) == 0 || s.MaxObjects < 1 || s.MaxObjects > model.MaxSourceObjects || len(requests) > s.MaxObjects {
-		return nil, failure("object_budget")
+	if code := sourceutil.ObjectBudget(s, len(requests)); code != "" {
+		return nil, failure(code)
 	}
 	seen := make(map[string]bool, len(requests))
 	pages := 0
@@ -133,27 +77,18 @@ func (a Adapter) Collect(ctx context.Context, io source.IO, s model.Source, requ
 			pages++
 		}
 	}
-	usedPages := io.Pages()
-	if s.MaxPages < 1 || s.MaxPages > model.MaxSourcePages || usedPages < 0 || usedPages > s.MaxPages || pages > s.MaxPages-usedPages {
-		return nil, failure("page_budget")
-	}
-	if s.MaxResponseBytes < 1 || s.MaxResponseBytes > maxResponseBytes {
-		return nil, failure("response_budget")
+	if code := sourceutil.ReadBudget(s, io.Pages(), pages); code != "" {
+		return nil, failure(code)
 	}
 	if ctx.Err() != nil {
 		return nil, failure("source_canceled")
 	}
 	token, err := io.Credential(ctx, s)
 	if err != nil {
-		return nil, ioFailure(ctx, err)
+		return nil, failure(sourceutil.IOFailureCode(ctx, err))
 	}
-	if len(token) < 1 || len(token) > 1024 {
+	if !sourceutil.ValidCredential(token, 1, 1024) {
 		return nil, failure("beszel_credential")
-	}
-	for _, c := range token {
-		if c < 0x21 || c > 0x7e {
-			return nil, failure("beszel_credential")
-		}
 	}
 	// PocketBase consumes the raw auth token. It is not an OAuth Bearer header.
 	headers := map[string]string{"Authorization": token, "Accept": "application/json"}
@@ -183,6 +118,9 @@ func (a Adapter) Collect(ctx context.Context, io source.IO, s model.Source, requ
 				if strings.Contains(r.SampleID, token) || strings.Contains(token, r.SampleID) {
 					return nil, failure("beszel_record_identity")
 				}
+				if err := credentialSafe(r, token); err != nil {
+					return nil, err
+				}
 				readings = append(readings, source.Reading{Object: request.Object, Report: *r})
 			}
 		}
@@ -199,6 +137,9 @@ func (a Adapter) Collect(ctx context.Context, io source.IO, s model.Source, requ
 			if err != nil {
 				return nil, err
 			}
+			if err := credentialSafe(&r, token); err != nil {
+				return nil, err
+			}
 			readings = append(readings, source.Reading{Object: request.Object, Report: r})
 		}
 	}
@@ -209,18 +150,9 @@ func (a Adapter) Collect(ctx context.Context, io source.IO, s model.Source, requ
 }
 
 func get(ctx context.Context, io source.IO, s model.Source, target string, headers map[string]string, allowMissing bool) ([]byte, bool, error) {
-	if ctx.Err() != nil {
-		return nil, false, failure("source_canceled")
-	}
-	response, err := io.Get(ctx, s, target, headers, s.MaxResponseBytes)
+	response, err := sourceutil.Get(ctx, io, s, target, headers)
 	if err != nil {
-		return nil, false, ioFailure(ctx, err)
-	}
-	if ctx.Err() != nil {
-		return nil, false, failure("source_canceled")
-	}
-	if int64(len(response.Body)) > s.MaxResponseBytes {
-		return nil, false, failure("response_budget")
+		return nil, false, failure(source.Code(err))
 	}
 	switch response.Status {
 	case http.StatusOK:
@@ -236,28 +168,22 @@ func get(ctx context.Context, io source.IO, s model.Source, target string, heade
 	default:
 		return nil, false, failure("beszel_http")
 	}
-	if response.ContentType != "" {
-		mediaType, _, err := mime.ParseMediaType(response.ContentType)
-		if err != nil || mediaType != "application/json" {
-			return nil, false, failure("beszel_content_type")
-		}
+	if !sourceutil.JSONContentType(response.ContentType) {
+		return nil, false, failure("beszel_content_type")
 	}
 	return response.Body, false, nil
 }
 
-// Never include upstream bodies, URLs, credential values or arbitrary I/O
-// error text in an adapter error. Only fixed runtime error codes propagate.
-func ioFailure(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
-		return failure("source_canceled")
+// credentialSafe keeps vendor diagnostics local while sharing the complete
+// report guard. Beszel's separate sample-ID fragment check remains in Collect.
+func credentialSafe(r *model.ExternalReport, token string) error {
+	if err := sourceutil.GuardReport(r, token); err != nil {
+		if errors.Is(err, sourceutil.ErrCredentialReflection) {
+			return failure("beszel_credential_reflection")
+		}
+		return failure("beszel_report")
 	}
-	switch code := source.Code(err); code {
-	case "credential_unavailable", "wrong_source", "page_budget", "response_budget", "transport_error",
-		"invalid_source_url", "cross_origin", "header_budget", "invalid_header", "invalid_source_request":
-		return failure(code)
-	default:
-		return failure("source_collection_failed")
-	}
+	return nil
 }
 
 func failure(code string) error {
@@ -265,7 +191,7 @@ func failure(code string) error {
 }
 
 func jsonBudget(body []byte) error {
-	if len(body) > maxResponseBytes || !utf8.Valid(body) || !validUnicodeEscapes(body) || secure.JSONResponseBudget(body, maxJSONMembers, maxJSONArray, maxJSONContainers) != nil {
+	if sourceutil.JSONBudget(body, maxJSONMembers, maxJSONArray, maxJSONContainers) != nil {
 		return failure("beszel_json")
 	}
 	return nil
