@@ -561,7 +561,6 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | Worker panels retain external report state, deduplicate repeated reports, expire original evidence and drop changed contracts | `TestWorkerLocalExternalEvidence` |
 | Collector, direct and worker display paths share immutable external state transactions and threshold rules; durable storage retains observer quotas and commit-before-publication | `TestExternalMergeClonesOnlyAffectedState`, `TestSessionMatchesStoreAndDoesNotRenewOldData`, `TestWorkerLocalExternalEvidence` |
 | A viewer remains online through a busy retry even when collector wall time moves backward; refresh is identified by the controlled response, not timestamp ordering | `TestRemoteSnapshotBusyDoesNotFlashOffline` |
-
 | Source attempts release transports on success, adapter failure, invalid reports and cancellation during TLS; detached handshakes cannot accumulate | `TestRuntimeClosesIOOnEveryExit`, `TestSourceCancellationClosesUnfinishedTLS` |
 | Collector fleets retain full replay windows; impossible global/observer allocations are refused before startup/reload and runtime errors preserve capacity classification | `TestCollectorFleetReachesReplayWindow`, `TestExternalReplayCapacityPreflight`, `TestExternalBudgetErrorsRemainCapacityErrors` |
 | Authorization failures preserve pending single/fan-out samples through restart, without quarantine; credential repair resumes delivery | `TestAuthorizationOutageRetainsPendingSamples`, `TestDeliveryFailureActions` |
@@ -569,3 +568,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | Direct automatically recovers from HTTP 408 and the entire 5xx class, including 520/522/524; public retry flags match session policy | `TestDirectGatewayFailuresRecoverWithoutManualRetry`, `TestFailureRetryFlagMatchesSessionPolicy`, `TestHTTPFailureClassification` |
 | Komari discovery, which owns IO outside the collection runtime, also closes detached TLS work on cancellation | `TestKomariDiscoveryReleasesCanceledTLS` |
 | Unchanged direct profiles reuse prepared evidence with zero allocations; content edits still apply even with an unchanged revision and retain ownership | `TestUnchangedProfileRetainsPreparedEvidence`, `BenchmarkProjectionReplacement` |
+| Typed storage transaction stages preserve sync-before-publication, conflict admission, migration ordering and background checkpoint recovery | `TestExternalStatePersistsDeduplicatesAndDoesNotRefreshDeadline`, storage sync-lock, admission, downgrade and background-checkpoint regressions |
