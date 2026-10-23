@@ -7,19 +7,25 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/report"
 )
 
 // Local retains one observation and one bounded threshold carry per local
 // check. It is display evidence, independent of durable outbox retention.
 type Local struct {
-	mu        sync.Mutex
-	plan      *engine.Plan
-	contracts map[string]string
-	checks    map[string]model.Check
-	digest    string
-	observer  string
-	latest    map[string]model.Observation
-	carries   map[string]engine.Carry
+	mu               sync.Mutex
+	project          string
+	sources          map[string]model.Source
+	external         *model.ExternalState
+	externalPrepared *engine.Prepared
+	externalSizes    report.StateSizes
+	plan             *engine.Plan
+	contracts        map[string]string
+	checks           map[string]model.Check
+	digest           string
+	observer         string
+	latest           map[string]model.Observation
+	carries          map[string]engine.Carry
 }
 
 func NewLocal(c model.Config, observer string) *Local {
@@ -39,6 +45,29 @@ func (l *Local) Reload(c model.Config) {
 			l.checks[check.ID] = check
 		}
 	}
+	l.project = c.Project
+	l.sources = map[string]model.Source{}
+	for _, src := range c.Sources {
+		if src.Observer == l.observer {
+			l.sources[src.ID] = src
+		}
+	}
+	next := model.NewExternalState()
+	if l.external != nil {
+		for id, state := range l.external.Bindings {
+			if x, ok := l.checks[id]; ok && state.Contract == contracts[id] {
+				next.Bindings[id] = report.ApplyRule(state, model.ExternalRule{FailureThreshold: x.FailureThreshold, RecoveryThreshold: x.RecoveryThreshold, PolicyThreshold: x.PolicyThreshold})
+			}
+		}
+		for id, state := range l.external.Sources {
+			if _, ok := l.sources[id]; ok {
+				next.Sources[id] = state
+			}
+		}
+	}
+	l.external = next
+	l.externalSizes, _ = report.MeasureState(next)
+	l.externalPrepared = l.plan.PrepareExternal(nil, nil, nil, next)
 	l.digest = config.ObserverContracts(c, l.observer)
 	for id, v := range l.latest {
 		if contracts[id] != v.Contract {
@@ -54,6 +83,10 @@ func (l *Local) Record(v model.Observation) {
 	if !ok || v.Observer != l.observer || v.Contract != l.contracts[v.Check] {
 		return
 	}
+	if c.Kind == "external" {
+		l.recordExternal(v, c)
+		return
+	}
 	k := l.carries[c.ID]
 	if previous, ok := l.latest[c.ID]; ok {
 		k.Fold(previous, time.Duration(c.StaleSeconds)*time.Second)
@@ -66,7 +99,7 @@ func (l *Local) Record(v model.Observation) {
 }
 func (l *Local) Snapshot(now time.Time) model.Snapshot {
 	l.mu.Lock()
-	plan, digest := l.plan, l.digest
+	prepared, digest, project := l.externalPrepared, l.digest, l.project
 	rows := make([]model.Observation, 0, len(l.latest))
 	carries := make([]engine.Carry, 0, len(l.carries))
 	for _, v := range l.latest {
@@ -76,8 +109,8 @@ func (l *Local) Snapshot(now time.Time) model.Snapshot {
 		carries = append(carries, v)
 	}
 	l.mu.Unlock()
-	beats := map[string]model.Heartbeat{l.observer: {Observer: l.observer, SampledAt: now, Contracts: digest}}
-	return plan.Build("worker", l.observer, rows, carries, beats, now)
+	beats := map[string]model.Heartbeat{l.observer: {Project: project, Observer: l.observer, SampledAt: now, Contracts: digest}}
+	return prepared.WithNativeEvidence(rows, carries, beats).Build("worker", l.observer, now)
 }
 
 // Feed holds an immutable source snapshot. Set transfers ownership; callers

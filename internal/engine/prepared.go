@@ -158,3 +158,11 @@ func (e *Prepared) WithExternalChanges(sources map[string]model.SourceState, bin
 	next.external = state
 	return &next
 }
+
+// WithNativeEvidence refreshes local native check tails without copying the
+// external state already owned by this immutable prepared view.
+func (e *Prepared) WithNativeEvidence(rows []model.Observation, carries []Carry, beats map[string]model.Heartbeat) *Prepared {
+	next := e.plan.Prepare(rows, carries, beats)
+	next.external = e.external
+	return next
+}
