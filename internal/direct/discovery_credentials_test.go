@@ -67,11 +67,11 @@ func TestDiscoveryRedactsResolvedAndLongCredentials(t *testing.T) {
 func TestDiscoveryNameChecksSecretsBeforeTruncation(t *testing.T) {
 	for _, n := range []int{127, 128, 129, 256} {
 		secret := strings.Repeat("s", n)
-		if got := cleanName(secret, testObject, "unrelated", secret); got != "System "+testObject {
+		if got := (discoverySecrets{"unrelated", secret}).cleanName(secret, testObject); got != "System "+testObject {
 			t.Errorf("length=%d leaked name %q", n, got)
 		}
 	}
-	if got := cleanName("pass\x1bword", testObject, "password"); got != "System "+testObject {
+	if got := (discoverySecrets{"password"}).cleanName("pass\x1bword", testObject); got != "System "+testObject {
 		t.Errorf("sanitized secret leaked: %q", got)
 	}
 }

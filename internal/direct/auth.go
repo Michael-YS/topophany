@@ -24,7 +24,7 @@ type System struct {
 	Name string `json:"name"`
 }
 type Hub struct {
-	redact  []string
+	redact  discoverySecrets
 	source  SourceConfig
 	client  *http.Client
 	RetryAt time.Time
@@ -180,7 +180,7 @@ type authReply struct {
 }
 
 func (h *Hub) authenticate(ctx context.Context, a Auth, saved *Credential) (Credential, error) {
-	h.redact = []string{a.Identity, a.Password, a.Token}
+	h.redact = discoverySecrets{a.Identity, a.Password, a.Token}
 	c := Credential{Mode: a.Mode}
 	token := a.Token
 	if a.Mode == "env" {
@@ -328,7 +328,7 @@ func (h *Hub) Discover(ctx context.Context, c Credential) ([]System, bool, error
 			return nil, false, fail("auth_required")
 		}
 	}
-	secrets := append(append([]string(nil), h.redact...), token)
+	secrets := append(append(discoverySecrets(nil), h.redact...), token)
 	systems := []System{}
 	seen := map[string]bool{}
 	for page := 1; page <= 10; page++ {
@@ -347,18 +347,11 @@ func (h *Hub) Discover(ctx context.Context, c Credential) ([]System, bool, error
 			return nil, false, fail("upstream_incompatible")
 		}
 		for _, v := range p.Items {
-			if !objectID(v.ID) || seen[v.ID] {
+			if !objectID(v.ID) || seen[v.ID] || secrets.conflictsID(v.ID) {
 				return nil, false, fail("upstream_incompatible")
 			}
-			// IDs are public too, including the fallback name derived from them.
-			// Check every authentication input before constructing any output.
-			for _, secret := range secrets {
-				if secret != "" && (strings.Contains(v.ID, secret) || strings.Contains(secret, v.ID)) {
-					return nil, false, fail("upstream_incompatible")
-				}
-			}
 			seen[v.ID] = true
-			v.Name = cleanName(v.Name, v.ID, secrets...)
+			v.Name = secrets.cleanName(v.Name, v.ID)
 			systems = append(systems, v)
 		}
 		if page >= p.TotalPages {
@@ -369,32 +362,6 @@ func (h *Hub) Discover(ctx context.Context, c Credential) ([]System, bool, error
 		}
 	}
 	return systems, true, nil
-}
-func cleanName(s, id string, secrets ...string) string {
-	containsSecret := func(text string) bool {
-		for _, secret := range secrets {
-			if secret != "" && strings.Contains(text, secret) {
-				return true
-			}
-		}
-		return false
-	}
-	// Match the complete upstream value before any transformation can cut a
-	// credential in half. Sanitization can also join text into a credential.
-	if containsSecret(s) {
-		return "System " + id
-	}
-	s = strings.TrimSpace(secure.Text(s))
-	if s == "" || containsSecret(s) {
-		return "System " + id
-	}
-	if len(s) > 128 {
-		s = s[:128]
-		for !utf8.ValidString(s) {
-			s = s[:len(s)-1]
-		}
-	}
-	return s
 }
 
 // Token rereads credentials on every collection. A per-reference lock merges
