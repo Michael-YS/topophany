@@ -7,12 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-23
+
+This release adds Komari resource collection and collector-free direct profiles,
+and improves durable delivery, collector failover and evidence recovery. See the
+[release notes](docs/releases/v1.5.0.md) for setup, capacity and rollback details.
+
 ### Added
 
+- Komari external source adapter for the pinned 1.6.0 resource schema: read-only
+  CPU, memory and aggregate disk samples, exact byte counters, stable upstream
+  sample identity and bounded, atomic multi-node collection. API-key and
+  anonymous access are supported; online presence and per-filesystem disks are
+  outside this mapping. See the [adapter guide](internal/adapters/komari/README.md)
+  and [`examples/komari.json`](examples/komari.json).
 - Komari direct mode: collector-free resource TUI, status, show and monitor
   reads with API-key or anonymous node discovery, private profiles and aggregate
   disk selection. Profiles can mix Beszel and Komari sources. See
   [configuration and limits](docs/DIRECT.md#configure-komari).
+- Opt-in official Komari binary acceptance harness using an isolated loopback
+  server and synthetic Agent v2 samples.
+
+### Changed
+
+- Reserve worker outbox byte and record capacity per recipient, so an offline
+  collector cannot exhaust healthy destinations' shares. Drain or archive legacy
+  backlogs before upgrading if they exceed the new per-recipient shares.
+- Preflight complete external replay-state reservations at collector startup,
+  reload and capacity inspection. External state may use up to 128 MiB within
+  the existing global budget; direct profiles allow 32 MiB total and 4 MiB per
+  source with multiple sources, preserving full deduplication windows.
+- Update only changed direct evidence and accounting, reuse unchanged prepared
+  projections, and size store evaluation views from bounded evidence tails.
+- Share bounded source transport, report transactions, check-option rules and
+  evidence invalidation policy across the collection and display paths.
+- Require an executed old-reader compatibility test in CI and release builds.
+
+### Fixed
+
+- Retain pending samples through HTTP 401/403 authorization outages and restart;
+  isolate only explicitly rejected observations inside fan-out items while
+  preserving valid neighbors and independent recipient delivery.
+- Reserve read time for backup collectors and fail over scoped/global snapshot
+  pairs together instead of combining incomplete reads.
+- Retain worker-local external reports, deduplicate repeated samples and expire
+  evidence at its original deadline. Preserve durable admission and publication
+  ordering through external replay, migration and background checkpoints.
+- Rebuild confirmation from retained samples when staleness rules change, and
+  reconfirm legacy carries whose original rules are unknown. Preserve compatible
+  confirmation across restart and supported threshold or presentation edits.
+- Validate source execution before committing collector/worker reloads, and
+  capture alert settling configuration before concurrent reloads can change it.
+- Retry transient direct HTTP failures consistently, including 408 and all 5xx
+  responses; keep source error backoff above its normal collection interval.
+- Close collection and discovery transports on success, failure and cancellation,
+  including unfinished TLS handshakes. Preserve stream shutdown and allow bounded
+  Windows ACL cold startup without weakening permission checks.
+
+### Security
+
+- Reject credentials reflected through discovery identities and redact all
+  session credentials before truncating discovery text. Share terminal-safe JSON
+  encoding for source commands, and retain strict credential, Unicode, JSON and
+  response-budget boundaries across Beszel and Komari.
 
 ## [1.4.2] - 2026-10-22
 
@@ -1769,7 +1826,8 @@ Initial release.
 - Terminal UI with geographic and network topology maps, offline preview
   scenarios and a local topology editor.
 
-[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/WhitenWhiten/topophany/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/WhitenWhiten/topophany/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/WhitenWhiten/topophany/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/WhitenWhiten/topophany/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/WhitenWhiten/topophany/compare/v1.3.0...v1.4.0
