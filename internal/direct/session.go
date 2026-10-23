@@ -70,6 +70,8 @@ type Session struct {
 	firstOnce  sync.Once
 	loops      map[string]*sourceLoop
 	external   *model.ExternalState
+	accounted  *model.ExternalState
+	sizes      report.StateSizes
 	prepared   *engine.Prepared
 	plan       *engine.Plan
 	generation string
@@ -375,7 +377,8 @@ func (s *Session) run(src model.Source, l *sourceLoop, currentConfig model.Confi
 				return
 			}
 			s.external.Sources[src.ID] = report.MergeSource(s.external.Sources[src.ID], src.ID, finished, false, AsError(e).Code, 0)
-			s.prepared = s.plan.PrepareExternal(nil, nil, nil, s.external)
+			s.accounted = nil
+			s.prepared = s.prepared.WithExternalChanges(map[string]model.SourceState{src.ID: s.external.Sources[src.ID]}, nil)
 			s.mu.Unlock()
 		}
 		s.mu.Lock()
@@ -460,7 +463,15 @@ func (s *Session) Record(generation, id string, started, finished time.Time, rea
 	if received.After(s.high) {
 		s.high = received
 	}
-	next := model.CloneExternalState(s.external)
+	if s.accounted != s.external {
+		sizes, err := report.MeasureState(s.external)
+		if err != nil {
+			return fail("state_budget")
+		}
+		s.sizes, s.accounted = sizes, s.external
+	}
+	update := report.BeginState(s.external)
+	next := update.State
 	code := ""
 	if collectErr != nil {
 		code = AsError(collectErr).Code
@@ -502,14 +513,8 @@ func (s *Session) Record(generation, id string, started, finished time.Time, rea
 		if e != nil {
 			return fail("upstream_incompatible")
 		}
-		if normalized != nil {
-			state := next.Bindings[x.ID]
-			state.FailureThreshold = x.FailureThreshold
-			state.RecoveryThreshold = x.RecoveryThreshold
-			state.PolicyThreshold = x.PolicyThreshold
-			state, _ = report.MergeBinding(x.ID, config.Contract(s.config, x), *x.External, state, *normalized, received)
-			next.Bindings[x.ID] = state
-		}
+		o.External.Report = normalized
+		update.Apply(o, *x.External, model.ExternalRule{FailureThreshold: x.FailureThreshold, RecoveryThreshold: x.RecoveryThreshold, PolicyThreshold: x.PolicyThreshold})
 	}
 	// Reject undeclared result pairs instead of retaining arbitrary upstream keys.
 	for key := range reports {
@@ -521,24 +526,16 @@ func (s *Session) Record(generation, id string, started, finished time.Time, rea
 			return fail("upstream_incompatible")
 		}
 	}
-	next.Sources[id] = report.MergeSource(next.Sources[id], id, finished, collectErr == nil, code, max(0, finished.Sub(started).Milliseconds()))
-	b, e := json.Marshal(next)
-	sourceBytes := 0
-	for _, state := range next.Bindings {
-		if state.Source == id {
-			encoded, _ := json.Marshal(state)
-			sourceBytes += len(encoded)
-		}
-	}
+	sizes, e := s.sizes.Updated(update)
 	limit := s.opts.MaxSourceStateBytes
 	if len(s.config.Sources) <= 1 {
 		limit = s.opts.MaxStateBytes
 	}
-	if e != nil || len(b) > s.opts.MaxStateBytes || sourceBytes > limit || len(next.Bindings) > 512 || len(next.Sources) > 64 {
+	if e != nil || sizes.Total > int64(s.opts.MaxStateBytes) || sizes.Sources[id] > int64(limit) || len(next.Bindings) > model.MaxExternalChecks || len(next.Sources) > model.MaxSources {
 		return fail("state_budget")
 	}
-	s.external = next
-	s.prepared = s.plan.PrepareExternal(nil, nil, nil, next)
+	s.external, s.accounted, s.sizes = next, next, sizes
+	s.prepared = s.prepared.WithExternalChanges(update.Sources, update.Bindings)
 	return nil
 }
 

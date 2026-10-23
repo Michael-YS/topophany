@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"maps"
 	"slices"
 	"sort"
 	"time"
@@ -131,4 +132,29 @@ func (e *Prepared) lastSeen(now time.Time) map[string]time.Time {
 		}
 	}
 	return out
+}
+
+// WithExternalChanges owns changed reports while sharing immutable unaffected
+// evidence. Neither the update nor a published snapshot can mutate this cache.
+func (e *Prepared) WithExternalChanges(sources map[string]model.SourceState, bindings map[string]model.BindingState) *Prepared {
+	next := *e
+	state := model.NewExternalState()
+	if e.external != nil {
+		state.Sources = maps.Clone(e.external.Sources)
+		state.Bindings = maps.Clone(e.external.Bindings)
+	}
+	if state.Sources == nil {
+		state.Sources = map[string]model.SourceState{}
+	}
+	if state.Bindings == nil {
+		state.Bindings = map[string]model.BindingState{}
+	}
+	for id, v := range sources {
+		state.Sources[id] = v
+	}
+	for id, v := range bindings {
+		state.Bindings[id] = model.CloneBindingState(v)
+	}
+	next.external = state
+	return &next
 }

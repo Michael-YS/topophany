@@ -557,3 +557,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | An offline recipient cannot exhaust record capacity reserved for healthy destinations, including after restart | `TestRecipientRecordReservationsSurviveRestart`, `TestRecordBudgetMustCoverRecipients` |
 | Beszel discovery rejects passwords reflected through object IDs before deriving fallback names or publishing systems | `TestDiscoveryRejectsPasswordInObjectIdentity` |
 | A full 256-object direct profile continues collecting after every binding fills its 256-ID deduplication window | `TestFullFleetRetainsCompleteDeduplicationWindow` |
+| Direct collection copies and encodes only changed reports; old prepared views and returned snapshots retain independent ownership | `TestSourceUpdateSharesOnlyUnchangedEvidence`, `TestPreparedExternalDeltaOwnsChangedEvidence`, `BenchmarkDirectSourceUpdate` |
