@@ -556,3 +556,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | Scoped and global snapshots fail over together when only one view is available from the primary | `TestScopedPairFailsOverAsAUnit` |
 | An offline recipient cannot exhaust record capacity reserved for healthy destinations, including after restart | `TestRecipientRecordReservationsSurviveRestart`, `TestRecordBudgetMustCoverRecipients` |
 | Beszel discovery rejects passwords reflected through object IDs before deriving fallback names or publishing systems | `TestDiscoveryRejectsPasswordInObjectIdentity` |
+| A full 256-object direct profile continues collecting after every binding fills its 256-ID deduplication window | `TestFullFleetRetainsCompleteDeduplicationWindow` |

@@ -70,7 +70,11 @@ separate. Renaming does not change identity. Source defaults are 60s collection,
 `max_pages` explicitly and `primary_disk:"root"`; root is the adapter's primary
 filesystem ID, not a guessed `/` mount. No alarm thresholds or native active
 probes are inserted. Limits: 64 sources/profile, 20 objects/source, 256 objects/
-profile, 128 template rows; existing smaller byte budgets still apply.
+profile, 128 template rows. Accepted state is bounded to 32 MiB/profile and
+4 MiB/source when multiple sources exist; collection batches remain limited to
+2 MiB. These bounds accommodate the full 256-sample identity history for all
+256 objects, including Komari's longer sample IDs. They bound encoded state,
+not process RSS.
 
 Remove takes `{schema:1,request_id,profile,base_revision,source_id}`. It only removes
 that local source, never an upstream system; the last removal preserves an empty

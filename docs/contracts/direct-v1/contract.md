@@ -149,7 +149,7 @@ row/resource deadline, without the old 30m heartbeat + 15m grace extension.
 | data / contact windows | 180s / 180s |
 | page generation | explicitly count unique object/report pairs, at most 20 |
 | report / source normalized results | existing report 64 KiB / result 16 MiB limits |
-| memory | 4 MiB accepted state, 2 MiB/source with multiple sources, 2 MiB batch; 4 concurrent source reads; 256 Seen IDs + 8 retired epochs/binding |
+| memory | 32 MiB accepted state, 4 MiB/source with multiple sources, 2 MiB batch; 4 concurrent source reads; 256 Seen IDs + 8 retired epochs/binding |
 | retry nonce history | 1024 distinct nonempty values/session; further new values are rejected with state_budget, old values remain idempotent |
 | history | unsupported in direct; no metrics journal/database/listening socket/daemon |
 

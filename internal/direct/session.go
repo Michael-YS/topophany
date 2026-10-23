@@ -20,8 +20,12 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/view"
 )
 
-const MaxStateBytes = 4 << 20
-const MaxSourceStateBytes = 2 << 20
+// A full profile retains 256 report-ID hashes per object as well as the
+// latest report. At 256 objects, the supported adapters' 71-byte maximum
+// sample IDs alone need over 10 MiB serialized. Reserve up to 128 KiB per
+// object (64 KiB report plus cursor/history), while retaining hard caps.
+const MaxStateBytes = 32 << 20
+const MaxSourceStateBytes = 4 << 20
 const MaxBatchBytes = 2 << 20
 const MaxRetryNonces = 1024
 
