@@ -546,3 +546,9 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | --- | --- |
 | Cancellation racing a frame acknowledgment still joins the source and attempts one empty, expired `stopped` frame with the same stream identity; final write errors are not retried and unrelated output failures remain failures | `stream.TestCancellationDuringEmitStillStopsAndJoinsSource`, `stream.TestCanceledStreamDoesNotRetryFailedFinalFrame`, `stream.TestCancellationDoesNotHideUnrelatedOutputFailure`, `app.TestMonitorStreamProtocol/SIGTERM` |
 | Installation subprocesses honor both caller deadlines and their own operation budget, preserve nonzero exit status and never publish command output; Windows ACL work has a separate bounded cold-start allowance while retaining every permission check | `TestCommandReportsParentCancellation`, `TestCommandOperationBudgetAndSuccessfulExit`, `TestCommandKeepsExitStatusWithoutPrivateOutput`, `TestWindowsInstallationReplacesExplicitACLs`, `TestWindowsACLVerificationRejectsExplicitGrant`, `TestServerBundleScopesKeysAndCertificates` |
+
+## Main-path review regressions (2026-10-22)
+
+| Scenario and invariant | Regression coverage |
+| --- | --- |
+| Rejecting one observation inside a durable fan-out item preserves its valid neighbors across delivery restart and quarantines only the refused member | `TestFanoutRejectionKeepsValidMembersAcrossRestart` |

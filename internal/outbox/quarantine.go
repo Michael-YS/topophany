@@ -1,9 +1,11 @@
 package outbox
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -100,4 +102,69 @@ func (q *Queue) trimQuarantine(recipient, keep string, extra int64) error {
 		return errors.New("quarantine record exceeds independent budget")
 	}
 	return nil
+}
+
+// quarantineItem publishes forensic evidence before its delivery is consumed.
+// Caller holds q.mu; retries replace the same deterministic file.
+func (q *Queue) quarantineItem(v Item, recipient, reason string) error {
+	file := filepath.Join(q.dir, "quarantine", v.ID+"-"+recipient+".json")
+	b, e := json.Marshal(struct {
+		Item      Item   `json:"item"`
+		Recipient string `json:"recipient"`
+		Reason    string `json:"reason"`
+	}{v, recipient, reason})
+	if e != nil {
+		return e
+	}
+	old := int64(0)
+	if st, e := queueStat(file); e == nil {
+		old = st.Size()
+	}
+	if e := q.trimQuarantine(recipient, filepath.Base(file), int64(len(b))-old); e != nil {
+		return e
+	}
+	if e = queueWrite(file, b, 0600); e != nil {
+		return e
+	}
+	q.used = q.used - old + int64(len(b))
+	q.quarantineUsed += int64(len(b)) - old
+	return nil
+}
+
+// QuarantinePart preserves one refused observation without acknowledging its
+// parent. After a crash the parent replays; collector deduplication and the
+// deterministic quarantine identity make that safe.
+func (q *Queue) QuarantinePart(parent string, index int, recipient, reason string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closed {
+		return errors.New("outbox closed")
+	}
+	if q.ackError != nil {
+		return q.ackError
+	}
+	meta, ok := q.items[parent]
+	if !ok || !slices.Contains(meta.Pending, recipient) {
+		return errors.New("pending item unavailable")
+	}
+	v, err := q.loadItem(parent)
+	if err != nil {
+		return err
+	}
+	if index < 0 || index >= len(v.Batch.Observations) {
+		return errors.New("invalid observation index")
+	}
+	v.Batch.Observations = v.Batch.Observations[index : index+1]
+	raw, err := json.Marshal(v.Batch)
+	if err != nil {
+		return err
+	}
+	v.ID = secure.Hash(string(raw))
+	v.Pending = []string{recipient}
+	v.SHA256 = itemHash(v)
+	reason = secure.Text(reason)
+	if len(reason) > 256 {
+		reason = reason[:256]
+	}
+	return q.quarantineItem(v, recipient, reason)
 }

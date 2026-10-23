@@ -478,27 +478,9 @@ func (q *Queue) Quarantine(ids []string, recipient, reason string) (err error) {
 		if e != nil {
 			return e
 		}
-		file := filepath.Join(q.dir, "quarantine", id+"-"+recipient+".json")
-		b, e := json.Marshal(struct {
-			Item      Item   `json:"item"`
-			Recipient string `json:"recipient"`
-			Reason    string `json:"reason"`
-		}{v, recipient, reason})
-		if e != nil {
+		if e = q.quarantineItem(v, recipient, reason); e != nil {
 			return e
 		}
-		old := int64(0)
-		if st, e := queueStat(file); e == nil {
-			old = st.Size()
-		}
-		if e := q.trimQuarantine(recipient, filepath.Base(file), int64(len(b))-old); e != nil {
-			return e
-		}
-		if e = queueWrite(file, b, 0600); e != nil {
-			return e
-		}
-		q.used = q.used - old + int64(len(b))
-		q.quarantineUsed += int64(len(b)) - old
 		deleted, e := q.ack(id, recipient)
 		removed = removed || deleted
 		if e != nil {

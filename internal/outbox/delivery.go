@@ -16,11 +16,13 @@ import (
 type destination struct {
 	// endpoint and http are immutable after construction. Read them by index
 	// or pointer: copying the whole destination also reads Tick's retry state.
-	endpoint  client.Endpoint
-	http      *http.Client
-	next      time.Time
-	failures  int
-	isolating bool
+	endpoint      client.Endpoint
+	http          *http.Client
+	next          time.Time
+	failures      int
+	isolating     bool
+	isolationID   string
+	isolationNext int
 	// Storage backpressure delays samples, not the executor's liveness.
 	separateBeat bool
 	// A collector that refuses a request carrying delivery telemetry may be
@@ -233,6 +235,12 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		result.Error = "local outbox payload unavailable or corrupt"
 		return
 	}
+	if dest.isolating && len(items) == 1 && len(items[0].Batch.Observations) > 1 {
+		if hb != nil {
+			_ = d.heartbeat(ctx, dest, revision, hb)
+		}
+		return d.sendIsolated(ctx, q, dest, items[0], result)
+	}
 	if len(items) == 0 {
 		dest.isolating = false
 		dest.separateBeat = false
@@ -330,7 +338,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		}
 	}
 	if permanent {
-		if len(ids) > 1 {
+		if len(ids) > 1 || len(batch.Observations) > 1 {
 			// A single expired or invalid item rejects the entire request.
 			// Retry original durable items separately before quarantining
 			// anything, so valid neighbouring samples are still delivered.
