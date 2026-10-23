@@ -377,6 +377,15 @@ The same rule applies on checkpoint restart, including older checkpoints whose
 summaries have no rule marker. Names and confirmation threshold edits preserve
 compatible summaries; raw observation history remains compatible throughout.
 
+Native health confirmation advances in observation order up to a bounded
+summary watermark. A sample arriving at or before that watermark is retained
+in raw history but does not rewind the folded failure/recovery confirmation.
+It never replaces the latest observation. Thus the same historical samples can
+produce different current confirmation states when delivery order crosses that
+watermark. Rollup corrections follow their separate bounded reorder window;
+they do not imply current-health correction. A later staleness-rule change
+reconfirms from available evidence, including any retained late samples.
+
 A snapshot from a collector that saw TLS handshake failures also carries
 `ingress`: `window_seconds`, `failures`, `source_count`, `last`, and up to
 eight busiest `sources` (`address`, `count`, `last`) inside a rolling
