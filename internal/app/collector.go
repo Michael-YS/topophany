@@ -160,10 +160,10 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 		defer notifier.Close()
 	}
 	wg.Add(1)
-	go func() {
+	go func(settle time.Duration) {
 		defer wg.Done()
-		a.watch(ctx, backend, ledger.Settle(c), notifier)
-	}()
+		a.watch(ctx, backend, settle, notifier)
+	}(ledger.Settle(c))
 	wg.Go(func() { a.watchStorage(ctx, st, time.Minute) })
 	// A handshake error is diagnostic. Do not make the connection goroutine
 	// wait for a slow stderr, journald or rotating log file: forward through
