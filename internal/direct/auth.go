@@ -205,6 +205,7 @@ func (h *Hub) authenticate(ctx context.Context, a Auth, saved *Credential) (Cred
 			token = v
 		}
 	}
+	h.redact = append(h.redact, token)
 	var reply authReply
 	if a.Mode == "password" {
 		if e := h.call(ctx, "POST", "users/auth-with-password", "", map[string]string{"identity": a.Identity, "password": a.Password}, &reply); e != nil {
@@ -256,6 +257,7 @@ func (h *Hub) authenticate(ctx context.Context, a Auth, saved *Credential) (Cred
 	if !safeToken(reply.Token) || !objectID(reply.Record.ID) || reply.Record.Collection != "" && reply.Record.Collection != "users" {
 		return c, fail("upstream_incompatible")
 	}
+	h.redact = append(h.redact, reply.Token)
 	c.RetryAt = time.Time{}
 	c.Subject = "users:" + reply.Record.ID
 	if saved != nil && c.Subject != saved.Subject {
@@ -326,6 +328,7 @@ func (h *Hub) Discover(ctx context.Context, c Credential) ([]System, bool, error
 			return nil, false, fail("auth_required")
 		}
 	}
+	secrets := append(append([]string(nil), h.redact...), token)
 	systems := []System{}
 	seen := map[string]bool{}
 	for page := 1; page <= 10; page++ {
@@ -344,21 +347,18 @@ func (h *Hub) Discover(ctx context.Context, c Credential) ([]System, bool, error
 			return nil, false, fail("upstream_incompatible")
 		}
 		for _, v := range p.Items {
-			if !objectID(v.ID) || seen[v.ID] || strings.Contains(token, v.ID) || strings.Contains(v.ID, token) {
+			if !objectID(v.ID) || seen[v.ID] {
 				return nil, false, fail("upstream_incompatible")
 			}
 			// IDs are public too, including the fallback name derived from them.
 			// Check every authentication input before constructing any output.
-			for _, secret := range h.redact {
+			for _, secret := range secrets {
 				if secret != "" && (strings.Contains(v.ID, secret) || strings.Contains(secret, v.ID)) {
 					return nil, false, fail("upstream_incompatible")
 				}
 			}
 			seen[v.ID] = true
-			v.Name = cleanName(v.Name, v.ID, token)
-			for _, secret := range h.redact {
-				v.Name = cleanName(v.Name, v.ID, secret)
-			}
+			v.Name = cleanName(v.Name, v.ID, secrets...)
 			systems = append(systems, v)
 		}
 		if page >= p.TotalPages {
@@ -370,16 +370,29 @@ func (h *Hub) Discover(ctx context.Context, c Credential) ([]System, bool, error
 	}
 	return systems, true, nil
 }
-func cleanName(s, id, token string) string {
+func cleanName(s, id string, secrets ...string) string {
+	containsSecret := func(text string) bool {
+		for _, secret := range secrets {
+			if secret != "" && strings.Contains(text, secret) {
+				return true
+			}
+		}
+		return false
+	}
+	// Match the complete upstream value before any transformation can cut a
+	// credential in half. Sanitization can also join text into a credential.
+	if containsSecret(s) {
+		return "System " + id
+	}
 	s = strings.TrimSpace(secure.Text(s))
+	if s == "" || containsSecret(s) {
+		return "System " + id
+	}
 	if len(s) > 128 {
 		s = s[:128]
 		for !utf8.ValidString(s) {
 			s = s[:len(s)-1]
 		}
-	}
-	if s == "" || token != "" && strings.Contains(s, token) {
-		return "System " + id
 	}
 	return s
 }
