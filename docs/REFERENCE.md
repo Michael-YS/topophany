@@ -368,6 +368,15 @@ one liveness slot per observer.
 
 Current batches are schema 3 (`"schema": 3`) and may carry normalized external reports. A collector still accepts a schema 2 batch as native-only; a schema 2 observation carrying external evidence is refused, not silently stripped. The batch's `revision` is the SHA-256 of the sender's normalized topology and only describes the sender; the acknowledgement echoes it. Each observation carries the `contract` of its check, which must equal the collector's contract for that check, or the batch is refused with `409 contract_mismatch`. A check's contract is the SHA-256 of what it measures: project, check ID, observer, kind, target (the endpoint's address when `target` is empty), timeout, `bind_ip`, `resolve_ip`, `server_name`, `ca_file`, the `http`, `dns` and `adapter` options (except `provider_reference.settle_seconds`, which only defers confirmation), and the proxies of its path in wire order. Nothing else enters it: names, notes, locations, intervals, staleness and confirmation thresholds, `disabled` and `maintenance`, what the check is attributed to (endpoint, service, path, link) and every other check can change without disturbing its samples, its history or the ID of an incident it is part of. `topo validate` prints every contract. Viewers see public contracts, computed over the redacted topology like the public revision, so they permit no guess at hidden fields.
 
+Health confirmation summaries record the staleness rule used to fold their
+samples, separately from measurement contracts. Changing `stale_seconds`
+recomputes confirmation from retained observations; a reclaimed prefix cannot
+be reconstructed and contributes no confirmation under the new rule. Worker
+local panels retain only their latest sample and reconfirm from that evidence.
+The same rule applies on checkpoint restart, including older checkpoints whose
+summaries have no rule marker. Names and confirmation threshold edits preserve
+compatible summaries; raw observation history remains compatible throughout.
+
 A snapshot from a collector that saw TLS handshake failures also carries
 `ingress`: `window_seconds`, `failures`, `source_count`, `last`, and up to
 eight busiest `sources` (`address`, `count`, `last`) inside a rolling

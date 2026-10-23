@@ -73,6 +73,8 @@ func (l *Local) Reload(c model.Config) {
 		if contracts[id] != v.Contract {
 			delete(l.latest, id)
 			delete(l.carries, id)
+		} else if !l.carries[id].Compatible(time.Duration(l.checks[id].StaleSeconds) * time.Second) {
+			delete(l.carries, id)
 		}
 	}
 }

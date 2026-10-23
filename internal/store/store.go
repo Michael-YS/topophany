@@ -498,6 +498,7 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 	s.options.Revision = revision
 	s.options.Contracts = maps.Clone(contracts)
 	s.options.Stale = maps.Clone(stale)
+	s.stateBytes -= int64(s.discardIncompatibleCarries()) * carryBytes
 	s.pruneExternalLocked(s.options.Contracts)
 	s.applyExternalRulesLocked()
 	rows := s.allRows()
@@ -525,6 +526,20 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 		}
 	}
 	s.prune()
+}
+
+// discardIncompatibleCarries leaves raw history and tails intact. The caller
+// can replay those samples under the new rules; a reclaimed prefix contributes
+// no confirmation until the retained evidence confirms it again.
+func (s *Store) discardIncompatibleCarries() int {
+	removed := 0
+	for key, k := range s.carries {
+		if !k.Compatible(s.options.Stale[k.Check]) {
+			delete(s.carries, key)
+			removed++
+		}
+	}
+	return removed
 }
 
 type rowEncoding struct {

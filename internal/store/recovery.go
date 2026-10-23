@@ -100,6 +100,7 @@ func (s *Store) readCheckpoint(path string) error {
 	}
 	// Carries must be installed before tails are trimmed: the failure that
 	// started an incident may predate all of the raw history still retained.
+	s.discardIncompatibleCarries()
 	s.checkpointSize = info.Size()
 	s.rowsCapacity = cap(s.rows)
 	s.queueFloors()
