@@ -12,7 +12,10 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/testkit"
 )
 
-type fakeIO struct{ pages int }
+type fakeIO struct {
+	pages  int
+	closed bool
+}
 
 func (f *fakeIO) Credential(context.Context, model.Source) (string, error) { return "", nil }
 func (f *fakeIO) Get(context.Context, model.Source, string, map[string]string, int64) (source.Response, error) {
@@ -236,5 +239,31 @@ func TestRuntimeAllowsIndependentIdentityAndTimePerReportType(t *testing.T) {
 	}
 	if readings[0].Report.SampleID == readings[1].Report.SampleID || readings[0].Report.ObservedAt.Equal(readings[1].Report.ObservedAt) {
 		t.Fatal("runtime forced one identity or time across report types")
+	}
+}
+
+func (f *fakeIO) Close() { f.closed = true }
+
+func TestRuntimeClosesIOOnEveryExit(t *testing.T) {
+	for _, kind := range []string{"success", "adapter failure", "invalid report"} {
+		t.Run(kind, func(t *testing.T) {
+			c := sourceConfig()
+			transport := &fakeIO{}
+			a := &fakeAdapter{readings: []source.Reading{statusReading("svc")}}
+			if kind == "adapter failure" {
+				a.err = errors.New("failed")
+			}
+			if kind == "invalid report" {
+				a.readings[0].Report.Status.Status = "invalid"
+			}
+			rt := source.Runtime{Adapters: map[string]source.Adapter{"synthetic-list": a}, NewIO: func(model.Config, model.Source) (source.IO, error) { return transport, nil }}
+			_, err := rt.Collect(context.Background(), c, c.Sources[0], statusRequests("svc"))
+			if (err == nil) != (kind == "success") {
+				t.Fatal(err)
+			}
+			if !transport.closed {
+				t.Fatal("attempt IO not closed")
+			}
+		})
 	}
 }

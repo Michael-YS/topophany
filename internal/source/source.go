@@ -115,6 +115,9 @@ type IO interface {
 	Credential(context.Context, model.Source) (string, error)
 	Get(context.Context, model.Source, string, map[string]string, int64) (Response, error)
 	Pages() int
+	// Close releases attempt-owned connections, including unfinished dials.
+	// Runtime calls it on every exit after NewIO succeeds.
+	Close()
 }
 
 // Adapter is deliberately static and small. Validate runs before a process
@@ -203,6 +206,7 @@ func (r Runtime) Collect(ctx context.Context, c model.Config, s model.Source, re
 	if err != nil {
 		return nil, err
 	}
+	defer io.Close()
 	readings, err := a.Collect(ctx, io, s, cloneRequests(requests))
 	if err != nil {
 		return nil, err

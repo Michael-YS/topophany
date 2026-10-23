@@ -74,3 +74,5 @@ func TestKomariRuntimeEnforcesNormalizedReportBudget(t *testing.T) {
 		t.Fatalf("normalized report budget was bypassed: reports=%d error=%v", len(got), err)
 	}
 }
+
+func (*benchmarkIO) Close() {}

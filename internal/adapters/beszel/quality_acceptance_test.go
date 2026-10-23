@@ -123,3 +123,5 @@ func BenchmarkBeszelRuntimeCollect(b *testing.B) {
 		})
 	}
 }
+
+func (*benchmarkIO) Close() {}

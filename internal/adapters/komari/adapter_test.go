@@ -409,3 +409,5 @@ func TestKomariCredentialsAndUnmappedTextNeverLeaveAdapter(t *testing.T) {
 		t.Fatal("ignored metadata changed the normalized resource")
 	}
 }
+
+func (*fixtureIO) Close() {}

@@ -260,3 +260,5 @@ func TestControlledReadCancellationBoundsAndClosedErrors(t *testing.T) {
 		}
 	}
 }
+
+func (*controlledIO) Close() {}

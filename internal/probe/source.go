@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters/beszel"
 	"github.com/WhitenWhiten/topophany/internal/adapters/komari"
@@ -51,8 +52,11 @@ func newSourceIO(c model.Config, s model.Source) (source.IO, error) {
 	proxies := config.Path(c, s.Path).Proxies
 	d := Dialer{Proxies: proxies, BindIP: s.BindIP}
 	tr := restrictedTransport(tc, 0)
+	tr.TLSHandshakeTimeout = time.Duration(max(1, s.TimeoutSeconds)) * time.Second
 	tr.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-		return d.DialContext(ctx, network, pinned(address, s.ResolveIP))
+		dialCtx, cancel := context.WithTimeout(ctx, time.Duration(max(1, s.TimeoutSeconds))*time.Second)
+		defer cancel()
+		return d.DialContext(dialCtx, network, pinned(address, s.ResolveIP))
 	}
 	client := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return &sourceIO{client: client, source: s, origin: u, maxPages: s.MaxPages}, nil
@@ -73,6 +77,7 @@ func (io *sourceIO) Credential(ctx context.Context, s model.Source) (string, err
 }
 
 func (io *sourceIO) Pages() int { return io.pages }
+func (io *sourceIO) Close()     { io.client.CloseIdleConnections() }
 
 func (io *sourceIO) Get(ctx context.Context, s model.Source, page string, headers map[string]string, maxBytes int64) (source.Response, error) {
 	if s.ID != io.source.ID {

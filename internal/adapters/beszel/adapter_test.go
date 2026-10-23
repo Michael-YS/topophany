@@ -754,3 +754,5 @@ func FuzzBeszelResourceDecode(f *testing.F) {
 		}
 	})
 }
+
+func (*fixtureIO) Close() {}

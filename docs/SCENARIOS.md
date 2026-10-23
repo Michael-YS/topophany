@@ -561,3 +561,5 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | Worker panels retain external report state, deduplicate repeated reports, expire original evidence and drop changed contracts | `TestWorkerLocalExternalEvidence` |
 | Collector, direct and worker display paths share immutable external state transactions and threshold rules; durable storage retains observer quotas and commit-before-publication | `TestExternalMergeClonesOnlyAffectedState`, `TestSessionMatchesStoreAndDoesNotRenewOldData`, `TestWorkerLocalExternalEvidence` |
 | A viewer remains online through a busy retry even when collector wall time moves backward; refresh is identified by the controlled response, not timestamp ordering | `TestRemoteSnapshotBusyDoesNotFlashOffline` |
+
+| Source attempts release transports on success, adapter failure, invalid reports and cancellation during TLS; detached handshakes cannot accumulate | `TestRuntimeClosesIOOnEveryExit`, `TestSourceCancellationClosesUnfinishedTLS` |
