@@ -40,11 +40,12 @@ type Carry struct {
 	Down      [thresholds]uint32 `json:"down"`
 }
 
-// Compatible reports whether this summary can be reused under stale. The
+// Compatible reports whether this summary can be reused under policy. The
 // threshold bitmap supports all threshold pairs, so threshold edits do not
 // invalidate it. Owners rebuild incompatible summaries from retained samples.
-func (k Carry) Compatible(stale time.Duration) bool {
-	return k.At.IsZero() || k.RulesVersion == 1 && k.Stale == stale
+func (k Carry) Compatible(policy EvidencePolicy) bool {
+	previous := EvidencePolicy{Contract: k.Contract, Stale: k.Stale}
+	return k.At.IsZero() || k.RulesVersion == 1 && previous.ChangeTo(policy) == PreserveEvidence
 }
 
 // earlier orders a check's samples: by when they were taken, then by

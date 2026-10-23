@@ -39,6 +39,7 @@ func (l *Local) Reload(c model.Config) {
 	l.plan = engine.NewPlan(c)
 	contracts := config.Contracts(c)
 	l.contracts = contracts
+	previousChecks := l.checks
 	l.checks = map[string]model.Check{}
 	for _, check := range c.Checks {
 		if check.Observer == l.observer {
@@ -70,10 +71,12 @@ func (l *Local) Reload(c model.Config) {
 	l.externalPrepared = l.plan.PrepareExternal(nil, nil, nil, next)
 	l.digest = config.ObserverContracts(c, l.observer)
 	for id, v := range l.latest {
-		if contracts[id] != v.Contract {
+		previous := engine.EvidencePolicy{Contract: v.Contract, Stale: time.Duration(previousChecks[id].StaleSeconds) * time.Second}
+		next := engine.EvidencePolicy{Contract: contracts[id], Stale: time.Duration(l.checks[id].StaleSeconds) * time.Second}
+		if previous.ChangeTo(next) == engine.ResetMeasurement {
 			delete(l.latest, id)
 			delete(l.carries, id)
-		} else if !l.carries[id].Compatible(time.Duration(l.checks[id].StaleSeconds) * time.Second) {
+		} else if !l.carries[id].Compatible(next) {
 			delete(l.carries, id)
 		}
 	}

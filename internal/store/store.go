@@ -534,7 +534,12 @@ func (s *Store) SetCurrent(revision string, contracts map[string]string, stale m
 func (s *Store) discardIncompatibleCarries() int {
 	removed := 0
 	for key, k := range s.carries {
-		if !k.Compatible(s.options.Stale[k.Check]) {
+		contract := k.Contract
+		if s.options.Contracts != nil {
+			contract = s.options.Contracts[k.Check]
+		}
+		policy := engine.EvidencePolicy{Contract: contract, Stale: s.options.Stale[k.Check]}
+		if !k.Compatible(policy) {
 			delete(s.carries, key)
 			removed++
 		}
