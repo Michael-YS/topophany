@@ -216,9 +216,10 @@ func sourceBackoff(interval time.Duration, failures int) time.Duration {
 		return jitter(interval)
 	}
 	shift := min(failures, 12)
+	ceiling := max(interval, maxSourceBackoff)
 	delay := interval * time.Duration(1<<shift)
-	if delay > maxSourceBackoff || delay < interval {
-		delay = maxSourceBackoff
+	if delay > ceiling || delay < interval {
+		delay = ceiling
 	}
 	return jitter(delay)
 }

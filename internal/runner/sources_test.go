@@ -443,3 +443,22 @@ func TestSourceMissingReportTypeIsAnAttemptNotAnEntityOrOutage(t *testing.T) {
 		t.Fatalf("codes = %+v", codes)
 	}
 }
+
+// A failed low-frequency source must not consume its upstream quota faster
+// than a healthy source. Jitter remains symmetric around the nominal delay.
+func TestSourceBackoffRespectsLongIntervals(t *testing.T) {
+	for _, interval := range []time.Duration{time.Second, 30 * time.Minute, time.Hour, 2 * time.Hour, 24 * time.Hour} {
+		for _, failures := range []int{0, 1, 2, 12, 100} {
+			nominal := interval
+			if failures > 0 {
+				nominal = min(interval*time.Duration(1<<min(failures, 12)), max(interval, maxSourceBackoff))
+			}
+			for i := 0; i < 20; i++ {
+				got := sourceBackoff(interval, failures)
+				if got < nominal*9/10 || got > nominal*11/10 {
+					t.Fatalf("interval=%s failures=%d delay=%s nominal=%s", interval, failures, got, nominal)
+				}
+			}
+		}
+	}
+}
