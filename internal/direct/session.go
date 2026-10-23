@@ -378,17 +378,9 @@ func (s *Session) run(src model.Source, l *sourceLoop, currentConfig model.Confi
 			l.failures++
 			e := AsError(err)
 			l.code = e.Code
-			switch e.Code {
-			case "auth_required":
-				l.state = "auth_required"
-			case "forbidden":
-				l.state = "forbidden"
-			case "connection_failed", "tls_error", "rate_limited", "credential_renewed":
-				l.state = "retrying"
-			default:
-				l.state = "error"
-			}
-			if l.state == "retrying" {
+			state, retry := failurePolicy(e.Code)
+			l.state = state
+			if retry {
 				l.next = finished.Add(s.opts.Backoff(l.failures))
 				if retryAt.After(l.next) {
 					l.next = retryAt

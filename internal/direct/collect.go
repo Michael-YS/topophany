@@ -3,6 +3,7 @@ package direct
 import (
 	"context"
 	"errors"
+	"github.com/WhitenWhiten/topophany/internal/httpfailure"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/source"
@@ -30,15 +31,15 @@ func (a *attemptIO) Get(ctx context.Context, s model.Source, u string, headers m
 		a.failure = fail(code)
 		return r, e
 	}
-	switch r.Status {
-	case 401:
+	switch httpfailure.Classify(r.Status) {
+	case httpfailure.Authentication:
 		a.failure = fail("auth_required")
-	case 403:
+	case httpfailure.Permission:
 		a.failure = fail("forbidden")
-	case 429:
+	case httpfailure.RateLimited:
 		a.failure = fail("rate_limited")
 		a.retry = retryAfter(r.RetryAfter, a.now())
-	case 500, 502, 503, 504:
+	case httpfailure.Transient:
 		a.failure = fail("connection_failed")
 	}
 	return r, nil

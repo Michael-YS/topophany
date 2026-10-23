@@ -39,7 +39,8 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
 func fail(code string) *Error {
-	return &Error{Code: code, Message: messages[code], Retryable: code == "connection_failed" || code == "rate_limited"}
+	_, retry := failurePolicy(code)
+	return &Error{Code: code, Message: messages[code], Retryable: retry}
 }
 
 var messages = map[string]string{
