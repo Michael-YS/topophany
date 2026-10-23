@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
-	"slices"
 	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/config"
@@ -92,19 +91,7 @@ func (s *Scheduler) collectSource(ctx context.Context, src model.Source, checks 
 	started := time.Now().UTC()
 	jobCtx, cancel := context.WithTimeout(ctx, time.Duration(src.TimeoutSeconds)*time.Second)
 	defer cancel()
-	requests := make([]source.Request, 0, len(checks))
-	requestIndex := make(map[string]int, len(checks))
-	for _, x := range checks {
-		object, kind := x.External.Object, x.External.Report
-		if i, ok := requestIndex[object]; ok {
-			if !slices.Contains(requests[i].Reports, kind) {
-				requests[i].Reports = append(requests[i].Reports, kind)
-			}
-			continue
-		}
-		requestIndex[object] = len(requests)
-		requests = append(requests, source.Request{Object: object, Reports: []string{kind}})
-	}
+	requests := source.RequestsForChecks(checks)
 	readings, err := s.sources.Collect(jobCtx, s.Config, src, requests)
 	finished := time.Now().UTC()
 	if ctx.Err() != nil {

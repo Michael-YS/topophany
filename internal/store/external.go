@@ -1,7 +1,6 @@
 package store
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -64,7 +63,7 @@ func (s *Store) pruneExternalLocked(contracts map[string]string) {
 
 const (
 	// externalStateOverhead covers the object braces, schema and map commas.
-	externalStateOverhead = 64
+	externalStateOverhead = report.StateOverhead
 	// When several sources share a store, no source may consume the whole
 	// external state budget: half stays available for the others. A
 	// single-source store has nobody to isolate from and may use the budget.
@@ -88,14 +87,6 @@ type externalCommit struct {
 	observerBytes map[string]int64
 }
 
-func externalEntrySize(key string, value any) (int64, error) {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return 0, err
-	}
-	return int64(len(key) + len(raw) + 4), nil
-}
-
 // externalAccountingLocked derives per-entry and per-source encoded sizes
 // without serializing state that did not change. Callers hold s.mu.
 func (s *Store) externalAccountingLocked() (int64, map[string]int64, map[string]int64, map[string]int64, error) {
@@ -107,7 +98,7 @@ func (s *Store) externalAccountingLocked() (int64, map[string]int64, map[string]
 	}
 	total := int64(externalStateOverhead)
 	for id, state := range s.external.Sources {
-		size, err := externalEntrySize(id, state)
+		size, err := report.StateEntryBytes(id, state)
 		if err != nil {
 			return 0, nil, nil, nil, err
 		}
@@ -117,7 +108,7 @@ func (s *Store) externalAccountingLocked() (int64, map[string]int64, map[string]
 		total += size
 	}
 	for check, state := range s.external.Bindings {
-		size, err := externalEntrySize(check, state)
+		size, err := report.StateEntryBytes(check, state)
 		if err != nil {
 			return 0, nil, nil, nil, err
 		}
@@ -240,49 +231,22 @@ func (s *Store) admitExternalLocked(v *model.Observation, now, future time.Time)
 // journal is durable.
 func (s *Store) mergeExternalLocked(observations []model.Observation) (*externalCommit, error) {
 	s.ensureExternalAccountingLocked()
-	sources := map[string]model.SourceState{}
-	bindings := map[string]model.BindingState{}
-	if s.external != nil {
-		sources = maps.Clone(s.external.Sources)
-		bindings = maps.Clone(s.external.Bindings)
-	}
-	if sources == nil {
-		sources = map[string]model.SourceState{}
-	}
-	if bindings == nil {
-		bindings = map[string]model.BindingState{}
-	}
-	affectedSources := map[string]bool{}
-	affectedBindings := map[string]bool{}
+	update := report.BeginState(s.external)
 	for _, v := range observations {
 		if v.External == nil || !s.current(v) {
 			continue
 		}
-		source := v.External.Source
-		if _, ok := s.options.Sources[source]; !ok {
-			// A removed source cannot be made current again by replay.
+		if _, ok := s.options.Sources[v.External.Source]; !ok {
 			continue
 		}
-		affectedSources[source] = true
-		sources[source] = report.MergeSource(sources[source], source, v.External.AttemptedAt, v.External.Contact, v.Code, v.DurationMS)
-		if v.External.Report == nil {
-			continue
-		}
-		binding, ok := s.options.Bindings[v.Check]
-		if !ok {
-			continue
-		}
+		binding := s.options.Bindings[v.Check]
 		if _, ok := s.options.Sources[binding.Source]; !ok {
-			continue
+			binding = model.ExternalBinding{}
 		}
-		if !affectedBindings[v.Check] {
-			bindings[v.Check] = model.CloneBindingState(bindings[v.Check])
-			affectedBindings[v.Check] = true
-		}
-		state := applyExternalRule(bindings[v.Check], s.options.ExternalRules[v.Check])
-		state, _ = report.MergeBinding(v.Check, v.Contract, binding, state, *v.External.Report, v.ReceivedAt)
-		bindings[v.Check] = state
+		update.Apply(v, binding, s.options.ExternalRules[v.Check])
 	}
+	sources, bindings := update.State.Sources, update.State.Bindings
+	affectedSources, affectedBindings := update.Sources, update.Bindings
 	if len(affectedSources) == 0 && len(affectedBindings) == 0 {
 		return nil, nil
 	}
@@ -307,7 +271,7 @@ func (s *Store) mergeExternalLocked(observations []model.Observation) (*external
 	}
 	total := s.externalBytes
 	add := func(key, source string, value any) error {
-		size, err := externalEntrySize(key[2:], value)
+		size, err := report.StateEntryBytes(key[2:], value)
 		if err != nil {
 			return fmt.Errorf("external state encoding failed: %w", err)
 		}
@@ -383,42 +347,7 @@ func (s *Store) applyExternalRulesLocked() {
 		return
 	}
 	for check, state := range s.external.Bindings {
-		s.external.Bindings[check] = applyExternalRule(state, s.options.ExternalRules[check])
+		s.external.Bindings[check] = report.ApplyRule(state, s.options.ExternalRules[check])
 	}
 	s.resizeExternalLocked()
-}
-
-// applyExternalRule rejudges runs only when their effective thresholds change.
-// Confirmed evidence can outlive a run reset across a sampling gap, so replay,
-// duplicates and metadata reloads must preserve the persisted confirmation.
-func applyExternalRule(state model.BindingState, rule model.ExternalRule) model.BindingState {
-	failure, recovery, policy := rule.FailureThreshold, rule.RecoveryThreshold, rule.PolicyThreshold
-	if failure < 1 {
-		failure = 3
-	}
-	if recovery < 1 {
-		recovery = 2
-	}
-	if policy < 0 {
-		policy = 0
-	}
-	oldFailure, oldRecovery := state.FailureThreshold, state.RecoveryThreshold
-	if oldFailure < 1 {
-		oldFailure = 3
-	}
-	if oldRecovery < 1 {
-		oldRecovery = 2
-	}
-	if oldFailure != failure || oldRecovery != recovery {
-		if state.ConfirmedDown {
-			state.ConfirmedDown = state.UpRun < int64(recovery)
-		} else {
-			state.ConfirmedDown = state.DownRun >= int64(failure)
-		}
-	}
-	if max(state.PolicyThreshold, 1) != max(policy, 1) {
-		state.PolicyConfirmed = state.PolicyRun >= int64(max(policy, 1))
-	}
-	state.FailureThreshold, state.RecoveryThreshold, state.PolicyThreshold = failure, recovery, policy
-	return state
 }

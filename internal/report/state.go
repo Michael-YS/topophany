@@ -37,7 +37,7 @@ func (u *StateUpdate) Apply(v model.Observation, binding model.ExternalBinding, 
 	id := v.External.Source
 	state := MergeSource(u.State.Sources[id], id, v.External.AttemptedAt, v.External.Contact, v.Code, v.DurationMS)
 	u.State.Sources[id], u.Sources[id] = state, state
-	if v.External.Report == nil {
+	if v.External.Report == nil || binding.Source == "" {
 		return
 	}
 	current := u.State.Bindings[v.Check]

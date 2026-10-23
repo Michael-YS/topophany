@@ -3,14 +3,12 @@ package direct
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"math/rand/v2"
 	"net/url"
 	"sort"
 	"sync"
 	"time"
 
-	"github.com/WhitenWhiten/topophany/internal/admission"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/engine"
 	"github.com/WhitenWhiten/topophany/internal/model"
@@ -297,28 +295,12 @@ func stamp(t time.Time) *time.Time {
 }
 func (s *Session) requests(src model.Source) ([]model.Check, []source.Request) {
 	checks := []model.Check{}
-	requests := []source.Request{}
-	index := map[string]int{}
 	for _, x := range s.config.Checks {
-		if x.Kind != "external" || x.External == nil || x.External.Source != src.ID || x.Disabled || x.Maintenance {
-			continue
-		}
-		checks = append(checks, x)
-		i, ok := index[x.External.Object]
-		if !ok {
-			index[x.External.Object] = len(requests)
-			requests = append(requests, source.Request{Object: x.External.Object, Reports: []string{x.External.Report}})
-		} else {
-			found := false
-			for _, kind := range requests[i].Reports {
-				found = found || kind == x.External.Report
-			}
-			if !found {
-				requests[i].Reports = append(requests[i].Reports, x.External.Report)
-			}
+		if x.Kind == "external" && x.External != nil && x.External.Source == src.ID && !x.Disabled && !x.Maintenance {
+			checks = append(checks, x)
 		}
 	}
-	return checks, requests
+	return checks, source.RequestsForChecks(checks)
 }
 func (s *Session) startLoopLocked(src model.Source, generation string, c model.Config, gate chan struct{}) {
 	if gate == nil {
@@ -443,187 +425,6 @@ func (s *Session) run(src model.Source, l *sourceLoop, currentConfig model.Confi
 			}
 		}
 	}
-}
-
-// Record atomically admits a whole successful source batch. Failed adapter
-// reads never commit their successful prefix. It validates ownership and the
-// execution generation before any state mutation and sets real ReceivedAt.
-func (s *Session) Record(generation, id string, started, finished time.Time, readings []source.Reading, collectErr error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed || s.ctx.Err() != nil || s.loops[id] == nil || generation != s.loops[id].generation {
-		return fail("profile_conflict")
-	}
-	src, ok := config.Source(s.config, id)
-	if !ok {
-		return fail("source_not_found")
-	}
-	checks, _ := s.requests(src)
-	received := s.opts.Now().UTC()
-	if received.After(s.high) {
-		s.high = received
-	}
-	if s.accounted != s.external {
-		sizes, err := report.MeasureState(s.external)
-		if err != nil {
-			return fail("state_budget")
-		}
-		s.sizes, s.accounted = sizes, s.external
-	}
-	update := report.BeginState(s.external)
-	next := update.State
-	code := ""
-	if collectErr != nil {
-		code = AsError(collectErr).Code
-		readings = nil
-	}
-	if len(readings) > 40 {
-		return fail("state_budget")
-	}
-	reports := map[source.Key]model.ExternalReport{}
-	batchBytes := 0
-	for _, r := range readings {
-		key := source.Key{Object: r.Object, Report: report.PayloadType(r.Report)}
-		if _, exists := reports[key]; exists {
-			return fail("upstream_incompatible")
-		}
-		reports[key] = r.Report
-		b, e := json.Marshal(r.Report)
-		if e != nil {
-			return fail("state_budget")
-		}
-		batchBytes += len(b)
-		if batchBytes > MaxBatchBytes {
-			return fail("state_budget")
-		}
-	}
-	for _, x := range checks {
-		o := model.Observation{Project: s.config.Project, Observer: x.Observer, Check: x.ID, Contract: config.Contract(s.config, x), SampledAt: started, ReceivedAt: received, Outcome: "error", Code: code, Evidence: "reported", Stage: "external_source", PathEvidence: "external_source", DurationMS: max(0, finished.Sub(started).Milliseconds()), External: &model.ExternalObservation{Source: id, SourceGeneration: generation, AttemptedAt: finished, Contact: collectErr == nil}}
-		if r, ok := reports[source.Key{Object: x.External.Object, Report: x.External.Report}]; ok && collectErr == nil {
-			o.External.Report = &r
-			o.Outcome = "ok"
-			o.Code = ""
-		} else if o.Code == "" {
-			o.Code = "external_object_missing"
-		}
-		if o.Project != s.config.Project || o.Observer != src.Observer || o.Contract != config.Contract(s.config, x) {
-			return fail("upstream_incompatible")
-		}
-		normalized, e := admission.External(o, x, src, admission.Window{Now: received, Future: s.high, MaxAge: 24 * time.Hour, Skew: 30 * time.Second})
-		if e != nil {
-			return fail("upstream_incompatible")
-		}
-		o.External.Report = normalized
-		update.Apply(o, *x.External, model.ExternalRule{FailureThreshold: x.FailureThreshold, RecoveryThreshold: x.RecoveryThreshold, PolicyThreshold: x.PolicyThreshold})
-	}
-	// Reject undeclared result pairs instead of retaining arbitrary upstream keys.
-	for key := range reports {
-		found := false
-		for _, x := range checks {
-			found = found || x.External.Object == key.Object && x.External.Report == key.Report
-		}
-		if !found {
-			return fail("upstream_incompatible")
-		}
-	}
-	sizes, e := s.sizes.Updated(update)
-	limit := s.opts.MaxSourceStateBytes
-	if len(s.config.Sources) <= 1 {
-		limit = s.opts.MaxStateBytes
-	}
-	if e != nil || sizes.Total > int64(s.opts.MaxStateBytes) || sizes.Sources[id] > int64(limit) || len(next.Bindings) > model.MaxExternalChecks || len(next.Sources) > model.MaxSources {
-		return fail("state_budget")
-	}
-	s.external, s.accounted, s.sizes = next, next, sizes
-	s.prepared = s.prepared.WithExternalChanges(update.Sources, update.Bindings)
-	return nil
-}
-
-type attemptIO struct {
-	now func() time.Time
-	source.IO
-	failure error
-	retry   time.Time
-}
-
-func (a *attemptIO) Get(ctx context.Context, s model.Source, u string, headers map[string]string, max int64) (source.Response, error) {
-	r, e := a.IO.Get(ctx, s, u, headers, max)
-	if e != nil {
-		code := "upstream_incompatible"
-		if source.Code(e) == "transport_error" || ctx.Err() != nil {
-			code = "connection_failed"
-		}
-		var transport *source.Error
-		if source.Code(e) == "source_tls" || errors.As(e, &transport) && transport.Transport == "tls_error" {
-			code = "tls_error"
-		}
-		a.failure = fail(code)
-		return r, e
-	}
-	switch r.Status {
-	case 401:
-		a.failure = fail("auth_required")
-	case 403:
-		a.failure = fail("forbidden")
-	case 429:
-		a.failure = fail("rate_limited")
-		a.retry = retryAfter(r.RetryAfter, a.now())
-	case 500, 502, 503, 504:
-		a.failure = fail("connection_failed")
-	}
-	return r, nil
-}
-func (s *Session) collect(ctx context.Context, c model.Config, src model.Source, requests []source.Request) ([]source.Reading, time.Time, error) {
-	s.mu.Lock()
-	entry, ok := findEntry(s.profile, src.ID)
-	profile := s.profile.Profile
-	s.mu.Unlock()
-	if !ok || entry.Source.URL != src.Target {
-		return nil, time.Time{}, fail("source_not_found")
-	}
-	token, e := s.store.Token(ctx, profile, entry, s.opts.Now())
-	if e != nil {
-		return nil, AsError(e).RetryAt, e
-	}
-	var io *attemptIO
-	rt := probe.NewSourceRuntime(probe.ProductionSourceAdapters())
-	rt.NewIO = func(c model.Config, src model.Source) (source.IO, error) {
-		base, e := probe.SourceIO(c, src, func(context.Context, model.Source) (string, error) { return token, nil })
-		if e != nil {
-			return nil, e
-		}
-		io = &attemptIO{IO: base, now: s.opts.Now}
-		return io, nil
-	}
-	readings, e := rt.Collect(ctx, c, src, requests)
-	if io != nil && io.failure != nil {
-		if AsError(io.failure).Code == "auth_required" {
-			s.mu.Lock()
-			l := s.loops[src.ID]
-			canRefresh := l != nil && !l.renewed401
-			if canRefresh {
-				l.renewed401 = true
-			}
-			s.mu.Unlock()
-			if canRefresh {
-				if _, err := s.store.Refresh(ctx, profile, entry, token); err != nil {
-					return nil, AsError(err).RetryAt, err
-				}
-				return nil, time.Time{}, &Error{Code: "credential_renewed", Message: "Credential renewed; retrying the read.", Retryable: true}
-			}
-		}
-		return nil, io.retry, io.failure
-	}
-	if e != nil {
-		if source.Code(e) == "source_tls" {
-			return nil, time.Time{}, fail("tls_error")
-		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) || source.Code(e) == "transport_error" {
-			return nil, time.Time{}, fail("connection_failed")
-		}
-		return nil, time.Time{}, fail("upstream_incompatible")
-	}
-	return readings, time.Time{}, nil
 }
 
 // LoadingSnapshot prepares topology without waiting for or racing the first read.
