@@ -69,6 +69,8 @@ attempt. Root and the administrator invoking sudo remain trusted installers.
 
 Remote server URLs must use HTTPS with valid hostnames and CA verification. There is no `InsecureSkipVerify` bypass. Ambient environment `HTTP_PROXY` is ignored and HTTP redirects are not followed, preventing token forwarding to arbitrary servers. Literal loopback addresses may use HTTP, though API bearer tokens are still required. A malicious local user or a rogue proxy listening on loopback is not a secure substitute for TLS. The `--allow-insecure` flag is an explicit acceptance of plaintext risk, not a recommended production deployment method.
 
+Direct profiles use the per-source `allow_insecure:true` option for the same explicit HTTP consent during authentication, discovery and resource reads. It is saved in private direct configuration, never accepted from collector topology JSON, and does not disable HTTPS certificate verification.
+
 HTTP and Mihomo bearer credentials, an HTTP check's request headers whether literal or read from `request_header_envs`, and a query in an HTTP check's URL, which may carry a service's token, require HTTPS except for direct literal-loopback targets. A non-loopback `resolve_ip` or any proxy path removes the plaintext exception. Credentialed HTTP CONNECT and SOCKS5 are allowed only as the first, literal-loopback hop; use HTTPS CONNECT for remote credentialed hops. TLS or SSH to an earlier proxy does not encrypt a later proxy-to-proxy leg. These checks run both during configuration validation and before execution.
 
 A peer that receives a probe or proxy credential can reflect it in a response.

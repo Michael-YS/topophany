@@ -23,7 +23,7 @@ type SourcePolicy struct {
 }
 
 // ValidateSource accepts a simple server base URL and an explicit credential
-// reference. Plain HTTP is permitted only on a direct literal loopback route.
+// reference. Non-loopback HTTP requires explicit direct-profile consent.
 func ValidateSource(s model.Source, policy SourcePolicy) error {
 	u, err := url.Parse(s.Target)
 	if err != nil || len(s.Target) > model.MaxSourceTarget || secure.Text(s.Target) != s.Target ||
@@ -56,7 +56,7 @@ func ValidateSource(s model.Source, policy SourcePolicy) error {
 	if (!policy.CredentialOptional || s.CredentialEnv != "") && !environmentName(s.CredentialEnv) {
 		return fmt.Errorf("%s credential_env must name an environment variable", policy.Adapter)
 	}
-	if u.Scheme == "http" && (!loopback(u.Hostname()) || s.Path != "" || s.ResolveIP != "" && !loopback(s.ResolveIP)) {
+	if u.Scheme == "http" && (s.Path != "" || !s.AllowInsecure && (!loopback(u.Hostname()) || s.ResolveIP != "" && !loopback(s.ResolveIP))) {
 		return fmt.Errorf("%s requires HTTPS except for direct literal loopback HTTP", policy.Adapter)
 	}
 	return nil

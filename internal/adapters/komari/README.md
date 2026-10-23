@@ -155,8 +155,11 @@ collector and monitor.
 
 ## Transport, security and budgets
 
-HTTPS is required except for direct literal loopback HTTP, without a proxy
-path or non-loopback resolution override. The shared IO owns explicit TLS,
+Collector sources require HTTPS except for direct literal loopback HTTP,
+without a proxy path or non-loopback resolution override. Direct profiles can
+explicitly opt into non-loopback HTTP using `source.allow_insecure:true`; see
+[direct HTTP setup](../../../docs/DIRECT.md#http-on-a-lan-or-tailscale-network).
+The shared IO owns explicit TLS,
 CA, server name, bind address, resolution and proxy routing. Redirects,
 ambient proxies, compression and direct fallback are disabled. Credentials
 travel only in the header, never a query. Upstream strings such as names,

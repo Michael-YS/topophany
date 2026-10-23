@@ -187,9 +187,11 @@ check remains in place. Numeric/timestamp credential regression fixtures test
 the adapter's accepted header boundary; they do not claim PocketBase issues
 or accepts such tokens instead of its normal authentication tokens.
 
-HTTPS is required except for a direct literal loopback HTTP address. An
-HTTP loopback source cannot use a proxy path or resolve to a non-loopback
-address. The base URL excludes userinfo, query, fragment, escaped path
+Collector sources require HTTPS except for a direct literal loopback HTTP
+address. An HTTP loopback source cannot use a proxy path or resolve to a
+non-loopback address. Direct profiles can explicitly opt into non-loopback HTTP
+using `source.allow_insecure:true`; see
+[direct HTTP setup](../../../docs/DIRECT.md#http-on-a-lan-or-tailscale-network). The base URL excludes userinfo, query, fragment, escaped path
 components and dot segments. Explicit TLS CA, server name, resolve address,
 bind address and supported HTTPS proxy routing remain owned by `source.IO`.
 Redirects, ambient proxies, unbounded reads and direct fallback are disabled

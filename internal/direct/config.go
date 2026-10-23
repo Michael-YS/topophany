@@ -56,15 +56,16 @@ func AsError(err error) *Error {
 }
 
 type SourceConfig struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Adapter  string `json:"adapter"`
-	URL      string `json:"url"`
-	CAFile   string `json:"ca_file"`
-	Interval int    `json:"interval_seconds"`
-	Timeout  int    `json:"timeout_seconds"`
-	Stale    int    `json:"stale_seconds"`
-	MaxAge   int    `json:"max_age_seconds"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Adapter       string `json:"adapter"`
+	URL           string `json:"url"`
+	CAFile        string `json:"ca_file"`
+	AllowInsecure bool   `json:"allow_insecure,omitempty"`
+	Interval      int    `json:"interval_seconds"`
+	Timeout       int    `json:"timeout_seconds"`
+	Stale         int    `json:"stale_seconds"`
+	MaxAge        int    `json:"max_age_seconds"`
 }
 
 func (s *SourceConfig) UnmarshalJSON(b []byte) error {
@@ -77,7 +78,7 @@ func (s *SourceConfig) UnmarshalJSON(b []byte) error {
 	return nil
 }
 func (s SourceConfig) model(objects int) model.Source {
-	return model.Source{ID: s.ID, Name: s.Name, Adapter: s.Adapter, Observer: Observer, Target: s.URL, CAFile: s.CAFile, CredentialEnv: "TOPO_DIRECT_RESOLVED", IntervalSeconds: s.Interval, TimeoutSeconds: s.Timeout, StaleSeconds: s.Stale, MaxPages: max(1, objects), MaxObjects: max(1, objects), MaxResponseBytes: 1 << 20, MaxReportBytes: model.MaxReportBytes}
+	return model.Source{ID: s.ID, Name: s.Name, Adapter: s.Adapter, Observer: Observer, Target: s.URL, CAFile: s.CAFile, AllowInsecure: s.AllowInsecure, CredentialEnv: "TOPO_DIRECT_RESOLVED", IntervalSeconds: s.Interval, TimeoutSeconds: s.Timeout, StaleSeconds: s.Stale, MaxPages: max(1, objects), MaxObjects: max(1, objects), MaxResponseBytes: 1 << 20, MaxReportBytes: model.MaxReportBytes}
 }
 func (s SourceConfig) Validate() error {
 	if !config.ID(s.ID) || len(s.ID) > 64 || strings.TrimSpace(s.Name) == "" || len(s.Name) > 128 || secure.Text(s.Name) != s.Name || len(s.CAFile) > 1024 || secure.Text(s.CAFile) != s.CAFile || s.CAFile != "" && !filepath.IsAbs(s.CAFile) {

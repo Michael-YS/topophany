@@ -93,6 +93,28 @@ for an expired nonrenewable token. A renewable token renews within the minute
 before its expiry; a nonrenewable token, which has no refresh, stays usable
 until it expires.
 
+## HTTP on a LAN or Tailscale network
+
+HTTPS is the default for non-loopback URLs. To use HTTP, explicitly set
+`source.allow_insecure:true` in both inspect and save requests:
+
+```json
+{"id":"km-home","name":"Home Komari","adapter":"komari","url":"http://100.86.138.20:25774","allow_insecure":true,"interval_seconds":30}
+```
+
+The same option supports Beszel, LAN IPs and hostnames. It permits HTTP for
+authentication, discovery and resource reads for that source. The setting is
+saved with the profile and returned by inspect/list; subsequent TUI, status,
+show and monitor reads use it automatically. Include it again when editing an
+HTTP source, including with saved authentication. Omitting it or setting it to
+false keeps the default policy; literal loopback HTTP needs no opt-in.
+
+HTTP sends passwords and tokens without TLS; use this option only on a network
+you trust. It does not disable certificate verification for HTTPS URLs. The
+client-mode `--allow-insecure` flag does not override a direct profile: the
+consent belongs to each source. Capability discovery advertises
+`direct.allow_insecure:true` when this field is supported.
+
 ## Configure Komari
 
 Use `adapter:"komari"` with the same inspect/save/list/remove commands. Auth

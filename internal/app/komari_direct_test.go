@@ -42,7 +42,7 @@ func TestKomariDirectCommandLifecycle(t *testing.T) {
 	}))
 	defer h.Close()
 	root := filepath.Join(t.TempDir(), "direct")
-	request := map[string]any{"schema": 1, "request_id": "komari-setup", "profile": "desktop", "base_revision": "", "source": map[string]any{"id": "km-example", "name": "Komari", "adapter": "komari", "url": h.URL + "/prefix", "interval_seconds": 30}, "auth": map[string]any{"mode": "token", "token": key}, "selected_objects": []string{uuid}}
+	request := map[string]any{"schema": 1, "request_id": "komari-setup", "profile": "desktop", "base_revision": "", "source": map[string]any{"id": "km-example", "name": "Komari", "adapter": "komari", "url": strings.Replace(h.URL, "127.0.0.1", "localhost", 1) + "/prefix", "allow_insecure": true, "interval_seconds": 30}, "auth": map[string]any{"mode": "token", "token": key}, "selected_objects": []string{uuid}}
 	run := func(args ...string) []byte {
 		t.Helper()
 		in, _ := json.Marshal(request)
@@ -57,7 +57,7 @@ func TestKomariDirectCommandLifecycle(t *testing.T) {
 		return out.Bytes()
 	}
 	inspected := run("sources", "inspect", "--json-stdin")
-	if !bytes.Contains(inspected, []byte(uuid)) {
+	if !bytes.Contains(inspected, []byte(uuid)) || !bytes.Contains(inspected, []byte(`"allow_insecure":true`)) {
 		t.Fatal("node discovery missing", string(inspected))
 	}
 	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
@@ -71,7 +71,7 @@ func TestKomariDirectCommandLifecycle(t *testing.T) {
 	if err := json.Unmarshal(run("sources", "save", "--json-stdin"), &saved); err != nil || saved.Data.Revision == "" {
 		t.Fatal("save failed", err)
 	}
-	if listed := run("sources", "list", "--json"); !bytes.Contains(listed, []byte(`"adapter":"komari"`)) {
+	if listed := run("sources", "list", "--json"); !bytes.Contains(listed, []byte(`"adapter":"komari"`)) || !bytes.Contains(listed, []byte(`"allow_insecure":true`)) {
 		t.Fatal("saved Komari source missing", string(listed))
 	}
 	var snap model.Snapshot

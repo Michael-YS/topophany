@@ -52,6 +52,9 @@ type Source struct {
 	ResolveIP     string `json:"resolve_ip,omitempty"`
 	ServerName    string `json:"server_name,omitempty"`
 	CAFile        string `json:"ca_file,omitempty"`
+	// AllowInsecure carries a direct profile's explicit HTTP consent at runtime.
+	// It cannot be enabled through topology JSON or transmitted to a collector.
+	AllowInsecure bool `json:"-"`
 	// IntervalSeconds is the source-level cadence. One collection is fanned
 	// out to every binding; it is not a per-binding schedule.
 	IntervalSeconds int `json:"interval_seconds"`

@@ -182,7 +182,13 @@ func sourceTargetSecure(c model.Config, s model.Source) bool {
 	if u.Scheme == "https" {
 		return true
 	}
-	if u.Scheme != "http" || !literalLoopback(u.Hostname()) {
+	if u.Scheme != "http" {
+		return false
+	}
+	if s.AllowInsecure && s.Path == "" {
+		return true
+	}
+	if !literalLoopback(u.Hostname()) {
 		return false
 	}
 	host := u.Hostname()
