@@ -51,7 +51,7 @@ func (a *App) capacity(args []string) error {
 	if err != nil {
 		return err
 	}
-	budgets, err := store.Budgets(store.Options{Observers: observerIDs(c), ObserverWeights: config.StorageWeights(c), Retention: *retention, MaxStateBytes: *state, MaxReceipts: *receipts, MaxHistory: *history})
+	budgets, err := store.Budgets(store.Options{Observers: observerIDs(c), ObserverWeights: config.StorageWeights(c), Retention: *retention, MaxStateBytes: *state, MaxReceipts: *receipts, MaxHistory: *history}.WithTopology(c))
 	if err != nil {
 		return err
 	}

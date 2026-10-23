@@ -260,12 +260,17 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 		if e != nil {
 			return e
 		}
+		if e := st.ValidateTopology(next); e != nil {
+			return e
+		}
 		running.stop()
-		backend.ReloadWith(next, auth, func() {
+		if e := backend.ReloadWith(next, auth, func() {
 			if notifier != nil {
 				notifier.Configure(alerts)
 			}
-		})
+		}); e != nil {
+			return e
+		}
 		if scheduler != nil {
 			running = background(ctx, &wg, scheduler, failures)
 		}

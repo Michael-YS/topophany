@@ -224,13 +224,18 @@ func (s *Server) generation() *generation {
 // or batch admitted under it is refused for the caller to send again, unless
 // its state capture or storage completed before the reload. The store counts
 // samples under c from now on, and no snapshot built before is served again.
-func (s *Server) Reload(c model.Config, a Auth) {
-	s.ReloadWith(c, a, nil)
+func (s *Server) Reload(c model.Config, a Auth) error {
+	return s.ReloadWith(c, a, nil)
 }
 
 // ReloadWith binds dependent reconfiguration to the same generation boundary
 // as incident evaluation and its notification handoff.
-func (s *Server) ReloadWith(c model.Config, a Auth, configure func()) {
+func (s *Server) ReloadWith(c model.Config, a Auth, configure func()) error {
+	if s.Store != nil {
+		if err := s.Store.ValidateTopology(c); err != nil {
+			return err
+		}
+	}
 	g := newGeneration(c, a)
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
@@ -252,6 +257,7 @@ func (s *Server) ReloadWith(c model.Config, a Auth, configure func()) {
 	if configure != nil {
 		configure()
 	}
+	return nil
 }
 
 // Reuse folded evidence until a durable write, retained-history change or

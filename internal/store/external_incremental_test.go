@@ -106,7 +106,7 @@ func TestExternalSourceShareCannotConsumeTheWholeBudget(t *testing.T) {
 	// Model a source that has already reached its fair share. The next report
 	// must be refused before journal acknowledgement, without evicting other
 	// sources' accepted state.
-	s.externalSourceBytes["source"] = maxExternalSourceBytes
+	s.externalSourceBytes["source"] = externalReservations(s.options)["source"]
 	percent := 30.0
 	report := model.ExternalReport{ReportMeta: model.ReportMeta{Schema: model.ReportSchema, Object: "obj-a", SampleID: "new-a", ObservedAt: now, TimeBasis: model.TimeBasisUpstreamSample}, Resource: &model.ResourceReport{CPU: &model.CPUReport{Percent: &percent}}}
 	obs := model.Observation{ID: "home.boot.2", Contract: "contract-a", Check: "a", External: &model.ExternalObservation{Source: "source", AttemptedAt: now, Contact: true, Report: &report}}

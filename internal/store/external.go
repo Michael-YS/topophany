@@ -13,7 +13,7 @@ import (
 
 // maxExternalStateBytes is the independent persisted budget for report
 // cursors, contact state and bounded confirmation statistics.
-const maxExternalStateBytes = 4 << 20
+const maxExternalStateBytes = 128 << 20
 
 // SetExternalContext installs the reviewed bindings and sources a store may
 // admit. It is called by the API for both startup and reload, and before a
@@ -61,23 +61,7 @@ func (s *Store) pruneExternalLocked(contracts map[string]string) {
 	s.resizeExternalLocked()
 }
 
-const (
-	// externalStateOverhead covers the object braces, schema and map commas.
-	externalStateOverhead = report.StateOverhead
-	// When several sources share a store, no source may consume the whole
-	// external state budget: half stays available for the others. A
-	// single-source store has nobody to isolate from and may use the budget.
-	// A configuration whose retention cannot fit is refused explicitly
-	// rather than silently evicting accepted evidence.
-	maxExternalSourceBytes = maxExternalStateBytes / 2
-)
-
-func (s *Store) externalSourceLimit() int64 {
-	if len(s.options.Sources) <= 1 {
-		return maxExternalStateBytes
-	}
-	return maxExternalSourceBytes
-}
+const externalStateOverhead = report.StateOverhead
 
 type externalCommit struct {
 	state         *model.ExternalState
@@ -294,12 +278,13 @@ func (s *Store) mergeExternalLocked(observations []model.Observation) (*external
 		}
 	}
 	if total > maxExternalStateBytes {
-		return nil, errors.New("external state byte budget exceeded")
+		return nil, fmt.Errorf("%w: external state byte budget exceeded", ErrCapacity)
 	}
-	limit := s.externalSourceLimit()
+	limits := externalReservations(s.options)
 	for source := range touchedSources {
+		limit := limits[source]
 		if bySource[source] > limit {
-			return nil, errors.New("external source state budget exceeded")
+			return nil, fmt.Errorf("%w: external source state budget exceeded", ErrScopeCapacity)
 		}
 	}
 	// External state is charged to the observer that owns the source. When

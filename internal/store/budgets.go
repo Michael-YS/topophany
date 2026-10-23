@@ -71,6 +71,9 @@ func storageOptions(o Options) (Options, error) {
 		o.ObserverWeights[id] = w
 		o.weightTotal += int64(w)
 	}
+	if err := validateExternalReservations(o); err != nil {
+		return o, err
+	}
 	return o, nil
 }
 

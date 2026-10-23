@@ -563,3 +563,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | A viewer remains online through a busy retry even when collector wall time moves backward; refresh is identified by the controlled response, not timestamp ordering | `TestRemoteSnapshotBusyDoesNotFlashOffline` |
 
 | Source attempts release transports on success, adapter failure, invalid reports and cancellation during TLS; detached handshakes cannot accumulate | `TestRuntimeClosesIOOnEveryExit`, `TestSourceCancellationClosesUnfinishedTLS` |
+| Collector fleets retain full replay windows; impossible global/observer allocations are refused before startup/reload and runtime errors preserve capacity classification | `TestCollectorFleetReachesReplayWindow`, `TestExternalReplayCapacityPreflight`, `TestExternalBudgetErrorsRemainCapacityErrors` |

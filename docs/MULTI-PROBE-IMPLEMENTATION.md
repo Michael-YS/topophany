@@ -385,7 +385,7 @@ These are implementation limits, not claims about a vendor.
 | Source jobs in flight per process | 4 |
 | Source wait queue | 128 |
 | Outbox fan-out batch | 100 observations and 512 KiB encoded |
-| External store state | 4 MiB, inside existing `MaxStateBytes` |
+| External store state | Up to 128 MiB, inside `MaxStateBytes`; startup/reload reserve complete replay windows per binding and observer |
 | Report cursor retention | checkpoint lifetime, pruned only with binding |
 | Upstream latency statistics | bounded count/sum/buckets in persisted binding state |
 

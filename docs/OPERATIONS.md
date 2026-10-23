@@ -223,3 +223,17 @@ accepts either the old journal (deduplicated against the checkpoint) or this
 suffix. At the journal ceiling, writers wait for the active checkpoint; reads
 remain available during the main checkpoint write. Explicit checkpoints and
 shutdown wait for publication, and persistence failure stops further writes.
+
+### External replay-state capacity
+
+Collector startup, topology reload and `topo capacity` conservatively reserve each
+external binding's declared maximum report, 256 sample IDs and cursor metadata.
+The estimate includes JSON escaping of IDs and must fit both `--state-bytes` and
+the observer's weighted share. An impossible configuration is refused before
+replacing running state. Leave additional room for receipts and raw history.
+External state can now use up to 128 MiB within that existing global budget; each
+source is limited to its declared bindings' reservation. Runtime capacity errors
+retain the storage-backpressure classification, so workers can continue standalone
+heartbeats. Accepted replay identities are never evicted merely to admit a write.
+Earlier binaries enforce a 4 MiB external-state recovery limit and cannot reopen a
+larger checkpoint; retain a matching backup before downgrading.
