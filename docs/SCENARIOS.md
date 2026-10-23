@@ -568,3 +568,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | Adapter-invalid source reloads are refused before retiring the active worker/collector scheduler; a subsequent valid reload still succeeds | `TestInvalidSourceReloadPreservesProcess` |
 | Direct automatically recovers from HTTP 408 and the entire 5xx class, including 520/522/524; public retry flags match session policy | `TestDirectGatewayFailuresRecoverWithoutManualRetry`, `TestFailureRetryFlagMatchesSessionPolicy`, `TestHTTPFailureClassification` |
 | Komari discovery, which owns IO outside the collection runtime, also closes detached TLS work on cancellation | `TestKomariDiscoveryReleasesCanceledTLS` |
+| Unchanged direct profiles reuse prepared evidence with zero allocations; content edits still apply even with an unchanged revision and retain ownership | `TestUnchangedProfileRetainsPreparedEvidence`, `BenchmarkProjectionReplacement` |

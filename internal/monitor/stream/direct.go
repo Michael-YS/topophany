@@ -79,7 +79,7 @@ func (m *DirectManager) Open(ctx context.Context, r Request) (Source, *Error) {
 		}
 	} else if e = s.CheckRetry(r.RetryNonce); e != nil {
 		return Source{}, directFailure(e)
-	} else if e = s.UpdateProjection(p); e != nil {
+	} else if e = s.Reconfigure(p); e != nil {
 		return Source{}, directFailure(e)
 	}
 	m.refs[s]++
