@@ -1,9 +1,43 @@
 name: CI
 
 on:
+  # Source, test fixtures and build/test configuration only. Keep Coverage's
+  # pull_request filter in sync; site deployment has its own Cloudflare filter.
   push:
     branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/**'
+      - 'examples/**'
+      - 'deploy/**'
+      - 'docs/contracts/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/**'
+      - '!**/*.md'
+      - '!**/*.mdx'
+      - '!**/*.rst'
+      - '!**/*.adoc'
+      - '!**/README*'
   pull_request:
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/**'
+      - 'examples/**'
+      - 'deploy/**'
+      - 'docs/contracts/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/**'
+      - '!**/*.md'
+      - '!**/*.mdx'
+      - '!**/*.rst'
+      - '!**/*.adoc'
+      - '!**/README*'
   workflow_dispatch:
 
 permissions:

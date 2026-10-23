@@ -1,7 +1,24 @@
 name: Coverage
 
 on:
+  # Match CI's source/test paths; documentation and site-only PRs skip both.
   pull_request:
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/**'
+      - 'examples/**'
+      - 'deploy/**'
+      - 'docs/contracts/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/**'
+      - '!**/*.md'
+      - '!**/*.mdx'
+      - '!**/*.rst'
+      - '!**/*.adoc'
+      - '!**/README*'
 
 permissions:
   contents: read

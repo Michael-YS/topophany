@@ -29,10 +29,21 @@ or TUI library change must retain the wire contract, migration/recovery tests,
 cross-builds and resource-budget behavior. JSON topology is the sole writable
 configuration authority in version 1.0.
 
+Automatic GitHub CI and Coverage run for changes to `cmd/`, `internal/`,
+`scripts/`, `examples/`, `deploy/`, contract fixtures in `docs/contracts/`,
+the root Go module, `Makefile`, or workflow configuration. Markdown, MDX,
+reStructuredText, AsciiDoc and README files are excluded even inside those
+directories. Documentation-only and site-only changes do not start these test
+workflows; mixed changes still run the relevant checks. CI's manual trigger
+and release-tag builds remain available.
+
 The homepage at topophany.com is the static site in `site/public/`, published
 by a Cloudflare Worker (`site/wrangler.jsonc`). Workers Builds compiles the
 browser binaries and regenerates the pages before deploying on pushes to `main`
-that touch `site/`;
+that touch `site/`. In Cloudflare's Settings > Build > Build watch paths,
+include `site/*` and exclude `*.md`, `*.mdx`, `*.rst`, `*.adoc`, and `*/README*`
+so documentation-only edits also skip site builds. This trigger is configured
+in Cloudflare, independently of GitHub Actions and `wrangler.jsonc`.
 `site/go.mod` keeps it out of the Go module. Its pages are written, one per
 language, from the templates in `site/src/` with `{{key}}` where words go and
 the words of each language in `site/src/locales/<language>.json`; edit those,

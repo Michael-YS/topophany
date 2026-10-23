@@ -1,11 +1,76 @@
-"""Keep release trust boundaries reviewable without a YAML dependency."""
+"""Keep workflow triggers and release boundaries reviewable without YAML dependencies."""
 from pathlib import Path
+import fnmatch
 import re
 import unittest
 
 from test_release_workflow import archive_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def event_paths(workflow, event):
+    header = (ROOT / ".github/workflows" / workflow).read_text().split("\njobs:\n")[0]
+    section = re.search(rf"^  {event}:\n(.*?)(?=^  \w+:|^\S|\Z)", header,
+                        re.MULTILINE | re.DOTALL)
+    if section is None:
+        raise AssertionError(f"Missing {event} trigger in {workflow}")
+    return re.findall(r"^      - '([^']+)'$", section[1], re.MULTILINE)
+
+
+def triggers_for(patterns, files):
+    # These workflow patterns use directory/**, exact paths and **/filename
+    # exclusions. A leading **/ also matches a file in the repository root.
+    for path in files:
+        included = False
+        for pattern in patterns:
+            exclude = pattern.startswith("!")
+            glob = pattern.removeprefix("!")
+            if fnmatch.fnmatchcase(path, glob) or (
+                    glob.startswith("**/") and fnmatch.fnmatchcase(path, glob[3:])):
+                included = not exclude
+        if included:
+            return True
+    return False
+
+
+class WorkflowPathFilterTests(unittest.TestCase):
+    def test_source_tests_and_build_configuration_trigger_ci(self):
+        filters = [event_paths("ci.yml", "push"), event_paths("ci.yml", "pull_request"),
+                   event_paths("coverage.yml", "pull_request")]
+        self.assertEqual(filters[0], filters[1])
+        self.assertEqual(filters[0], filters[2])
+        for patterns in filters:
+            self.assertTrue(patterns, "Automatic test triggers need explicit path filters")
+            for path in ("cmd/topo/main.go", "internal/direct/config.go",
+                         "internal/direct/http_test.go", "internal/preview/locales/zh.json",
+                         "internal/adapters/beszel/testdata/system_stats.json",
+                         "scripts/test_workflows.py", "scripts/verify.py",
+                         "examples/beszel.json", "deploy/topophany-worker.service",
+                         "docs/contracts/direct-v1/fixtures/capabilities.json",
+                         "docs/contracts/direct-v1/manifest.json", "go.mod", "go.sum",
+                         "Makefile", ".github/workflows/ci.yml",
+                         ".github/workflows/coverage.yml", ".github/workflows/release.yml"):
+                with self.subTest(path=path, patterns=patterns):
+                    self.assertTrue(triggers_for(patterns, [path]))
+
+    def test_documentation_and_site_changes_do_not_trigger_test_workflows(self):
+        for workflow, event in (("ci.yml", "push"), ("ci.yml", "pull_request"),
+                                ("coverage.yml", "pull_request")):
+            patterns = event_paths(workflow, event)
+            for files in (["README.md", "README.zh.md", "CONTRIBUTING.md", "CHANGELOG.md"],
+                          ["docs/DIRECT.md", "docs/assets/banner.png"],
+                          ["internal/adapters/beszel/README.md"],
+                          ["docs/contracts/direct-v1/contract.md"],
+                          ["scripts/README", "examples/runcat/README.md"],
+                          ["internal/guide.rst", "scripts/guide.adoc", "examples/guide.mdx"],
+                          ["site/src/index.html", "site/src/locales/zh.json"],
+                          ["site/package.json", "site/wrangler.jsonc", "site/tests/browser.mjs"],
+                          ["site/go.mod", "site/public/data/tour.zh.json"]):
+                with self.subTest(workflow=workflow, event=event, files=files):
+                    self.assertFalse(triggers_for(patterns, files))
+            self.assertTrue(triggers_for(patterns, ["README.md", "internal/direct/http_test.go"]))
+            self.assertTrue(triggers_for(patterns, ["site/src/index.html", "cmd/topo/main.go"]))
 
 
 class ReleaseBoundaryTests(unittest.TestCase):
