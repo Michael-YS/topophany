@@ -241,8 +241,10 @@ func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) 
 		if e = authorize(req, ep); e != nil {
 			return empty, "", e
 		}
-		resp, e := c.transports[i].Do(req)
+		attempt, cancel := endpointContext(ctx, len(c.profile.Servers)-i)
+		resp, e := c.transports[i].Do(req.WithContext(attempt))
 		if e != nil {
+			cancel()
 			if ctx.Err() != nil {
 				return empty, "", ctx.Err()
 			}
@@ -251,6 +253,7 @@ func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) 
 		}
 		b, e := io.ReadAll(io.LimitReader(resp.Body, model.MaxSnapshotBytes+1))
 		resp.Body.Close()
+		cancel()
 		if e != nil {
 			missed.add(ep, "answer cut off")
 			continue
