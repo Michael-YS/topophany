@@ -255,6 +255,9 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 	if _, ok := q.items[id]; ok {
 		return nil
 	}
+	if q.maxRecords < len(recipients) {
+		return errors.New("outbox record budget must cover every recipient")
+	}
 	if len(q.items) >= q.maxRecords {
 		return ErrFull
 	}
@@ -278,9 +281,14 @@ func (q *Queue) Add(b model.Batch, recipients []string) error {
 	v.SHA256 = itemHash(v)
 	encoded, _ := json.Marshal(v)
 	share := q.max / int64(len(recipients))
+	recordShare := q.maxRecords / len(recipients)
 	admitted, rejected := []string{}, []string{}
 	for _, r := range v.Pending {
-		if q.recipientBytes[r]+int64(len(encoded)) > share {
+		records := 0
+		if pending := q.pending[r]; pending != nil {
+			records = pending.Len()
+		}
+		if records >= recordShare || q.recipientBytes[r]+int64(len(encoded)) > share {
 			rejected = append(rejected, r)
 		} else {
 			admitted = append(admitted, r)
