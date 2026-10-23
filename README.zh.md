@@ -102,7 +102,7 @@ topo --credentials ./demo/credentials.json
 | `topo worker` | 从本机执行检查并上报 |
 | `topo edit` / `topo validate` | 在 TUI 里编辑拓扑文件 / 检查它并输出版本和契约 |
 | `topo preview` | 用模拟数据打开 TUI |
-| `topo monitor` | 把状态推送给桌面小组件和菜单栏，可以写成文件，也可以输出 NDJSON 流 |
+| `topo monitor` | 把状态推送给桌面小组件和 [topophany-bar](https://github.com/WhitenWhiten/topophany-bar) 这样的菜单栏应用，可以写成文件，也可以输出 NDJSON 流 |
 | `topo init` | 用新生成的凭据创建本地演示 |
 
 运行 `topo help` 查看完整列表。
@@ -143,6 +143,12 @@ topo --credentials ./demo/credentials.json
 - **外部资源：** Beszel Hub 和 Komari Monitor 的 CPU、内存、磁盘采样，保留样本身份和新鲜度。Beszel 还支持上游报告的系统状态；Komari 仅提供资源报告，磁盘为聚合统计。参见 [Beszel 说明](internal/adapters/beszel/README.md)、[`examples/beszel.json`](examples/beszel.json)、[Komari 说明](internal/adapters/komari/README.md)及 [`examples/komari.json`](examples/komari.json)。
 - **边缘与平台：** Cloudflare（包括 Workers 和 Pages）、Vercel、Supabase。边缘有应答，只能证明边缘本身没问题，证明不了它背后的源站。
 
+## 无需 collector 的 Beszel / Komari
+
+direct 模式下，每个 `topo` 进程直接从 Beszel Hub 或 Komari 服务器读取 CPU、内存和磁盘，无需运行 collector：`topo --source direct --profile desktop`。`--json`、`status`、`show` 和 `monitor configure`/`run` 使用同一个 profile。用 `topo sources inspect|save|remove --json-stdin` 配置 profile，用 `topo sources list --json` 列出；它们与 collector 连接分开保存，一个 profile 可以混用 Beszel 和 Komari 数据源。默认每 60 秒采集一次、每 5 秒刷新显示，数据有效期 180 秒；一次性读取最多等待 15 秒拿到首批样本（`--wait`）。
+
+direct 模式不保存资源历史（`history --source direct` 会明确返回不支持），不运行后台服务，也不会从资源读数推断网络是否可达。支持 Beszel v0.21.0 资源格式和 Komari 1.6.0；Komari 可用 API Key 或匿名读取公开节点，磁盘为聚合统计。不承诺兼容任意版本或完整的 MFA/SSO 流程。参见[配置与限制](docs/DIRECT.md)、[Komari 配置示例](docs/DIRECT.md#configure-komari)和 [D1 规范包](docs/contracts/direct-v1/contract.md)（均为英文）。
+
 ## Cloudflare：从边缘到源站
 
 Topophany 1.4.0 可以把 Cloudflare 部署的公网域名、源站、Tunnel 连接器和控制平面放在一起观察。HTTP 检查能识别质询页和 Access 登录重定向，读取边缘连接耗时与 `/cdn-cgi/trace`，统计缓存及机房（colo）占比；地图会标出响应报告的机房，`expected_pops` 与 trace 断言可检查是否偏离声明的策略。Access 服务令牌通过 worker 的环境变量注入请求头。本地 `cloudflared` 检查报告 Tunnel 会话，只读 Cloudflare API 检查提供 Tunnel 状态、DNS 记录及负载均衡池健康信息。DNS 检查也支持 DoT 和 DoH。
@@ -173,6 +179,15 @@ Topophany 1.4.0 可以把 Cloudflare 部署的公网域名、源站、Tunnel 连
 | `q` | 退出 |
 
 也可以用鼠标操作。颜色会自动适配 truecolor、256 色和 `NO_COLOR` 终端。[用户指南](docs/GUIDE.md)（英文）介绍了每个标签页和每种地图，以及如何让脚本和 Agent 通过 `topo status`、`topo show` 和 `topo history` 读取同样的信息。
+
+## 在 macOS 菜单栏里
+
+<p align="center">
+  <a href="https://github.com/WhitenWhiten/topophany-bar"><img src="docs/assets/topophany-bar.jpg" alt="运行 topophany-bar 的 macOS 桌面：菜单栏里是白夜图标，月亮处于月偏食，旁边显示 2；其下展开的面板显示一个有两条警告的降级网络、看到它们的观测点和一张地图；桌面上摆着状态、服务器、时区、服务和地图小组件" width="100%"></a>
+  <br><sub>topophany-bar 显示一个有两条警告的演示网络，由应用自己的视图用合成数据绘制。</sub>
+</p>
+
+[**topophany-bar**](https://github.com/WhitenWhiten/topophany-bar) 是 Topophany 的 macOS 伴侣应用。它通过 `topo monitor stream` 读取 collector：状态以图标、数量或几个字显示在菜单栏；面板告诉你每个问题是从哪里看到的，并可直接在 TUI 中打开；桌面小组件让服务器、服务、地图和时区一直留在视野里。它也能不经 collector 直接读取 Beszel 和 Komari。需要 macOS 26 或更高版本，目前为预发布版；想试用请[从源码构建](https://github.com/WhitenWhiten/topophany-bar/blob/main/docs/DEVELOPMENT.md#building)（英文）。
 
 ## 文档
 
@@ -214,17 +229,3 @@ make site                    # re-record the homepage's TUI replays and rewrite 
 ## 许可证
 
 [MIT](LICENSE)
-
-### 无需 collector 的 Beszel / Komari direct
-
-`topo --source direct --profile desktop` 在当前进程中读取 Beszel Hub 或 Komari 的 CPU、
-内存与磁盘资源；`--json`、`status`、`show` 和 `monitor configure/run` 使用相同
-profile。用 `topo sources inspect|save|remove --json-stdin` 配置，
-`topo sources list --json` 列出 direct profile，与 collector 连接独立。
-默认采集 60 秒、展示 5 秒、数据有效期 180 秒；没有后台服务、指标数据库或历史
-查询，不将资源数据完整误称为网络健康。一次性读取默认最多等待 15 秒，可用
-`--wait` 修改；`history --source direct` 明确返回不支持。支持范围为已验证的
-Beszel v0.21.0 资源格式及已记录的 mem 扩展，以及 Komari 1.6.0 资源格式。
-Komari 支持 API Key、环境变量及公开节点匿名访问，磁盘为聚合统计；同一个 profile
-可混用两种数据源。不承诺任意版本兼容或完整 MFA/SSO。
-参见 [配置与限制](docs/DIRECT.md) 和 [D1 规范包](docs/contracts/direct-v1/contract.md)。

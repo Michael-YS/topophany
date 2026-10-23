@@ -102,7 +102,7 @@ topo --credentials ./demo/credentials.json
 | `topo worker` | このマシンからチェックを実行して報告する |
 | `topo edit` / `topo validate` | トポロジーファイルを TUI で編集する / 検証してリビジョンとコントラクトを表示する |
 | `topo preview` | 合成データで TUI を開く |
-| `topo monitor` | 状態をデスクトップのウィジェットやメニューバーに、ファイルか NDJSON ストリームで届ける |
+| `topo monitor` | 状態をデスクトップのウィジェットや [topophany-bar](https://github.com/WhitenWhiten/topophany-bar) などのメニューバーに、ファイルか NDJSON ストリームで届ける |
 | `topo init` | 新しい認証情報でローカルのデモを作る |
 
 すべてのコマンドは `topo help` で確認できます。
@@ -143,6 +143,12 @@ topo --credentials ./demo/credentials.json
 - **外部リソース:** Beszel Hub と Komari Monitor の CPU、メモリ、ディスクのサンプル。サンプルの識別子と鮮度を保持します。Beszel は報告されたシステム状態も取得でき、Komari は集計ディスクを含むリソースレポートのみを提供します。[Beszel ガイド](internal/adapters/beszel/README.md)、[`examples/beszel.json`](examples/beszel.json)、[Komari ガイド](internal/adapters/komari/README.md)、[`examples/komari.json`](examples/komari.json) を参照してください。
 - **エッジとプラットフォーム:** Cloudflare (Workers と Pages を含む)、Vercel、Supabase。エッジが応答したからといって証明されるのはエッジまでで、その奥のオリジンではありません。
 
+## コレクターなしの Beszel / Komari
+
+direct モードでは、各 `topo` プロセスが Beszel Hub や Komari サーバーから CPU、メモリー、ディスクを直接読みます。コレクターは要りません：`topo --source direct --profile desktop`。同じプロファイルを `--json`、`status`、`show`、`monitor configure`/`run` でも使えます。プロファイルは `topo sources inspect|save|remove --json-stdin` で設定し、`topo sources list --json` で一覧できます。コレクターへの接続とは別に保存され、ひとつのプロファイルに Beszel と Komari のソースを混在させられます。既定では 60 秒ごとに収集して 5 秒ごとに表示し、データは 180 秒間有効です。単発の読み取りは最初のサンプルを最大 15 秒待ちます (`--wait`)。
+
+direct モードはリソースの履歴を持たず (`history --source direct` は未対応と答えます)、バックグラウンドサービスも動かさず、リソースの読み取りからネットワークの到達性を推測しません。対応するのは Beszel v0.21.0 のリソース形式と Komari 1.6.0 です。Komari は API キーか公開ノードへの匿名アクセスで読み、ディスクは集計値です。任意のバージョンや完全な MFA/SSO への対応は保証しません。[設定と制限](docs/DIRECT.md)、[Komari の設定例](docs/DIRECT.md#configure-komari)、[D1 契約](docs/contracts/direct-v1/contract.md) (いずれも英語) を参照してください。
+
 ## Cloudflare：エッジからオリジンまで
 
 Topophany 1.4.0 では、Cloudflare の公開ホスト名、オリジン、Tunnel コネクター、コントロールプレーンをまとめて確認できます。HTTP チェックはチャレンジページと Access のログインリダイレクトを識別し、エッジ接続の時間や `/cdn-cgi/trace` を読み取り、キャッシュと colo の割合を集計します。マップには応答が報告した colo が表示され、`expected_pops` と trace のアサーションで宣言したポリシーからのずれを検出できます。Access のサービス・トークンは worker の環境変数からリクエストヘッダーに渡します。ローカルの `cloudflared` チェックは Tunnel のセッションを、読み取り専用の Cloudflare API チェックは Tunnel の状態、DNS レコード、ロードバランサープールの正常性を報告します。DNS チェックは DoT と DoH にも対応しています。
@@ -173,6 +179,15 @@ Topophany 1.4.0 では、Cloudflare の公開ホスト名、オリジン、Tunne
 | `q` | 終了する |
 
 マウスでも操作できます。色は truecolor、256 色、`NO_COLOR` の各ターミナルに合わせて調整されます。すべてのタブとマップの見方、そして `topo status`、`topo show`、`topo history` でスクリプトやエージェントから同じ情報を読み取る方法は、[ユーザーガイド](docs/GUIDE.md) (英語) で説明しています。
+
+## macOS のメニューバーで
+
+<p align="center">
+  <a href="https://github.com/WhitenWhiten/topophany-bar"><img src="docs/assets/topophany-bar.jpg" alt="topophany-bar を動かしている macOS のデスクトップ。メニューバーには白夜のアイコンがあり、部分月食の月の横に 2 の数字。その下に開いたパネルには、警告 2 件で低下したネットワーク、それを見ているオブザーバー、地図が表示され、デスクトップにはステータス、サーバー、タイムゾーン、サービス、地図のウィジェットが並ぶ" width="100%"></a>
+  <br><sub>警告が 2 件あるデモネットワークを表示した topophany-bar。合成データを使い、アプリ自身のビューで描いています。</sub>
+</p>
+
+[**topophany-bar**](https://github.com/WhitenWhiten/topophany-bar) は Topophany の macOS 用コンパニオンです。`topo monitor stream` を通してコレクターを読み、状態をアイコン、件数、短い言葉でメニューバーに表示します。パネルでは問題がどこから見えているかが分かり、そのまま TUI で開けます。デスクトップのウィジェットはサーバー、サービス、地図、タイムゾーンを表示し続けます。コレクターなしで Beszel と Komari を直接読むこともできます。macOS 26 以降が必要で、現在はプレリリースです。試すには[ソースからビルド](https://github.com/WhitenWhiten/topophany-bar/blob/main/docs/DEVELOPMENT.md#building) (英語) してください。
 
 ## ドキュメント
 
@@ -214,19 +229,3 @@ make site                    # re-record the homepage's TUI replays and rewrite 
 ## ライセンス
 
 [MIT](LICENSE)
-
-### コレクターなしの Beszel / Komari direct
-
-`topo --source direct --profile desktop` は各プロセスで Beszel Hub または Komari の CPU、
-メモリー、ディスクを読みます。同じ profile を `--json`、`status`、
-`show`、`monitor configure/run` でも使えます。設定は
-`topo sources inspect|save|remove --json-stdin`、一覧は
-`topo sources list --json` で、コレクター接続とは別です。標準は収集 60 秒、
-表示 5 秒、有効期間 180 秒です。バックグラウンドサービスや履歴 DB はなく、
-リソースの取得成功からネットワーク到達性を推測しません。単発読み取りは標準で
-最大 15 秒待ちます（`--wait`）。`history --source direct` は明示的に未対応です。
-Beszel v0.21.0 リソース形式と記載済み mem 拡張、Komari 1.6.0 に対応します。
-Komari は API キー、環境変数、公開ノードの匿名アクセスに対応し、ディスクは集計値です。
-同じ profile に両方のソースを設定できます。
-任意バージョンや完全な MFA/SSO への対応を保証しません。
-[設定と制限](docs/DIRECT.md)、[D1 契約](docs/contracts/direct-v1/contract.md)を参照してください。

@@ -102,7 +102,7 @@ Once it is written, it keeps working for both of you:
 | `topo worker` | Run checks from this machine and report them |
 | `topo edit` / `topo validate` | Edit a topology file in a TUI / check it and print its revision and contracts |
 | `topo preview` | Open the TUI on synthetic evidence |
-| `topo monitor` | Feed the status to desktop widgets and menu bars, as a file or an NDJSON stream |
+| `topo monitor` | Feed the status to desktop widgets and menu bars such as [topophany-bar](https://github.com/WhitenWhiten/topophany-bar), as a file or an NDJSON stream |
 | `topo init` | Create a local demo with fresh credentials |
 
 Run `topo help` for the full list.
@@ -143,6 +143,12 @@ The [changelog](CHANGELOG.md) has the notes for every earlier release.
 - **External resources:** Beszel Hub and Komari Monitor CPU, memory and disk samples, with stable sample identity and freshness. Beszel also supports reported status; Komari exposes aggregate disks and resource reports only. See the [Beszel guide](internal/adapters/beszel/README.md), [`examples/beszel.json`](examples/beszel.json), [Komari guide](internal/adapters/komari/README.md) and [`examples/komari.json`](examples/komari.json).
 - **Edges and platforms:** Cloudflare (including Workers and Pages), Vercel, Supabase. An answer from the edge proves the edge, not the origin behind it.
 
+## Beszel and Komari without a collector
+
+Direct mode reads CPU, memory and disk from a Beszel Hub or a Komari server inside each `topo` process, with no collector to run: `topo --source direct --profile desktop`. The same profile serves `--json`, `status`, `show` and `monitor configure`/`run`. Set profiles up with `topo sources inspect|save|remove --json-stdin` and list them with `topo sources list --json`; they are kept apart from collector connections, and one profile can mix Beszel and Komari sources. By default sources are polled every 60 seconds, shown every 5 and valid for 180, and a one-off read waits up to 15 seconds for its first samples (`--wait`).
+
+Direct mode keeps no resource history (`history --source direct` says so), runs no background service, and infers nothing about network reachability from a resource reading. It supports the Beszel v0.21.0 resource format and Komari 1.6.0; Komari takes an API key or reads its public nodes anonymously, and reports one aggregate disk. Arbitrary versions and complete MFA or SSO flows are not promised. See [Direct setup and limits](docs/DIRECT.md), the [Komari example](docs/DIRECT.md#configure-komari) and the [D1 contract](docs/contracts/direct-v1/contract.md).
+
 ## Cloudflare, from edge to origin
 
 Topophany 1.4.0 follows a Cloudflare deployment across its public hostname, origin, Tunnel connector and control plane. HTTP checks recognize challenge pages and Access login redirects, read edge connection timing and `/cdn-cgi/trace`, and track cache and colo shares. Maps place the colos reported by responses; `expected_pops` and trace assertions flag policy drift. Access service-token headers come from the worker's environment. Local `cloudflared` checks report Tunnel sessions, and read-only Cloudflare API checks report Tunnel status, DNS records and load-balancer pool health. DNS checks also support DoT and DoH.
@@ -173,6 +179,15 @@ Nine tabs: **Overview**, **Topology** (with three maps: virtual geo, geo and net
 | `q` | quit |
 
 The mouse works too. Colors adapt to truecolor, 256-color and `NO_COLOR` terminals. The [user guide](docs/GUIDE.md) describes every tab and map, and how to read all of it from scripts and agents with `topo status`, `topo show` and `topo history`.
+
+## In the macOS menu bar
+
+<p align="center">
+  <a href="https://github.com/WhitenWhiten/topophany-bar"><img src="docs/assets/topophany-bar.jpg" alt="A macOS desktop running topophany-bar: the White Night icon in the menu bar, its moon in partial eclipse beside a count of 2; the panel open beneath it, showing a degraded network with two warnings, the observers that see them and a map; and Status, Server, Time Zones, Service and Map widgets on the desktop" width="100%"></a>
+  <br><sub>topophany-bar on a demo network with two warnings, rendered by the app's own views from synthetic data.</sub>
+</p>
+
+[**topophany-bar**](https://github.com/WhitenWhiten/topophany-bar) is Topophany's macOS companion. It reads your collectors through `topo monitor stream`: the status sits in the menu bar as an icon, a count or a few words; a panel shows where each problem is seen and opens it in the TUI; and desktop widgets keep servers, services, maps and time zones in view. It can also read Beszel and Komari directly, without a collector. It needs macOS 26 or later and is in pre-release; [build it from source](https://github.com/WhitenWhiten/topophany-bar/blob/main/docs/DEVELOPMENT.md#building) to try it.
 
 ## Documentation
 
@@ -212,16 +227,3 @@ Building needs no module downloads. Read [CONTRIBUTING.md](CONTRIBUTING.md) and 
 ## License
 
 [MIT](LICENSE)
-
-### Beszel and Komari without a collector
-
-Direct mode reads CPU, memory and disk resources from Beszel or Komari inside each topo process:
-`topo --source direct --profile desktop`, with the same mode available for
-`--json`, `status`, `show` and `monitor configure/run`. Configure via
-`topo sources inspect|save|remove --json-stdin`; `topo sources list --json` lists
-these profiles independently of collector connections. Defaults are 60s polling,
-5s display and 180s validity. It has no resource history or background service
-and does not infer network reachability. See [Direct setup and limits](docs/DIRECT.md)
-and the [D1 contract](docs/contracts/direct-v1/contract.md).
-Komari supports API keys or anonymous public nodes, and exposes aggregate disk
-usage. See the [Komari setup example](docs/DIRECT.md#configure-komari).
