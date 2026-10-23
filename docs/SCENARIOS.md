@@ -553,3 +553,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | --- | --- |
 | Rejecting one observation inside a durable fan-out item preserves its valid neighbors across delivery restart and quarantines only the refused member | `TestFanoutRejectionKeepsValidMembersAcrossRestart` |
 | A silent primary cannot consume the entire monitor deadline without attempting its healthy backup | `TestMonitorDeadlineReservesBackupAttempt` |
+| Scoped and global snapshots fail over together when only one view is available from the primary | `TestScopedPairFailsOverAsAUnit` |

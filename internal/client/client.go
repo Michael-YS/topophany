@@ -182,47 +182,6 @@ func (c *Client) Snapshot(ctx context.Context, observer string) (model.Snapshot,
 	return c.snapshot(ctx, observer, true)
 }
 
-// SnapshotViews reads both scopes from one configured endpoint and generation.
-// Failover applies to the complete pair; independent reads must never compose
-// evidence from collectors that happen to share a topology revision.
-func (c *Client) SnapshotViews(ctx context.Context, observer string) (model.Snapshot, *model.Snapshot, error) {
-	scoped, all, _, err := c.SourcedViews(ctx, observer)
-	return scoped, all, err
-}
-
-// SourcedViews is SnapshotViews with the endpoint both scopes were read
-// from, to which a later read of their history is bound (SnapshotHistory).
-func (c *Client) SourcedViews(ctx context.Context, observer string) (model.Snapshot, *model.Snapshot, string, error) {
-	var err error
-	for attempt := 0; attempt < 2; attempt++ {
-		var scoped model.Snapshot
-		var endpoint string
-		scoped, endpoint, err = c.Snapshot(ctx, observer)
-		if err != nil || observer == "" {
-			return scoped, nil, endpoint, err
-		}
-		for i, ep := range c.profile.Servers {
-			if ep.URL != endpoint {
-				continue
-			}
-			pinned := &Client{topologies: map[string]cachedTopology{ep.URL: c.knownTopology(ep.URL)}, profile: Profile{Project: c.profile.Project, Servers: []Endpoint{ep}}, transports: []*http.Client{c.transports[i]}, Now: c.Now}
-			var all model.Snapshot
-			all, _, err = pinned.Snapshot(ctx, "")
-			if err == nil {
-				if all.Revision == scoped.Revision && all.Instance == scoped.Instance {
-					return scoped, &all, endpoint, nil
-				}
-				err = errors.New("source changed during snapshot read")
-			}
-			if errors.Is(err, ErrProjectMismatch) {
-				return model.Snapshot{}, nil, "", err
-			}
-			break
-		}
-	}
-	return model.Snapshot{}, nil, "", err
-}
-
 func (c *Client) snapshot(ctx context.Context, observer string, retryBusy bool) (model.Snapshot, string, error) {
 	var empty model.Snapshot
 	var skew error // a collector of another release, passed over
