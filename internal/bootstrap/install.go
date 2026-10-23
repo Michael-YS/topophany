@@ -472,9 +472,16 @@ func rollback(ctx context.Context, dir string, alreadyLocked bool) error {
 	return restoreService(ctx, r)
 }
 func run(ctx context.Context, name string, args ...string) error {
-	sub, cancel := context.WithTimeout(ctx, 15*time.Second)
+	return runWithTimeout(ctx, 15*time.Second, name, args...)
+}
+
+func runWithTimeout(ctx context.Context, budget time.Duration, name string, args ...string) error {
+	sub, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	if err := exec.CommandContext(sub, name, args...).Run(); err != nil {
+		if sub.Err() != nil {
+			err = sub.Err()
+		}
 		return fmt.Errorf("%s operation failed: %w", name, err)
 	}
 	return nil

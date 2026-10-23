@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -42,7 +43,7 @@ func RunClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now 
 // runClock also exposes the replacement preparation budget to embedding
 // tests. A non-positive budget disables the internal deadline; the caller's
 // context still bounds preparation.
-func runClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now func() time.Time, budget time.Duration) error {
+func runClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now func() time.Time, budget time.Duration) (result error) {
 	if now == nil {
 		now = time.Now
 	}
@@ -100,7 +101,9 @@ func runClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now 
 		}
 		return nil
 	}
+	stopAttempted := false
 	stopped := func() error {
+		stopAttempted = true
 		stop()
 		now := now().UTC()
 		p := last
@@ -114,6 +117,14 @@ func runClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now 
 		p.PublisherExpiresAt = now
 		return send(p)
 	}
+	defer func() {
+		// A normal frame may reach the pipe before its acknowledgment races
+		// cancellation. That path must still join the source and attempt the
+		// final frame, using the sink's bounded shutdown window.
+		if !stopAttempted && ctx.Err() != nil && errors.Is(result, ctx.Err()) {
+			result = stopped()
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -174,6 +185,9 @@ func runClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now 
 			first := monitor.Build(c, source.Initial, now())
 			first.RequestID = active.RequestID
 			first.PublisherExpiresAt = first.GeneratedAt.Add(30 * time.Second)
+			// The first frame may already be visible when its acknowledgment
+			// races cancellation. Retain its configuration for the final frame.
+			last = first
 			if err := send(first); err != nil {
 				runCancel()
 				unsub()
@@ -183,7 +197,6 @@ func runClock(ctx context.Context, lines <-chan Line, open Open, emit Emit, now 
 				}
 				return err
 			}
-			last = first
 			digest = monitor.ContentDigest(first)
 			go func() {
 				defer close(ready)

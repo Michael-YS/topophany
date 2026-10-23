@@ -535,3 +535,10 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | A later Beszel object or status credential reflection discards the entire successful prefix, while ignored metadata does not block safe metrics | `TestBeszelLaterCredentialReflectionDiscardsResourceAndStatusPrefix`, `TestBeszelUnmappedCredentialTextStillAllowsSafeMetrics` |
 | Production runner/outbox/collector/store never retains a reflected Beszel credential, source contact or target outage | `TestBeszelValidMetricCredentialReflectionCannotReachCollector` |
 | Official Komari auth/hidden-node acceptance requires the scenario's exact error code on every observation; unrelated parse/config errors cannot satisfy it | `scripts.test_accept_komari.FailedCollectionTests` |
+
+## CI shutdown and installation regressions (2026-10-22)
+
+| Scenario and invariant | Regression coverage |
+| --- | --- |
+| Cancellation racing a frame acknowledgment still joins the source and attempts one empty, expired `stopped` frame with the same stream identity; final write errors are not retried and unrelated output failures remain failures | `stream.TestCancellationDuringEmitStillStopsAndJoinsSource`, `stream.TestCanceledStreamDoesNotRetryFailedFinalFrame`, `stream.TestCancellationDoesNotHideUnrelatedOutputFailure`, `app.TestMonitorStreamProtocol/SIGTERM` |
+| Installation subprocesses honor both caller deadlines and their own operation budget, preserve nonzero exit status and never publish command output; Windows ACL work has a separate bounded cold-start allowance while retaining every permission check | `TestCommandReportsParentCancellation`, `TestCommandOperationBudgetAndSuccessfulExit`, `TestCommandKeepsExitStatusWithoutPrivateOutput`, `TestWindowsInstallationReplacesExplicitACLs`, `TestWindowsACLVerificationRejectsExplicitGrant`, `TestServerBundleScopesKeysAndCertificates` |

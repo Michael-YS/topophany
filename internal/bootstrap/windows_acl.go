@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -61,7 +62,11 @@ func windowsDirectoryACL(ctx context.Context, dir, operation string) error {
 	if err = secure.AtomicWrite(script, []byte(windowsACLScript), 0600); err != nil {
 		return err
 	}
-	return run(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, dir, operation)
+	// Cold Windows PowerShell startup can consume the ordinary service
+	// command's 15-second window on a busy host. Keep ACL work bounded while
+	// leaving enough time for startup and recursive verification. A shorter
+	// caller deadline still takes precedence, and failure still blocks use.
+	return runWithTimeout(ctx, time.Minute, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, dir, operation)
 }
 
 func restrictWindowsDirectory(ctx context.Context, dir string) error {
