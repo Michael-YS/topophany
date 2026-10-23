@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/WhitenWhiten/topophany/internal/api"
 	"github.com/WhitenWhiten/topophany/internal/client"
@@ -187,20 +186,11 @@ func parsed(f *flag.FlagSet, args []string) error {
 // control left is the newline between lines, as one in a string is
 // escaped already.
 func printJSON(w io.Writer, v any) error {
-	raw, err := json.MarshalIndent(v, "", "  ")
+	raw, err := secure.MarshalJSON(v, "  ")
 	if err != nil {
 		return err
 	}
-	var out strings.Builder
-	for _, r := range string(raw) {
-		if r != '\n' && unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
-			fmt.Fprintf(&out, "\\u%04x", r)
-		} else {
-			out.WriteRune(r)
-		}
-	}
-	out.WriteByte('\n')
-	_, err = io.WriteString(w, out.String())
+	_, err = w.Write(append(raw, '\n'))
 	return err
 }
 

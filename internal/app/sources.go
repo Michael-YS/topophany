@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/direct"
+	"github.com/WhitenWhiten/topophany/internal/secure"
 )
 
 type sourceEnvelope struct {
@@ -49,10 +49,10 @@ func (a *App) sources(ctx context.Context, args []string) error {
 		} else {
 			out.OK = true
 		}
-		b, e := json.Marshal(out)
+		b, e := secure.MarshalJSON(out, "")
 		if e != nil || len(b)+1 > direct.MaxOutput {
 			out = sourceEnvelope{Schema: 1, RequestID: out.RequestID, Error: &direct.Error{Code: "state_budget", Message: "Direct response exceeds its budget."}}
-			b, _ = json.Marshal(out)
+			b, _ = secure.MarshalJSON(out, "")
 			code = 1
 		}
 		_, e = a.Out.Write(append(b, '\n'))
