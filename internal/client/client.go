@@ -480,11 +480,6 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return fmt.Sprintf("collector HTTP %d: %s", e.Status, e.Code) }
 
-// Permanent means the executor must quarantine this batch for operator review,
-// rather than retry forever or silently discard the observation.
-func (e *HTTPError) Permanent() bool {
-	return e.Status >= 400 && e.Status < 500 && e.Status != 408 && e.Status != 429
-}
 func PostBatch(ctx context.Context, h *http.Client, ep Endpoint, b model.Batch) error {
 	body, e := json.Marshal(b)
 	if e != nil {

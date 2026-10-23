@@ -300,7 +300,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		dest.diagnostic = diagnosticCode(e)
 	}
 	var he *client.HTTPError
-	permanent := errors.As(e, &he) && he.Permanent()
+	permanent := errors.As(e, &he) && he.DeliveryAction() == client.RejectSample
 	switch {
 	case telemetry && permanent:
 		// Not yet the samples' fault: they go again at once, bare.
@@ -331,7 +331,7 @@ func (d *Delivery) send(ctx context.Context, q *Queue, i int, hb *model.Heartbea
 		result.Accepted = len(batch.Observations)
 		return
 	}
-	dest.separateBeat = errors.As(e, &he) && (he.Status == 429 && he.Code == "observer_storage_quota" || he.Status == 503 && he.Code == "storage_receipt_capacity")
+	dest.separateBeat = errors.As(e, &he) && he.DeliveryAction() == client.StorageBackpressure
 	if dest.separateBeat && hb != nil {
 		if d.heartbeat(ctx, dest, revision, hb) != nil {
 			dest.separateBeat = false

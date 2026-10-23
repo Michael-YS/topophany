@@ -25,7 +25,7 @@ func (d *Delivery) sendIsolated(ctx context.Context, q *Queue, dest *destination
 		if err != nil {
 			dest.code, dest.diagnostic = deliveryCode(err), diagnosticCode(err)
 			var he *client.HTTPError
-			if !errors.As(err, &he) || !he.Permanent() {
+			if !errors.As(err, &he) || he.DeliveryAction() != client.RejectSample {
 				dest.failures++
 				dest.next = d.Now().Add(time.Duration(1<<min(dest.failures, 5)) * time.Second)
 				result.Error = "isolated observation delivery unavailable"

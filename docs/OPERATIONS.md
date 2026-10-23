@@ -237,3 +237,8 @@ retain the storage-backpressure classification, so workers can continue standalo
 heartbeats. Accepted replay identities are never evicted merely to admit a write.
 Earlier binaries enforce a 4 MiB external-state recovery limit and cannot reopen a
 larger checkpoint; retain a matching backup before downgrading.
+
+Worker HTTP 401/403 responses pause delivery with bounded backoff while keeping
+original pending samples. Repair credentials or collector authorization and
+restart the worker when its saved credentials changed. Authentication failures
+do not quarantine samples; explicit data rejections still do.

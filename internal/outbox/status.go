@@ -34,13 +34,13 @@ func deliveryCode(err error) string {
 	if !errors.As(err, &h) {
 		return "collector_unreachable"
 	}
-	if h.Status == 401 || h.Status == 403 {
+	if h.DeliveryAction() == client.WaitForAuthorization {
 		return "authorization_rejected"
 	}
-	if h.Code == "observer_storage_quota" || h.Code == "storage_receipt_capacity" {
+	if h.DeliveryAction() == client.StorageBackpressure {
 		return "storage_backpressure"
 	}
-	if h.Permanent() {
+	if h.DeliveryAction() == client.RejectSample {
 		return "sample_rejected"
 	}
 	return "collector_unreachable"

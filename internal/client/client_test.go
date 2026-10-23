@@ -357,19 +357,19 @@ func TestPostAcknowledgementMustMatchExactBatch(t *testing.T) {
 			}
 			var he *HTTPError
 			if tc.status == 401 {
-				if !errors.As(e, &he) || !he.Permanent() {
-					t.Fatal("auth is permanent")
+				if !errors.As(e, &he) || he.DeliveryAction() != WaitForAuthorization {
+					t.Fatal("authorization failure must preserve pending samples")
 				}
 			}
 			if tc.status == 503 || tc.status == 429 {
-				if !errors.As(e, &he) || he.Permanent() {
+				if !errors.As(e, &he) || he.DeliveryAction() == RejectSample {
 					t.Fatal("retryable error quarantined")
 				}
 			}
 		})
 	}
 	for _, status := range []int{408, 429, 500, 503} {
-		if (&HTTPError{Status: status}).Permanent() {
+		if (&HTTPError{Status: status}).DeliveryAction() == RejectSample {
 			t.Fatal(status)
 		}
 	}

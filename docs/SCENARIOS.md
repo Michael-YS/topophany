@@ -564,3 +564,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 
 | Source attempts release transports on success, adapter failure, invalid reports and cancellation during TLS; detached handshakes cannot accumulate | `TestRuntimeClosesIOOnEveryExit`, `TestSourceCancellationClosesUnfinishedTLS` |
 | Collector fleets retain full replay windows; impossible global/observer allocations are refused before startup/reload and runtime errors preserve capacity classification | `TestCollectorFleetReachesReplayWindow`, `TestExternalReplayCapacityPreflight`, `TestExternalBudgetErrorsRemainCapacityErrors` |
+| Authorization failures preserve pending single/fan-out samples through restart, without quarantine; credential repair resumes delivery | `TestAuthorizationOutageRetainsPendingSamples`, `TestDeliveryFailureActions` |
