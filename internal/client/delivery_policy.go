@@ -14,6 +14,12 @@ const (
 )
 
 func (e *HTTPError) DeliveryAction() DeliveryAction {
+	// The collector distinguishes a revoked credential from a sample naming a
+	// removed/foreign check. Only the latter explicitly rejects the payload.
+	if e.Status == 403 && e.Code == "observer_scope_violation" {
+		return RejectSample
+	}
+
 	if e.Status == 429 && e.Code == "observer_storage_quota" || e.Status == 503 && e.Code == "storage_receipt_capacity" {
 		return StorageBackpressure
 	}
