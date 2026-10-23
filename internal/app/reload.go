@@ -12,6 +12,7 @@ import (
 
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
+	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/runner"
 )
 
@@ -117,4 +118,19 @@ func changes(old, next model.Config) string {
 		out += fmt.Sprintf("; %d added, %d removed", added, removed)
 	}
 	return out
+}
+
+// prepareScheduler wires and validates the complete execution plan before a
+// caller publishes the new topology or stops its old scheduler. Both native
+// observations and source fan-outs use the same durability sink.
+func prepareScheduler(c model.Config, observer string, workers int, sink runner.BatchSink) (*runner.Scheduler, error) {
+	s, err := runner.New(c, observer, workers, probe.NewRunner(c, observer).Run, func(v model.Observation) error { return sink([]model.Observation{v}) })
+	if err != nil {
+		return nil, err
+	}
+	s.WithSources(probe.NewSourceRuntime(probe.ProductionSourceAdapters()), sink, 4)
+	if err = s.ValidateExecution(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }

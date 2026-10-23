@@ -81,11 +81,10 @@ func (s *Scheduler) checks() []model.Check {
 	return r
 }
 
-// Run is single-owner; do not call Run and Once concurrently on one scheduler.
-func (s *Scheduler) Run(parent context.Context) error {
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
-	sources, bySource := s.localSources()
+// ValidateExecution completes local runtime preflight without starting probes.
+// Reload callers must pass this before retiring a running scheduler.
+func (s *Scheduler) ValidateExecution() error {
+	sources, _ := s.localSources()
 	if len(sources) > 0 {
 		if s.sources == nil || s.sourceSink == nil || s.Probe == nil {
 			return fmt.Errorf("external sources require an explicitly wired source runtime and fan-out sink")
@@ -96,6 +95,17 @@ func (s *Scheduler) Run(parent context.Context) error {
 		if e := s.sources.Validate(s.Config); e != nil {
 			return e
 		}
+	}
+	return nil
+}
+
+// Run is single-owner; do not call Run and Once concurrently on one scheduler.
+func (s *Scheduler) Run(parent context.Context) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	sources, bySource := s.localSources()
+	if err := s.ValidateExecution(); err != nil {
+		return err
 	}
 	checks := s.checks()
 	jobs := make(chan int)
@@ -274,11 +284,8 @@ func (s *Scheduler) Run(parent context.Context) error {
 func (s *Scheduler) Once(ctx context.Context) error {
 	sources, bySource := s.localSources()
 	if len(sources) > 0 {
-		if s.sources == nil || s.sourceSink == nil {
-			return fmt.Errorf("external sources require an explicitly wired source runtime and fan-out sink")
-		}
-		if e := s.sources.Validate(s.Config); e != nil {
-			return e
+		if err := s.ValidateExecution(); err != nil {
+			return err
 		}
 		for _, src := range sources {
 			if ctx.Err() != nil {

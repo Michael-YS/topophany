@@ -15,7 +15,6 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
 	"github.com/WhitenWhiten/topophany/internal/outbox"
-	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/runner"
 )
 
@@ -95,23 +94,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 	defer stopPanel()
 	// The checks under a topology; a reload replaces them.
 	local := func(c model.Config) (*runner.Scheduler, error) {
-		d.SetHeartbeatInterval(idleHeartbeatInterval(c, *observer, *heartbeatInterval))
 		revision := config.Revision(c)
-		s, e := runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
-			if panel != nil {
-				localView.Record(v)
-			}
-			err := q.Add(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}}, d.Recipients())
-			var degraded *outbox.DegradedError
-			if errors.As(err, &degraded) {
-				fmt.Fprintln(a.Err, degraded)
-				return nil
-			}
-			return err
-		})
-		if e != nil {
-			return nil, e
-		}
 		batch := func(vs []model.Observation) error {
 			if panel != nil {
 				for _, v := range vs {
@@ -126,12 +109,13 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 			}
 			return err
 		}
-		return s.WithSources(probe.NewSourceRuntime(probe.ProductionSourceAdapters()), batch, 4), nil
+		return prepareScheduler(c, *observer, *workers, batch)
 	}
 	s, e := local(c)
 	if e != nil {
 		return e
 	}
+	d.SetHeartbeatInterval(idleHeartbeatInterval(c, *observer, *heartbeatInterval))
 	failed := make(chan error, 1)
 	running := background(ctx, &wg, s, failed)
 	contractsDigest := config.ObserverContracts(c, *observer)
@@ -149,6 +133,7 @@ func (a *App) worker(parent context.Context, args []string) (retErr error) {
 			return e
 		}
 		running.stop()
+		d.SetHeartbeatInterval(idleHeartbeatInterval(next, *observer, *heartbeatInterval))
 		if localView != nil {
 			localView.Reload(next)
 		}

@@ -20,7 +20,6 @@ import (
 	"github.com/WhitenWhiten/topophany/internal/logging"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/monitor"
-	"github.com/WhitenWhiten/topophany/internal/probe"
 	"github.com/WhitenWhiten/topophany/internal/rollup"
 	"github.com/WhitenWhiten/topophany/internal/runner"
 	"github.com/WhitenWhiten/topophany/internal/secure"
@@ -194,16 +193,10 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 			return nil, nil
 		}
 		revision := config.Revision(c)
-		s, e := runner.New(c, *observer, *workers, probe.NewRunner(c, *observer).Run, func(v model.Observation) error {
-			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: []model.Observation{v}})
-		})
-		if e != nil {
-			return nil, e
-		}
 		batch := func(vs []model.Observation) error {
 			return st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: revision, Observations: vs})
 		}
-		return s.WithSources(probe.NewSourceRuntime(probe.ProductionSourceAdapters()), batch, 4), nil
+		return prepareScheduler(c, *observer, *workers, batch)
 	}
 	scheduler, e := local(c)
 	if e != nil {
