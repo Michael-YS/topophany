@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,6 +28,9 @@ func TestStateViewUsesTailsWithoutChangingEvaluation(t *testing.T) {
 	}
 	s.prune()
 	got, cs, beats := s.StateView()
+	if cap(got) > tailLength {
+		t.Fatal("state view reserved raw history", len(got), cap(got))
+	}
 	if len(got) > tailLength {
 		t.Fatal("state view copied raw history", len(got))
 	}
@@ -150,4 +154,33 @@ func TestCollectorMemoryPlateausAcrossRetentionWindows(t *testing.T) {
 		}
 	}
 	runtime.KeepAlive(s)
+}
+
+func BenchmarkStateViewRetainedHistory(b *testing.B) {
+	for _, n := range []int{64, 2000, 20000} {
+		b.Run(fmt.Sprint(n), func(b *testing.B) {
+			c := testkit.Config()
+			now := time.Now().UTC()
+			s, err := Open(b.TempDir(), Options{Revision: config.Revision(c), Contracts: config.Contracts(c), Stale: config.Stale(c), Now: func() time.Time { return now }})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer s.Close()
+			for i := 0; i < n; i++ {
+				s.addRow(testkit.Observation(c, "home-http", uint64(i+1), now, "ok"))
+			}
+			s.prune()
+			rows, _, _ := s.StateView()
+			b.Logf("raw=%d len=%d cap=%d", len(s.rows), len(rows), cap(rows))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				rows, _, _ = s.StateView()
+			}
+			b.StopTimer()
+			if len(rows) != 40 {
+				b.Fatal(len(rows))
+			}
+		})
+	}
 }

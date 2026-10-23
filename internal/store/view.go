@@ -39,7 +39,9 @@ func (s *Store) EvaluationViewWithExternal(known uint64, force bool) ([]model.Ob
 		return nil, nil, beats, nil, version, evidenceVersion
 	}
 	external := model.CloneExternalState(s.external)
-	count := len(s.rows)
+	// Raw history is usually already represented by tails. Reserve only
+	// their size; fallback rows grow this slice in proportion to actual output.
+	count := 0
 	for _, tail := range s.tails {
 		count += len(tail)
 	}
