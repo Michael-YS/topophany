@@ -347,6 +347,13 @@ func (h *Hub) Discover(ctx context.Context, c Credential) ([]System, bool, error
 			if !objectID(v.ID) || seen[v.ID] || strings.Contains(token, v.ID) || strings.Contains(v.ID, token) {
 				return nil, false, fail("upstream_incompatible")
 			}
+			// IDs are public too, including the fallback name derived from them.
+			// Check every authentication input before constructing any output.
+			for _, secret := range h.redact {
+				if secret != "" && (strings.Contains(v.ID, secret) || strings.Contains(secret, v.ID)) {
+					return nil, false, fail("upstream_incompatible")
+				}
+			}
 			seen[v.ID] = true
 			v.Name = cleanName(v.Name, v.ID, token)
 			for _, secret := range h.redact {
