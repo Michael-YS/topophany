@@ -2,12 +2,15 @@ package store
 
 import (
 	"archive/tar"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -56,42 +59,11 @@ func buildOldFormatReader(t *testing.T) string {
 	if err := archive.Start(); err != nil {
 		t.Fatal(err)
 	}
-	tr := tar.NewReader(stream)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		target := filepath.Join(dir, filepath.Clean(h.Name))
-		if !strings.HasPrefix(target, dir+string(filepath.Separator)) && target != dir {
-			t.Fatalf("archive path escapes destination: %q", h.Name)
-		}
-		switch h.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0700); err != nil {
-				t.Fatal(err)
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
-				t.Fatal(err)
-			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
-				t.Fatal(err)
-			}
-			if err := f.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}
+	if err := extractOldFormatArchive(dir, stream); err != nil {
+		_ = archive.Process.Kill()
+		_ = archive.Wait()
+		t.Fatalf("extract old reader archive: %v", err)
 	}
-	// Wait after draining the pipe so git cannot block on a full stderr pipe.
 	if err := archive.Wait(); err != nil {
 		t.Fatalf("git archive %s: %v", oldFormatCommit, err)
 	}
@@ -128,6 +100,9 @@ func main() {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "oldformatcheck")
+	if runtime.GOOS == "windows" {
+		out += ".exe"
+	}
 	build := exec.Command("go", "build", "-buildvcs=false", "-o", out, "./cmd/oldformatcheck")
 	build.Dir = dir
 	build.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local", "GOCACHE="+filepath.Join(dir, "gocache"))
@@ -135,6 +110,89 @@ func main() {
 		t.Fatalf("build fixed old reader from %s: %v\n%s", oldFormatCommit, err, raw)
 	}
 	return out
+}
+
+func extractOldFormatArchive(dir string, stream io.Reader) error {
+	tr := tar.NewReader(stream)
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dir, filepath.Clean(h.Name))
+		if !strings.HasPrefix(target, dir+string(filepath.Separator)) && target != dir {
+			return fmt.Errorf("archive path escapes destination: %q", h.Name)
+		}
+		switch h.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0700); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
+				return err
+			}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return err
+			}
+			if err := f.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	// tar EOF precedes git's record padding. Drain stdout before Wait so git
+	// can finish even when that padding exceeds the OS pipe capacity (Windows).
+	_, err := io.Copy(io.Discard, stream)
+	return err
+}
+
+func TestExtractOldFormatArchiveDrainsPadding(t *testing.T) {
+	var raw bytes.Buffer
+	tw := tar.NewWriter(&raw)
+	const content = "old reader fixture\n"
+	if err := tw.WriteHeader(&tar.Header{Name: "cmd/fixture.txt", Mode: 0600, Size: int64(len(content))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(tw, content); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The real baseline archive has 8704 bytes after the tar EOF markers.
+	raw.Write(make([]byte, 8704))
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	written := make(chan error, 1)
+	go func() {
+		_, err := writer.Write(raw.Bytes())
+		_ = writer.CloseWithError(err)
+		written <- err
+	}()
+	dir := t.TempDir()
+	if err := extractOldFormatArchive(dir, reader); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-written:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("archive producer blocked on unread padding after tar EOF")
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "cmd", "fixture.txt")); err != nil || string(got) != content {
+		t.Fatalf("extracted fixture = %q, %v", got, err)
+	}
 }
 
 func runOldReader(t *testing.T, binary, dir string) (int, string) {
