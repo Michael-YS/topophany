@@ -6,8 +6,8 @@
 <title>Topophany — self-hosted network monitoring in the terminal</title>
 <meta name="description" content="Self-hosted network monitoring in the terminal: a live map of your machines, paths and services, checked from the places you connect from, with the evidence behind every state. One Go binary.">
 <meta name="robots" content="index, follow, max-image-preview:large">
-<meta name="theme-color" content="#0a1016">
-<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
 <link rel="canonical" href="https://topophany.com/">
 <link rel="alternate" hreflang="en" href="https://topophany.com/">
 <link rel="alternate" hreflang="ja" href="https://topophany.com/ja/">
@@ -26,13 +26,13 @@
 <meta property="og:image" content="https://topophany.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
+<meta property="og:image:alt" content="The Topophany globe in ink on paper, dithered like a print, above the pixel wordmark TOPOPHANY and its gloss, The appearance of a place.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image:alt" content="The Topophany wordmark beside a dotted globe on which Shanghai, Tokyo, Singapore, Mumbai and Sydney are lit and joined by paths.">
-<link rel="stylesheet" href="/css/site.5a6f877734f0.css">
+<meta name="twitter:image:alt" content="The Topophany globe in ink on paper, dithered like a print, above the pixel wordmark TOPOPHANY and its gloss, The appearance of a place.">
+<link rel="stylesheet" href="/css/site.a76ae1c7e368.css">
 <link rel="preload" href="/data/land.bin?v=c43af6d48827" as="fetch" type="application/octet-stream" crossorigin>
-<script type="module" src="/js/site.0f7e987ccb32.js"></script>
-<script type="application/json" id="strings">{"replay":"replay","paused":"paused","pause":"Pause the replay","play":"Play the replay","recording":"Recording of the Topophany terminal UI: {title}. {text}","missing":"{tab} is not in this recording. Run {cmd} to see it.","failed":"the recording could not be loaded","copy":"Copy","copied":"Copied","place.shanghai":"Shanghai","place.tokyo":"Tokyo","place.singapore":"Singapore","place.frankfurt":"Frankfurt","place.london":"London","place.ashburn":"Ashburn","place.los-angeles":"Los Angeles","place.sao-paulo":"São Paulo","place.sydney":"Sydney","place.mumbai":"Mumbai","demo.title":"Try the terminal","demo.loading":"Starting the terminal… · click or press Enter to cancel","demo.ended":"Session ended · click or press Enter to restart","demo.failed":"Terminal unavailable · click or press Enter to retry","connect.title":"Your network","connect.failed":"Could not start the connection. Check the URL, project and viewer token, then try again.","connect.reconnect":"Press q to reconnect. Check the address, project and viewer token.","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
+<script type="module" src="/js/site.2a3773a73a62.js"></script>
+<script type="application/json" id="strings">{"replay":"replay","paused":"paused","pause":"Pause the replay","play":"Play the replay","recording":"Recording of the Topophany terminal UI: {title}. {text}","missing":"{tab} is not in this recording. Run {cmd} to see it.","failed":"the recording could not be loaded","copy":"Copy","copied":"Copied","demo.title":"Try the terminal","demo.loading":"Starting the terminal… · click or press Enter to cancel","demo.ended":"Session ended · click or press Enter to restart","demo.failed":"Terminal unavailable · click or press Enter to retry","connect.title":"Your network","connect.failed":"Could not start the connection. Check the URL, project and viewer token, then try again.","connect.reconnect":"Press q to reconnect. Check the address, project and viewer token.","languages":[{"tag":"en","href":"/","name":"English","suggest":"Read this page in English","dismiss":"Dismiss"},{"tag":"ja","href":"/ja/","name":"日本語","suggest":"このページを日本語で読む","dismiss":"閉じる"},{"tag":"zh-Hans","href":"/zh/","name":"简体中文","suggest":"阅读本页的中文版本","dismiss":"关闭"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://topophany.com/#website","url":"https://topophany.com/","name":"Topophany","inLanguage":["en","ja","zh-Hans"]},{"@type":"SoftwareApplication","@id":"https://topophany.com/#software","name":"Topophany","url":"https://topophany.com/","inLanguage":"en","applicationCategory":"DeveloperApplication","applicationSubCategory":"Network monitoring","operatingSystem":"Linux, macOS, Windows","license":"https://github.com/WhitenWhiten/topophany/blob/main/LICENSE","downloadUrl":"https://github.com/WhitenWhiten/topophany/releases/latest","image":"https://topophany.com/og.png","sameAs":["https://github.com/WhitenWhiten/topophany"],"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Self-hosted network monitoring in the terminal: a live map of your machines, paths and services, checked from the places you connect from, with the evidence behind every state. One Go binary.","softwareVersion":"1.5.0"}]}</script>
 </head>
 <body>
@@ -41,7 +41,7 @@
 <nav class="nav" aria-label="Main">
   <div class="wrap nav-inner">
     <a class="brand" href="/" aria-label="Topophany home">
-      <img class="brand-mark" src="/favicon.svg" alt="" width="26" height="26">
+      <img class="brand-mark" src="/img/mark.svg" alt="" width="32" height="32">
       <span>topophany</span>
     </a>
     <div class="nav-links">
@@ -49,6 +49,7 @@
       <a href="#evidence">Evidence</a>
       <a href="#architecture">Architecture</a>
       <a href="#agent">Agents</a>
+      <a href="#mac">Menu bar</a>
       <a href="#install">Install</a>
       <details class="lang">
         <summary aria-label="Language"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#globe"/></svg><span>English</span></summary>
@@ -62,10 +63,9 @@
 </nav>
 
 <header class="hero" id="top">
-  <canvas class="sky" aria-hidden="true"></canvas>
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="release">v1.5.0 · MIT · self-hosted</p>
+      <p class="release"><span>v1.5.0</span> · MIT · self-hosted</p>
       <h1 class="wordmark-h1">
         <span class="sr-only">Topophany — self-hosted network monitoring in the terminal</span>
         <canvas class="wordmark" aria-hidden="true"></canvas>
@@ -81,9 +81,10 @@
         <code>go install github.com/WhitenWhiten/topophany/cmd/topo@latest</code>
         <button class="copy" type="button" aria-label="Copy the install command"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button>
       </div>
+      <a class="hero-new" href="#mac"><b>New</b><span>topophany-bar puts Topophany in the macOS menu bar</span><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
     </div>
     <div class="hero-globe">
-      <canvas class="globe" aria-label="A dotted globe turning slowly. Lit places are joined by paths: healthy paths faint with pulses running along them, one failing path red and dashed." role="img"></canvas>
+      <canvas class="globe" aria-label="A dithered globe in ink on paper, turning slowly: the globe of topophany-bar’s icon." role="img"></canvas>
       <p class="globe-note" aria-hidden="true">drag to turn the world</p>
     </div>
   </div>
@@ -165,7 +166,7 @@
         <h3 class="panel-title">Vantage points are explicit</h3>
         <svg class="vantage" viewBox="0 0 520 206" role="img" aria-label="From Seattle the path to the server in Los Angeles times out; from New York it answers with HTTP 200. Verdict: a fault on Seattle's path, not a server outage.">
           <defs>
-            <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#4ade80"/></marker>
+            <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#1a1a1a"/></marker>
           </defs>
           <g class="v-land" data-lon="-139.83" data-lat="51.53" data-scale="6.637" data-top="8" data-bottom="166"></g>
           <path class="v-arc v-bad" d="M116.2 34.0Q106.3 86.1 143.3 124.0"/>
@@ -363,10 +364,42 @@
   </div>
 </section>
 
+<section class="section mac" id="mac">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>06</span> On your Mac</p>
+      <h2>Your network in the menu bar</h2>
+      <p class="lead"><strong>topophany-bar</strong> is Topophany’s macOS companion. It reads your collectors through <code>topo</code>: the status sits in the menu bar, a panel shows where a problem is seen, and desktop widgets keep servers and services in view.</p>
+    </div>
+
+    <figure class="shot">
+      <a href="/img/topophany-bar.webp"><img src="/img/topophany-bar.webp" width="2000" height="1222" alt="A macOS desktop: the White Night icon in the menu bar, its moon in partial eclipse beside a count of 2; the panel open beneath it, showing a degraded network with two warnings, the observers that see them and a map; and Status, Server, Time Zones, Service and Map widgets on the desktop" loading="lazy" decoding="async"></a>
+      <figcaption>A demo network with two warnings, rendered by the app’s own views from synthetic data.</figcaption>
+    </figure>
+
+    <div class="mac-grid">
+      <div class="mac-app">
+        <img class="mac-icon" src="/img/topophany-bar-icon.png" width="128" height="128" alt="">
+        <p class="mac-name">topophany-bar</p>
+        <p class="mac-meta">macOS 26 or later · pre-release, built from source</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="https://github.com/WhitenWhiten/topophany-bar"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>topophany-bar on GitHub</a>
+        </div>
+      </div>
+      <ul class="kit kit-mac">
+        <li><b>At a glance</b><span>The status as an icon, a count or a few words. In White Night, the built-in dithered sky, the moon is the status: full when all is clear, eclipsed while something is degraded, a blood moon while something is down.</span></li>
+        <li><b>Where it is seen</b><span>Incidents, the applications they touch and the observers reporting them, in one panel. Open any of them in the terminal UI for the evidence.</span></li>
+        <li><b>Beszel and Komari, directly</b><span>Pick servers from a Beszel Hub or a Komari server and watch their CPU, memory and disk, with no collector to run.</span></li>
+        <li><b>Widgets and themes</b><span>Status, server, service, map and time-zone widgets, in six themes, from native macOS to the terminal UI printed on paper.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
 <section class="section duo" id="duo">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>06</span> Designed for iPhone Duo</p>
+      <p class="eyebrow"><span>07</span> Designed for iPhone Duo</p>
       <h2>The map above the hinge</h2>
       <p class="lead">There's no iPhone app yet. What there is, is the TUI's design for one: <code>--device</code> lays the TUI out for the screen of an iPhone, an iPad, or iPhone Duo in each of its poses, and simulates that screen in your terminal. On the open Duo, what you look at and what you touch go on either side of the crease.</p>
     </div>
@@ -405,7 +438,7 @@
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>07</span> Install</p>
+      <p class="eyebrow"><span>08</span> Install</p>
       <h2>Up in a minute</h2>
       <p class="lead">Prebuilt archives, or one <code>go install</code>.</p>
     </div>
@@ -472,12 +505,13 @@
 <footer class="footer">
   <div class="wrap footer-inner">
     <div class="footer-brand">
-      <a class="brand" href="/"><img class="brand-mark" src="/favicon.svg" alt="" width="26" height="26"><span>topophany</span></a>
+      <a class="brand" href="/"><img class="brand-mark" src="/img/mark.svg" alt="" width="32" height="32"><span>topophany</span></a>
       <p class="etym"><b>τόπος</b> <i>place</i> · <b>φαίνω</b> <i>to bring to light</i></p>
     </div>
     <ul class="footer-links">
       <li><a href="https://github.com/WhitenWhiten/topophany">GitHub</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/releases">Releases</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany-bar">topophany-bar</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CHANGELOG.md">Changelog</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CONTRIBUTING.md">Contributing</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/SECURITY.md">Report a vulnerability</a></li>
@@ -494,6 +528,7 @@
   <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
   <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
   <symbol id="star" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z"/></symbol>
+  <pattern id="half" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="#1a1a1a"/><rect x="1" y="1" width="1" height="1" fill="#1a1a1a"/></pattern>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>

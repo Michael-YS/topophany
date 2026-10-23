@@ -25,60 +25,20 @@ onScroll();
 
 // ---------------------------------------------------------------- hero
 
-// The About tab's reference places, named in the page's language; links
-// carry the map's evidence colours.
-const PLACES = [
-  { id: 'shanghai', lat: 31.2, lon: 121.5 }, { id: 'tokyo', lat: 35.7, lon: 139.7 },
-  { id: 'singapore', lat: 1.35, lon: 103.8 }, { id: 'frankfurt', lat: 50.1, lon: 8.7 },
-  { id: 'london', lat: 51.5, lon: -0.1 }, { id: 'ashburn', lat: 39.0, lon: -77.5 },
-  { id: 'los-angeles', lat: 34.05, lon: -118.25 }, { id: 'sao-paulo', lat: -23.5, lon: -46.6 },
-  { id: 'sydney', lat: -33.9, lon: 151.2 }, { id: 'mumbai', lat: 19.1, lon: 72.9 },
-].map((p) => ({ ...p, name: t(`place.${p.id}`) }));
-const at = (id) => { const p = PLACES.find((q) => q.id === id); return [p.lat, p.lon]; };
-const LINKS = [
-  ['shanghai', 'tokyo', 'up'], ['shanghai', 'los-angeles', 'down'], ['tokyo', 'los-angeles', 'up'],
-  ['singapore', 'sydney', 'up'], ['singapore', 'mumbai', 'up'], ['mumbai', 'frankfurt', 'warn'],
-  ['frankfurt', 'london', 'up'], ['london', 'ashburn', 'up'], ['ashburn', 'sao-paulo', 'unknown'],
-  ['los-angeles', 'ashburn', 'up'], ['shanghai', 'singapore', 'up'],
-].map(([a, b, state]) => ({ from: at(a), to: at(b), state }));
-
 function hero() {
   const heroEl = $('.hero');
-  const sky = $('.sky');
-  const sctx = sky.getContext('2d');
   const wordmark = new Wordmark($('.wordmark'));
   const globeEl = $('.globe');
-  const globe = new Globe(globeEl, { places: PLACES, links: LINKS, lon: 121.5 });
-  let stars = [];
-  let landReady = false;
+  const globe = new Globe(globeEl);
+  // The wordmark is drawn while it develops, and again when a resize clears it.
+  let landReady = false, developing = true;
 
+  // The globe fills its column, about a hundred cells across; the wordmark
+  // its own, at no more than three and a half pixels a cell.
   const layout = () => {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const r = heroEl.getBoundingClientRect();
-    sky.width = Math.round(r.width * dpr);
-    sky.height = Math.round(r.height * dpr);
-    // Sparse stars, fixed per layout, each with its own twinkle.
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const n = Math.round((r.width * r.height) / 5200);
-    stars = Array.from({ length: n }, () => ({
-      x: rnd() * sky.width, y: rnd() * sky.height, r: (0.5 + rnd() * 0.9) * dpr,
-      b: 0.15 + rnd() * 0.5, s: 0.4 + rnd() * 1.4, p: rnd() * 6.28,
-    }));
     wordmark.resize($('.hero-copy').clientWidth);
-    const size = globeEl.clientWidth || 480;
-    globe.resize(size, Math.max(3.4, Math.min(5.2, size / 116)));
-  };
-
-  const drawSky = (t) => {
-    sctx.clearRect(0, 0, sky.width, sky.height);
-    for (const s of stars) {
-      const tw = 0.5 + 0.5 * Math.sin(t * s.s + s.p);
-      sctx.fillStyle = `rgba(131,147,163,${(s.b * (0.35 + 0.65 * tw)).toFixed(3)})`;
-      sctx.beginPath();
-      sctx.arc(s.x, s.y, s.r, 0, 6.283);
-      sctx.fill();
-    }
+    const size = Math.min(globeEl.parentElement.clientWidth || 480, 560);
+    globe.resize(size, Math.max(4, size / 104));
   };
 
   // Drag turns the world, and lets go with a little momentum.
@@ -92,7 +52,7 @@ function hero() {
     if (!dragging) return;
     const dx = e.clientX - lastX;
     lastX = e.clientX;
-    vel = dx * 0.006;
+    vel = dx * 0.35;
     globe.drag += vel;
     if (reduced) globe.draw(0);
   });
@@ -104,11 +64,10 @@ function hero() {
   let resizeTimer;
   new ResizeObserver(() => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { layout(); if (reduced) still(); }, 60);
+    resizeTimer = setTimeout(() => { layout(); developing = true; if (reduced) still(); }, 60);
   }).observe(heroEl);
 
   const still = () => {
-    drawSky(0);
     wordmark.draw(6);
     if (landReady) globe.draw(0);
   };
@@ -126,12 +85,13 @@ function hero() {
   function frame(now) {
     if (!visible || document.hidden) return;
     requestAnimationFrame(frame);
-    if (now - last < 33) return; // 30 fps is plenty for a slow world
+    // A cell at a time, the world needs no more than 15 frames a second;
+    // a drag is followed at the display's own rate.
+    if (now - last < (dragging ? 0 : 66)) return;
     last = now;
     const t = (now - start) / 1000;
-    if (!dragging && Math.abs(vel) > 0.0002) { globe.drag += vel; vel *= 0.94; }
-    drawSky(t);
-    wordmark.draw(t);
+    if (!dragging && Math.abs(vel) > 0.01) { globe.drag += vel; vel *= 0.88; }
+    if (developing) developing = wordmark.draw(t);
     if (landReady) globe.draw(t);
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) requestAnimationFrame(frame); });
@@ -355,37 +315,33 @@ const DIGITS = {
   8: ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
   9: ['.###.', '#...#', '#...#', '.####', '....#', '...#.', '.##..'],
 };
-const RAMP = ['#f0fdfa', '#a7f3e4', '#5eead4', '#2db3a3', '#1f7f78'];
-
+// dotNumerals sets each figure in the wordmark's face and manner: solid ink,
+// two cells to a pixel, over a shadow in the dither's half tone.
 function dotNumerals() {
   for (const el of $$('[data-dots]')) {
     const s = el.dataset.dots;
-    const sub = 2; // two dots to a pixel of the face
+    const sub = 2;
     const w = (s.length * 6 - 1) * sub, h = 7 * sub;
-    let out = '';
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const fx = Math.floor(x / sub), fy = Math.floor(y / sub);
-        if (fx % 6 === 5) continue;
-        const g = DIGITS[s[Math.floor(fx / 6)]];
-        const on = g && g[fy][fx % 6] === '#';
-        if (on) {
-          const v = (y / (h - 1)) * (RAMP.length - 1) + bayer8[y & 7][x & 7] - 0.5;
-          const c = RAMP[Math.max(0, Math.min(RAMP.length - 1, Math.round(v)))];
-          out += `<circle cx="${x * 4 + 2}" cy="${y * 4 + 2}" r="1.45" fill="${c}"/>`;
-        } else {
-          out += `<circle cx="${x * 4 + 2}" cy="${y * 4 + 2}" r=".7" fill="#1a2631"/>`;
-        }
+    const on = (x, y) => {
+      const fx = Math.floor(x / sub), fy = Math.floor(y / sub);
+      if (x < 0 || y < 0 || fy >= 7 || fx % 6 === 5) return false;
+      const g = DIGITS[s[Math.floor(fx / 6)]];
+      return Boolean(g && g[fy][fx % 6] === '#');
+    };
+    let d = '';
+    for (let y = 0; y <= h; y++) {
+      for (let x = 0; x <= w; x++) {
+        if (on(x, y) || (on(x - 1, y - 1) && bayer8[y & 7][x & 7] < 0.5)) d += `M${x} ${y}h1v1h-1z`;
       }
     }
-    el.innerHTML = `<svg viewBox="0 0 ${w * 4} ${h * 4}" aria-hidden="true">${out}</svg>`;
+    el.innerHTML = `<svg viewBox="0 0 ${w + 1} ${h + 1}" aria-hidden="true"><path fill="#1a1a1a" d="${d}"/></svg>`;
   }
 }
 
 // ---------------------------------------------------------------- evidence
 
-// vantageMap lays the land under the vantage panel's observers as dots, on
-// the projection its places and paths were drawn in.
+// vantageMap lays the land under the vantage panel's observers as square
+// dots, on the projection its places and paths were drawn in.
 function vantageMap() {
   const g = $('.v-land');
   if (!g) return;
@@ -396,7 +352,7 @@ function vantageMap() {
     let out = '';
     for (let y = top + pitch / 2; y < bottom; y += pitch) {
       for (let x = pitch / 2; x < width; x += pitch) {
-        if (land(lat - (y - top) / scale, lon + x / scale)) out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.35"/>`;
+        if (land(lat - (y - top) / scale, lon + x / scale)) out += `<rect x="${(x - 1.3).toFixed(1)}" y="${(y - 1.3).toFixed(1)}" width="2.6" height="2.6"/>`;
       }
     }
     g.innerHTML = out;
@@ -416,8 +372,8 @@ function replays() {
 }
 
 // strips draw recent samples as a check's evidence does in the TUI: one
-// slot per sample coloured by its outcome (o passed, x failed, . none
-// taken), over a bar for what each passing sample took.
+// slot per sample, shaped by its outcome (o passed, x failed, . none
+// taken), over a bar in half tone for what each passing sample took.
 function strips() {
   for (const svg of $$('svg[data-strip]')) {
     const slots = [...svg.dataset.strip];
@@ -429,12 +385,12 @@ function strips() {
     let out = '';
     slots.forEach((c, i) => {
       const x = i * w + w / 2;
-      if (c === 'o') out += `<circle cx="${x}" cy="7" r="3.3" fill="#4ade80"/>`;
-      else if (c === 'x') out += `<path d="M${x - 3} 4l6 6m0-6l-6 6" stroke="#f87171" stroke-width="1.8" stroke-linecap="round"/>`;
-      else out += `<circle cx="${x}" cy="7" r="1.2" fill="#4a5868"/>`;
+      if (c === 'o') out += `<rect x="${x - 3}" y="4" width="6" height="6" fill="#1a1a1a"/>`;
+      else if (c === 'x') out += `<path d="M${x - 3.5} 3.5l7 7m0-7l-7 7" stroke="#1a1a1a" stroke-width="2"/>`;
+      else out += `<rect x="${x - 1}" y="6" width="2" height="2" fill="#b4b4b4"/>`;
       if (took[i]) {
         const bh = Math.max(2, Math.round((took[i] / slowest) * 24));
-        out += `<rect x="${x - 4}" y="${h - bh}" width="8" height="${bh}" rx="1" fill="#70bebb"/>`;
+        out += `<rect x="${x - 4}" y="${h - bh}" width="8" height="${bh}" fill="url(#half)"/>`;
       }
     });
     svg.setAttribute('viewBox', `0 0 ${slots.length * w} ${h}`);

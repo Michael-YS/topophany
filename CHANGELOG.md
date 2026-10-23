@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The homepage is drawn in ink on paper, as topophany-bar's new icon is: the
+  icon's dithered globe turns in the hero, the wordmark is solid ink over a
+  half-tone shadow, headings are set in a serif and labels in mono. The
+  terminal replay, the live demo and the web app keep the TUI's palette, set
+  on the page as plates. A new section introduces topophany-bar, Topophany's
+  macOS menu bar companion.
+- The favicon, the Apple touch icon and the social card are topophany-bar's
+  globe. `scripts/icon.py` draws them from the same dither as its app icon,
+  in Python alone.
+
 ## [1.5.0] - 2026-10-23
 
 This release adds Komari resource collection and collector-free direct profiles,

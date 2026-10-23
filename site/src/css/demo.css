@@ -1,4 +1,19 @@
+/* The live terminal: the TUI in its own palette (internal/tui/theme.go), on
+   the homepage's paper. */
 .live-page {
+  --tui-ink: #0a1016;
+  --tui-ink-hi: #0f1820;
+  --tui-panel: #0d151c;
+  --tui-key: #1a2b36;
+  --tui-line: #243443;
+  --tui-line-soft: #1a2631;
+  --tui-text: #d5dee7;
+  --tui-muted: #8393a3;
+  --tui-faint: #4a5868;
+  --tui-glow: #f0fdfa;
+  --tui-accent: #5eead4;
+  --tui-accent-deep: #2db3a3;
+  --tui-warn: #fbbf24;
   /* 200 columns / 50 rows, with cells 2.6 times as tall as wide. */
   --demo-cell-aspect: 2.6;
   --demo-window-aspect: calc(4 / var(--demo-cell-aspect));
@@ -17,11 +32,12 @@
   min-width: 0;
 }
 .live-demo {
+  position: relative;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--line);
+  border: 1px solid var(--ink);
   border-radius: 8px;
-  background: var(--ink);
+  background: var(--tui-ink);
   overflow: hidden;
 }
 /* The frame's bar: the way home, the TUI's own window title, and its size. */
@@ -32,34 +48,35 @@
   gap: 16px;
   height: 32px;
   padding: 0 8px 0 6px;
-  background: var(--ink-hi);
-  border-bottom: 1px solid var(--line-soft);
+  background: var(--tui-ink-hi);
+  border-bottom: 1px solid var(--tui-line-soft);
   font: 12.5px/1 var(--mono);
-  color: var(--muted);
+  color: var(--tui-muted);
 }
 .live-home {
   justify-self: start;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 4px 8px 4px 4px;
   border-radius: 6px;
-  color: var(--text);
+  color: var(--tui-text);
   font-weight: 600;
   letter-spacing: .02em;
   white-space: nowrap;
+  text-decoration: none;
 }
 .live-home img { width: 18px; height: 18px; }
-.live-home::before { content: "‹"; margin-right: -1px; color: var(--muted); font-size: 16px; font-weight: 400; transition: transform .15s, color .15s; }
-.live-home:hover { color: var(--glow); background: rgba(255, 255, 255, .04); }
-.live-home:hover::before { color: var(--accent); transform: translateX(-2px); }
+.live-home::before { content: "‹"; margin-right: -1px; color: var(--tui-muted); font-size: 16px; font-weight: 400; transition: transform .15s, color .15s; }
+.live-home:hover { color: var(--tui-glow); background: rgba(255, 255, 255, .04); }
+.live-home:hover::before { color: var(--tui-accent); transform: translateX(-2px); }
 .live-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; color: #a9b6c3; user-select: none; }
-.live-size { justify-self: end; color: var(--faint); white-space: nowrap; user-select: none; }
+.live-size { justify-self: end; color: var(--tui-faint); white-space: nowrap; user-select: none; }
 .demo-viewport {
   position: relative;
   display: flex;
   aspect-ratio: var(--demo-window-aspect);
   overflow: auto;
   overscroll-behavior: contain;
-  background: var(--ink);
+  background: var(--tui-ink);
 }
 .demo-viewport canvas {
   display: block;
@@ -77,14 +94,14 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: var(--ink);
-  color: var(--muted);
+  background: var(--tui-ink);
+  color: var(--tui-muted);
   text-align: center;
   font: 13px/1.6 var(--mono);
 }
 .demo-loading[hidden] { display: none; }
 .demo-loading.can-restart { cursor: pointer; }
-.demo-loading.can-restart:hover { color: var(--accent); }
+.demo-loading.can-restart:hover { color: var(--tui-accent); }
 .demo-input {
   position: absolute;
   left: 4px;
@@ -97,22 +114,23 @@
   font-size: 16px;
 }
 
-/* With room for it, the screen sits in the casing of a hardware terminal:
-   the way home on its chin, the TUI's own window title, and a power light
-   that follows the session. */
+/* With room for it, the screen sits in the casing of a hardware terminal, in
+   ink on the page with the dither's shadow under it: the way home on its
+   chin, the TUI's own window title, and a power light that follows the
+   session. */
 @media (min-width: 601px) and (min-height: 501px) {
   .live-page { --frame-x: 30px; --frame-y: 68px; }
   .live-demo {
     padding: 14px 14px 0;
-    border: 1px solid #1d2a35;
+    border: 1px solid var(--ink);
     border-radius: 18px;
-    background: linear-gradient(#17212a, #10181f 60%, #0d141a);
-    box-shadow:
-      inset 0 1px rgba(255, 255, 255, .07),
-      inset 0 -2px 6px rgba(0, 0, 0, .35),
-      0 2px 0 #070b0f,
-      0 40px 90px -30px rgba(0, 0, 0, .9);
+    background: var(--ink);
     overflow: visible;
+  }
+  .live-demo::after {
+    content: ""; position: absolute; inset: -1px; z-index: -1;
+    border-radius: inherit; transform: translate(10px, 10px);
+    background: var(--half);
   }
   .demo-viewport {
     order: 1;
@@ -132,8 +150,8 @@
     border: 0;
   }
   .live-home { color: #93a2b1; letter-spacing: .14em; text-transform: uppercase; font-size: 11.5px; }
-  .live-home:hover { color: var(--glow); }
-  .live-title { color: var(--faint); }
+  .live-home:hover { color: var(--tui-glow); }
+  .live-title { color: var(--tui-faint); }
   .live-bar::after {
     content: "";
     width: 7px; height: 7px; border-radius: 50%;
@@ -142,8 +160,8 @@
     transition: background-color .3s, box-shadow .3s;
   }
   /* Phosphor, not a health colour: it says the terminal is on, not how the network is. */
-  .live-demo[aria-busy="true"] .live-bar::after { background: var(--accent-deep); opacity: .6; }
-  .live-demo.is-ready .live-bar::after { background: var(--accent); box-shadow: 0 0 8px rgba(94, 234, 212, .7); }
+  .live-demo[aria-busy="true"] .live-bar::after { background: var(--tui-accent-deep); opacity: .6; }
+  .live-demo.is-ready .live-bar::after { background: var(--tui-accent); box-shadow: 0 0 8px rgba(94, 234, 212, .7); }
 }
 
 /* The sign-in is drawn as a screen of the TUI: a form dialog between a title
@@ -154,29 +172,29 @@
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: var(--ink);
+  background: var(--tui-ink);
   overflow: auto;
   font: 13px/1.6 var(--mono);
-  color: var(--text);
+  color: var(--tui-text);
 }
 .collector-connect[hidden] { display: none; }
 .connect-brand, .connect-keys {
   margin: 0;
   padding: 2px 10px;
-  color: var(--muted);
+  color: var(--tui-muted);
   white-space: nowrap;
   overflow: hidden;
 }
-.connect-keys { background: var(--ink-hi); }
-.connect-brand b { color: var(--accent); font-weight: 700; letter-spacing: .02em; }
+.connect-keys { background: var(--tui-ink-hi); }
+.connect-brand b { color: var(--tui-accent); font-weight: 700; letter-spacing: .02em; }
 .connect-keys kbd {
   min-width: 0;
   margin: 0 .6ch 0 0;
   padding: 0 .8ch;
   border: 0;
   border-radius: 0;
-  background: var(--key);
-  color: var(--accent);
+  background: var(--tui-key);
+  color: var(--tui-accent);
   font: inherit;
 }
 .connect-keys kbd:not(:first-child) { margin-left: 1.6ch; }
@@ -191,7 +209,7 @@
   grid-template-columns: max-content minmax(0, 1fr);
   column-gap: 2ch;
   row-gap: 8px;
-  background: var(--panel);
+  background: var(--tui-panel);
   border: 1px solid #47a19a;
   box-shadow: 16px 20px 0 rgba(0, 0, 0, .5);
 }
@@ -202,17 +220,17 @@
   transform: translateY(-50%);
   margin: 0;
   padding: 0 1ch;
-  background: var(--accent);
-  color: var(--ink);
+  background: var(--tui-accent);
+  color: var(--tui-ink);
   font: 700 13px/1.6 var(--mono);
   letter-spacing: 0;
 }
-.connect-note { margin: 0 0 14px; color: var(--muted); text-wrap: balance; }
+.connect-note { margin: 0 0 14px; color: var(--tui-muted); text-wrap: balance; }
 .connect-field { display: contents; }
 .connect-field span {
   align-self: center;
   justify-self: end;
-  color: var(--muted);
+  color: var(--tui-muted);
   white-space: nowrap;
 }
 .connect-field input {
@@ -220,36 +238,36 @@
   padding: 0 1ch;
   border: 0; border-radius: 0;
   background: var(--field);
-  color: var(--text);
+  color: var(--tui-text);
   font: 13px var(--mono);
-  caret-color: var(--accent);
+  caret-color: var(--tui-accent);
   box-shadow: inset 3px 0 transparent;
   transition: background-color .12s, box-shadow .12s;
 }
-.connect-field input::placeholder { color: var(--faint); }
-.connect-field input:focus { outline: none; background: var(--key); color: var(--glow); box-shadow: inset 3px 0 var(--accent); }
-.connect-field:focus-within span { color: var(--accent); font-weight: 700; }
-.connect-field input:-webkit-autofill { -webkit-text-fill-color: var(--glow); box-shadow: inset 0 0 0 40px var(--key); }
+.connect-field input::placeholder { color: var(--tui-faint); }
+.connect-field input:focus { outline: none; background: var(--tui-key); color: var(--tui-glow); box-shadow: inset 3px 0 var(--tui-accent); }
+.connect-field:focus-within span { color: var(--tui-accent); font-weight: 700; }
+.connect-field input:-webkit-autofill { -webkit-text-fill-color: var(--tui-glow); box-shadow: inset 0 0 0 40px var(--tui-key); }
 .connect-actions {
   display: flex;
   align-items: flex-start;
   gap: 2ch;
   margin-top: 10px;
 }
-#collector-error { flex: 1; margin: 4px 0 0; color: var(--warn); text-wrap: pretty; }
+#collector-error { flex: 1; margin: 4px 0 0; color: var(--tui-warn); text-wrap: pretty; }
 #collector-error:not(:empty)::before { content: "▲ "; }
 .connect-box button {
   flex: none;
   padding: 4px 2ch;
   border: 0; border-radius: 0;
-  background: var(--accent);
-  color: var(--ink);
+  background: var(--tui-accent);
+  color: var(--tui-ink);
   font: 700 13px/1.6 var(--mono);
   cursor: pointer;
 }
 .connect-box button:hover { background: #8af3e2; }
-.connect-box button:focus-visible { outline: 1px solid var(--glow); outline-offset: 2px; border-radius: 0; }
-.connect-box button:disabled { background: var(--key); color: var(--muted); cursor: default; }
+.connect-box button:focus-visible { outline: 1px solid var(--tui-glow); outline-offset: 2px; border-radius: 0; }
+.connect-box button:disabled { background: var(--tui-key); color: var(--tui-muted); cursor: default; }
 
 @media (max-width: 600px) {
   .live-page { --demo-gutter: 12px; }

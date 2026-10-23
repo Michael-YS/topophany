@@ -6,8 +6,8 @@
 <title>{{meta.title}}</title>
 <meta name="description" content="{{meta.description}}">
 <meta name="robots" content="index, follow, max-image-preview:large">
-<meta name="theme-color" content="#0a1016">
-<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
 <link rel="canonical" href="{{page.url}}">
 {{page.alternates.html}}
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -37,7 +37,7 @@
 <nav class="nav" aria-label="{{nav.label}}">
   <div class="wrap nav-inner">
     <a class="brand" href="{{page.path}}" aria-label="{{nav.home}}">
-      <img class="brand-mark" src="/favicon.svg" alt="" width="26" height="26">
+      <img class="brand-mark" src="/img/mark.svg" alt="" width="32" height="32">
       <span>topophany</span>
     </a>
     <div class="nav-links">
@@ -45,6 +45,7 @@
       <a href="#evidence">{{nav.evidence}}</a>
       <a href="#architecture">{{nav.architecture}}</a>
       <a href="#agent">{{nav.agent}}</a>
+      <a href="#mac">{{nav.bar}}</a>
       <a href="#install">{{nav.install}}</a>
       <details class="lang">
         <summary aria-label="{{nav.language}}"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#globe"/></svg><span>{{lang.name}}</span></summary>
@@ -58,10 +59,9 @@
 </nav>
 
 <header class="hero" id="top">
-  <canvas class="sky" aria-hidden="true"></canvas>
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="release">{{site.version}} · MIT · {{hero.pill}}</p>
+      <p class="release"><span>{{site.version}}</span> · MIT · {{hero.pill}}</p>
       <h1 class="wordmark-h1">
         <span class="sr-only">{{meta.title}}</span>
         <canvas class="wordmark" aria-hidden="true"></canvas>
@@ -77,6 +77,7 @@
         <code>go install github.com/WhitenWhiten/topophany/cmd/topo@latest</code>
         <button class="copy" type="button" aria-label="{{hero.copy}}"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#copy"/></svg></button>
       </div>
+      <a class="hero-new" href="#mac"><b>{{hero.new}}</b><span>{{hero.bar}}</span><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#arrow"/></svg></a>
     </div>
     <div class="hero-globe">
       <canvas class="globe" aria-label="{{hero.globe}}" role="img"></canvas>
@@ -161,7 +162,7 @@
         <h3 class="panel-title">{{vantage.title}}</h3>
         <svg class="vantage" viewBox="0 0 520 206" role="img" aria-label="{{vantage.label}}">
           <defs>
-            <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#4ade80"/></marker>
+            <marker id="arr-ok" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#1a1a1a"/></marker>
           </defs>
           <g class="v-land" data-lon="{{page.vantage.lon}}" data-lat="{{page.vantage.lat}}" data-scale="{{page.vantage.scale}}" data-top="8" data-bottom="166"></g>
           <path class="v-arc v-bad" d="{{page.vantage.bad}}"/>
@@ -359,10 +360,42 @@
   </div>
 </section>
 
+<section class="section mac" id="mac">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow"><span>06</span> {{bar.eyebrow}}</p>
+      <h2>{{bar.title}}</h2>
+      <p class="lead">{{bar.lead.html}}</p>
+    </div>
+
+    <figure class="shot">
+      <a href="/img/topophany-bar.webp"><img src="/img/topophany-bar.webp" width="2000" height="1222" alt="{{bar.alt}}" loading="lazy" decoding="async"></a>
+      <figcaption>{{bar.caption}}</figcaption>
+    </figure>
+
+    <div class="mac-grid">
+      <div class="mac-app">
+        <img class="mac-icon" src="/img/topophany-bar-icon.png" width="128" height="128" alt="">
+        <p class="mac-name">topophany-bar</p>
+        <p class="mac-meta">{{bar.meta}}</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="https://github.com/WhitenWhiten/topophany-bar"><svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh"/></svg>{{bar.source}}</a>
+        </div>
+      </div>
+      <ul class="kit kit-mac">
+        <li><b>{{bar.glance}}</b><span>{{bar.glance-text}}</span></li>
+        <li><b>{{bar.where}}</b><span>{{bar.where-text}}</span></li>
+        <li><b>{{bar.direct}}</b><span>{{bar.direct-text}}</span></li>
+        <li><b>{{bar.widgets}}</b><span>{{bar.widgets-text}}</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
 <section class="section duo" id="duo">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>06</span> {{duo.eyebrow}}</p>
+      <p class="eyebrow"><span>07</span> {{duo.eyebrow}}</p>
       <h2>{{duo.title}}</h2>
       <p class="lead">{{duo.lead.html}}</p>
     </div>
@@ -401,7 +434,7 @@
 <section class="section install" id="install">
   <div class="wrap">
     <div class="head">
-      <p class="eyebrow"><span>07</span> {{install.eyebrow}}</p>
+      <p class="eyebrow"><span>08</span> {{install.eyebrow}}</p>
       <h2>{{install.title}}</h2>
       <p class="lead">{{install.lead.html}}</p>
     </div>
@@ -468,12 +501,13 @@
 <footer class="footer">
   <div class="wrap footer-inner">
     <div class="footer-brand">
-      <a class="brand" href="{{page.path}}"><img class="brand-mark" src="/favicon.svg" alt="" width="26" height="26"><span>topophany</span></a>
+      <a class="brand" href="{{page.path}}"><img class="brand-mark" src="/img/mark.svg" alt="" width="32" height="32"><span>topophany</span></a>
       <p class="etym"><b>τόπος</b> <i>{{footer.place}}</i> · <b>φαίνω</b> <i>{{footer.appear}}</i></p>
     </div>
     <ul class="footer-links">
       <li><a href="https://github.com/WhitenWhiten/topophany">GitHub</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/releases">{{footer.releases}}</a></li>
+      <li><a href="https://github.com/WhitenWhiten/topophany-bar">topophany-bar</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CHANGELOG.md">{{footer.changelog}}</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/CONTRIBUTING.md">{{footer.contributing}}</a></li>
       <li><a href="https://github.com/WhitenWhiten/topophany/blob/main/SECURITY.md">{{footer.vulnerability}}</a></li>
@@ -490,6 +524,7 @@
   <symbol id="play" viewBox="0 0 16 16"><path fill="currentColor" d="M4.5 2.9v10.2a.7.7 0 0 0 1.06.6l8.1-5.1a.7.7 0 0 0 0-1.2l-8.1-5.1a.7.7 0 0 0-1.06.6z"/></symbol>
   <symbol id="arrow" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9.5M8.5 4l4 4-4 4"/></symbol>
   <symbol id="star" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z"/></symbol>
+  <pattern id="half" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="#1a1a1a"/><rect x="1" y="1" width="1" height="1" fill="#1a1a1a"/></pattern>
   <symbol id="globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.4"/><ellipse cx="8" cy="8" rx="2.7" ry="6.4"/><path d="M1.8 6h12.4M1.8 10h12.4"/></g></symbol>
 </svg>
 </body>
