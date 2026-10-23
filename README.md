@@ -212,9 +212,9 @@ Building needs no module downloads. Read [CONTRIBUTING.md](CONTRIBUTING.md) and 
 
 [MIT](LICENSE)
 
-### Beszel without a collector
+### Beszel and Komari without a collector
 
-Direct mode reads CPU, memory and the primary disk inside each topo process:
+Direct mode reads CPU, memory and disk resources from Beszel or Komari inside each topo process:
 `topo --source direct --profile desktop`, with the same mode available for
 `--json`, `status`, `show` and `monitor configure/run`. Configure via
 `topo sources inspect|save|remove --json-stdin`; `topo sources list --json` lists
@@ -222,3 +222,5 @@ these profiles independently of collector connections. Defaults are 60s polling,
 5s display and 180s validity. It has no resource history or background service
 and does not infer network reachability. See [Direct setup and limits](docs/DIRECT.md)
 and the [D1 contract](docs/contracts/direct-v1/contract.md).
+Komari supports API keys or anonymous public nodes, and exposes aggregate disk
+usage. See the [Komari setup example](docs/DIRECT.md#configure-komari).

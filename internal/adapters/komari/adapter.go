@@ -33,7 +33,8 @@ func (Adapter) Validate(s model.Source) error {
 	return sourceutil.ValidateSource(s, sourceutil.SourcePolicy{Adapter: "komari", BaseName: "server", CredentialOptional: true})
 }
 
-func objectID(id string) bool {
+// ValidObjectID accepts the canonical client UUID used by resource and discovery reads.
+func ValidObjectID(id string) bool {
 	if len(id) != 36 {
 		return false
 	}
@@ -60,7 +61,7 @@ func (a Adapter) Collect(ctx context.Context, io source.IO, s model.Source, requ
 	}
 	seen := make(map[string]bool, len(requests))
 	for _, request := range requests {
-		if !objectID(request.Object) || seen[request.Object] {
+		if !ValidObjectID(request.Object) || seen[request.Object] {
 			return nil, failure("invalid_object_request")
 		}
 		seen[request.Object] = true

@@ -15,6 +15,30 @@ func DirectText(key string) string {
 	directWordsOnce.Do(func() { _ = json.Unmarshal(directWordsJSON, &directWords) })
 	return directWords[key]
 }
+
+// DirectConnection names the actual sources, including mixed-vendor profiles.
+func DirectConnection(status SourcesStatus) string {
+	adapter := ""
+	for _, src := range status.Sources {
+		if adapter != "" && adapter != src.Adapter {
+			return DirectText("connection_mixed")
+		}
+		adapter = src.Adapter
+	}
+	switch adapter {
+	case "beszel":
+		return DirectText("connection")
+	case "komari":
+		return DirectText("connection_komari")
+	default:
+		return DirectText("connection_mixed")
+	}
+}
+
+func (v View) DirectConnection() string {
+	status, _ := v.SourcesStatus()
+	return DirectConnection(status)
+}
 func (v View) directVerdict() Verdict {
 	status, _ := v.SourcesStatus()
 	glyph := "○"

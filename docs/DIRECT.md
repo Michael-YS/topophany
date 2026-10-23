@@ -1,6 +1,6 @@
-# Beszel direct current-state reads
+# Beszel and Komari direct current-state reads
 
-Direct connects the `topo` process to a Beszel Hub. It needs no Topophany collector,
+Direct connects the `topo` process to a Beszel Hub or Komari server. It needs no Topophany collector,
 daemon, metrics service, listening port or database. CPU, memory and the adapter's
 primary disk are resource telemetry; a successful Hub read does not prove machine,
 application or network reachability. The existing client and preview modes remain
@@ -13,6 +13,9 @@ specified in the [Records API](https://pocketbase.io/docs/api-records/#auth-refr
 The new authentication workflow has synthetic loopback coverage. It has not been
 validated by logging into a user's Hub; arbitrary Beszel/PocketBase versions,
 SSO and complete MFA flows are not promised. Recognized MFA requires a token.
+Komari supports the pinned 1.6.0 resource schema, API keys and anonymous public
+nodes. Its disk is an aggregate, not a root filesystem. A profile can mix both
+adapters; each source retains its own credentials, selected nodes and polling.
 
 ## Configure through stdin
 
@@ -86,6 +89,55 @@ for an expired nonrenewable token. A renewable token renews within the minute
 before its expiry; a nonrenewable token, which has no refresh, stays usable
 until it expires.
 
+## Configure Komari
+
+Use `adapter:"komari"` with the same inspect/save/list/remove commands. Auth
+supports `{mode:"token",token:"RAW_ADMIN_API_KEY"}`, `{mode:"env",name:"TOPO_KOMARI_API_KEY"}`,
+`{mode:"saved"}`, or `{mode:"anonymous"}` for public nodes. Password login and
+PocketBase token refresh do not apply. API keys are opaque and nonrenewable;
+an authentication failure requires replacing the key or retrying explicitly.
+Changing an environment key requires inspect/save with explicit `env` auth;
+`saved` and resource reads reject an environment key with a changed fingerprint.
+Saved credentials are bound to both the adapter and exact base URL.
+
+With the API key already provisioned in the environment:
+
+```sh
+topo sources inspect --json-stdin <<'JSON'
+{"schema":1,"request_id":"komari-inspect","profile":"desktop","source":{"id":"km-home","name":"Home Komari","adapter":"komari","url":"https://komari.example.com","interval_seconds":30},"auth":{"mode":"env","name":"TOPO_KOMARI_API_KEY"}}
+JSON
+```
+
+Use the discovered canonical lowercase client UUID in `selected_objects`:
+
+```sh
+topo sources save --json-stdin <<'JSON'
+{"schema":1,"request_id":"komari-save","profile":"desktop","base_revision":"","source":{"id":"km-home","name":"Home Komari","adapter":"komari","url":"https://komari.example.com","interval_seconds":30},"auth":{"mode":"env","name":"TOPO_KOMARI_API_KEY"},"selected_objects":["d4c8d9a1-4ec5-4c1b-9b95-4c1c8f930b0d"]}
+JSON
+topo --source direct --profile desktop
+```
+
+Replace the example URL and UUID. For an existing profile, use the revision
+returned by `sources list --json` as `base_revision`. For anonymous reads,
+replace auth with `{"mode":"anonymous"}` in both requests.
+
+Authenticated discovery reads only `GET /api/admin/client/list` (a raw array).
+The endpoint requires administrator access, so a successful empty listing still
+verifies the API key. Anonymous discovery reads only `GET /api/nodes` (a success
+envelope). There is no fallback from authenticated discovery to guest reads;
+the public endpoint cannot validate a key. Only UUIDs and sanitized names leave
+the discovery adapter; private agent tokens, addresses and other fields are
+discarded. Discovery is bounded to 1000 nodes and a 1 MiB response, and refuses
+an oversized listing rather than selecting from a silently incomplete result.
+
+Generated bindings use `primary_disk:"aggregate"`. Collection reuses the
+GET-only resource adapter at `/api/recent/<uuid>` with the same sample identity,
+exact byte counters and upstream receive time. The recent cache holds about
+one minute of reports; a 30-second interval is shown above to reduce missed
+reporting bursts. The shared default remains 60 seconds. Online presence,
+per-filesystem disks and history are unsupported. See the
+[Komari adapter guide](../internal/adapters/komari/README.md) for mapping limits.
+
 ## Read current resources
 
 ```sh
@@ -127,7 +179,7 @@ that local monitor configuration; run can override it for integration tests.
 ## Stream and freshness
 
 `topo monitor stream --capabilities` advertises `direct.schema=1`, config_api=1,
-adapters=[beszel], retry and hard limits. Capability discovery does no filesystem,
+adapters=[beszel,komari], retry and hard limits. Capability discovery does no filesystem,
 credential or Hub I/O. Do not use the binary version as a feature test.
 
 The [D1 specification and fixtures](contracts/direct-v1/contract.md) define exact

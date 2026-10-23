@@ -57,7 +57,7 @@ func (m *Model) headerBar(cv *Canvas, x0, y, w int, touch bool) {
 		}
 	} else {
 		if m.Direct {
-			add(viewpkg.DirectText("connection"), cText)
+			add(m.view().DirectConnection(), cText)
 			if m.Snapshot.Direct != nil {
 				add(" / "+m.Snapshot.Direct.Profile, cMuted)
 			}
@@ -335,7 +335,7 @@ func (m *Model) statusBar(cv *Canvas, x0, y, w int) {
 	}
 	if m.Snapshot.Direct != nil {
 		status, _ := m.view().SourcesStatus()
-		text := viewpkg.DirectText("connection") + " · " + status.State + " · " + itoa(status.Counts.Current) + "/" + itoa(status.Counts.Selected) + " " + viewpkg.DirectText("counts")
+		text := viewpkg.DirectConnection(status) + " · " + status.State + " · " + itoa(status.Counts.Current) + "/" + itoa(status.Counts.Selected) + " " + viewpkg.DirectText("counts")
 		cv.Text(x, y, text, fg(cText), w-2)
 		return
 	}

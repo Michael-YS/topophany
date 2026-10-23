@@ -516,6 +516,10 @@ and the [adapter guide](../internal/adapters/komari/README.md).
 | Redirects, oversized bodies, wrong content type, unsupported status and in-flight cancellation remain bounded failures | `TestKomariProductionTransportRefusalsAndUnsupportedStatus`, `TestKomariProductionTransportCancelsAnOutstandingRead` |
 | Full runtime cost measured for 1/60/600-record windows, with actual normalized values checked before timing | `BenchmarkKomariRuntimeCollect` |
 | Pinned official server, actual Agent v2 reports and compiled CLI; CPU zero, upstream integer rounding, authentication, anonymous reads and atomic failure | `scripts/accept_komari.py` |
+| Collector-free Komari API-key/environment/anonymous profiles, saved auth, exact resource bytes, aggregate disk, expiry and source-scoped 401 without token refresh | `direct.TestKomariDirectCredentialModesAndResourceSession` |
+| Saved credentials cannot cross adapters or URLs; changed environment keys require explicit save; mixed Beszel/Komari profiles retain both sources | `direct.TestKomariDirectSavedCredentialBoundariesAndMixedProfile` |
+| Protected raw admin discovery verifies keys independently of public nodes; public discovery sends no credential; malformed identities, duplicate keys, page budgets and cancellation fail without fallback | `komari.TestDiscoveryReadOnlyAuthenticationAndProjection`, `komari.TestDiscoveryRejectsInvalidResponsesWithoutFallback` |
+| Komari inspect/save/list/remove, snapshot/status/server views, TUI source label and monitor stream work without a collector; inspect creates no files and private metadata never reaches output | `app.TestKomariDirectCommandLifecycle` |
 | Acceptance assertions reject a source error mislabeled as a target failure or fresh contact; RFC3339Nano order preserves variable fractions and single nanoseconds | `scripts.test_accept_komari.FailedCollectionTests`, `scripts.test_accept_komari.SampleInstantTests` |
 
 ## Shared external-source safety (2026-10-22)

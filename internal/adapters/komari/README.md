@@ -69,9 +69,22 @@ go build -trimpath -o ./bin/topo ./cmd/topo
 
 `validate` checks the topology schema. Runtime commands additionally validate
 the registered adapter and perform the actual reads. Run `once` to check
-the URL, access and UUID before recurring collection. This adapter is for
-configured external sources; the separate Beszel-specific `direct` login
-workflow is not a Komari login mechanism.
+the URL, access and UUID before recurring collection. For collector-free TUI,
+status, show and monitor reads, [direct mode](../../../docs/DIRECT.md#configure-komari)
+reuses this resource adapter. It supports API-key, environment and anonymous
+authentication; it does not use Beszel's PocketBase login/refresh workflow.
+
+Direct discovery uses the pinned server's read-only
+`GET /api/admin/client/list` for API keys (raw client array) or `GET /api/nodes`
+for anonymous reads (success envelope). The former is protected by the
+router's administrator-role middleware and the
+[`adminListClients` handler](https://github.com/komari-monitor/komari/blob/1b76b7ad5bc3de6529bb7f0577069b4ac241fec3/web/rpc/jsonrpc/admin.client.go)
+only reads existing client records. It verifies a key even with zero nodes;
+`/api/me` does not prove API-key identity in this version. No discovery call
+creates records, tasks, terminals or agent connections. Only validated UUIDs
+and sanitized names leave the adapter. Discovery rejects duplicate IDs,
+malformed envelopes and lists over 1000 nodes; transport applies a 1 MiB body
+limit. The collector resource adapter still requests only `/api/recent/<uuid>`.
 
 Only `"report":"resource"` is supported. Komari's separate online-presence
 state is exposed by WebSocket/RPC, not by this endpoint. A `status` binding
@@ -207,5 +220,8 @@ The harness verifies the official binary's pinned SHA-256, starts an isolated
 loopback server, creates synthetic nodes and submits Agent v2 samples only
 to that disposable instance. It checks the actual recent endpoint and the
 compiled `topo once` pipeline, then removes temporary state and credentials.
+It also exercises compiled direct inspect/save/read/status/show/remove commands,
+administrator-key verification without guest fallback, anonymous public-node
+discovery and aggregate disk resources without a collector.
 This validates the released server protocol; it is distinct from deployment
 testing against a user's production server and actual monitoring agents.

@@ -36,6 +36,9 @@ func NewHub(s SourceConfig) (*Hub, error) {
 	if e := s.Validate(); e != nil {
 		return nil, e
 	}
+	if s.Adapter != "beszel" {
+		return nil, fail("invalid_request")
+	}
 	u, _ := url.Parse(s.URL)
 	tc, e := probe.TLSConfig(u.Hostname(), s.CAFile)
 	if e != nil {
@@ -266,7 +269,20 @@ func (h *Hub) authenticate(ctx context.Context, a Auth, saved *Credential) (Cred
 	}
 	return c, nil
 }
-func (s *Store) Authenticate(ctx context.Context, r Request) (Credential, *Hub, error) {
+
+// Connection owns command-local discovery. Collection uses source.Runtime.
+type Connection interface {
+	Discover(context.Context, Credential) ([]System, bool, error)
+	Close()
+}
+
+func (s *Store) Authenticate(ctx context.Context, r Request) (Credential, Connection, error) {
+	if r.Source.Adapter == "komari" {
+		return s.authenticateKomari(r)
+	}
+	if r.Auth.Mode == "anonymous" {
+		return Credential{}, nil, fail("auth_method_unsupported")
+	}
 	h, e := NewHub(r.Source)
 	if e != nil {
 		return Credential{}, nil, e
@@ -283,7 +299,7 @@ func (s *Store) Authenticate(ctx context.Context, r Request) (Credential, *Hub, 
 			h.Close()
 			return Credential{}, nil, fail("source_not_found")
 		}
-		if entry.Source.URL != r.Source.URL {
+		if entry.Source.URL != r.Source.URL || entry.Source.Adapter != r.Source.Adapter {
 			h.Close()
 			return Credential{}, nil, fail("invalid_request")
 		}
@@ -369,6 +385,9 @@ func (s *Store) Token(ctx context.Context, profile string, entry Entry, now time
 	if e != nil {
 		return "", e
 	}
+	if entry.Source.Adapter == "komari" {
+		return komariToken(c, entry.Subject)
+	}
 	if c.Mode == "env" {
 		v, e := secure.SecretEnv(c.Env)
 		if e != nil || !safeToken(v) {
@@ -406,6 +425,9 @@ func (s *Store) Token(ctx context.Context, profile string, entry Entry, now time
 // Refresh is used at most once after a 401 for an acquisition source. It is
 // distinct from expiry-driven renewal and cannot turn persistent 401s into a loop.
 func (s *Store) Refresh(ctx context.Context, profile string, entry Entry, sent string) (string, error) {
+	if entry.Source.Adapter != "beszel" {
+		return "", fail("auth_required")
+	}
 	c, e := s.credential(entry.Credential)
 	if e != nil {
 		return "", e

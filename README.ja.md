@@ -214,16 +214,18 @@ make site                    # re-record the homepage's TUI replays and rewrite 
 
 [MIT](LICENSE)
 
-### コレクターなしの Beszel direct
+### コレクターなしの Beszel / Komari direct
 
-`topo --source direct --profile desktop` は各プロセスで Beszel Hub の CPU、
-メモリー、プライマリディスクを読みます。同じ profile を `--json`、`status`、
+`topo --source direct --profile desktop` は各プロセスで Beszel Hub または Komari の CPU、
+メモリー、ディスクを読みます。同じ profile を `--json`、`status`、
 `show`、`monitor configure/run` でも使えます。設定は
 `topo sources inspect|save|remove --json-stdin`、一覧は
 `topo sources list --json` で、コレクター接続とは別です。標準は収集 60 秒、
 表示 5 秒、有効期間 180 秒です。バックグラウンドサービスや履歴 DB はなく、
 リソースの取得成功からネットワーク到達性を推測しません。単発読み取りは標準で
 最大 15 秒待ちます（`--wait`）。`history --source direct` は明示的に未対応です。
-対応は検証済みの Beszel v0.21.0 リソース形式と記載済み mem 拡張に限られ、
+Beszel v0.21.0 リソース形式と記載済み mem 拡張、Komari 1.6.0 に対応します。
+Komari は API キー、環境変数、公開ノードの匿名アクセスに対応し、ディスクは集計値です。
+同じ profile に両方のソースを設定できます。
 任意バージョンや完全な MFA/SSO への対応を保証しません。
 [設定と制限](docs/DIRECT.md)、[D1 契約](docs/contracts/direct-v1/contract.md)を参照してください。

@@ -38,7 +38,11 @@ func (h header) print(t *text, now time.Time) {
 	}
 	t.kv("Project", h.Project)
 	if h.Source == "direct" {
-		t.kv(view.DirectText("source_label"), view.DirectText("connection")+" / "+h.Profile)
+		status := view.SourcesStatus{}
+		if h.Sources != nil {
+			status = *h.Sources
+		}
+		t.kv(view.DirectText("source_label"), view.DirectConnection(status)+" / "+h.Profile)
 	} else {
 		t.kv("Collector", h.Instance+" @ "+h.Server)
 	}

@@ -36,7 +36,7 @@ func jsonBudget(body []byte) error {
 // latest sample. Recent reports are usually oldest-first; relying on array
 // order would either lag by a minute or accept an arbitrary cached sample.
 func resource(body []byte, id string) (*model.ExternalReport, error) {
-	if !objectID(id) {
+	if !ValidObjectID(id) {
 		return nil, failure("komari_record_identity")
 	}
 	if err := jsonBudget(body); err != nil {

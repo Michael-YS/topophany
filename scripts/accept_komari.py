@@ -276,6 +276,64 @@ def run_cli(topo: Path, work: Path, api: API, objects: list[str], key: str,
     return sorted(observations, key=lambda item: item["check"])
 
 
+def verify_direct(topo: Path, work: Path, api: API, objects: list[str], key: str,
+                  secret_values: list[str], *, anonymous: bool = False) -> None:
+    root = work / ("direct-public" if anonymous else "direct-private")
+    environment = child_environment()
+    environment[TOKEN_ENV] = key
+
+    def command(arguments: list[str], request: dict | None = None,
+                expected_exit: int = 0) -> dict:
+        result = subprocess.run(
+            [str(topo), *arguments, "--direct-root", str(root)],
+            input=json.dumps(request) if request is not None else None,
+            env=environment, cwd=work, capture_output=True, text=True,
+            timeout=20, check=False,
+        )
+        no_secrets(result.stdout + result.stderr, secret_values)
+        check(result.returncode == expected_exit, "direct CLI command failed")
+        check(len(result.stdout) <= MAX_RESPONSE_BYTES, "direct output limit exceeded")
+        return json.loads(result.stdout)
+
+    request = {
+        "schema": 1, "profile": "acceptance", "base_revision": "",
+        "source": {"id": "km-official", "name": "Official Komari",
+                   "adapter": "komari", "url": api.origin, "interval_seconds": 30},
+        "auth": {"mode": "anonymous"} if anonymous else {"mode": "env", "name": TOKEN_ENV},
+        "selected_objects": objects,
+    }
+    inspected = command(["sources", "inspect", "--json-stdin"], request)
+    check(inspected.get("ok") is True, "direct discovery failed")
+    check({node["id"] for node in inspected["data"]["systems"]} == set(objects),
+          "direct discovery returned the wrong visible nodes")
+    check(not root.exists(), "direct inspect wrote private state")
+    if not anonymous:
+        environment[TOKEN_ENV] = "synthetic-invalid-api-key"
+        denied = command(["sources", "inspect", "--json-stdin"], request, expected_exit=1)
+        check(denied.get("error", {}).get("code") == "auth_required",
+              "direct discovery accepted an invalid key or fell back to public access")
+        environment[TOKEN_ENV] = key
+    saved = command(["sources", "save", "--json-stdin"], request)
+    check(saved.get("ok") is True, "direct profile save failed")
+    snapshot = command(["--source", "direct", "--profile", "acceptance", "--json"])
+    check(snapshot.get("sources_status", {}).get("state") == "ready",
+          "direct resources did not become current")
+    reports = [item.get("report", {}) for item in snapshot.get("external", [])]
+    check(len(reports) == len(objects), "direct snapshot lost selected resources")
+    for report in reports:
+        resource = report.get("resource", {})
+        check(resource.get("memory", {}).get("total_bytes") == WIRE_TOTAL,
+              "direct resource byte counters changed")
+        check(resource.get("disks", [{}])[0].get("id") == "aggregate",
+              "direct disk selection is not aggregate")
+    command(["status", "--source", "direct", "--profile", "acceptance", "--json"])
+    command(["show", "servers", "--source", "direct", "--profile", "acceptance", "--json"])
+    command(["sources", "remove", "--json-stdin"], {
+        "schema": 1, "profile": "acceptance", "source_id": "km-official",
+        "base_revision": saved["data"]["profile_revision"],
+    })
+
+
 def verify_report(observation: dict, object_id: str, sample: dict, cpu: float) -> dict:
     check(observation.get("outcome") == "ok", "production collection failed")
     check(observation.get("evidence") == "reported"
@@ -380,6 +438,7 @@ def run(args: argparse.Namespace) -> dict:
             first_reports = [verify_report(item, object_id, items[-1], cpu)
                              for item, object_id, items, cpu in
                              zip(baseline, objects, samples, (12.5, 0.0), strict=True)]
+            verify_direct(topo, work, api, objects, key, secret_values)
             repeated = run_cli(topo, work, api, objects, key, secret_values)
             for item, previous, object_id, items, cpu in zip(
                     repeated, first_reports, objects, samples, (12.5, 0.0), strict=True):
@@ -400,6 +459,7 @@ def run(args: argparse.Namespace) -> dict:
                    data={"hidden": True})
             anonymous = run_cli(topo, work, api, objects[:1], "", secret_values)
             verify_report(anonymous[0], objects[0], samples[0][-1], 12.5)
+            verify_direct(topo, work, api, objects[:1], key, secret_values, anonymous=True)
             public_invalid = run_cli(topo, work, api, objects[:1],
                                      "synthetic-invalid-api-key", secret_values)
             verify_report(public_invalid[0], objects[0], samples[0][-1], 12.5)
@@ -441,6 +501,9 @@ def run(args: argparse.Namespace) -> dict:
                     "two_objects": True, "latest_receive_timestamp_preserved": True,
                     "wire_integer_counters_preserved": True, "zero_cpu_omitempty": True,
                     "same_sample_does_not_refresh": True, "anonymous_public_node": True,
+                    "direct_authenticated_discovery_and_resources": True,
+                    "direct_invalid_key_has_no_guest_fallback": True,
+                    "direct_anonymous_discovery_and_resources": True,
                     "invalid_key_rejected_on_private_site": True,
                     "public_site_read_cannot_validate_supplied_key": True,
                     "hidden_node_readable_with_valid_key": True,

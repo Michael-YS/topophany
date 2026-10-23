@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Komari direct mode: collector-free resource TUI, status, show and monitor
+  reads with API-key or anonymous node discovery, private profiles and aggregate
+  disk selection. Profiles can mix Beszel and Komari sources. See
+  [configuration and limits](docs/DIRECT.md#configure-komari).
+
 ## [1.4.2] - 2026-10-22
 
 This release adds external observation sources with a read-only Beszel Hub

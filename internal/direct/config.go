@@ -1,4 +1,4 @@
-// Package direct owns private Beszel profiles and process-local collection.
+// Package direct owns private external-source profiles and process-local collection.
 // It never reads collector credentials or starts a metrics service.
 package direct
 
@@ -18,9 +18,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/WhitenWhiten/topophany/internal/adapters/beszel"
+	"github.com/WhitenWhiten/topophany/internal/adapters/komari"
 	"github.com/WhitenWhiten/topophany/internal/config"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
+	"github.com/WhitenWhiten/topophany/internal/source"
 )
 
 const MaxInput = 256 << 10
@@ -41,7 +43,7 @@ func fail(code string) *Error {
 }
 
 var messages = map[string]string{
-	"invalid_request": "Invalid direct request.", "profile_not_found": "Direct profile not found.", "source_not_found": "Direct source not found.", "profile_conflict": "The profile has changed. List profiles before retrying.", "profile_unavailable": "Direct profile is unavailable.", "auth_required": "Authentication is required; the Hub did not accept this credential.", "forbidden": "The Hub denied permission for this operation.", "mfa_required": "The Hub requires an additional authentication step; use a token.", "auth_method_unsupported": "This authentication method is not supported; use an ordinary user token.", "connection_failed": "The Hub could not be reached.", "tls_error": "The Hub TLS configuration or certificate could not be verified.", "rate_limited": "The Hub rate limited this request.", "upstream_incompatible": "The Hub response is not a supported Beszel/PocketBase response.", "selection_invalid": "A selected system is invalid or not accessible.", "selection_limit": "The selection exceeds the direct profile budget.", "discovery_limit": "System discovery exceeded its bounded budget.", "storage_error": "Direct profile storage is unavailable.", "credential_storage_error": "Private credential storage is unavailable.", "state_budget": "The direct memory or configuration budget was exceeded.", "history_unsupported_in_direct_mode": "History is not supported in direct mode.",
+	"invalid_request": "Invalid direct request.", "profile_not_found": "Direct profile not found.", "source_not_found": "Direct source not found.", "profile_conflict": "The profile has changed. List profiles before retrying.", "profile_unavailable": "Direct profile is unavailable.", "auth_required": "Authentication is required; the source did not accept this credential.", "forbidden": "The source denied permission for this operation.", "mfa_required": "The Hub requires an additional authentication step; use a token.", "auth_method_unsupported": "This authentication method is not supported by the source.", "connection_failed": "The source could not be reached.", "tls_error": "The source TLS configuration or certificate could not be verified.", "rate_limited": "The source rate limited this request.", "upstream_incompatible": "The source response is not supported by this adapter.", "selection_invalid": "A selected system is invalid or not accessible.", "selection_limit": "The selection exceeds the direct profile budget.", "discovery_limit": "System discovery exceeded its bounded budget.", "storage_error": "Direct profile storage is unavailable.", "credential_storage_error": "Private credential storage is unavailable.", "state_budget": "The direct memory or configuration budget was exceeded.", "history_unsupported_in_direct_mode": "History is not supported in direct mode.",
 }
 
 func AsError(err error) *Error {
@@ -77,16 +79,39 @@ func (s SourceConfig) model(objects int) model.Source {
 	return model.Source{ID: s.ID, Name: s.Name, Adapter: s.Adapter, Observer: Observer, Target: s.URL, CAFile: s.CAFile, CredentialEnv: "TOPO_DIRECT_RESOLVED", IntervalSeconds: s.Interval, TimeoutSeconds: s.Timeout, StaleSeconds: s.Stale, MaxPages: max(1, objects), MaxObjects: max(1, objects), MaxResponseBytes: 1 << 20, MaxReportBytes: model.MaxReportBytes}
 }
 func (s SourceConfig) Validate() error {
-	if !config.ID(s.ID) || len(s.ID) > 64 || strings.TrimSpace(s.Name) == "" || len(s.Name) > 128 || secure.Text(s.Name) != s.Name || s.Adapter != "beszel" || len(s.CAFile) > 1024 || secure.Text(s.CAFile) != s.CAFile || s.CAFile != "" && !filepath.IsAbs(s.CAFile) {
+	if !config.ID(s.ID) || len(s.ID) > 64 || strings.TrimSpace(s.Name) == "" || len(s.Name) > 128 || secure.Text(s.Name) != s.Name || len(s.CAFile) > 1024 || secure.Text(s.CAFile) != s.CAFile || s.CAFile != "" && !filepath.IsAbs(s.CAFile) {
 		return fail("invalid_request")
 	}
 	if s.Interval < 1 || s.Interval > 86400 || s.Timeout < 1 || s.Timeout > config.MaxTimeoutSeconds || s.Stale < s.Interval || s.Stale > 604800 || s.MaxAge < 1 || s.MaxAge > 604800 {
 		return fail("invalid_request")
 	}
-	if (beszel.Adapter{}).Validate(s.model(1)) != nil {
+	var adapter source.Adapter
+	switch s.Adapter {
+	case "beszel":
+		adapter = beszel.Adapter{}
+	case "komari":
+		adapter = komari.Adapter{}
+	default:
+		return fail("invalid_request")
+	}
+	if adapter.Validate(s.model(1)) != nil {
 		return fail("invalid_request")
 	}
 	return nil
+}
+
+func (s SourceConfig) validObject(id string) bool {
+	if s.Adapter == "komari" {
+		return komari.ValidObjectID(id)
+	}
+	return s.Adapter == "beszel" && objectID(id)
+}
+
+func (s SourceConfig) primaryDisk() string {
+	if s.Adapter == "komari" {
+		return "aggregate"
+	}
+	return "root"
 }
 
 type Auth struct {
@@ -124,7 +149,7 @@ func (a *Auth) UnmarshalJSON(b []byte) error {
 		if !config.SecretEnvName(a.Name) || a.Name == "" {
 			return fail("invalid_request")
 		}
-	case "saved":
+	case "saved", "anonymous":
 	default:
 		return fail("invalid_request")
 	}
@@ -354,7 +379,7 @@ func (s *Store) credential(ref string) (Credential, error) {
 		return c, fail("credential_storage_error")
 	}
 	b, e := secure.PrivateRead(filepath.Join(s.Root, "credential-"+ref+".json"))
-	if e != nil || json.Unmarshal(b, &c) != nil || c.Version == "" || c.Subject == "" || c.Mode != "env" && !safeToken(c.Token) {
+	if e != nil || json.Unmarshal(b, &c) != nil || c.Version == "" || c.Subject == "" || c.Mode != "env" && c.Mode != "anonymous" && !safeToken(c.Token) || c.Mode == "anonymous" && (c.Subject != "komari:anonymous" || c.Token != "" || c.Env != "" || c.Renewable) {
 		return c, fail("credential_storage_error")
 	}
 	return c, nil
@@ -388,18 +413,24 @@ func (p Profile) Config() (model.Config, error) {
 		seen[e.Source.ID] = true
 		total += len(e.Selected)
 		src := e.Source.model(len(e.Selected))
+		if e.AuthMode == "anonymous" {
+			if e.Source.Adapter != "komari" || e.Subject != "komari:anonymous" {
+				return c, fail("selection_invalid")
+			}
+			src.CredentialEnv = ""
+		}
 		c.Sources = append(c.Sources, src)
 		objects := map[string]bool{}
 		for i, obj := range e.Selected {
 			n := e.Nodes[i]
 			id := e.Source.ID + "." + obj
 			check := id + ".resource"
-			if !objectID(obj) || objects[obj] || n.ID != id || n.ObjectID != obj || n.Name == "" || len(n.Name) > 128 || secure.Text(n.Name) != n.Name {
+			if !e.Source.validObject(obj) || objects[obj] || n.ID != id || n.ObjectID != obj || n.Name == "" || len(n.Name) > 128 || secure.Text(n.Name) != n.Name {
 				return c, fail("selection_invalid")
 			}
 			objects[obj] = true
 			c.Nodes = append(c.Nodes, model.Node{ID: id, Name: n.Name, Kind: "host", ResourceChecks: []string{check}})
-			c.Checks = append(c.Checks, model.Check{ID: check, Name: n.Name, Kind: "external", Observer: Observer, External: &model.ExternalBinding{Source: src.ID, Object: obj, Report: model.ReportTypeResource, Node: id, MaxAgeSeconds: e.Source.MaxAge, PrimaryDisk: "root"}})
+			c.Checks = append(c.Checks, model.Check{ID: check, Name: n.Name, Kind: "external", Observer: Observer, External: &model.ExternalBinding{Source: src.ID, Object: obj, Report: model.ReportTypeResource, Node: id, MaxAgeSeconds: e.Source.MaxAge, PrimaryDisk: e.Source.primaryDisk()}})
 		}
 	}
 	if total > 256 {
@@ -416,7 +447,7 @@ func datasetKey(p Profile) string {
 	for _, e := range p.Sources {
 		objs := append([]string(nil), e.Selected...)
 		sort.Strings(objs)
-		parts = append(parts, e.Source.ID, e.Source.URL, e.Subject, strings.Join(objs, ","))
+		parts = append(parts, e.Source.ID, e.Source.Adapter, e.Source.URL, e.Subject, strings.Join(objs, ","))
 	}
 	return strings.Join(parts, "\x00")
 }
@@ -466,7 +497,7 @@ func (s *Store) Save(ctx context.Context, r Request, cred Credential, systems []
 		return p, nil, fail("selection_invalid")
 	}
 	for _, id := range r.Selected {
-		if !objectID(id) || names[id] == "" {
+		if !r.Source.validObject(id) || names[id] == "" {
 			return p, nil, fail("selection_invalid")
 		}
 		if objects[id] {
