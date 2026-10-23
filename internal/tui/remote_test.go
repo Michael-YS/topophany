@@ -47,16 +47,23 @@ func TestRemoteHistoryStaysWithSnapshotCollector(t *testing.T) {
 
 func remoteFixture(t *testing.T) (*httptest.Server, client.Profile) {
 	t.Helper()
+	return remoteFixtureClock(t, time.Now)
+}
+
+func remoteFixtureClock(t *testing.T, now func() time.Time) (*httptest.Server, client.Profile) {
+	t.Helper()
 	c := testkit.Config()
 	st, err := store.Open(t.TempDir(), store.Options{Revision: config.Revision(c), Contracts: config.Contracts(c)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	if err = st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", 1, time.Now().Add(-time.Second), "ok")}}); err != nil {
+	if err = st.Put(model.Batch{Schema: model.BatchSchema, Project: c.Project, Revision: config.Revision(c), Observations: []model.Observation{testkit.Observation(c, "home-http", 1, now().Add(-time.Second), "ok")}}); err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(api.New(c, "real-collector", st, api.Auth{Schema: 1, Tokens: []api.Principal{{TokenSHA256: secure.Hash(remoteViewerToken), Role: "viewer"}}}).Handler())
+	backend := api.New(c, "real-collector", st, api.Auth{Schema: 1, Tokens: []api.Principal{{TokenSHA256: secure.Hash(remoteViewerToken), Role: "viewer"}}})
+	backend.Now = now
+	srv := httptest.NewServer(backend.Handler())
 	t.Cleanup(srv.Close)
 	return srv, client.Profile{Project: c.Project, Servers: []client.Endpoint{{URL: srv.URL, Token: remoteViewerToken}}}
 }
@@ -136,36 +143,62 @@ func TestRemoteDisconnectKeepsCachedEvidence(t *testing.T) {
 }
 
 func TestRemoteSnapshotBusyDoesNotFlashOffline(t *testing.T) {
-	base, p := remoteFixture(t)
-	var busy atomic.Bool
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path == "/v1/snapshot" && busy.CompareAndSwap(true, false) {
-			w.Header().Set("Retry-After", "1")
-			w.WriteHeader(429)
-			w.Write([]byte(`{"error":"snapshot_busy"}`))
-			return
-		}
-		base.Config.Handler.ServeHTTP(w, req)
-	}))
-	defer srv.Close()
-	p.Servers[0].URL = srv.URL
-	r, err := NewRemote(p, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
-	waitRemote(t, r, func() bool { return !r.m.Snapshot.GeneratedAt.IsZero() })
-	before, fetches := r.m.Snapshot.GeneratedAt, r.m.perf.fetches
-	busy.Store(true)
-	r.Key("r", time.Now())
-	waitRemote(t, r, func() bool {
-		if r.m.Error != "" || r.m.Cached() {
-			t.Fatal("one busy snapshot flashed offline", r.m.Error)
-		}
-		return r.m.perf.fetches > fetches
-	})
-	if !r.m.Snapshot.GeneratedAt.After(before) {
-		t.Fatal("busy retry did not refresh the snapshot")
+	for _, delta := range []time.Duration{2 * time.Second, -2 * time.Second} {
+		t.Run(delta.String(), func(t *testing.T) {
+			// GeneratedAt is wall time, not a monotonic refresh counter. A real
+			// clock correction reproduced a successful retry with an earlier stamp.
+			start := time.Now().UTC()
+			var offset atomic.Int64
+			clock := func() time.Time { return start.Add(time.Duration(offset.Load())) }
+			base, p := remoteFixtureClock(t, clock)
+			var busy atomic.Bool
+			var busyReplies, requests atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Path == "/v1/snapshot" {
+					requests.Add(1)
+					if busy.CompareAndSwap(true, false) {
+						busyReplies.Add(1)
+						w.Header().Set("Retry-After", "1")
+						w.WriteHeader(429)
+						_, _ = w.Write([]byte(`{"error":"snapshot_busy"}`))
+						return
+					}
+				}
+				base.Config.Handler.ServeHTTP(w, req)
+			}))
+			defer srv.Close()
+			p.Servers[0].URL = srv.URL
+			r, err := NewRemote(p, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			r.client.Now = clock
+			pump := func(expected time.Time) {
+				deadline := time.Now().Add(5 * time.Second)
+				for time.Now().Before(deadline) {
+					// Fix the display clock too, so a delayed test runner cannot start
+					// unrelated periodic reads while we assert this explicit refresh.
+					r.Frame(clock(), 120, 36, false)
+					if r.m.Error != "" || !r.m.Snapshot.GeneratedAt.IsZero() && r.m.Cached() {
+						t.Fatal("one busy snapshot flashed offline", r.m.Error)
+					}
+					if r.m.Snapshot.GeneratedAt.Equal(expected) {
+						return
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+				t.Fatalf("snapshot not received: want=%v got=%v requests=%d", expected, r.m.Snapshot.GeneratedAt, requests.Load())
+			}
+			pump(start)
+			offset.Store(int64(delta))
+			busy.Store(true)
+			r.Key("r", clock())
+			pump(start.Add(delta))
+			if busyReplies.Load() != 1 || requests.Load() != 3 {
+				t.Fatalf("expected initial/busy/retry reads, got requests=%d busy=%d", requests.Load(), busyReplies.Load())
+			}
+		})
 	}
 }
 
