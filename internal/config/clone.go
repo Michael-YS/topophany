@@ -40,76 +40,7 @@ func Clone(c model.Config) model.Config {
 	c.Sources = slices.Clone(c.Sources)
 	c.Checks = slices.Clone(c.Checks)
 	for i := range c.Checks {
-		x := &c.Checks[i]
-		if x.Host != nil {
-			h := *x.Host
-			x.Host = &h
-		}
-		if x.External != nil {
-			b := *x.External
-			if x.External.Assertions != nil {
-				a := *x.External.Assertions
-				b.Assertions = &a
-			}
-			x.External = &b
-		}
-		x.HTTP.Status = slices.Clone(x.HTTP.Status)
-		x.HTTP.ExpectedExit = slices.Clone(x.HTTP.ExpectedExit)
-		x.HTTP.ExpectedPops = slices.Clone(x.HTTP.ExpectedPops)
-		x.HTTP.Headers, x.HTTP.RequestHeaders = maps.Clone(x.HTTP.Headers), maps.Clone(x.HTTP.RequestHeaders)
-		x.HTTP.RequestHeaderEnvs = maps.Clone(x.HTTP.RequestHeaderEnvs)
-		if trace := x.HTTP.ExpectedTrace; trace != nil {
-			copy := *trace
-			copy.Colos = slices.Clone(trace.Colos)
-			x.HTTP.ExpectedTrace = &copy
-		}
-		x.DNS.ExpectedIPs = slices.Clone(x.DNS.ExpectedIPs)
-		if ref := x.Adapter.ProviderReference; ref != nil {
-			v := *ref
-			v.Providers = slices.Clone(ref.Providers)
-			if ref.SettleSeconds != nil {
-				settle := *ref.SettleSeconds
-				v.SettleSeconds = &settle
-			}
-			x.Adapter.ProviderReference = &v
-		}
-		x.Adapter.ProviderMatchModes = maps.Clone(x.Adapter.ProviderMatchModes)
-		if value := x.Adapter.ExpectedTUN; value != nil {
-			copy := *value
-			x.Adapter.ExpectedTUN = &copy
-		}
-		x.Adapter.ExpectedAllowedIPs = slices.Clone(x.Adapter.ExpectedAllowedIPs)
-		if value := x.Adapter.ExpectedKeepaliveSeconds; value != nil {
-			copy := *value
-			x.Adapter.ExpectedKeepaliveSeconds = &copy
-		}
-		if cloud := x.Adapter.Cloudflared; cloud != nil {
-			v := *cloud
-			v.ExpectedColos = slices.Clone(cloud.ExpectedColos)
-			if cloud.ExpectedConnections != nil {
-				n := *cloud.ExpectedConnections
-				v.ExpectedConnections = &n
-			}
-			x.Adapter.Cloudflared = &v
-		}
-		if api := x.Adapter.Cloudflare; api != nil {
-			v := *api
-			v.ExpectedOrigins = slices.Clone(api.ExpectedOrigins)
-			v.ExpectedColos = slices.Clone(api.ExpectedColos)
-			if api.ExpectedProxied != nil {
-				proxied := *api.ExpectedProxied
-				v.ExpectedProxied = &proxied
-			}
-			if api.ExpectedConnections != nil {
-				n := *api.ExpectedConnections
-				v.ExpectedConnections = &n
-			}
-			x.Adapter.Cloudflare = &v
-		}
-		x.Adapter.ExpectedProviders = maps.Clone(x.Adapter.ExpectedProviders)
-		for k, names := range x.Adapter.ExpectedProviders {
-			x.Adapter.ExpectedProviders[k] = slices.Clone(names)
-		}
+		c.Checks[i] = cloneCheckOptions(c.Checks[i])
 	}
 	return c
 }

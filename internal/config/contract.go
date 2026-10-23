@@ -63,17 +63,17 @@ func measuredOptions(x model.Check) (model.HTTPOptions, model.DNSOptions, model.
 	var dnsOpt model.DNSOptions
 	var adapter model.AdapterOptions
 	var host *model.HostOptions
-	switch x.Kind {
-	case "http":
+	kind, _ := checkKindOf(x.Kind)
+	if kind.options&optionHTTP != 0 {
 		httpOpt = x.HTTP
-	case "mihomo":
-		httpOpt = x.HTTP
-		adapter = x.Adapter
-	case "dns":
+	}
+	if kind.options&optionDNS != 0 {
 		dnsOpt = x.DNS
-	case "tailscale", "wireguard", "cloudflared", "cloudflare":
+	}
+	if kind.options&optionAdapter != 0 {
 		adapter = x.Adapter
-	case "host":
+	}
+	if kind.options&optionHost != 0 {
 		host = x.Host
 	}
 	// Settle is a confirmation threshold, not a measurement: it says when a

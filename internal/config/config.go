@@ -12,7 +12,6 @@ import (
 	"io"
 	"net"
 	"net/netip"
-	"net/url"
 	"os"
 	"regexp"
 	"runtime"
@@ -20,11 +19,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflare"
-	"github.com/WhitenWhiten/topophany/internal/adapters/cloudflared"
-	"github.com/WhitenWhiten/topophany/internal/adapters/mihomo"
-	"github.com/WhitenWhiten/topophany/internal/adapters/tailscale"
-	"github.com/WhitenWhiten/topophany/internal/adapters/wireguard"
 	"github.com/WhitenWhiten/topophany/internal/model"
 	"github.com/WhitenWhiten/topophany/internal/secure"
 )
@@ -379,223 +373,8 @@ func validateResolved(c model.Config) error {
 				}
 			}
 		}
-		if (x.Kind == "tailscale" || x.Kind == "wireguard") && (x.BindIP != "" || x.ResolveIP != "" || x.Target != "") {
-			return fmt.Errorf("check %s: local state adapters do not execute dial/bind/target overrides", x.ID)
-		}
-		if x.Kind == "icmp" && x.ResolveIP != "" {
-			return fmt.Errorf("check %s: ICMP already requires a literal target; resolve_ip is unsupported", x.ID)
-		}
-		t := Target(c, x)
-		if len(x.HTTP.RequestHeaderEnvs) > 0 && x.Kind != "http" {
-			return fmt.Errorf("check %s: request_header_envs is supported only by http checks", x.ID)
-		}
-		switch x.Kind {
-		case "http", "mihomo":
-			u, e := url.Parse(t)
-			if e != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Fragment != "" {
-				return fmt.Errorf("check %s: requires HTTP(S) URL without userinfo/fragment", x.ID)
-			}
-			if e := HTTPCredentials(c, x); e != nil {
-				return e
-			}
-			if x.HTTP.Method != "GET" && x.HTTP.Method != "HEAD" {
-				return fmt.Errorf("check %s: only read-only HTTP methods allowed", x.ID)
-			}
-			for _, code := range x.HTTP.Status {
-				if code < 100 || code > 599 {
-					return errors.New("invalid HTTP status assertion")
-				}
-			}
-			if x.HTTP.MaxBodyBytes < 1 || x.HTTP.MaxBodyBytes > 1<<20 {
-				return errors.New("HTTP body budget must be 1..1048576")
-			}
-			if _, e := CompileBodyRegex(x.HTTP.BodyRegex); e != nil {
-				return fmt.Errorf("check %s: invalid response regex", x.ID)
-			}
-			if e := HTTPHeaders(x.HTTP.RequestHeaders); e != nil {
-				return fmt.Errorf("check %s: %w", x.ID, e)
-			}
-			if e := HTTPHeaderEnvs(x.HTTP.RequestHeaders, x.HTTP.RequestHeaderEnvs); e != nil {
-				return fmt.Errorf("check %s: %w", x.ID, e)
-			}
-			if x.HTTP.BearerEnv != "" && !SecretEnvName(x.HTTP.BearerEnv) {
-				return fmt.Errorf("check %s: invalid bearer environment variable name", x.ID)
-			}
-			for _, v := range x.HTTP.ExpectedExit {
-				if _, e := netip.ParseAddr(v); e != nil {
-					if _, e = netip.ParsePrefix(v); e != nil {
-						return errors.New("expected_exit must contain IPs/CIDRs")
-					}
-				}
-			}
-			if len(x.HTTP.ExpectedPops) > 16 {
-				return errors.New("at most 16 expected pops")
-			}
-			seenPops := make(map[string]bool, len(x.HTTP.ExpectedPops))
-			for _, pop := range x.HTTP.ExpectedPops {
-				if !model.IsColo(pop) || seenPops[pop] {
-					return errors.New("expected_pops must be three uppercase letters, without duplicates")
-				}
-				seenPops[pop] = true
-			}
-			if x.HTTP.ExitFormat != "" && x.HTTP.ExitFormat != "plain" && x.HTTP.ExitFormat != "trace" && x.HTTP.ExitFormat != "json" {
-				return errors.New("invalid exit_format")
-			}
-			if trace := x.HTTP.ExpectedTrace; trace != nil {
-				// The probe parses a trace body only for exit_format trace, so
-				// an expectation under any other format could never be
-				// evaluated.
-				if x.HTTP.ExitFormat != "trace" {
-					return errors.New("expected_trace requires exit_format trace")
-				}
-				// An empty expectation would assert nothing while still being a
-				// distinct topology value, so the editor could silently change
-				// a contract the user did not edit by dropping it.
-				if trace.Warp == "" && trace.Gateway == "" && len(trace.Colos) == 0 {
-					return errors.New("expected_trace must declare warp, gateway or colos")
-				}
-				switch trace.Warp {
-				case "", "off", "on", "plus":
-				default:
-					return errors.New("invalid trace warp")
-				}
-				switch trace.Gateway {
-				case "", "on", "off":
-				default:
-					return errors.New("invalid trace gateway")
-				}
-				if len(trace.Colos) > 16 {
-					return errors.New("at most 16 expected trace colos")
-				}
-				seen := make(map[string]bool, len(trace.Colos))
-				for _, colo := range trace.Colos {
-					if !model.IsColo(colo) || seen[colo] {
-						return errors.New("trace colos must be three uppercase letters, without duplicates")
-					}
-					seen[colo] = true
-				}
-			}
-			if x.Kind == "mihomo" {
-				if err := mihomo.Validate(x.Adapter.Mihomo()); err != nil {
-					return err
-				}
-				if ref := x.Adapter.ProviderReference; ref != nil {
-					if err := mihomo.ValidateReferenceTransport(ref, len(Path(c, x.Path).Proxies) > 0); err != nil {
-						return err
-					}
-				}
-			}
-		case "tcp", "tls", "ssh-banner", "udp-echo":
-			if e := HostPort(t); e != nil {
-				return fmt.Errorf("check %s: %w", x.ID, e)
-			}
-		case "dns":
-			// The transport decides the target rule: the three stream/one
-			// datagram transports take a resolver host:port (Dot is usually
-			// 853, but any port is the operator's), while DoH takes an https
-			// URL whose path may select the endpoint. An unknown transport is
-			// refused rather than silently executed as UDP.
-			switch x.DNS.Transport {
-			case "", "udp", "tcp", "dot":
-				if e := HostPort(t); e != nil {
-					return fmt.Errorf("check %s: %w", x.ID, e)
-				}
-			case "doh":
-				u, e := url.Parse(t)
-				if e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-					return fmt.Errorf("check %s: a doh target must be an https URL with a host and optional path, without userinfo, query or fragment", x.ID)
-				}
-			default:
-				return fmt.Errorf("check %s: dns transport must be empty, udp, tcp, dot or doh", x.ID)
-			}
-		case "icmp":
-			if ip, e := netip.ParseAddr(t); e != nil || !ip.Is4() {
-				return errors.New("ICMP currently requires an explicit IPv4 target")
-			}
-			if ip, _ := netip.ParseAddr(x.BindIP); x.BindIP != "" && !ip.Is4() {
-				return fmt.Errorf("check %s: ICMP binds only an IPv4 address", x.ID)
-			}
-		case "tailscale":
-			if x.Adapter.TailscaleDiagnostic != "" && x.TimeoutSeconds < 4 {
-				return errors.New("tailscale_diagnostic needs timeout_seconds of at least 4")
-			}
-			if err := tailscale.Validate(x.Adapter.Tailscale()); err != nil {
-				return err
-			}
-		case "wireguard":
-			if err := wireguard.Validate(x.Adapter.WireGuard()); err != nil {
-				return err
-			}
-		case "cloudflared":
-			// The connector's metrics listener is a local process: no host
-			// override, no source binding, no proxy chain, no path.
-			if x.Path != "" {
-				return fmt.Errorf("check %s: cloudflared reads a literal loopback listener; path is unsupported", x.ID)
-			}
-			if x.BindIP != "" || x.ResolveIP != "" {
-				return fmt.Errorf("check %s: cloudflared does not accept bind_ip or resolve_ip", x.ID)
-			}
-			if err := cloudflared.ValidateTarget(t, x.CAFile); err != nil {
-				return fmt.Errorf("check %s: %w", x.ID, err)
-			}
-			if err := cloudflared.Validate(x.Adapter.CloudflaredOptions()); err != nil {
-				return fmt.Errorf("check %s: %w", x.ID, err)
-			}
-		case "cloudflare":
-			// The API read sends a token and is at most one GET per check.
-			// The default target is the documented v4 base; a test may point
-			// it at a literal loopback server over http.
-			if x.IntervalSeconds < 60 {
-				return fmt.Errorf("check %s: cloudflare API reads require interval_seconds of at least 60", x.ID)
-			}
-			if x.Endpoint != "" {
-				return fmt.Errorf("check %s: cloudflare reads the API at target (default https://api.cloudflare.com/client/v4), not an endpoint", x.ID)
-			}
-			if x.Adapter.TokenEnv == "" || !SecretEnvName(x.Adapter.TokenEnv) {
-				return fmt.Errorf("check %s: cloudflare API reads require a valid adapter.token_env", x.ID)
-			}
-			if err := cloudflare.ValidateTarget(t); err != nil {
-				return fmt.Errorf("check %s: %w", x.ID, err)
-			}
-			if err := cloudflare.Validate(x.Adapter.CloudflareOptions()); err != nil {
-				return fmt.Errorf("check %s: %w", x.ID, err)
-			}
-			// token_env is a credential: it needs HTTPS or direct literal
-			// loopback without a proxy or remote resolve override.
-			if err := HTTPCredentials(c, x); err != nil {
-				return err
-			}
-		case "host":
-			// Validated above; this check reads only the observer's host.
-		case "external":
-			// Validated above; execution is wired explicitly by the runner.
-		default:
-			return fmt.Errorf("check %s: unsupported kind %q", x.ID, x.Kind)
-		}
-		if x.Kind == "dns" {
-			if len(x.DNS.Name) < 1 || len(x.DNS.Name) > 253 {
-				return errors.New("DNS name required")
-			}
-			for _, label := range strings.Split(strings.TrimSuffix(x.DNS.Name, "."), ".") {
-				if len(label) == 0 || len(label) > 63 || strings.IndexFunc(label, func(r rune) bool { return r <= 32 || r >= 127 || r == '\\' }) >= 0 {
-					return errors.New("invalid DNS label")
-				}
-			}
-			if x.DNS.Type != "A" && x.DNS.Type != "AAAA" {
-				return errors.New("DNS type must be A or AAAA")
-			}
-			for _, ip := range x.DNS.ExpectedIPs {
-				if _, e := netip.ParseAddr(ip); e != nil {
-					return errors.New("invalid expected DNS IP")
-				}
-			}
-		}
-		if x.Path != "" && len(paths[x.Path].Proxies) > 0 {
-			switch x.Kind {
-			case "http", "tcp", "tls", "ssh-banner", "mihomo", "cloudflare":
-			default:
-				return fmt.Errorf("check %s: this probe cannot traverse stream proxy chains", x.ID)
-			}
+		if err := validateCheckKind(c, x); err != nil {
+			return err
 		}
 	}
 	return validateResourceSelections(c)
@@ -708,16 +487,7 @@ func Public(c model.Config) model.Config {
 		out.Endpoints[i].Address = PublicURL(out.Endpoints[i].Address)
 	}
 	for i := range out.Checks {
-		x := &out.Checks[i]
-		x.Target = PublicURL(x.Target)
-		x.HTTP.BearerEnv = ""
-		x.Adapter.TokenEnv = ""
-		if ref := x.Adapter.ProviderReference; ref != nil {
-			ref.URL, ref.TokenEnv, ref.CAFile = PublicURL(ref.URL), "", ""
-		}
-		x.HTTP.RequestHeaders = nil
-		x.HTTP.RequestHeaderEnvs = nil
-		x.CAFile = ""
+		out.Checks[i] = publicCheckOptions(out.Checks[i])
 	}
 	for i := range out.Sources {
 		s := &out.Sources[i]
