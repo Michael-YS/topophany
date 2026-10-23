@@ -567,3 +567,4 @@ fixtures do not establish that PocketBase issues or accepts such tokens.
 | Authorization failures preserve pending single/fan-out samples through restart, without quarantine; credential repair resumes delivery | `TestAuthorizationOutageRetainsPendingSamples`, `TestDeliveryFailureActions` |
 | Adapter-invalid source reloads are refused before retiring the active worker/collector scheduler; a subsequent valid reload still succeeds | `TestInvalidSourceReloadPreservesProcess` |
 | Direct automatically recovers from HTTP 408 and the entire 5xx class, including 520/522/524; public retry flags match session policy | `TestDirectGatewayFailuresRecoverWithoutManualRetry`, `TestFailureRetryFlagMatchesSessionPolicy`, `TestHTTPFailureClassification` |
+| Komari discovery, which owns IO outside the collection runtime, also closes detached TLS work on cancellation | `TestKomariDiscoveryReleasesCanceledTLS` |

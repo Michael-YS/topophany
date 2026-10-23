@@ -104,6 +104,7 @@ func (h *komariConnection) Discover(ctx context.Context, c Credential) ([]System
 	if err != nil {
 		return nil, false, discoveryError(err)
 	}
+	defer base.Close()
 	io := &attemptIO{IO: base, now: time.Now}
 	nodes, err := komari.Discover(ctx, io, src)
 	if io.failure != nil {
