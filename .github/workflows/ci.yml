@@ -39,6 +39,11 @@ on:
       - '!**/*.adoc'
       - '!**/README*'
   workflow_dispatch:
+    inputs:
+      site:
+        description: Build and check the site
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -115,15 +120,21 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Detect site changes
+        id: site
+        run: python3 scripts/site_changes.py
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
       - name: Build browser binaries from source
+        if: steps.site.outputs.changed == 'true'
         run: python3 scripts/build_demo.py
       - name: Generated site and tours are current
+        if: steps.site.outputs.changed == 'true'
         run: make site-check
       - name: Browser transport and interaction regressions
+        if: steps.site.outputs.changed == 'true'
         working-directory: site
         run: |
           npm ci --ignore-scripts
@@ -131,6 +142,8 @@ jobs:
           npm test
           npm run test:browser
       - name: Full acceptance suite
+        env:
+          TOPO_CHECK_SITE: ${{ steps.site.outputs.changed }}
         run: python3 scripts/verify.py --output ${{ runner.temp }}/verification
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

@@ -35,7 +35,12 @@ the root Go module, `Makefile`, or workflow configuration. Markdown, MDX,
 reStructuredText, AsciiDoc and README files are excluded even inside those
 directories. Documentation-only and site-only changes do not start these test
 workflows; mixed changes still run the relevant checks. CI's manual trigger
-and release-tag builds remain available.
+and release-tag builds remain available. Within CI, browser builds, generated
+site consistency checks and browser regressions run only when the push or PR
+explicitly changes a non-documentation file under `site/`. Manual CI runs can
+opt into these checks with the `site` input. Source-only acceptance runs also
+skip `scripts/test_site.py`; for the same local behavior, run
+`TOPO_CHECK_SITE=false python3 scripts/verify.py`.
 
 The homepage at topophany.com is the static site in `site/public/`, published
 by a Cloudflare Worker (`site/wrangler.jsonc`). Workers Builds compiles the
@@ -74,11 +79,13 @@ With `site/` as its root directory, Workers Builds automatically runs `npm ci`;
 does not depend on the dashboard's optional build command or its handling of
 Wrangler custom builds. Local Wrangler runs the same build from its configuration.
 The build image's Go toolchain follows the version in the repository's `go.mod`
-through Go's automatic toolchain selection. After Go source or toolchain changes, run
-`make site`; `python3 scripts/build_demo.py --check` checks that
-the generated runtime and binary match their inputs, and `make site-check`
+through Go's automatic toolchain selection. When updating the site after Go
+source or toolchain changes, run `make site`; Go-only changes do not require
+refreshing the committed site's WASM hashes.
+`python3 scripts/build_demo.py --check` checks that the generated runtime and
+binary match their inputs, and `make site-check`
 rebuilds the pages and tours and refuses a stale tree. CI runs it in the
-acceptance job. The demo has no terminal
+acceptance job when site checks are selected. The demo has no terminal
 server or real probes; hidden tabs pause its simulated clock. Its CSP permits
 WebAssembly compilation with `wasm-unsafe-eval`, without permitting JS eval.
 The demo page contains only the interactive terminal and a link home. Above

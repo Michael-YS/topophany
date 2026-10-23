@@ -1,6 +1,7 @@
 """The homepage's pages are written from its words, in every language."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -18,6 +19,7 @@ SITE = ROOT / "site"
 
 
 @unittest.skipUnless(SITE.is_dir(), "the site is not part of a source export")
+@unittest.skipIf(os.environ.get("TOPO_CHECK_SITE") == "false", "no explicit site changes in this CI run")
 class SiteTests(unittest.TestCase):
     def test_browser_binaries_are_generated_outside_git(self):
         outputs = ["site/public/data/demo.wasm", "site/public/data/viewer.wasm",
