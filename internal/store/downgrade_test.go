@@ -21,15 +21,23 @@ import (
 // existed. The downgrade test extracts this exact commit, builds its real
 // store reader, and asks it to open data written by this tree. It never uses a
 // generated fixture from /tmp.
-const oldFormatCommit = "74db358"
+const oldFormatCommit = "74db358929247e2bf38b219a3682b34e9a3c4bf2"
+
+func oldReaderUnavailable(t *testing.T, reason string) {
+	t.Helper()
+	if os.Getenv("TOPO_REQUIRE_OLD_READER") == "1" {
+		t.Fatal(reason)
+	}
+	t.Skip(reason)
+}
 
 func buildOldFormatReader(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git unavailable; cannot build the fixed old store reader")
+		oldReaderUnavailable(t, "git unavailable; cannot build the fixed old store reader")
 	}
 	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go unavailable; cannot build the fixed old store reader")
+		oldReaderUnavailable(t, "go unavailable; cannot build the fixed old store reader")
 	}
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -37,7 +45,7 @@ func buildOldFormatReader(t *testing.T) string {
 	}
 	check := exec.Command("git", "-C", root, "cat-file", "-e", oldFormatCommit+"^{commit}")
 	if err := check.Run(); err != nil {
-		t.Skipf("commit %s is not present in this checkout", oldFormatCommit)
+		oldReaderUnavailable(t, "commit "+oldFormatCommit+" is not present in this checkout")
 	}
 	dir := t.TempDir()
 	archive := exec.Command("git", "-C", root, "archive", "--format=tar", oldFormatCommit)

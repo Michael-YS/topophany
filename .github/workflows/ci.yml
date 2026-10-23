@@ -42,14 +42,20 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      TOPO_REQUIRE_OLD_READER: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
+      - name: Require real old-reader compatibility pass
+        if: runner.os == 'Linux'
+        run: python3 scripts/check_compatibility.py
       - name: Test (race)
         if: runner.os != 'Windows'
         # Match verify.py: race-instrumented tour/render tests can exceed the
@@ -68,10 +74,13 @@ jobs:
 
   acceptance:
     runs-on: ubuntu-latest
+    env:
+      TOPO_REQUIRE_OLD_READER: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
