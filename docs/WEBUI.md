@@ -72,13 +72,62 @@ explicitly passed, and the ordinary binary rejects that flag with a rebuild hint
 For a remote server, forward the loopback listener over SSH. A non-loopback
 `--web-listen` requires the collector's `--tls-cert` and `--tls-key`; the Web
 listener uses the same certificate. Listen hosts must be concrete literal IPs (no wildcard binds) or
-localhost. Host/Origin checks restrict requests to the configured listener;
-reverse proxies must preserve its Host, scheme and origin (SSH forwarding is
-simpler). There is no Web configuration write or command execution endpoint.
+localhost. Host/Origin checks restrict requests to the configured listener by
+default. There is no Web configuration write or command execution endpoint.
 
 Frontend source is the embedded `internal/webui/assets/` directory; edit these
 files directly, never the unrelated generated `site/public/` files. Runtime
 security headers prohibit third-party scripts, frames and connections.
+
+### HTTPS through Tailscale Serve
+
+[Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve)
+can terminate HTTPS and forward HTTP to the Native Web UI on loopback, so
+Topophany does not need its own Web UI TLS certificate:
+
+```sh
+topo-web serve \
+  --config topology.json \
+  --auth auth.json \
+  --data collector-data \
+  --web \
+  --web-listen 127.0.0.1:8080 \
+  --web-proxy-origin https://pi.example.ts.net
+```
+
+On a node with Tailscale HTTPS enabled, configure Serve and check its URL:
+
+```sh
+tailscale serve --bg 8080
+tailscale serve status
+```
+
+Replace the example Origin with the actual HTTPS address displayed by
+`tailscale serve status`, without a trailing slash. If it differs, restart
+Topophany with that exact Origin. Open that HTTPS address and enter your viewer
+token; Tailscale identity does not replace it. Worker tokens remain forbidden.
+
+`--web-proxy-origin` is optional and applies only to Native Web UI. It accepts
+one exact HTTPS Origin (optionally including a port), without wildcards,
+userinfo, path, query or fragment. It requires `--web` and a loopback listener.
+Proxy requests must arrive from a loopback socket peer, use either the configured
+external Host or the backend listener Host, and match the external Origin when
+present. Cross-site requests remain forbidden; `X-Forwarded-*` and `Forwarded`
+headers do not establish trust. Direct loopback access continues to work.
+
+Keep Web UI bound to loopback; this adds no public Topophany listener. Use Serve,
+not Tailscale Funnel. Tailnet ACLs/grants control access to the Serve endpoint
+(see [Tailscale Serve access](https://tailscale.com/docs/features/tailscale-serve)).
+The Collector's Worker reporting endpoint remains a separate service with its
+existing TLS and authentication requirements. This option does not change
+Collector API CORS (`--web-origin`), Worker protocols or token handling.
+
+For [Tailscale Services](https://tailscale.com/docs/features/tailscale-services),
+set `--web-proxy-origin` to the Service's actual HTTPS Origin instead of a node's
+HTTPS Origin, and point the Service host's HTTPS proxy at the loopback Web UI.
+The same fixed Host/Origin and socket-peer checks apply. Service creation,
+advertisement approval and grants are managed separately in Tailscale; Topophany
+does not configure them.
 
 ## Validation
 
@@ -193,3 +242,41 @@ Two limitations prevent describing the complete local gate set as green:
 - The ARM64 host cannot execute Go's race runtime: ThreadSanitizer reports
   `unsupported VMA range`, `Found 39 - Supported 48` (`race.log`). Race coverage
   remains a required check in the added AMD64 CI job, not a local pass claim.
+
+## Proxy verification record (2026-10-24)
+
+- `go test -tags webui ./internal/webui ./internal/app ./internal/api` passed,
+  including the complete app suite without exclusions.
+- `go vet -tags webui ./internal/webui ./internal/app ./internal/api` passed.
+- Proxy regressions cover preserved/rewritten Hosts, exact Origin matching,
+  loopback IPv4/IPv6 peers, rejected cross-site requests and forged forwarding
+  headers, startup validation, viewer authentication and Worker rejection.
+- Real Tailscale Serve HTTPS acceptance passed with a loopback HTTP backend and
+  Chromium routed through a separate Tailnet node. It covered static assets,
+  authenticated data, two consecutive SSE frames, all nine pages, desktop/mobile
+  layouts, collector restart/reconnection and token revocation. Unauthorized
+  requests returned 401 and Worker tokens returned 403. Port 8080 was already
+  occupied, so this isolated run used an ephemeral loopback backend and HTTPS
+  port 8443; the default Web UI listener remains `127.0.0.1:8080`. Temporary Serve
+  configuration and the SSH test tunnel were removed afterward.
+- Remote Linux ARM64 race coverage used Go 1.26.10 in Docker on server `s9`.
+  `go test -tags webui -race -count=1 -timeout=15m -p 1 ./...` passed with exit
+  status 0. Package execution was serialized to bound resource use.
+- The default full selection, `go test -race -count=1 -timeout=15m -p 1 ./...`,
+  completed with one environment failure: `TestPrivilegedRollbackRejectsForeignOwner`
+  needs `chown`, which the initial container's dropped capabilities prohibited.
+  All other default packages passed. Both default and tagged bootstrap race
+  suites passed on retry with only `CHOWN` added to the isolated container;
+  bootstrap also passed in the final complete tagged run. No tests were changed
+  or excluded to accommodate this restriction.
+- Race containers used a read-only root filesystem, no network, no published
+  ports and no host directory mounts. Sources and caches stayed in temporary
+  container filesystems, with CPU capped at up to 1.5 cores and memory at up to
+  4 GiB per container. Temporary containers and the newly pulled Go image were
+  deleted afterward; no host Go installation or service configuration changed.
+
+Local browser evidence is in the ignored `.verify-build/webui/proxy-browser/`
+directory. Race logs are `.verify-build/webui/proxy-remote-race.log`,
+`proxy-remote-race-bootstrap.log` and `proxy-remote-tagged-race.log` in the same
+ignored build directory. This verifies node Serve; Tailscale Service
+advertisement, grants and failover were not exercised.

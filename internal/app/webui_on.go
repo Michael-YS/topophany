@@ -4,6 +4,7 @@ package app
 
 import (
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -14,19 +15,29 @@ import (
 )
 
 type webFlags struct {
-	enabled *bool
-	listen  *string
+	enabled     *bool
+	listen      *string
+	proxyOrigin *string
 }
 
 func addWebFlags(f *flag.FlagSet) webFlags {
-	return webFlags{f.Bool("web", false, "enable the native read-only Web UI"), f.String("web-listen", "127.0.0.1:8080", "Web UI listener (non-loopback requires TLS)")}
+	return webFlags{
+		enabled:     f.Bool("web", false, "enable the native read-only Web UI"),
+		listen:      f.String("web-listen", "127.0.0.1:8080", "Web UI listener (non-loopback requires TLS)"),
+		proxyOrigin: f.String("web-proxy-origin", "", "exact HTTPS origin for a loopback reverse proxy (requires --web)"),
+	}
 }
-func (f webFlags) validate() error { return nil }
+func (f webFlags) validate() error {
+	if *f.proxyOrigin != "" && !*f.enabled {
+		return errors.New("web-proxy-origin requires --web")
+	}
+	return webui.ValidateProxyOrigin(*f.proxyOrigin)
+}
 func (a *App) startWeb(f webFlags, handler http.Handler, tc *tls.Config, failures chan<- error) (func(), error) {
 	if !*f.enabled {
 		return func() {}, nil
 	}
-	stop, addr, err := webui.Start(*f.listen, handler, tc, failures)
+	stop, addr, err := webui.Start(*f.listen, *f.proxyOrigin, handler, tc, failures)
 	if err != nil {
 		return nil, err
 	}

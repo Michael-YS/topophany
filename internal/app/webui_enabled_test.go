@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"flag"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -60,9 +61,30 @@ func TestCollectorWebLifecycle(t *testing.T) {
 func TestWebBuildDisabledDoesNotBind(t *testing.T) {
 	enabled := false
 	bad := "not-an-address"
-	stop, err := New().startWeb(webFlags{&enabled, &bad}, http.NotFoundHandler(), nil, make(chan error, 1))
+	stop, err := New().startWeb(webFlags{enabled: &enabled, listen: &bad}, http.NotFoundHandler(), nil, make(chan error, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	stop()
+}
+
+func TestWebProxyFlags(t *testing.T) {
+	for _, tc := range []struct {
+		args      []string
+		wantError bool
+	}{
+		{nil, false},
+		{[]string{"--web", "--web-proxy-origin", "https://pi.example.ts.net"}, false},
+		{[]string{"--web-proxy-origin", "https://pi.example.ts.net"}, true},
+		{[]string{"--web", "--web-proxy-origin", "http://pi.example.ts.net"}, true},
+	} {
+		f := flag.NewFlagSet("test", flag.ContinueOnError)
+		web := addWebFlags(f)
+		if err := f.Parse(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		if err := web.validate(); (err != nil) != tc.wantError {
+			t.Fatalf("%v: unexpected validation result %v", tc.args, err)
+		}
+	}
 }
