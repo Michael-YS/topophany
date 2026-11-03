@@ -4,7 +4,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
+	"github.com/WhitenWhiten/topophany/internal/api"
+	"github.com/WhitenWhiten/topophany/internal/config"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -17,7 +20,7 @@ import (
 )
 
 func TestCollectorWebLifecycle(t *testing.T) {
-	dir, _, _, _ := initialized(t)
+	dir, topology, _, credentials := initialized(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	log := &lockedWriter{}
@@ -43,6 +46,55 @@ func TestCollectorWebLifecycle(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != 200 {
 		t.Fatal(resp.StatusCode)
+	}
+
+	post := func(edit api.ServiceEdit, want int) {
+		t.Helper()
+		body, _ := json.Marshal(edit)
+		req, _ := http.NewRequest("POST", "http://"+addr+"/v1/web/service", strings.NewReader(string(body)))
+		req.Header.Set("Authorization", "Bearer "+credentials.Profiles["demo"].Servers[0].Token)
+		req.Header.Set("Content-Type", "application/json")
+		response, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != want {
+			raw, _ := io.ReadAll(response.Body)
+			t.Fatalf("status %d: %s", response.StatusCode, raw)
+		}
+	}
+	edit := api.ServiceEdit{ID: topology.Services[0].ID, Revision: config.Revision(config.Public(topology)), Name: "Renamed online", Environment: "production"}
+	post(edit, 200)
+	saved, err := config.Load(filepath.Join(dir, "topology.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Services[0].Name != edit.Name || saved.Services[0].Environment != edit.Environment {
+		t.Fatal("edit not persisted")
+	}
+	post(edit, 409)
+	edit.Revision = config.Revision(config.Public(saved))
+	edit.Delete = true
+	post(edit, 200)
+	saved, err = config.Load(filepath.Join(dir, "topology.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, service := range saved.Services {
+		if service.ID == edit.ID {
+			t.Fatal("service remains")
+		}
+		for _, ref := range service.DependsOn {
+			if ref == edit.ID {
+				t.Fatal("dependency remains")
+			}
+		}
+	}
+	for _, check := range saved.Checks {
+		if check.Service == edit.ID {
+			t.Fatal("check remains")
+		}
 	}
 	cancel()
 	select {

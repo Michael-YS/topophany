@@ -506,3 +506,18 @@ values, and Enter to select an action; mouse clicks work too.
 Only these six presentation preferences are saved. Search text, observer,
 service/application scope, selection, and individual group folds are not saved.
 Routine page switches and display shortcuts never rewrite startup defaults.
+
+### Edit a service from the Web UI
+
+In a webui-enabled collector, open **Services → Cards → Edit** to change a
+service's name or environment, or delete the service and its checks. Saving
+writes the collector's topology file atomically and reloads the collector.
+Other service properties and private configuration are preserved. Concurrent
+configuration changes are rejected; refresh and reopen the editor before retrying.
+Deletion also removes dependency references to that service; endpoints are kept.
+
+This action uses the connected viewer token on the same-origin Web UI listener;
+people with that token and access to the Web UI can edit services. The raw
+collector API still does not permit PUT /v1/config. Separately deployed workers
+retain their local configuration: update and reload those workers after deleting
+a service to stop their old probes.

@@ -31,6 +31,7 @@ func (s *Server) registerWebUI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/web/view", s.authorize("viewer", s.webView))
 	mux.HandleFunc("GET /v1/web/events", s.authorize("viewer", s.webEvents))
 	mux.HandleFunc("GET /v1/web/history", s.authorize("viewer", s.webHistory))
+	mux.HandleFunc("POST /v1/web/service", s.authorize("viewer", s.webEditService))
 	mux.HandleFunc("POST /v1/web/validate", s.authorize("viewer", s.webValidate))
 }
 
@@ -380,4 +381,29 @@ func (s *Server) webValidate(w http.ResponseWriter, r *http.Request, a authority
 		Revision string       `json:"revision"`
 		Topology model.Config `json:"topology"`
 	}{true, config.Revision(config.Public(c)), config.Public(c)})
+}
+
+func (s *Server) webEditService(w http.ResponseWriter, r *http.Request, a authority) {
+	if s.EditService == nil {
+		writeError(w, 503, "editing_unavailable")
+		return
+	}
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		writeError(w, 415, "json_required")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16384)
+	var edit ServiceEdit
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if err := d.Decode(&edit); err != nil {
+		writeError(w, 400, "invalid_edit")
+		return
+	}
+	edit.Current = func() bool { return s.generation() == a.gen }
+	if err := s.EditService(r.Context(), edit); err != nil {
+		writeJSON(w, 409, map[string]string{"error": "edit_rejected", "detail": secure.Text(err.Error())})
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"saved": true})
 }

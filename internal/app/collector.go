@@ -1,13 +1,16 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -126,6 +129,29 @@ func (a *App) serve(parent context.Context, args []string) (retErr error) {
 	defer func() { cancel(); wg.Wait() }()
 	failures := make(chan error, 2)
 	backend := api.New(c, *instance, st, auth)
+	type editRequest struct {
+		edit   api.ServiceEdit
+		result chan error
+	}
+	edits := make(chan editRequest)
+	backend.EditService = func(requestCtx context.Context, edit api.ServiceEdit) error {
+		req := editRequest{edit, make(chan error, 1)}
+		select {
+		case edits <- req:
+		case <-requestCtx.Done():
+			return requestCtx.Err()
+		case <-parent.Done():
+			return parent.Err()
+		}
+		select {
+		case err := <-req.result:
+			return err
+		case <-requestCtx.Done():
+			return requestCtx.Err()
+		case <-parent.Done():
+			return parent.Err()
+		}
+	}
 	configureWeb(backend, *webFlags.enabled)
 	backend.WebOrigin = *webOrigin
 	backend.ExposeIngressSources = *exposeIngress
@@ -293,6 +319,98 @@ wait:
 			break wait
 		case result = <-failures:
 			break wait
+		case req := <-edits:
+			req.result <- func() error {
+				if req.edit.Current == nil || !req.edit.Current() || req.edit.Revision != config.Revision(config.Public(c)) {
+					return errors.New("configuration changed; refresh before editing")
+				}
+				raw, err := json.Marshal(c)
+				if err != nil {
+					return err
+				}
+				var next model.Config
+				if err = json.Unmarshal(raw, &next); err != nil {
+					return err
+				}
+				found := false
+				for i, service := range next.Services {
+					if service.ID == req.edit.ID {
+						found = true
+						if req.edit.Delete {
+							next.Services = append(next.Services[:i], next.Services[i+1:]...)
+						} else {
+							next.Services[i].Name = req.edit.Name
+							next.Services[i].Environment = req.edit.Environment
+						}
+						break
+					}
+				}
+				if !found {
+					return errors.New("service no longer exists")
+				}
+				if req.edit.Delete {
+					checks := next.Checks[:0]
+					for _, check := range next.Checks {
+						if check.Service != req.edit.ID {
+							checks = append(checks, check)
+						}
+					}
+					next.Checks = checks
+					for i := range next.Services {
+						refs := next.Services[i].DependsOn[:0]
+						for _, id := range next.Services[i].DependsOn {
+							if id != req.edit.ID {
+								refs = append(refs, id)
+							}
+						}
+						next.Services[i].DependsOn = refs
+					}
+				}
+				if err = config.Validate(next); err != nil {
+					return err
+				}
+				if err = st.ValidateTopology(next); err != nil {
+					return err
+				}
+				if _, err = api.LoadAuth(*authPath, next); err != nil {
+					return err
+				}
+				if _, err = loadAlerts(*alertsPath, next); err != nil {
+					return err
+				}
+				if _, err = local(next); err != nil {
+					return err
+				}
+				old, err := os.ReadFile(*path)
+				if err != nil {
+					return err
+				}
+				disk, err := config.Decode(bytes.NewReader(old))
+				if err != nil {
+					return err
+				}
+				if config.Revision(disk) != config.Revision(c) {
+					return errors.New("configuration file changed; reload before editing")
+				}
+				info, err := os.Stat(*path)
+				if err != nil {
+					return err
+				}
+				encoded, err := json.MarshalIndent(next, "", "  ")
+				if err != nil {
+					return err
+				}
+				if err = secure.AtomicWrite(*path, append(encoded, '\n'), config.WriteMode(next, info.Mode())); err != nil {
+					return err
+				}
+				if err = reload(); err != nil {
+					if restore := secure.AtomicWrite(*path, old, info.Mode()); restore != nil {
+						return fmt.Errorf("reload failed: %v; restore failed: %w", err, restore)
+					}
+					return err
+				}
+				return nil
+			}()
 		case <-hup:
 			if e := reload(); e != nil {
 				fmt.Fprintf(a.Err, "reload refused; still serving revision %s: %v\n", config.Revision(c)[:12], e)

@@ -22,7 +22,7 @@ type webFlags struct {
 
 func addWebFlags(f *flag.FlagSet) webFlags {
 	return webFlags{
-		enabled:     f.Bool("web", false, "enable the native read-only Web UI"),
+		enabled:     f.Bool("web", false, "enable the native Web UI with service editing"),
 		listen:      f.String("web-listen", "127.0.0.1:8080", "Web UI listener (non-loopback requires TLS)"),
 		proxyOrigin: f.String("web-proxy-origin", "", "exact HTTPS origin for a loopback reverse proxy (requires --web)"),
 	}

@@ -110,7 +110,7 @@ func Handler(backend http.Handler, host, scheme, proxyOrigin string) http.Handle
 			switch r.URL.Path {
 			case "/v1/snapshot", "/v1/config", "/v1/history", "/v1/rollups", "/v1/web/view", "/v1/web/events", "/v1/web/history":
 				permitted = r.Method == http.MethodGet
-			case "/v1/web/validate":
+			case "/v1/web/validate", "/v1/web/service":
 				permitted = r.Method == http.MethodPost
 			}
 			if !permitted {

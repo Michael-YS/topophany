@@ -812,6 +812,40 @@ function serviceCard(c) {
     box.append(el("h3", { text: "Runbook" }), el("pre", { text: c.runbook }));
   return box;
 }
+function editLiveService(id) {
+  const dialog = el("dialog");
+  const status = el("p", { role: "status" });
+  const name = el("input", { "aria-label": "Service name" });
+  const environment = el("input", { "aria-label": "Environment" });
+  let revision = "";
+  const save = button("Save online", () => submit(false));
+  const remove = button("Delete service and its checks", () => {
+    if (confirm("Delete this service and all its checks? Dependent services will remain.")) submit(true);
+  });
+  async function submit(deleting) {
+    save.disabled = remove.disabled = true;
+    try {
+      await request("/v1/web/service", token, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, revision, delete: deleting, name: name.value, environment: environment.value }),
+      });
+      dialog.close(); startStream();
+    } catch (err) { status.textContent = errorText(err); }
+    finally { save.disabled = remove.disabled = false; }
+  }
+  dialog.append(el("h2", { text: "Edit service online" }),
+    el("label", {}, "Name", name), el("label", {}, "Environment", environment),
+    status, save, remove, button("Cancel", () => dialog.close()));
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog); dialog.showModal();
+  save.disabled = remove.disabled = true;
+  request("/v1/config", token).then(result => {
+    const service = result.topology.services.find(s => s.id === id);
+    if (!service) throw new Error("Service no longer exists");
+    revision = result.revision; name.value = service.name; environment.value = service.environment || "";
+    save.disabled = remove.disabled = false;
+  }).catch(err => { status.textContent = errorText(err); });
+}
 function serviceCards() {
   const grid = el("div", { class: "cards" });
   rows.forEach((row, i) => {
@@ -847,6 +881,7 @@ function serviceCards() {
           "div",
           { class: "panel-title" },
           button(c.name, () => openDetail(row)),
+          button("Edit", () => editLiveService(row.id)),
           badge(row),
         ),
         serviceCard(c),

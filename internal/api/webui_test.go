@@ -218,3 +218,37 @@ func TestWebAPIAbsentUntilEnabled(t *testing.T) {
 		t.Fatal("disabled Web API is exposed", w.Code)
 	}
 }
+
+func TestWebServiceEditingBoundary(t *testing.T) {
+	srv, h, _ := webFixture(t)
+	body := []byte(`{"id":"service","revision":"revision","name":"Renamed","environment":"production"}`)
+	if w := request(h, "POST", "/v1/web/service", viewerToken, "application/json", body); w.Code != 503 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	calls := 0
+	srv.EditService = func(ctx context.Context, edit ServiceEdit) error {
+		calls++
+		if edit.ID != "service" || edit.Name != "Renamed" || edit.Environment != "production" {
+			t.Fatalf("unexpected edit: %+v", edit)
+		}
+		return nil
+	}
+	for _, token := range []string{"", workerToken} {
+		w := request(h, "POST", "/v1/web/service", token, "application/json", body)
+		if w.Code == 200 {
+			t.Fatal("unauthorized edit accepted")
+		}
+	}
+	if calls != 0 {
+		t.Fatal("unauthorized callback")
+	}
+	if w := request(h, "POST", "/v1/web/service", viewerToken, "application/json", body); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if calls != 1 {
+		t.Fatal(calls)
+	}
+	if w := request(h, "POST", "/v1/web/service", viewerToken, "application/json", []byte(`{"unknown":true}`)); w.Code != 400 {
+		t.Fatal(w.Code)
+	}
+}

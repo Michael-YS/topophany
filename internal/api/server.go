@@ -83,6 +83,7 @@ func ValidateAuth(a Auth, c model.Config) error {
 // Server is a collector's API. Config and Auth may be set before it serves;
 // afterwards only Reload changes them.
 type Server struct {
+	EditService ServiceEditor
 	webOptions
 	Config    model.Config
 	Instance  string
