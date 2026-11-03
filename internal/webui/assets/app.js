@@ -748,7 +748,7 @@ function serverCards() {
   return grid;
 }
 function serviceCard(c) {
-  const box = el("section", { class: "card-lines" });
+  const box = el("section", { class: "card-lines service-content" });
   box.append(
     el("p", {
       class: c.health,
@@ -756,13 +756,13 @@ function serviceCard(c) {
     }),
     el("p", {
       class: "muted",
-      text: `${c.application.name || "Ungrouped"} / ${c.environment || "Unspecified"} · ${c.host.name || c.host.id} · ${c.host.where || ""}`,
+      text: `${c.application?.name || "Ungrouped"} / ${c.environment || "Unspecified"} · ${c.host?.name || c.host?.id || "Unassigned"} · ${c.host?.where || ""}`,
     }),
   );
   for (const seen of c.seen_from || []) {
     box.append(
       el("h3", {
-        text: `${seen.label || seen.observer.name} · ${seen.health}`,
+        text: `${seen.label || seen.observer?.name || "Unknown observer"} · ${seen.health}`,
       }),
     );
     for (const check of seen.checks || [])
@@ -819,7 +819,7 @@ function serviceCards() {
       grid.append(
         el(
           "section",
-          { class: "panel" },
+          { class: "panel service-group", "data-row": i },
           button(
             `${(state.collapsed && !state.expanded.has(row.id)) || (!state.collapsed && state.folded.has(row.id)) ? "▸" : "▾"} ${row.title}`,
             () => toggleGroup(row),
@@ -835,7 +835,7 @@ function serviceCards() {
       el(
         "article",
         {
-          class: "panel",
+          class: "panel service-card",
           "data-row": i,
           tabindex: 0,
           onkeydown: (e) => {
